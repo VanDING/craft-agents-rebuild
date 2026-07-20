@@ -3,10 +3,10 @@
  *
  * Uses flat config format (ESLint 9+).
  * Includes custom navigation rule to enforce navigate() usage.
+ * Parser: @babel/eslint-parser (TS 7 compatible)
  */
 
-import tsParser from '@typescript-eslint/parser'
-import tsPlugin from '@typescript-eslint/eslint-plugin'
+import babelParser from '@babel/eslint-parser'
 import reactPlugin from 'eslint-plugin-react'
 import reactHooksPlugin from 'eslint-plugin-react-hooks'
 import noDirectNavigationState from './eslint-rules/no-direct-navigation-state.cjs'
@@ -34,17 +34,18 @@ export default [
   {
     files: ['src/**/*.{ts,tsx}'],
     languageOptions: {
-      parser: tsParser,
+      parser: babelParser,
       parserOptions: {
         ecmaVersion: 'latest',
         sourceType: 'module',
-        ecmaFeatures: {
-          jsx: true,
+        ecmaFeatures: { jsx: true },
+        requireConfigFile: false,
+        babelOptions: {
+          presets: ['@babel/preset-typescript', '@babel/preset-react'],
         },
       },
     },
     plugins: {
-      '@typescript-eslint': tsPlugin,
       react: reactPlugin,
       'react-hooks': reactHooksPlugin,
       // Custom plugin for Craft Agent rules

@@ -27,13 +27,13 @@
   "dependencies": {
     "@craft-agent/core": "workspace:*",
     "@craft-agent/shared": "workspace:*",
+    "@earendil-works/pi-ai": "0.80.10",
     "jose": "^6.0.0",
-    "ws": "^8.19.0",
     "sharp": "0.34.5",
-    "@earendil-works/pi-ai": "0.80.6"
+    "ws": "^8.19.0"
   },
   "devDependencies": {
-    "typescript": "^5.8.2",
-    "@types/node": "^22.0.0"
+    "@types/node": "25.0.0",
+    "typescript": "7"
   }
 }

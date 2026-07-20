@@ -3,14 +3,10 @@ import type { CustomEndpointApi, CustomEndpointConfig } from '@config/llm-connec
 export type PresetKey = string
 
 /**
- * Preset keys that are regional variants of a canonical Pi auth provider.
- * The Pi SDK recognizes both 'minimax' and 'minimax-cn' as separate providers
- * with distinct base URLs (api.minimax.io vs api.minimaxi.com), so only
- * 'minimax-global' needs aliasing — 'minimax-cn' maps 1:1 to the Pi SDK provider.
+ * Preset keys now match Pi SDK provider IDs directly (e.g. 'minimax' instead of
+ * 'minimax-global'). Aliases are only needed if a future mismatch is introduced.
  */
-const PI_AUTH_PROVIDER_ALIASES: Record<string, string> = {
-  'minimax-global': 'minimax',
-}
+const PI_AUTH_PROVIDER_ALIASES: Record<string, string> = {}
 
 export function resolvePiAuthProviderForSubmit(
   activePreset: PresetKey,

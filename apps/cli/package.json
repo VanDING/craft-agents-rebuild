@@ -18,8 +18,8 @@
     "@craft-agent/server-core": "workspace:*"
   },
   "devDependencies": {
-    "typescript": "^5.8.2",
-    "@types/node": "^22.0.0",
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "@types/node": "25.0.0",
+    "typescript": "7"
   }
 }

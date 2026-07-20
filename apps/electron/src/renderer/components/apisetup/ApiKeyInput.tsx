@@ -108,10 +108,22 @@ const ANTHROPIC_PRESETS: Preset[] = [
   { key: 'cerebras', label: 'Cerebras', url: 'https://api.cerebras.ai/v1', placeholder: 'csk-...' },
   { key: 'zai', label: 'z.ai (GLM)', url: 'https://api.z.ai/api/coding/paas/v4', placeholder: 'Paste your key here...' },
   { key: 'huggingface', label: 'Hugging Face', url: 'https://router.huggingface.co/v1', placeholder: 'hf_...' },
-  { key: 'minimax-global', label: 'Minimax Global', url: 'https://api.minimax.io/anthropic', placeholder: 'Paste your key here...' },
+  { key: 'minimax', label: 'Minimax Global', url: 'https://api.minimax.io/anthropic', placeholder: 'Paste your key here...' },
   { key: 'minimax-cn', label: 'Minimax CN', url: 'https://api.minimaxi.com/anthropic', placeholder: 'Paste your key here...' },
   { key: 'kimi-coding', label: 'Kimi (Coding)', url: 'https://api.kimi.com/coding', placeholder: 'sk-kimi-...' },
   { key: 'vercel-ai-gateway', label: 'Vercel AI Gateway', url: 'https://ai-gateway.vercel.sh', placeholder: 'Paste your key here...' },
+  { key: 'nvidia', label: 'NVIDIA NIM', url: 'https://integrate.api.nvidia.com/v1', placeholder: 'nvapi-...' },
+  { key: 'together', label: 'Together AI', url: 'https://api.together.xyz/v1', placeholder: 'Paste your key here...' },
+  { key: 'fireworks', label: 'Fireworks AI', url: 'https://api.fireworks.ai/inference/v1', placeholder: 'fw_...' },
+  { key: 'moonshotai', label: 'Moonshot AI', url: 'https://api.moonshot.ai/v1', placeholder: 'sk-...' },
+  { key: 'moonshotai-cn', label: 'Moonshot AI CN', url: 'https://api.moonshot.cn/v1', placeholder: 'sk-...' },
+  { key: 'cloudflare-workers-ai', label: 'Cloudflare Workers AI', url: 'https://api.cloudflare.com/client/v4/accounts', placeholder: 'Paste your key here...' },
+  { key: 'cloudflare-ai-gateway', label: 'Cloudflare AI Gateway', url: 'https://gateway.ai.cloudflare.com/v1', placeholder: 'Paste your key here...' },
+  { key: 'ant-ling', label: 'Ant Ling', url: '', placeholder: 'Paste your key here...' },
+  { key: 'zai-coding-cn', label: 'z.ai Coding CN', url: 'https://api.z.ai/cn/api/coding/paas/v4', placeholder: 'Paste your key here...' },
+  { key: 'opencode', label: 'OpenCode', url: 'https://opencode.ai/zen/v1', placeholder: 'sk-...' },
+  { key: 'opencode-go', label: 'OpenCode Zen Go', url: 'https://opencode.ai/zen/go/v1', placeholder: 'sk-...' },
+  { key: 'xiaomi', label: 'Xiaomi LLM', url: '', placeholder: 'Paste your key here...' },
   { key: 'manifest', label: 'Manifest', url: 'https://app.manifest.build/v1', placeholder: 'mnfst_...' },
   { key: 'custom', label: 'Custom', url: '', placeholder: 'Paste your key here...' },
 ]
@@ -143,7 +155,7 @@ const GOOGLE_PRESETS: Preset[] = [
 ]
 
 /** Presets that require the Pi SDK for authentication — hidden in Anthropic API Key mode */
-const PI_ONLY_PRESET_KEYS: ReadonlySet<string> = new Set(['minimax-global', 'minimax-cn'])
+const PI_ONLY_PRESET_KEYS: ReadonlySet<string> = new Set(['minimax', 'minimax-cn'])
 
 const COMPAT_ANTHROPIC_DEFAULTS = 'claude-opus-4-8, claude-opus-4-7, claude-sonnet-4-6, claude-haiku-4-5'
 const COMPAT_OPENAI_DEFAULTS = 'openai/gpt-5.2-codex, openai/gpt-5.1-codex-mini'
@@ -290,7 +302,7 @@ export function ApiKeyInput({
       setConnectionDefaultModel('qwen3-coder')
     } else if (preset.key === 'openrouter' || preset.key === 'vercel-ai-gateway') {
       setConnectionDefaultModel(providerType === 'openai' ? COMPAT_OPENAI_DEFAULTS : COMPAT_ANTHROPIC_DEFAULTS)
-    } else if (preset.key === 'minimax-global' || preset.key === 'minimax-cn') {
+    } else if (preset.key === 'minimax' || preset.key === 'minimax-cn') {
       setConnectionDefaultModel(COMPAT_MINIMAX_DEFAULTS)
     } else if (preset.key === 'kimi-coding') {
       setConnectionDefaultModel(COMPAT_KIMI_DEFAULTS)
@@ -321,7 +333,7 @@ export function ApiKeyInput({
         setConnectionDefaultModel('qwen3-coder')
       } else if (presetKey === 'manifest') {
         setConnectionDefaultModel('auto')
-      } else if (presetKey === 'minimax-global' || presetKey === 'minimax-cn') {
+      } else if (presetKey === 'minimax' || presetKey === 'minimax-cn') {
         setConnectionDefaultModel(COMPAT_MINIMAX_DEFAULTS)
       } else if (presetKey === 'kimi-coding') {
         setConnectionDefaultModel(COMPAT_KIMI_DEFAULTS)

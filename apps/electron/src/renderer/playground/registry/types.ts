@@ -27,7 +27,7 @@ export interface ComponentEntry {
   name: string
   category: Category
   description: string
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line
   component: ComponentType<any>
   props: PropDefinition[]
   variants?: ComponentVariant[]

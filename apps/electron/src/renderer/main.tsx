@@ -1,6 +1,6 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import { init as sentryInit } from '@sentry/electron/renderer'
+import { init as sentryInit, type ErrorEvent } from '@sentry/electron/renderer'
 import * as Sentry from '@sentry/react'
 import { captureConsoleIntegration } from '@sentry/react'
 import { Provider as JotaiProvider, useAtomValue } from 'jotai'
@@ -55,16 +55,15 @@ const IGNORED_CONSOLE_PATTERNS = [
 // NOTE: Source map upload is intentionally disabled — see main/index.ts for details.
 sentryInit(
   {
+    // @ts-expect-error @sentry/react@10.x Integration type differs from @sentry/electron@7.x; runtime-compatible
     integrations: [captureConsoleIntegration({ levels: ['error'] })],
 
-    beforeSend(event) {
-      // Drop events matching known-harmless console patterns to avoid Sentry quota waste
+
+    beforeSend(event: ErrorEvent) {
       const message = event.message || event.exception?.values?.[0]?.value || ''
       if (IGNORED_CONSOLE_PATTERNS.some((pattern) => message.includes(pattern))) {
         return null
       }
-
-      // Scrub sensitive data from breadcrumbs (mirrors main process scrubbing in main/index.ts)
       if (event.breadcrumbs) {
         for (const breadcrumb of event.breadcrumbs) {
           if (breadcrumb.data) {
@@ -78,13 +77,12 @@ sentryInit(
                 lowerKey.includes('credential') ||
                 lowerKey.includes('auth')
               ) {
-                breadcrumb.data[key] = '[REDACTED]'
+                delete (breadcrumb.data as Record<string, unknown>)[key]
               }
             }
           }
         }
       }
-
       return event
     },
   },

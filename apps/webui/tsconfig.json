@@ -12,15 +12,30 @@
     "isolatedModules": true,
     "noEmit": true,
     "allowImportingTsExtensions": true,
+    "types": ["bun"],
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "paths": {
+      "*": ["./*"],
       "@/*": ["../electron/src/renderer/*"],
       "@webui/*": ["./src/*"],
       "@config/*": ["../../packages/shared/src/config/*"],
       "@craft-agent/shared": ["../../packages/shared/src/index.ts"],
-      "@craft-agent/shared/*": ["../../packages/shared/src/*"]
-    },
-    "baseUrl": "."
+      "@craft-agent/shared/*": ["../../packages/shared/src/*"],
+      "prosemirror-model": ["../../node_modules/prosemirror-model"],
+      "prosemirror-state": ["../../node_modules/prosemirror-state"],
+      "prosemirror-view": ["../../node_modules/prosemirror-view"],
+      "prosemirror-transform": ["../../node_modules/prosemirror-transform"],
+      "prosemirror-commands": ["../../node_modules/prosemirror-commands"],
+      "prosemirror-keymap": ["../../node_modules/prosemirror-keymap"],
+      "prosemirror-history": ["../../node_modules/prosemirror-history"],
+      "prosemirror-inputrules": ["../../node_modules/prosemirror-inputrules"],
+      "prosemirror-gapcursor": ["../../node_modules/prosemirror-gapcursor"],
+      "prosemirror-dropcursor": ["../../node_modules/prosemirror-dropcursor"],
+      "prosemirror-schema-list": ["../../node_modules/prosemirror-schema-list"],
+      "prosemirror-tables": ["../../node_modules/prosemirror-tables"],
+      "prosemirror-changeset": ["../../node_modules/prosemirror-changeset"],
+      "orderedmap": ["../../node_modules/orderedmap"]
+    }
   },
   "include": [
     "src/**/*.ts",

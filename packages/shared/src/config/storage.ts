@@ -1603,7 +1603,6 @@ function migrateCodexCopilotToPi(config: StoredConfig): boolean {
     // Cast to string for legacy providerType values that were removed from LlmProviderType
     // but may still exist on disk in old configs. Cast to any for legacy codexPath field.
     const providerStr = connection.providerType as string;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const connAny = connection as any;
     if (providerStr === 'openai' && connection.authType === 'oauth') {
       connection.providerType = 'pi';
@@ -1641,7 +1640,6 @@ function migrateCodexCopilotToPi(config: StoredConfig): boolean {
   }
 
   // Clean up openaiVariant config field (Codex-specific A/B testing, no longer relevant)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const configAny = config as any;
   if (configAny.openaiVariant) {
     delete configAny.openaiVariant;
@@ -2171,7 +2169,6 @@ function normalizePiBedrockId(id: string): string {
  * Same for openai. Then remove modelDefaults from config.
  */
 function migrateModelDefaultsToConnections(config: StoredConfig): boolean {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const configAny = config as any;
   if (!configAny.modelDefaults || !config.llmConnections) return false;
   let changed = false;
@@ -2280,7 +2277,6 @@ export function migrateLegacyLlmConnectionsConfig(): void {
   if (config.llmConnections !== undefined) {
     // Clean up any remaining legacy fields from previous runs
     let needsSave = false;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const configAny = config as any;
     if ('authType' in config) {
       delete configAny.authType;
@@ -2360,7 +2356,6 @@ export function migrateLegacyLlmConnectionsConfig(): void {
   config.llmConnections = [];
 
   // Legacy migration: if user had authType set, create a connection for them
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const configAny = config as any;
   const legacyAuthType = configAny.authType as AuthType | undefined;
   const legacyBaseUrl = configAny.anthropicBaseUrl as string | undefined;

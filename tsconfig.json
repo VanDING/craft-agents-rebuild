@@ -20,9 +20,23 @@
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "noPropertyAccessFromIndexSignature": false,
-    "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"]
+      "*": ["./*"],
+      "@/*": ["./src/*"],
+      "prosemirror-model": ["./node_modules/prosemirror-model"],
+      "prosemirror-state": ["./node_modules/prosemirror-state"],
+      "prosemirror-view": ["./node_modules/prosemirror-view"],
+      "prosemirror-transform": ["./node_modules/prosemirror-transform"],
+      "prosemirror-commands": ["./node_modules/prosemirror-commands"],
+      "prosemirror-keymap": ["./node_modules/prosemirror-keymap"],
+      "prosemirror-history": ["./node_modules/prosemirror-history"],
+      "prosemirror-dropcursor": ["./node_modules/prosemirror-dropcursor"],
+      "prosemirror-gapcursor": ["./node_modules/prosemirror-gapcursor"],
+      "prosemirror-inputrules": ["./node_modules/prosemirror-inputrules"],
+      "prosemirror-schema-list": ["./node_modules/prosemirror-schema-list"],
+      "prosemirror-tables": ["./node_modules/prosemirror-tables"],
+      "prosemirror-changeset": ["./node_modules/prosemirror-changeset"],
+      "orderedmap": ["./node_modules/orderedmap"]
     }
   },
   "include": ["src/**/*"],

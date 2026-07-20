@@ -14,25 +14,25 @@
   "dependencies": {
     "@craft-agent/core": "workspace:*",
     "@craft-agent/ui": "workspace:*",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "react-i18next": "^17.0.2"
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "react-i18next": "17.0.2"
   },
   "devDependencies": {
-    "@tailwindcss/typography": "^0.5.16",
-    "@tailwindcss/vite": "^4.0.0",
-    "@vitejs/plugin-react": "^4.4.1",
+    "@tailwindcss/typography": "^0.5.20",
+    "@tailwindcss/vite": "^4.3.3",
+    "@vitejs/plugin-react": "^5.2.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "lucide-react": "^0.501.0",
-    "motion": "^12.0.0",
-    "react-markdown": "^9.0.3",
+    "lucide-react": "1.0.0",
+    "motion": "^12.42.2",
+    "react-markdown": "10.1.0",
     "rehype-raw": "^7.0.0",
     "remark-gfm": "^4.0.1",
-    "shiki": "^3.0.0",
-    "tailwind-merge": "^2.6.0",
-    "tailwindcss": "^4.0.0",
-    "typescript": "^5.7.3",
-    "vite": "^6.2.5"
+    "shiki": "4.0.0",
+    "tailwind-merge": "3.4.0",
+    "tailwindcss": "^4.3.3",
+    "typescript": "7",
+    "vite": "^8.1.5"
   }
 }

@@ -121,7 +121,8 @@ try {
     # Verify checksum
     Write-Host "Verifying checksum..."
     $ExpectedHash = (Get-Content "$TempDir\SHASUMS256.txt" | Select-String "$BunDownload.zip").ToString().Split(" ")[0]
-    $ActualHash = (Get-FileHash "$TempDir\$BunDownload.zip" -Algorithm SHA256).Hash.ToLower()
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    $ActualHash = [System.BitConverter]::ToString($sha256.ComputeHash([System.IO.File]::ReadAllBytes("$TempDir\$BunDownload.zip"))).Replace("-","").ToLower()
 
     if ($ActualHash -ne $ExpectedHash) {
         throw "Checksum verification failed! Expected: $ExpectedHash, Got: $ActualHash"
@@ -213,17 +214,26 @@ if ($BinSize -lt 50000000) {
 Write-Host "  Native binary: $([math]::Round($BinSize / 1MB)) MB"
 
 # 5. Copy ripgrep (sourced from @vscode/ripgrep since 0.2.113).
-$RgSource = "$RootDir\node_modules\@vscode\ripgrep"
-if (-not (Test-Path $RgSource) -or -not (Test-Path "$RgSource\bin\rg.exe")) {
-    Write-Host "ERROR: @vscode/ripgrep not installed or postinstall did not run" -ForegroundColor Red
+#    The JS wrapper @vscode/ripgrep resolves the binary from the platform-specific
+#    optional dependency (e.g. @vscode/ripgrep-win32-x64). Both must be staged.
+$RgWrapper = "$RootDir\node_modules\@vscode\ripgrep"
+$RgPlatform = "$RootDir\node_modules\@vscode\ripgrep-win32-x64"
+if (-not (Test-Path $RgWrapper)) {
+    Write-Host "ERROR: @vscode/ripgrep wrapper not found at $RgWrapper" -ForegroundColor Red
+    Write-Host "Run 'bun install' from the repository root first."
+    exit 1
+}
+if (-not (Test-Path "$RgPlatform\bin\rg.exe")) {
+    Write-Host "ERROR: @vscode/ripgrep binary not found at $RgPlatform\bin\rg.exe" -ForegroundColor Red
     Write-Host "Run 'bun install' and 'bun pm trust @vscode/ripgrep'."
     exit 1
 }
-Write-Host "Copying @vscode/ripgrep..."
+Write-Host "Copying @vscode/ripgrep (wrapper + win32-x64 binary)..."
 New-Item -ItemType Directory -Force -Path "$ElectronDir\node_modules\@vscode" | Out-Null
 Remove-Item -Recurse -Force "$ElectronDir\node_modules\@vscode\ripgrep" -ErrorAction SilentlyContinue
-Copy-Item -Recurse -Force $RgSource "$ElectronDir\node_modules\@vscode\"
-
+Remove-Item -Recurse -Force "$ElectronDir\node_modules\@vscode\ripgrep-win32-x64" -ErrorAction SilentlyContinue
+Copy-Item -Recurse -Force $RgWrapper "$ElectronDir\node_modules\@vscode\"
+Copy-Item -Recurse -Force $RgPlatform "$ElectronDir\node_modules\@vscode\"
 # 6. Copy network interceptor sources (for Pi subprocess; Claude no longer
 #    uses --preload — Phase 2 will move that to SDK hooks or a local proxy).
 $InterceptorSource = "$RootDir\packages\shared\src\unified-network-interceptor.ts"
@@ -240,6 +250,62 @@ foreach ($dep in @("interceptor-common.ts", "feature-flags.ts", "interceptor-req
         Copy-Item $depPath "$ElectronDir\packages\shared\src\"
     }
 }
+
+# 5b. Build and stage Pi agent server (bun build → resources/pi-agent-server/).
+#     The packaged app resolves piServerPath from resources/pi-agent-server/index.js
+#     at runtime (see packages/shared/…/runtime-resolver.ts:resolveServerPath).
+Write-Host "Building Pi agent server..."
+
+# Pi SDK 0.80.8+ deleted pi-ai's oauth module but pi-coding-agent still imports
+# from it. Bun's bundler needs those exports at build time even though Node.js
+# runtime resolution doesn't trigger the same error. Fix: fetch pi-ai@0.80.7
+# (last version with oauth) via npm pack and copy its dist/ over every nested
+# pi-ai copy that the bundler will resolve — without touching root node_modules
+# so the dev runtime stays on 0.80.10.
+$PiAiPatchVersion = "0.80.7"
+$PiAiPatchDir = "$env:TEMP\pi-ai-patch-$([System.Guid]::NewGuid())"
+try {
+    Write-Host "  Fetching pi-ai@$PiAiPatchVersion for oauth shim..."
+    New-Item -ItemType Directory -Force -Path $PiAiPatchDir | Out-Null
+    Push-Location $PiAiPatchDir
+    $null = npm pack "@earendil-works/pi-ai@$PiAiPatchVersion"
+    $tarball = Get-ChildItem -Filter "earendil-works-pi-ai-*.tgz" | Select-Object -First 1
+    tar -xzf $tarball.Name
+    Pop-Location
+
+    $PiAiPatchDist = "$PiAiPatchDir\package\dist"
+    if (-not (Test-Path "$PiAiPatchDist\utils\oauth\index.js")) {
+        throw "pi-ai@$PiAiPatchVersion does not contain expected oauth module"
+    }
+
+    $BadCopies = @(Get-ChildItem -Path "$RootDir" -Recurse -Directory -Filter "pi-ai" -ErrorAction SilentlyContinue |
+        Where-Object { $_.FullName -match 'node_modules\\@earendil-works\\pi-ai$' -and $_.FullName -notmatch 'node_modules\\@earendil-works\\pi-ai\\node_modules' })
+    foreach ($copy in $BadCopies) {
+        $copyPkg = Get-Content "$($copy.FullName)\package.json" -Raw | ConvertFrom-Json
+        if ($copyPkg.version -ne $PiAiPatchVersion) {
+            Write-Host "  Patching $($copy.FullName) (v$($copyPkg.version) -> v$PiAiPatchVersion dist)"
+            Remove-Item -Recurse -Force "$($copy.FullName)\dist" -ErrorAction SilentlyContinue
+            Copy-Item -Recurse -Force $PiAiPatchDist "$($copy.FullName)\dist"
+        }
+    }
+} finally {
+    Remove-Item -Recurse -Force $PiAiPatchDir -ErrorAction SilentlyContinue
+}
+
+Push-Location "$RootDir\packages\pi-agent-server"
+try {
+    & bun build src/index.ts --outdir=dist --target=bun --format=esm --external koffi
+    if ($LASTEXITCODE -ne 0) { throw "Pi agent server build failed" }
+} finally {
+    Pop-Location
+}
+
+Write-Host "Staging Pi agent server into resources..."
+$PiAgentSource = "$RootDir\packages\pi-agent-server\dist"
+$PiAgentDest = "$ElectronDir\resources\pi-agent-server"
+New-Item -ItemType Directory -Force -Path $PiAgentDest | Out-Null
+Remove-Item -Recurse -Force "$PiAgentDest\*" -ErrorAction SilentlyContinue
+Copy-Item -Recurse -Force "$PiAgentSource\*" $PiAgentDest
 
 # 6. Build Electron app
 Write-Host "Building Electron app..."
@@ -352,7 +418,8 @@ if (Test-Path $BunExe) {
     }
 
     # Check file hash
-    $hash = (Get-FileHash $BunExe -Algorithm SHA256).Hash
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    $hash = [System.BitConverter]::ToString($sha256.ComputeHash([System.IO.File]::ReadAllBytes($BunExe))).Replace("-","").ToLower()
     Write-Host "SHA256: $hash"
 } else {
     Write-Host "ERROR: bun.exe not found at $BunExe" -ForegroundColor Red

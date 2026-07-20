@@ -86,7 +86,9 @@ function Info_GroupedListRoot({
   // Check if there are any items
   const hasItems = React.Children.toArray(children).some((child) => {
     if (React.isValidElement(child) && child.type === Info_GroupedListGroup) {
-      return React.Children.count(child.props.children) > 0
+      // React 19: isValidElement narrows type but not props — assign to typed const at boundary
+      const element = child as React.ReactElement<{ children?: React.ReactNode }>
+      return React.Children.count(element.props.children) > 0
     }
     return false
   })

@@ -16,7 +16,11 @@
     "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true,
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "prosemirror-model": ["../../node_modules/prosemirror-model"],
+      "prosemirror-state": ["../../node_modules/prosemirror-state"],
+      "prosemirror-view": ["../../node_modules/prosemirror-view"],
+      "prosemirror-transform": ["../../node_modules/prosemirror-transform"]
     }
   },
   "include": ["src"],
