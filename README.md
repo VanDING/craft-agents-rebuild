@@ -1,36 +1,56 @@
-## 本次修改记录 (2026-07-20)
+## 与上游版本差异 (vs craft-ai-agents/craft-agents-oss v0.11.1)
 
 ### 依赖升级
-| 包 | 旧版本 | 新版本 |
-|---|---|---|
-| react / react-dom | 19.0.0 | ^19.2.7 |
-| electron | 43.0.0 | ^43.1.1 |
-| tailwindcss | ^4.1.18 | ^4.3.3 |
-| vite | 7.0.0 (root) / ^8.1.5 (webui) | 统一 ^8.1.5 |
-| @paper-design/shaders-react | ^0.0.69 (ui) | 0.0.77 |
-| @sentry/react | ^10.66.0 | 10.62.0 (对齐 @sentry/electron@7.15) |
 
-### Pi SDK 修复
-- Pi SDK `0.80.8+` 删除了 `pi-ai/dist/utils/oauth/` 模块，导致 `pi-agent-server` 打包失败。构建脚本通过 `npm pack @0.80.7` 提取 OAuth 模块补丁嵌套副本
-- Pi SDK 降级到 `0.80.7` 会丢失新版 provider，最终保持 `0.80.10` 仅在构建时 patch
+#### 根 package.json
+| 包 | 上游 | 本仓库 | 说明 |
+|---|---|---|---|
+| react | 19.0.0 | ^19.2.7 | bugfix + 性能优化 |
+| react-dom | 19.0.0 | ^19.2.7 | 同上 |
+| electron (dev) | 43.0.0 | ^43.1.1 | Chromium 安全补丁 |
+| tailwindcss (dev) | ^4.1.18 | ^4.3.3 | 对齐 viewer 版本 |
+| vite (dev) | 7.0.0 | ^8.1.5 | 统一 workspace 版本 |
+| @sentry/react | ^10.66.0 | 10.62.0 | 对齐 @sentry/electron@7.15 |
 
-### 前端供应商列表
-- `ApiKeyInput.tsx` 硬编码的 `ANTHROPIC_PRESETS` 只有 21 个条目，Pi SDK 实际有 35 个 provider
-- 新增 14 个缺失供应商：nvidia, together, fireworks, moonshotai, moonshotai-cn, cloudflare-workers-ai, cloudflare-ai-gateway, ant-ling, zai-coding-cn, opencode, opencode-go, xiaomi
-- 修复 `minimax-global` → `minimax` 键名对齐 Pi SDK
+#### 子包
+| 包 | 位置 | 上游 | 本仓库 |
+|---|---|---|---|
+| react / react-dom | electron, webui, viewer | 19.0.0 | ^19.2.7 |
+| react / react-dom (peer) | packages/ui | 19.0.0 | >=19.0.0 |
+| vite | apps/viewer | 7.0.0 | ^8.1.5 |
+| @vitejs/plugin-react | apps/viewer | 5.0.0 | ^5.2.0 |
+| @paper-design/shaders-react | apps/electron | ^0.0.69 | 0.0.77 |
+| @paper-design/shaders-react | packages/ui | ^0.0.69 | 0.0.77 |
+| typescript | apps/cli | ^5.8.2 | 7 |
+| @types/node | apps/cli | ^22.0.0 | 25.0.0 |
 
-### 打包脚本修复
+### 构建脚本修复 (build-win.ps1)
 | 问题 | 修复 |
 |---|---|
-| `Get-FileHash` 在 PowerShell 5.1 不可用 | 改用 .NET SHA256 API |
-| `@vscode/ripgrep` 二进制路径错误 | 从平台子包解析 + 同时复制 wrapper 和 binary |
-| pi-agent-server 从未构建/打包 | 添加 `bun build` + 拷贝到 `resources/` |
+| `Get-FileHash` 在 PowerShell 5.1 不可用 (×2) | 改用 .NET SHA256 API |
+| `@vscode/ripgrep` 二进制路径错误 | 从 `ripgrep-win32-x64/bin/` 解析，同时复制 wrapper + binary |
+| pi-agent-server 从未构建/打包 | 添加 `bun build` 步骤 + npm pack OAuth patch |
 
-### TypeScript 预存错误
-- webui: 添加 `types: ["bun"]` + prosemirror 路径映射
-- viewer: 添加 prosemirror 路径映射
-- electron: `captureConsoleIntegration` 跨版本 @ts-expect-error
+### Pi SDK 修复
+- `pi-ai@0.80.8+` 删除了 `dist/utils/oauth/` 模块，`pi-coding-agent` 仍引用其导出
+- 构建时通过 `npm pack @earendil-works/pi-ai@0.80.7` 提取 OAuth 模块覆盖嵌套副本
+- 开发环境保持 `0.80.10` 不受影响
 
+### 前端供应商列表
+- `ApiKeyInput.tsx` 的 `ANTHROPIC_PRESETS` 硬编码 21 个供应商，Pi SDK 实际有 35 个
+- 新增 14 个：nvidia, together, fireworks, moonshotai, moonshotai-cn, cloudflare-workers-ai, cloudflare-ai-gateway, ant-ling, zai-coding-cn, opencode, opencode-go, xiaomi
+- 修复 `minimax-global` → `minimax` 键名对齐 Pi SDK
+
+### TypeScript 预存错误修复
+| 包 | 错误 | 修复 |
+|---|---|---|
+| apps/webui | 61 个 `bun:test` + prosemirror 类型冲突 | `types: ["bun"]` + prosemirror 路径映射 |
+| apps/viewer | 3 个 prosemirror `Node`/`DecorationSet` 冲突 | prosemirror 路径映射 |
+| apps/electron | `captureConsoleIntegration` 类型不兼容 | @ts-expect-error |
+
+### 文档
+- `resources/AGENTS.md`: 新增 `pi-agent-server/` 条目
+- `README.md`: 本差异记录
 ---
 <div align="center">
   <a href="https://trendshift.io/repositories/20714" target="_blank"><img src="https://trendshift.io/api/badge/repositories/20714" alt="craft-ai-agents%2Fcraft-agents-oss | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
