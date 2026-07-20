@@ -1,43 +1,147 @@
-## 与上游版本差异 (vs craft-ai-agents/craft-agents-oss v0.11.1)
+## 与上游版本差异 (vs craft-ai-agents/craft-agents-oss main)
 
-### 依赖升级
+### 根 package.json 依赖升级
 
-#### 根 package.json
-| 包 | 上游 | 本仓库 | 说明 |
+| 包 | 上游 | 本仓库 | 跳幅 |
 |---|---|---|---|
-| react | 19.0.0 | ^19.2.7 | bugfix + 性能优化 |
-| react-dom | 19.0.0 | ^19.2.7 | 同上 |
-| electron (dev) | 43.0.0 | ^43.1.1 | Chromium 安全补丁 |
-| tailwindcss (dev) | ^4.1.18 | ^4.3.3 | 对齐 viewer 版本 |
-| vite (dev) | 7.0.0 | ^8.1.5 | 统一 workspace 版本 |
-| @sentry/react | ^10.66.0 | 10.62.0 | 对齐 @sentry/electron@7.15 |
+| react | ^18.3.1 | ^19.2.7 | **v18→v19** |
+| react-dom | ^18.3.1 | ^19.2.7 | **v18→v19** |
+| @types/react | ^18.3.0 | 19.0.0 | **v18→v19** |
+| @types/react-dom | ^18.3.0 | 19.0.0 | **v18→v19** |
+| typescript | ^5.0.0 | 7 | **v5→v7** |
+| vite | ^6.2.4 | ^8.1.5 | **v6→v8** |
+| electron | ^39.2.7 | ^43.1.1 | **v39→v43** |
+| esbuild | ^0.25.0 | 0.28.0 | **v0.25→v0.28** |
+| shiki | ^3.19.0 | 4.0.0 | **v3→v4** |
+| @shikijs/cli | ^3.19.0 | 4.0.0 | **v3→v4** |
+| js-yaml | ^4.1.1 | 5.0.0 | **v4→v5** |
+| katex | ^0.16.33 | 0.18.1 | **v0.16→v0.18** |
+| linkify-it | ^5.0.0 | 6.0.0 | **v5→v6** |
+| lucide-react | ^0.561.0 | 1.0.0 | **v0→v1** |
+| marked | ^17.0.1 | 18.0.0 | **v17→v18** |
+| react-resizable-panels | ^3.0.6 | 4.0.0 | **v3→v4** |
+| @github/copilot-sdk | ^0.1.23 | 1.0.0 | **v0→v1** |
+| @anthropic-ai/claude-agent-sdk | 0.3.197 | 0.3.215 | patch |
+| @anthropic-ai/sdk | ^0.100.0 | 0.112.3 | minor |
+| @earendil-works/pi-ai | 0.80.6 | 0.80.10 | patch |
+| @earendil-works/pi-coding-agent | 0.80.6 | 0.80.10 | patch |
+| @sentry/react | ^10.36.0 | 10.62.0 | minor |
+| @sentry/electron | ^7.7.0 | ^7.15.0 | minor |
+| @tiptap/* | ^3.20.0 | ^3.28.0 | minor |
+| @dnd-kit/dom | ^0.4.0-beta | 0.5.0 | beta→stable |
+| @dnd-kit/helpers | ^0.4.0-beta | 0.5.0 | beta→stable |
+| @radix-ui/* | ^1.1.x–^2.2.x | ^1.1.17–^2.3.4 | minor |
+| @tailwindcss/typography | ^0.5.19 | ^0.5.20 | patch |
+| @vscode/ripgrep | ^1.17.1 | ^1.18.0 | minor |
+| autoprefixer | ^10.4.23 | ^10.5.4 | minor |
+| concurrently | ^9.2.1 | ^9.2.4 | patch |
+| electron-builder | ^26.0.12 | ^26.15.3 | minor |
+| eslint | ^9.39.2 | ^9.39.5 | patch |
+| eslint-plugin-react-hooks | ^7.0.1 | ^7.1.1 | minor |
+| jotai | ^2.16.0 | ^2.20.2 | minor |
+| prosemirror-highlight | ^0.15.0 | ^0.15.3 | patch |
+| semver | ^7.7.3 | ^7.8.5 | minor |
+| sharp (optionalDeps) | 0.34.5 | 0.35.3 | minor |
+| tailwind-merge | ^3.4.0 | ^3.6.0 | minor |
+| tar | ^7.5.2 | ^7.5.20 | patch |
 
-#### 子包
-| 包 | 位置 | 上游 | 本仓库 |
-|---|---|---|---|
-| react / react-dom | electron, webui, viewer | 19.0.0 | ^19.2.7 |
-| react / react-dom (peer) | packages/ui | 19.0.0 | >=19.0.0 |
-| vite | apps/viewer | 7.0.0 | ^8.1.5 |
-| @vitejs/plugin-react | apps/viewer | 5.0.0 | ^5.2.0 |
-| @paper-design/shaders-react | apps/electron | ^0.0.69 | 0.0.77 |
-| @paper-design/shaders-react | packages/ui | ^0.0.69 | 0.0.77 |
-| typescript | apps/cli | ^5.8.2 | 7 |
-| @types/node | apps/cli | ^22.0.0 | 25.0.0 |
+#### 新增依赖（上游没有）
+| 包 | 版本 |
+|---|---|
+| @paper-design/shaders-react | 0.0.77 |
+| motion (framer-motion 继任) | ^12.42.2 |
+| @dnd-kit/core | ^6.3.1 |
+| @dnd-kit/sortable | ^10.0.0 |
+| @dnd-kit/utilities | ^3.2.2 |
+| sonner | ^2.0.7 |
+| vaul | ^1.1.2 |
+| cmdk | ^1.1.1 |
+| jose | ^6.2.3 |
+| ws | ^8.21.1 |
+| react-colorful | ^5.8.0 |
+| react-day-picker | ^10.0.1 |
+| react-i18next | ^17.0.10 |
+| react-pdf | ^10.4.1 |
+| react-simple-code-editor | ^0.14.1 |
+| playwright | 1.61.1 |
+| sharp (dependencies) | 0.35.3 |
+
+### 子包依赖升级
+
+#### apps/electron
+| 包 | 上游 | 本仓库 |
+|---|---|---|
+| react | ^18.3.1 | ^19.2.7 |
+| react-dom | ^18.3.1 | ^19.2.7 |
+| react-day-picker | ^9.13.0 | 10.0.0 |
+| react-pdf | ^10.3.0 | 10.4.1 |
+| undici | ^7.22.0 | 8.0.0 |
+| electron-updater | ^6.8.0 | ^6.8.9 |
+| @paper-design/shaders-react | ^0.0.69 | 0.0.77 |
+
+#### apps/webui
+| 包 | 上游 | 本仓库 |
+|---|---|---|
+| react | ^18.3.1 | ^19.2.7 |
+| react-dom | ^18.3.1 | ^19.2.7 |
+
+#### apps/viewer
+| 包 | 上游 | 本仓库 |
+|---|---|---|
+| react | ^18.3.1 | ^19.2.7 |
+| react-dom | ^18.3.1 | ^19.2.7 |
+| @vitejs/plugin-react | ^4.4.1 | ^5.2.0 |
+| vite | ^6.2.5 | ^8.1.5 |
+| typescript | ^5.7.3 | 7 |
+| tailwindcss | ^4.0.0 | ^4.3.3 |
+| shiki | ^3.0.0 | 4.0.0 |
+| @tailwindcss/typography | ^0.5.16 | ^0.5.20 |
+| lucide-react | ^0.501.0 | 1.0.0 |
+| motion | ^12.0.0 | ^12.42.2 |
+| react-markdown | ^9.0.3 | 10.1.0 |
+| tailwind-merge | ^2.6.0 | 3.4.0 |
+
+#### apps/cli
+| 包 | 上游 | 本仓库 |
+|---|---|---|
+| typescript | ^5.8.2 | 7 |
+| @types/node | ^22.0.0 | 25.0.0 |
+
+#### packages/shared
+| 包 | 上游 | 本仓库 |
+|---|---|---|
+| @earendil-works/pi-agent-core | 0.80.6 | 0.80.10 |
+| @earendil-works/pi-ai | 0.80.6 | 0.80.10 |
+| @earendil-works/pi-coding-agent | 0.80.6 | 0.80.10 |
+| @anthropic-ai/claude-agent-sdk (peer) | 0.3.197 | 0.3.215 |
+
+#### packages/ui
+| 包 | 上游 | 本仓库 |
+|---|---|---|
+| react (peer) | >=18.0.0 | >=19.0.0 |
+| react-dom (peer) | >=18.0.0 | >=19.0.0 |
+| @paper-design/shaders-react | ^0.0.69 | 0.0.77 |
+
+#### packages/server / server-core / pi-agent-server / session-mcp-server / messaging-*
+| 包 | 上游 | 本仓库 |
+|---|---|---|
+| @types/node | ^22.0.0 | 25.0.0 |
+| typescript | ^5.x | 7 |
 
 ### 构建脚本修复 (build-win.ps1)
 | 问题 | 修复 |
 |---|---|
 | `Get-FileHash` 在 PowerShell 5.1 不可用 (×2) | 改用 .NET SHA256 API |
-| `@vscode/ripgrep` 二进制路径错误 | 从 `ripgrep-win32-x64/bin/` 解析，同时复制 wrapper + binary |
+| `@vscode/ripgrep` 二进制路径错误 | 从 `ripgrep-win32-x64/bin/` 解析 + 同时复制 wrapper 和 binary |
 | pi-agent-server 从未构建/打包 | 添加 `bun build` 步骤 + npm pack OAuth patch |
 
-### Pi SDK 修复
-- `pi-ai@0.80.8+` 删除了 `dist/utils/oauth/` 模块，`pi-coding-agent` 仍引用其导出
+### Pi SDK OAuth 兼容性
+- `pi-ai@0.80.8+` 删除了 `dist/utils/oauth/` 模块，`pi-coding-agent` 仍引用其导出，导致打包时 bundler 报错
 - 构建时通过 `npm pack @earendil-works/pi-ai@0.80.7` 提取 OAuth 模块覆盖嵌套副本
 - 开发环境保持 `0.80.10` 不受影响
 
 ### 前端供应商列表
-- `ApiKeyInput.tsx` 的 `ANTHROPIC_PRESETS` 硬编码 21 个供应商，Pi SDK 实际有 35 个
+- `ApiKeyInput.tsx` 的 `ANTHROPIC_PRESETS` 硬编码 21 个，Pi SDK 实际 35 个
 - 新增 14 个：nvidia, together, fireworks, moonshotai, moonshotai-cn, cloudflare-workers-ai, cloudflare-ai-gateway, ant-ling, zai-coding-cn, opencode, opencode-go, xiaomi
 - 修复 `minimax-global` → `minimax` 键名对齐 Pi SDK
 
