@@ -1635,6 +1635,14 @@ export class MessagingGatewayRegistry implements IMessagingGatewayRegistry {
     }
   }
 
+  cancelWeixinConnect(workspaceId: string): void {
+    const state = this.workspaces.get(workspaceId)
+    if (!state) return
+    const adapter = state.gateway.getAdapter('weixin')
+    if (adapter && typeof adapter === 'object' && 'cancelLogin' in adapter) {
+      (adapter.cancelLogin as () => void)()
+    }
+  }
   private emitPlatformStatus(
     workspaceId: string,
     platform: PlatformType,

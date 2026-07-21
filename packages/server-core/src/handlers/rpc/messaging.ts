@@ -204,4 +204,9 @@ export function registerMessagingHandlers(server: RpcServer, deps: HandlerDeps):
     if (!ctx.workspaceId) throw new Error('Missing workspaceId')
     return registry.submitWeixinPhone?.(ctx.workspaceId, String(phone))
   })
+
+  server.handle('messaging:weixinCancelConnect' as any, async (ctx) => {
+    if (!ctx.workspaceId) throw new Error('Missing workspaceId')
+    registry.cancelWeixinConnect(ctx.workspaceId)
+  })
 }

@@ -725,6 +725,7 @@ export interface ElectronAPI {
   onWhatsAppEvent(callback: (payload: { workspaceId: string; event: WhatsAppUiEvent }) => void): () => void
   // WeChat (weixin — pure HTTP adapter)
   startWeixinConnect(): Promise<{ connected: boolean }>
+  cancelWeixinConnect(): Promise<void>
   onWeixinEvent(callback: (payload: { workspaceId: string; event: WeixinUiEvent }) => void): () => void
   // Messaging access control (Phase 3)
   getMessagingPlatformOwners(platform: string): Promise<MessagingPlatformOwnerInfo[]>
@@ -800,7 +801,7 @@ export type WeixinUiEvent =
   | { type: 'disconnected'; account: string; reason: string }
   | { type: 'unavailable'; reason: string }
   | { type: 'error'; message: string }
-// =============================================================================
+  | { type: 'need_verifycode' };
 // Navigation types (renderer-only)
 // =============================================================================
 

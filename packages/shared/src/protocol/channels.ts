@@ -450,6 +450,7 @@ export const RPC_CHANNELS = {
     WEIXIN_SUBMIT_PHONE: 'messaging:weixinSubmitPhone',
     /** Broadcast to UI clients: QR string, connection status, error. */
     WEIXIN_UI_EVENT: 'messaging:weixinUiEvent',
+    WEIXIN_CANCEL_CONNECT: 'messaging:weixinCancelConnect',
     // UI ↔ Server — Access control (per-platform owners + per-binding allow-list)
     GET_PLATFORM_OWNERS: 'messaging:access:getOwners',
     SET_PLATFORM_OWNERS: 'messaging:access:setOwners',

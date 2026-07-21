@@ -115,15 +115,6 @@ export interface WeixinAdapterOptions {
   accounts?: WeixinAccount[];
   logger?: (...args: unknown[]) => void;
 }
-
-export type WeixinAdapterEvent =
-  | { type: 'qr'; qrPayload: string; account?: string }
-  | { type: 'connected'; account: string }
-  | { type: 'disconnected'; account: string; reason: string }
-  | { type: 'unavailable'; reason: string };
-
-export type WeixinEventHandler = (event: WeixinAdapterEvent) => void;
-
 // ============================================================
 // WeChat native message structures (from backend API)
 // ============================================================
@@ -170,6 +161,16 @@ interface WeixinApiResponse {
   thumb_upload_param?: string;
   [key: string]: unknown;
 }
+
+export type WeixinAdapterEvent =
+  | { type: 'qr'; qrPayload: string; account?: string }
+  | { type: 'connected'; account: string }
+  | { type: 'disconnected'; account: string; reason: string }
+  | { type: 'unavailable'; reason: string }
+  | { type: 'need_verifycode' };
+
+export type WeixinEventHandler = (event: WeixinAdapterEvent) => void;
+
 export class WeixinAdapter implements PlatformAdapter {
   readonly platform: PlatformType = 'weixin';
   readonly capabilities = CAPABILITIES;
@@ -187,8 +188,8 @@ export class WeixinAdapter implements PlatformAdapter {
   private qrPollCtrl: AbortController | null = null;
   /** Persisted get_updates_buf per account (uin → cursor). Restored from disk on init. */
   private syncBufs: Map<string, string> = new Map();
-  private readonly opts: WeixinAdapterOptions;
-  private log: (...args: unknown[]) => void;
+  private readonly opts!: WeixinAdapterOptions;
+  private log!: (...args: unknown[]) => void;
 
   constructor(opts: WeixinAdapterOptions) {
     this.opts = opts;
@@ -377,9 +378,10 @@ export class WeixinAdapter implements PlatformAdapter {
             break;
 
           case 'need_verifycode':
-            this.log('weixin qr: need_verifycode — verification code required');
+            // The server requests a verification code (shown on the user's phone).
+            // Emit an event so the UI can prompt for input.
+            this.eventHandler?.({ type: 'need_verifycode' });
             break;
-
           case 'confirmed': {
             const botToken = resp.bot_token;
             const botId = resp.ilink_bot_id;
@@ -470,6 +472,7 @@ export class WeixinAdapter implements PlatformAdapter {
     signal: AbortSignal,
   ): Promise<void> {
     let cursor = this.syncBufs.get(uin) ?? '';
+    let syncWriteCount = 0;
     while (!signal.aborted) {
       try {
         const resp = await this.callApi(
@@ -480,7 +483,9 @@ export class WeixinAdapter implements PlatformAdapter {
         );
         if (resp.ret !== 0) {
           if (resp.errcode === -14) {
-            // Session timeout — needs re-login.
+            // Session timeout — needs re-login. Clear sync buf to avoid re-sending stale cursor.
+            this.syncBufs.delete(uin);
+            this.saveSyncBuf(uin, '').catch(() => {});
             this.eventHandler?.({
               type: 'disconnected',
               account: uin,
@@ -490,11 +495,14 @@ export class WeixinAdapter implements PlatformAdapter {
           }
           throw new Error(`getUpdates ret=${resp.ret}: ${resp.errmsg}`);
         }
-        // Persist sync buffer for restart resume.
+        // Throttle sync buffer writes to every 5th update to reduce I/O.
         if (resp.get_updates_buf && resp.get_updates_buf !== cursor) {
           cursor = resp.get_updates_buf;
           this.syncBufs.set(uin, cursor);
-          await this.saveSyncBuf(uin, cursor).catch(() => {});
+          syncWriteCount++;
+          if (syncWriteCount % 5 === 0) {
+            await this.saveSyncBuf(uin, cursor).catch(() => {});
+          }
         } else if (resp.get_updates_buf) {
           cursor = resp.get_updates_buf;
         }

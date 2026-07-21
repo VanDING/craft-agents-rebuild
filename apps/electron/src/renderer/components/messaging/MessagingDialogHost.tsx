@@ -121,7 +121,12 @@ export function MessagingDialogHost() {
       />
       <WeChatConnectDialog
         open={state.kind === 'wx_connect'}
-        onOpenChange={(o) => { if (!o) close() }}
+        onOpenChange={(o) => {
+          if (!o) {
+            window.electronAPI.cancelWeixinConnect().catch(() => {})
+            close()
+          }
+        }}
         onConnected={handleWeChatConnected}
       />
     </>

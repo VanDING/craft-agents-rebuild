@@ -550,8 +550,8 @@ Approve in the desktop app to continue.`,
     binding: ChannelBinding,
     adapter: PlatformAdapter,
   ): Promise<void> {
-    // WhatsApp: no interactive buttons yet — keep the generic pointer.
-    if (binding.platform === 'whatsapp') {
+    // WhatsApp + WeChat: no interactive buttons yet — keep the generic pointer.
+    if (binding.platform === 'whatsapp' || binding.platform === 'weixin') {
       await adapter.sendText(
         binding.channelId,
         '📝 A plan is ready for review. Open the desktop app to inspect and approve it.',
@@ -596,30 +596,7 @@ Approve in the desktop app to continue.`,
       : planContent.length === 0
         ? `${header}\n\nOpen the desktop app to see the plan, or use the buttons below to accept.`
         : `${header}\n\n${firstLines(planContent, 15)}\n\n…full plan attached below.`
-
-    try {
-      const sent = await adapter.sendButtons(binding.channelId, bodyText, buttons, bindingOpts(binding))
-      this.recordPlanMessage?.(binding, token, sent.messageId)
-
-      if (!fitsInline && planContent.length > 0) {
-        await adapter.sendFile(
-          binding.channelId,
-          Buffer.from(planContent, 'utf-8'),
-          'plan.md',
-          'Full plan',
-          bindingOpts(binding),
-        )
-      }
-    } catch (err) {
-      // Fall back to a plain text notice so the user at least knows.
-      await adapter.sendText(
-        binding.channelId,
-        `📝 A plan is ready for review (couldn't render inline: ${
-          err instanceof Error ? err.message : 'unknown error'
-        }). Open the desktop app to approve it.`,
-        bindingOpts(binding),
-      )
-    }
+    await adapter.sendButtons(binding.channelId, bodyText, buttons, bindingOpts(binding))
   }
 
   private async handleError(
@@ -633,7 +610,6 @@ Approve in the desktop app to continue.`,
     await adapter.sendText(binding.channelId, `❌ ${errorMsg}`, bindingOpts(binding))
     this.resetRun(state)
   }
-
   // ---------------------------------------------------------------------------
   // Adapter helpers
   // ---------------------------------------------------------------------------

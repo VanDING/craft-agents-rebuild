@@ -101,6 +101,9 @@ export function WeChatConnectDialog({ open, onOpenChange, onConnected }: WeChatC
       case 'unavailable':
         setPhase({ kind: 'error', message: event.reason })
         return
+      case 'need_verifycode':
+        setPhase({ kind: 'error', message: t('dialog.wechat.needVerifyCode') })
+        return
     }
   }
 

@@ -400,7 +400,7 @@
   "dialog.wechat.starting": "Connecting to WeChat…",
   "dialog.wechat.title": "Connect WeChat",
   "dialog.wechat.timeout": "Connection timed out. Please check your network and try again.",
-  "editPopover.example.addSourceApi": "Connect to the OpenAI API",
+  "dialog.wechat.needVerifyCode": "Verification code required. Check your phone for a code in WeChat.",
   "editPopover.example.addSourceLocal": "Connect to my Obsidian vault",
   "editPopover.example.addSourceMcp": "Connect to Linear",
   "editPopover.example.automationConfig": "Change the cron schedule to every 30 minutes",
