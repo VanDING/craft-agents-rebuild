@@ -799,7 +799,7 @@ export type WeixinUiEvent =
   | { type: 'connected'; account: string }
   | { type: 'disconnected'; account: string; reason: string }
   | { type: 'unavailable'; reason: string }
-
+  | { type: 'error'; message: string }
 // =============================================================================
 // Navigation types (renderer-only)
 // =============================================================================

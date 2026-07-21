@@ -1137,6 +1137,13 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
   // Auto-scroll using ResizeObserver for streaming content
   // Initial scroll is handled by ScrollOnMount (useLayoutEffect, before paint)
   React.useEffect(() => {
+    if (messagesLoading) return
+    // Scroll to bottom when messages finish loading (session switch or lazy load).
+    // This covers the case where ScrollOnMount fires before the loaded content
+    // has fully rendered (e.g. AnimatePresence transition timing).
+    messagesEndRef.current?.scrollIntoView({ behavior: 'instant' })
+  }, [messagesLoading])
+  React.useEffect(() => {
     const viewport = scrollViewportRef.current
     if (!viewport) return
 

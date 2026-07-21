@@ -821,6 +821,25 @@ export class MessagingGatewayRegistry implements IMessagingGatewayRegistry {
         throw err
       }
     }
+    if (platform === 'weixin') {
+      const authDir = join(this.opts.getMessagingDir(workspaceId), 'weixin-auth')
+      try {
+        rmSync(authDir, { recursive: true, force: true })
+        this.log.info('forgot WeChat auth state', {
+          event: 'weixin_auth_forgotten',
+          workspaceId,
+          authDir,
+        })
+      } catch (err) {
+        this.log.error('failed to forget WeChat auth state', {
+          event: 'weixin_auth_forget_failed',
+          workspaceId,
+          authDir,
+          error: err,
+        })
+        throw err
+      }
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -1292,19 +1311,25 @@ export class MessagingGatewayRegistry implements IMessagingGatewayRegistry {
     platform: PlatformType,
     candidate: PlatformOwner,
   ): Promise<PlatformOwner[]> {
-    if (platform !== 'telegram') return []
     const state = this.workspaces.get(workspaceId) ?? this.bootstrapWorkspace(workspaceId)
     const cfg = state.configStore.get()
-    const currentOwners = cfg.platforms.telegram?.owners ?? []
+    const platformCfg = cfg.platforms[platform] as Record<string, unknown> | undefined
+    const currentOwners = (platformCfg?.owners as PlatformOwner[] | undefined) ?? []
     if (currentOwners.length > 0) return currentOwners
 
+    const currentAccessMode = platformCfg?.accessMode as string | undefined
     const nextOwners: PlatformOwner[] = [candidate]
-    // Workspaces that haven't picked an explicit access mode default
-    // to `owner-only` once an owner exists. Existing 'open' workspaces
-    // are respected (the operator chose to stay public).
-    this.patchTelegramConfig(workspaceId, {
-      accessMode: cfg.platforms.telegram?.accessMode ?? 'owner-only',
-      owners: nextOwners,
+
+    state.configStore.update({
+      enabled: cfg.enabled,
+      platforms: {
+        ...cfg.platforms,
+        [platform]: {
+          ...(cfg.platforms[platform] ?? {}),
+          accessMode: currentAccessMode ?? 'owner-only',
+          owners: nextOwners,
+        },
+      },
     })
     this.log.info('seeded first owner', {
       event: 'first_owner_seeded',
@@ -1316,9 +1341,9 @@ export class MessagingGatewayRegistry implements IMessagingGatewayRegistry {
   }
 
   getPlatformOwners(workspaceId: string, platform: PlatformType): PlatformOwner[] {
-    if (platform !== 'telegram') return []
     const state = this.workspaces.get(workspaceId) ?? this.bootstrapWorkspace(workspaceId)
-    return state.configStore.get().platforms.telegram?.owners ?? []
+    const platformCfg = state.configStore.get().platforms[platform] as { owners?: PlatformOwner[] } | undefined
+    return platformCfg?.owners ?? []
   }
 
   setPlatformOwners(
@@ -1336,9 +1361,9 @@ export class MessagingGatewayRegistry implements IMessagingGatewayRegistry {
   }
 
   getPlatformAccessMode(workspaceId: string, platform: PlatformType): PlatformAccessMode {
-    if (platform !== 'telegram') return 'open'
     const state = this.workspaces.get(workspaceId) ?? this.bootstrapWorkspace(workspaceId)
-    return state.configStore.get().platforms.telegram?.accessMode ?? 'open'
+    const platformCfg = state.configStore.get().platforms[platform] as { accessMode?: PlatformAccessMode } | undefined
+    return platformCfg?.accessMode ?? 'open'
   }
 
   setPlatformAccessMode(
@@ -1553,6 +1578,8 @@ export class MessagingGatewayRegistry implements IMessagingGatewayRegistry {
           { workspaceId, event },
         )
         if (event.type === 'connected') {
+          // Persist enabled flag so initializeWorkspace auto-starts on restart.
+          try { state.configStore.update({ platforms: { weixin: { enabled: true } } }) } catch {}
           this.setPlatformRuntime(workspaceId, state, 'weixin', {
             configured: true,
             connected: true,

@@ -72,6 +72,9 @@ const ILINK_APP_ID = 'bot';
 /** Channel version — drives iLink-App-ClientVersion header. */
 const CHANNEL_VERSION = '0.12.0';
 
+/** CDN base URL for media downloads (from openclaw-weixin v2.4.6). */
+const CDN_BASE_URL = 'https://novac2c.cdn.weixin.qq.com/c2c';
+
 /** Build iLink-App-ClientVersion: 0x00MMNNPP (major<<16 | minor<<8 | patch). */
 function buildClientVersion(version: string): number {
   const parts = version.split('.').map((p) => parseInt(p, 10));
@@ -128,8 +131,9 @@ export type WeixinEventHandler = (event: WeixinAdapterEvent) => void;
 interface CDNMedia {
   encrypt_query_param?: string;
   aes_key?: string;
+  /** Direct download URL (preferred when available). */
+  full_url?: string;
 }
-
 interface WeixinMessageItem {
   type: number; // 1=TEXT, 2=IMAGE, 3=VOICE, 4=FILE, 5=VIDEO
   text_item?: { text: string };
@@ -162,10 +166,10 @@ interface WeixinApiResponse {
   message_id?: string | number;
   typing_ticket?: string;
   upload_param?: string;
+  upload_full_url?: string;
   thumb_upload_param?: string;
   [key: string]: unknown;
 }
-
 export class WeixinAdapter implements PlatformAdapter {
   readonly platform: PlatformType = 'weixin';
   readonly capabilities = CAPABILITIES;
@@ -263,11 +267,11 @@ export class WeixinAdapter implements PlatformAdapter {
    * and a `connected` event is emitted.
    */
   async startLogin(): Promise<void> {
+    // Prevent concurrent login attempts.
+    if (this.qrPollCtrl) return;
     const { qrcode, qrUrl } = await this.getBotQrCode();
     this.eventHandler?.({ type: 'qr', qrPayload: qrUrl });
 
-    // Cancel any prior polling loop.
-    this.qrPollCtrl?.abort();
     this.qrPollCtrl = new AbortController();
     const signal = this.qrPollCtrl.signal;
     this.pollQrLogin(qrcode, signal).catch((err) => {
@@ -281,6 +285,7 @@ export class WeixinAdapter implements PlatformAdapter {
     this.qrPollCtrl?.abort();
     this.qrPollCtrl = null;
   }
+
 
   /** POST to `get_bot_qrcode` — returns a QR code + image URL. */
   private async getBotQrCode(): Promise<{ qrcode: string; qrUrl: string }> {
@@ -607,6 +612,8 @@ export class WeixinAdapter implements PlatformAdapter {
 
     const resp = await this.callApi(account, 'sendmessage', {
       msg: {
+        message_type: 2,
+        message_state: 2,
         to_user_id: channelId,
         context_token: contextToken,
         item_list: [{ type: 1, text_item: { text } }],
@@ -689,24 +696,31 @@ export class WeixinAdapter implements PlatformAdapter {
       rawsize,
       rawfilemd5,
       filesize,
+      aeskey: aesKey.toString('hex'),
     });
 
-    // 4. PUT ciphertext to the CDN URL.
-    const uploadUrl = uploadResp.upload_param;
-    if (uploadUrl) {
-      const putRes = await fetch(uploadUrl, {
-        method: 'PUT',
-        body: new Uint8Array(ciphertext),
-      });
-      if (!putRes.ok) {
-        throw new Error(`WeChat CDN upload failed: HTTP ${putRes.status}`);
-      }
+    const uploadUrl: string = uploadResp.upload_full_url ?? uploadResp.upload_param ?? '';
+    if (!uploadUrl) throw new Error('getUploadUrl: no upload URL returned');
+
+    // 4. POST ciphertext to CDN URL; server returns x-encrypted-param header.
+    const uploadRes = await fetch(uploadUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/octet-stream' },
+      body: new Uint8Array(ciphertext),
+    });
+    if (!uploadRes.ok) {
+      const errText = uploadRes.headers.get('x-error-message') ?? (await uploadRes.text());
+      throw new Error(`WeChat CDN upload failed: HTTP ${uploadRes.status} ${errText}`);
     }
+    const downloadParam = uploadRes.headers.get('x-encrypted-param');
+    if (!downloadParam) throw new Error('CDN response missing x-encrypted-param header');
 
     // 5. Send a message referencing the uploaded CDN media.
     const aesKeyB64 = aesKey.toString('base64');
     const resp = await this.callApi(account, 'sendmessage', {
       msg: {
+        message_type: 2,
+        message_state: 2,
         to_user_id: channelId,
         context_token: this.contextTokens.get(channelId) ?? '',
         item_list: [
@@ -714,7 +728,7 @@ export class WeixinAdapter implements PlatformAdapter {
             type: 4, // FILE
             file_item: {
               file_name: filename,
-              encrypt_query_param: uploadResp.upload_param,
+              encrypt_query_param: downloadParam,
               aes_key: aesKeyB64,
             },
           },
@@ -729,10 +743,14 @@ export class WeixinAdapter implements PlatformAdapter {
   // ---- CDN media encryption/decryption ----
 
   private async downloadCdnMedia(cdn: CDNMedia): Promise<string | null> {
-    if (!cdn.encrypt_query_param || !cdn.aes_key) return null;
+    if (!cdn.aes_key) return null;
+    // Prefer full_url when available; otherwise construct from encrypt_query_param.
+    const downloadUrl = cdn.full_url
+      ?? (cdn.encrypt_query_param ? `${CDN_BASE_URL}?encrypt_query_param=${encodeURIComponent(cdn.encrypt_query_param)}` : null);
+    if (!downloadUrl) return null;
     try {
       const key = Buffer.from(cdn.aes_key, 'base64');
-      const res = await fetch(cdn.encrypt_query_param);
+      const res = await fetch(downloadUrl);
       if (!res.ok) return null;
       const encrypted = Buffer.from(await res.arrayBuffer());
       const decrypted = await this.decryptAes128Ecb(encrypted, key);
@@ -787,13 +805,14 @@ export class WeixinAdapter implements PlatformAdapter {
   ): Promise<WeixinApiResponse> {
     const url = `${account.baseUrl ?? this.opts.baseUrl}/ilink/bot/${endpoint}`;
     const controller = new AbortController();
-    // Link the caller's signal (for poll-loop abort) with a long-poll timeout.
-    const timeout = setTimeout(
-      () => controller.abort(),
-      LONGPOLL_TIMEOUT_MS + 5_000,
-    );
+    // Different timeouts for different endpoint types:
+    const timeoutMs = endpoint === 'getupdates' ? LONGPOLL_TIMEOUT_MS + 5_000
+      : endpoint === 'getconfig' || endpoint === 'sendtyping' || endpoint.startsWith('msg/') ? 10_000
+      : 15_000;
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    const onAbort = () => controller.abort();
     if (signal) {
-      signal.addEventListener('abort', () => controller.abort(), { once: true });
+      signal.addEventListener('abort', onAbort, { once: true });
     }
     try {
       const res = await fetch(url, {
@@ -822,6 +841,9 @@ export class WeixinAdapter implements PlatformAdapter {
       return (await res.json()) as WeixinApiResponse;
     } finally {
       clearTimeout(timeout);
+      if (signal) {
+        signal.removeEventListener('abort', onAbort);
+      }
     }
   }
 
