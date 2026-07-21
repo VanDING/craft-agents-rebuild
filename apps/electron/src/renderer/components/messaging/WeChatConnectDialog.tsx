@@ -1,12 +1,12 @@
 /**
  * WeChatConnectDialog — drives the WeChat QR-scan login flow from the UI.
  *
- * References @tencent-weixin/openclaw-weixin auth/login-qr.ts protocol:
- *   1. Calls startWeixinConnect → adapter fetches QR code from
- *      https://ilinkai.weixin.qq.com/ilink/bot/get_bot_qrcode
- *   2. Adapter emits 'qr' event → we render the QR code
- *   3. User scans with phone → adapter polls get_qrcode_status
- *   4. On 'connected' → close dialog
+ * The WeChat adapter uses the fixed endpoint https://ilinkai.weixin.qq.com
+ * for QR login. No gateway URL needs to be configured ahead of time — the
+ * real gateway URL is returned in the 'confirmed' response and saved with
+ * the account credentials.
+ *
+ * References @tencent-weixin/openclaw-weixin v2.4.6 auth/login-qr.ts.
  */
 
 import * as React from 'react'
@@ -58,9 +58,19 @@ export function WeChatConnectDialog({ open, onOpenChange, onConnected }: WeChatC
   React.useEffect(() => {
     if (!open || phase.kind !== 'idle') return
     setPhase({ kind: 'starting' })
+    let cancelled = false
+    const timeout = setTimeout(() => {
+      if (cancelled) return
+      setPhase({ kind: 'error', message: t('dialog.wechat.timeout') })
+    }, 15_000)
     window.electronAPI
       .startWeixinConnect()
-      .catch((err) => setPhase({ kind: 'error', message: errorMsg(err) }))
+      .then(() => { clearTimeout(timeout) })
+      .catch((err: unknown) => {
+        clearTimeout(timeout)
+        if (!cancelled) setPhase({ kind: 'error', message: errorMsg(err) })
+      })
+    return () => { cancelled = true; clearTimeout(timeout) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
@@ -87,7 +97,6 @@ export function WeChatConnectDialog({ open, onOpenChange, onConnected }: WeChatC
         }, 1200)
         return
       case 'disconnected':
-        // On first connect, disconnected means credentials not found yet — ignore.
         return
       case 'unavailable':
         setPhase({ kind: 'error', message: event.reason })

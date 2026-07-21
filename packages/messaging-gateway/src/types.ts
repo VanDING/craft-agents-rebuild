@@ -529,5 +529,6 @@ export interface WeixinAccount {
   token: string;
   uin: string;
   botAgent?: string;
+  /** Gateway base URL returned by QR login; falls back to adapter options.baseUrl. */
+  baseUrl?: string;
 }
-

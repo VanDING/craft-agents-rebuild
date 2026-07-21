@@ -73,5 +73,6 @@ export type MessagingDialogState =
     }
   | {
       kind: 'wx_connect'
+      continueToPairingSessionId?: string
     }
 export const messagingDialogAtom = atom<MessagingDialogState>({ kind: 'closed' })

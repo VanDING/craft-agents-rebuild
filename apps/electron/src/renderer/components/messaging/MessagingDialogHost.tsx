@@ -95,6 +95,14 @@ export function MessagingDialogHost() {
     close()
   }
 
+  const handleWeChatConnected = () => {
+    if (state.kind === 'wx_connect' && state.continueToPairingSessionId) {
+      void openPairing(state.continueToPairingSessionId, 'weixin')
+      return
+    }
+    close()
+  }
+
   return (
     <>
       <PairingCodeDialog
@@ -114,6 +122,7 @@ export function MessagingDialogHost() {
       <WeChatConnectDialog
         open={state.kind === 'wx_connect'}
         onOpenChange={(o) => { if (!o) close() }}
+        onConnected={handleWeChatConnected}
       />
     </>
   )

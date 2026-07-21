@@ -386,6 +386,7 @@ export class WeixinAdapter implements PlatformAdapter {
               token: botToken,
               uin: botId,
               botAgent: this.opts.botAgent,
+              baseUrl: resp.baseurl,
             };
             await this.saveAccountCredentials(account);
             this.accounts.set(botId, account);
@@ -394,7 +395,6 @@ export class WeixinAdapter implements PlatformAdapter {
             this.eventHandler?.({ type: 'connected', account: botId });
             return;
           }
-
           case 'expired': {
             qrRefreshCount++;
             if (qrRefreshCount >= MAX_QR_REFRESH) {
@@ -536,9 +536,15 @@ export class WeixinAdapter implements PlatformAdapter {
       raw: wxMsg,
     };
 
-    this.messageHandler?.(incoming).catch((err) =>
-      this.log('weixin onMessage handler error:', err),
-    );
+    this.messageHandler?.(incoming).catch(async (err) => {
+      this.log('weixin onMessage handler error:', err);
+      // Try to surface the error back to the user so failures aren't silent.
+      try {
+        await this.sendText(channelId, `❌ Error processing message: ${err instanceof Error ? err.message : String(err)}`);
+      } catch {
+        // Best-effort — if we can't even send the error, nothing more to do.
+      }
+    });
   }
 
   private async parseItems(
@@ -779,7 +785,7 @@ export class WeixinAdapter implements PlatformAdapter {
     body: Record<string, unknown>,
     signal?: AbortSignal,
   ): Promise<WeixinApiResponse> {
-    const url = `${this.opts.baseUrl}/ilink/bot/${endpoint}`;
+    const url = `${account.baseUrl ?? this.opts.baseUrl}/ilink/bot/${endpoint}`;
     const controller = new AbortController();
     // Link the caller's signal (for poll-loop abort) with a long-poll timeout.
     const timeout = setTimeout(

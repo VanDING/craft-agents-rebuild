@@ -198,6 +198,38 @@ export class MessagingGatewayRegistry implements IMessagingGatewayRegistry {
         })
       }
     }
+
+    if (isPlatformConfigured(config, 'weixin')) {
+      if (this.hasWeixinAuthState(workspaceId)) {
+        this.setPlatformRuntime(workspaceId, state, 'weixin', {
+          configured: true,
+          connected: false,
+          state: 'connecting',
+          lastError: undefined,
+        })
+        void this.startWeixinConnect(workspaceId).then((r) => {
+          if (!r?.connected) {
+            this.setPlatformRuntime(workspaceId, state, 'weixin', {
+              configured: true,
+              connected: false,
+              state: 'disconnected',
+            })
+          }
+        }).catch((err) => {
+          this.log.error('background WeChat restore failed', {
+            event: 'weixin_restore_failed',
+            workspaceId,
+            error: err,
+          })
+        })
+      } else {
+        this.setPlatformRuntime(workspaceId, state, 'weixin', {
+          configured: true,
+          connected: false,
+          state: 'disconnected',
+        })
+      }
+    }
   }
 
   async removeWorkspace(workspaceId: string): Promise<void> {
@@ -1495,14 +1527,12 @@ export class MessagingGatewayRegistry implements IMessagingGatewayRegistry {
   async startWeixinConnect(workspaceId: string): Promise<{ qrPayload?: string; connected: boolean; account?: string } | void> {
     const state = this.workspaces.get(workspaceId) ?? this.bootstrapWorkspace(workspaceId)
     const config = state.configStore.get()
+    // BaseUrl from config is a fallback; the QR login flow uses the fixed
+    // endpoint https://ilinkai.weixin.qq.com and discovers the real gateway
+    // URL from the 'confirmed' response (resp.baseurl), saving it per-account.
     const baseUrl = config.platforms.weixin?.baseUrl ?? ''
     const authDir = join(this.opts.getMessagingDir(workspaceId), 'weixin-auth')
     const botAgent = config.platforms.weixin?.botAgent
-
-    if (!baseUrl) {
-      this.log.warn('startWeixinConnect: no baseUrl configured', { event: 'weixin_no_baseurl', workspaceId })
-      return { connected: false }
-    }
 
     try {
       const adapter = new WeixinAdapter({ baseUrl, authDir, botAgent, logger: (...args: unknown[]) => this.log.info(String(args[0]), args[1] as never) })
@@ -1515,15 +1545,13 @@ export class MessagingGatewayRegistry implements IMessagingGatewayRegistry {
 
       // Forward adapter lifecycle events:
       //   - WEIXIN_UI_EVENT → UI dialog (qr, connected, disconnected, unavailable)
-      //   - setPlatformRuntime → PLATFORM_STATUS broadcast (connected state for settings page)
+      //   - setPlatformRuntime → PLATFORM_STATUS broadcast
       adapter.onEvent((event) => {
         this.opts.publishEvent?.(
           RPC_CHANNELS.messaging.WEIXIN_UI_EVENT,
           { to: 'workspace', workspaceId },
           { workspaceId, event },
         )
-        // Also update the canonical runtime status so the settings page
-        // and other UI surfaces reflect the real connection state.
         if (event.type === 'connected') {
           this.setPlatformRuntime(workspaceId, state, 'weixin', {
             configured: true,
@@ -1555,12 +1583,10 @@ export class MessagingGatewayRegistry implements IMessagingGatewayRegistry {
         state: connected ? 'connected' : 'disconnected',
       })
 
-      // If no existing credentials, start QR login flow automatically.
       if (!connected) {
         adapter.startLogin().catch((err: unknown) => {
           const reason = err instanceof Error ? err.message : String(err)
           this.log.warn('startWeixinConnect: QR login failed', { event: 'weixin_qr_error', workspaceId, error: err })
-          // Notify the UI that the connection attempt failed.
           this.opts.publishEvent?.(
             RPC_CHANNELS.messaging.WEIXIN_UI_EVENT,
             { to: 'workspace', workspaceId },
@@ -1580,10 +1606,6 @@ export class MessagingGatewayRegistry implements IMessagingGatewayRegistry {
       })
       return { connected: false }
     }
-  }
-
-  async submitWeixinPhone(workspaceId: string, _phoneNumber: string): Promise<{ qrPayload?: string; connected: boolean; account?: string } | void> {
-    return { connected: false }
   }
 
   private emitPlatformStatus(
@@ -1612,6 +1634,16 @@ export class MessagingGatewayRegistry implements IMessagingGatewayRegistry {
 
   private getWhatsAppAuthStateDir(workspaceId: string): string {
     return join(this.opts.getMessagingDir(workspaceId), 'whatsapp-auth')
+  }
+
+  private hasWeixinAuthState(workspaceId: string): boolean {
+    const dir = join(this.opts.getMessagingDir(workspaceId), 'weixin-auth')
+    if (!existsSync(dir)) return false
+    try {
+      return readdirSync(dir).some((entry) => entry.startsWith('credentials-') && entry.endsWith('.json'))
+    } catch {
+      return false
+    }
   }
 }
 
