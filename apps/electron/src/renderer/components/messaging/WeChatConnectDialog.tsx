@@ -13,6 +13,7 @@ import * as React from 'react'
 import { Check } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 import {
   Dialog,
   DialogContent,
@@ -88,6 +89,7 @@ export function WeChatConnectDialog({ open, onOpenChange, onConnected }: WeChatC
         return
       case 'connected':
         setPhase({ kind: 'connected', account: event.account })
+        toast.success(t('dialog.wechat.connected'))
         setTimeout(() => {
           if (onConnected) {
             onConnected()

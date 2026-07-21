@@ -1398,7 +1398,9 @@ export class MessagingGatewayRegistry implements IMessagingGatewayRegistry {
     if (!state) return
     const store = state.gateway.getBindingStore()
     for (const b of store.getAll()) {
-      if (b.platform !== 'telegram') continue
+      if (b.platform !== 'telegram' && b.platform !== 'weixin') continue
+      // WeChat bindings don't support access modes — skip.
+      if (b.platform === 'weixin') continue
       if (b.config.accessMode !== 'open') continue
       store.updateBindingConfig(b.id, { accessMode: 'inherit', allowedSenderIds: [] })
     }

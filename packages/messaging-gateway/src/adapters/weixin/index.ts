@@ -208,10 +208,19 @@ export class WeixinAdapter implements PlatformAdapter {
       const saved = await this.loadSyncBuf(uin);
       if (saved) this.syncBufs.set(uin, saved);
     }
+    // Restore persisted context tokens so reply works without re-fetch.
+    for (const uin of this.accounts.keys()) {
+      await this.loadContextTokens(uin);
+    }
     // Start long-poll loops for each account.
+    // Send notifystart and wait for completion before polling to ensure
+    // the server is ready to accept getUpdates.
+    const startPromises: Promise<void>[] = [];
+    for (const [, account] of this.accounts) {
+      startPromises.push(this.notifyServer('notifystart', account));
+    }
+    await Promise.all(startPromises);
     for (const [uin, account] of this.accounts) {
-      // Fire notifystart per account (best-effort, non-fatal if it fails).
-      this.notifyServer('notifystart', account).catch(() => {});
       this.startPollingLoop(uin, account);
     }
     this.connected = this.accounts.size > 0;
@@ -530,9 +539,10 @@ export class WeixinAdapter implements PlatformAdapter {
     // Record channel → account mapping for multi-account send routing.
     this.channelToUin.set(channelId, uin);
 
-    // Cache context_token (needed when replying).
-    if (wxMsg.context_token) {
+    // Cache context_token (needed when replying) and persist to disk.
+    if (wxMsg.context_token && wxMsg.context_token !== this.contextTokens.get(channelId)) {
       this.contextTokens.set(channelId, wxMsg.context_token);
+      this.saveContextTokens(uin).catch(() => {});
     }
 
     const { text, attachments } = await this.parseItems(wxMsg.item_list ?? [], wxMsg.message_id);
@@ -551,11 +561,10 @@ export class WeixinAdapter implements PlatformAdapter {
 
     this.messageHandler?.(incoming).catch(async (err) => {
       this.log('weixin onMessage handler error:', err);
-      // Try to surface the error back to the user so failures aren't silent.
       try {
         await this.sendText(channelId, `❌ Error processing message: ${err instanceof Error ? err.message : String(err)}`);
       } catch {
-        // Best-effort — if we can't even send the error, nothing more to do.
+        // Best-effort.
       }
     });
   }
@@ -868,6 +877,7 @@ export class WeixinAdapter implements PlatformAdapter {
     if (!existsSync(fp)) return null;
     try {
       const raw = await readFile(fp, 'utf-8');
+
       const parsed = JSON.parse(raw) as { buf?: string };
       return parsed.buf ?? null;
     } catch {
@@ -879,6 +889,38 @@ export class WeixinAdapter implements PlatformAdapter {
   private async saveSyncBuf(uin: string, buf: string): Promise<void> {
     const fp = this.syncBufPath(uin);
     await writeFile(fp, JSON.stringify({ buf, savedAt: Date.now() }), 'utf-8');
+  }
+
+  // ---- Context token persistence ----
+
+  /** Path to per-account context tokens file. */
+  private contextTokensPath(uin: string): string {
+    return join(this.opts.authDir, `context-tokens-${uin}.json`);
+  }
+
+  /** Load persisted context tokens from disk. */
+  private async loadContextTokens(uin: string): Promise<void> {
+    const fp = this.contextTokensPath(uin);
+    try {
+      const raw = await readFile(fp, 'utf-8');
+      const parsed = JSON.parse(raw) as Record<string, string>;
+      for (const [ch, token] of Object.entries(parsed)) {
+        this.contextTokens.set(ch, token);
+      }
+    } catch {
+      // File not found or malformed — start fresh.
+    }
+  }
+
+  /** Persist context tokens for an account to disk. */
+  private async saveContextTokens(uin: string): Promise<void> {
+    const fp = this.contextTokensPath(uin);
+    const tokens: Record<string, string> = {};
+    for (const [ch, token] of this.contextTokens) {
+      tokens[ch] = token;
+    }
+    await mkdir(this.opts.authDir, { recursive: true });
+    await writeFile(fp, JSON.stringify(tokens), 'utf-8');
   }
 
   // ---- Helpers ----
