@@ -869,7 +869,7 @@ function buildDescription(
     return t(`settings.messaging.${platform}.connected`, { defaultValue: 'Connected' })
   }
   if (runtime.state === 'connecting') {
-    return t('dialog.whatsapp.starting', { defaultValue: 'Connecting…' })
+    return t(`dialog.${platform}.starting`, { defaultValue: 'Connecting…' })
   }
   if (runtime.state === 'error' && runtime.lastError) {
     return runtime.lastError

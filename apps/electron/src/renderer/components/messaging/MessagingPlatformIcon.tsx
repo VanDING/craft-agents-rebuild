@@ -28,7 +28,7 @@ const platformFallback: Record<string, { bg: string; initial: string }> = {
   telegram: { bg: '#229ED9', initial: 'T' },
   whatsapp: { bg: '#25D366', initial: 'W' },
   lark: { bg: '#00D6B9', initial: 'L' },
-  weixin: { bg: '#07C160', initial: 'V' },
+  weixin: { bg: '#07C160', initial: 'W' },
 }
 
 interface MessagingPlatformIconProps {
