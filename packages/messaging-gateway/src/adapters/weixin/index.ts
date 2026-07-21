@@ -357,10 +357,13 @@ export class WeixinAdapter implements PlatformAdapter {
     const deadline = Date.now() + 480_000; // 8 min
     let qrRefreshCount = 0;
     const MAX_QR_REFRESH = 3;
+    let consecutiveErrors = 0;
+    const MAX_CONSECUTIVE_ERRORS = 5;
 
     while (!signal.aborted && Date.now() < deadline) {
       try {
         const resp = await this.pollQrStatus(qrcode, signal);
+        consecutiveErrors = 0; // Reset on success
 
         switch (resp.status) {
           case 'wait':
@@ -424,6 +427,11 @@ export class WeixinAdapter implements PlatformAdapter {
         }
       } catch (err) {
         if (signal.aborted) return;
+        consecutiveErrors++;
+        if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+          this.eventHandler?.({ type: 'unavailable', reason: `QR login polling failed after ${consecutiveErrors} attempts` });
+          return;
+        }
         this.log('weixin qr poll error:', err);
       }
       await this.sleep(1000);

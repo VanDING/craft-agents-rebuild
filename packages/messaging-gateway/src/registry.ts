@@ -1504,39 +1504,82 @@ export class MessagingGatewayRegistry implements IMessagingGatewayRegistry {
       return { connected: false }
     }
 
-    const adapter = new WeixinAdapter({ baseUrl, authDir, botAgent, logger: (...args: unknown[]) => this.log.info(String(args[0]), args[1] as never) })
-    state.gateway.registerAdapter(adapter)
-    this.setPlatformRuntime(workspaceId, state, 'weixin', {
-      configured: true,
-      connected: false,
-      state: 'connecting',
-    })
-
-    // Forward adapter lifecycle events to UI clients via WEIXIN_UI_EVENT.
-    adapter.onEvent((event) => {
-      this.opts.publishEvent?.(
-        RPC_CHANNELS.messaging.WEIXIN_UI_EVENT,
-        { to: 'workspace', workspaceId },
-        { workspaceId, event },
-      )
-    })
-
-    await adapter.initialize({})
-    const connected = adapter.isConnected()
-    this.setPlatformRuntime(workspaceId, state, 'weixin', {
-      configured: true,
-      connected,
-      state: connected ? 'connected' : 'disconnected',
-    })
-
-    // If no existing credentials, start QR login flow automatically.
-    if (!connected) {
-      adapter.startLogin().catch((err: unknown) => {
-        this.log.warn('startWeixinConnect: QR login failed', { event: 'weixin_qr_error', workspaceId, error: err })
+    try {
+      const adapter = new WeixinAdapter({ baseUrl, authDir, botAgent, logger: (...args: unknown[]) => this.log.info(String(args[0]), args[1] as never) })
+      state.gateway.registerAdapter(adapter)
+      this.setPlatformRuntime(workspaceId, state, 'weixin', {
+        configured: true,
+        connected: false,
+        state: 'connecting',
       })
-    }
 
-    return { connected, account: connected ? 'weixin' : undefined }
+      // Forward adapter lifecycle events:
+      //   - WEIXIN_UI_EVENT → UI dialog (qr, connected, disconnected, unavailable)
+      //   - setPlatformRuntime → PLATFORM_STATUS broadcast (connected state for settings page)
+      adapter.onEvent((event) => {
+        this.opts.publishEvent?.(
+          RPC_CHANNELS.messaging.WEIXIN_UI_EVENT,
+          { to: 'workspace', workspaceId },
+          { workspaceId, event },
+        )
+        // Also update the canonical runtime status so the settings page
+        // and other UI surfaces reflect the real connection state.
+        if (event.type === 'connected') {
+          this.setPlatformRuntime(workspaceId, state, 'weixin', {
+            configured: true,
+            connected: true,
+            state: 'connected',
+          })
+        } else if (event.type === 'disconnected') {
+          this.setPlatformRuntime(workspaceId, state, 'weixin', {
+            configured: true,
+            connected: false,
+            state: 'disconnected',
+            lastError: event.reason,
+          })
+        } else if (event.type === 'unavailable') {
+          this.setPlatformRuntime(workspaceId, state, 'weixin', {
+            configured: true,
+            connected: false,
+            state: 'error',
+            lastError: event.reason,
+          })
+        }
+      })
+
+      await adapter.initialize({})
+      const connected = adapter.isConnected()
+      this.setPlatformRuntime(workspaceId, state, 'weixin', {
+        configured: true,
+        connected,
+        state: connected ? 'connected' : 'disconnected',
+      })
+
+      // If no existing credentials, start QR login flow automatically.
+      if (!connected) {
+        adapter.startLogin().catch((err: unknown) => {
+          const reason = err instanceof Error ? err.message : String(err)
+          this.log.warn('startWeixinConnect: QR login failed', { event: 'weixin_qr_error', workspaceId, error: err })
+          // Notify the UI that the connection attempt failed.
+          this.opts.publishEvent?.(
+            RPC_CHANNELS.messaging.WEIXIN_UI_EVENT,
+            { to: 'workspace', workspaceId },
+            { workspaceId, event: { type: 'unavailable', reason } },
+          )
+        })
+      }
+
+      return { connected, account: connected ? 'weixin' : undefined }
+    } catch (err) {
+      this.log.error('startWeixinConnect: unexpected error', { event: 'weixin_connect_error', workspaceId, error: err })
+      this.setPlatformRuntime(workspaceId, state, 'weixin', {
+        configured: true,
+        connected: false,
+        state: 'error',
+        lastError: err instanceof Error ? err.message : String(err),
+      })
+      return { connected: false }
+    }
   }
 
   async submitWeixinPhone(workspaceId: string, _phoneNumber: string): Promise<{ qrPayload?: string; connected: boolean; account?: string } | void> {
