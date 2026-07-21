@@ -723,6 +723,9 @@ export interface ElectronAPI {
   startWhatsAppConnect(): Promise<{ success: boolean }>
   submitWhatsAppPhone(phoneNumber: string): Promise<{ success: boolean }>
   onWhatsAppEvent(callback: (payload: { workspaceId: string; event: WhatsAppUiEvent }) => void): () => void
+  // WeChat (weixin — pure HTTP adapter)
+  startWeixinConnect(): Promise<{ connected: boolean }>
+  onWeixinEvent(callback: (payload: { workspaceId: string; event: WeixinUiEvent }) => void): () => void
   // Messaging access control (Phase 3)
   getMessagingPlatformOwners(platform: string): Promise<MessagingPlatformOwnerInfo[]>
   setMessagingPlatformOwners(platform: string, owners: MessagingPlatformOwnerInfo[]): Promise<MessagingPlatformOwnerInfo[]>
@@ -789,6 +792,13 @@ export type WhatsAppUiEvent =
   | { type: 'disconnected'; loggedOut: boolean; reason?: string }
   | { type: 'unavailable'; reason: string; message: string }
   | { type: 'error'; message: string }
+
+/** Event payloads broadcast from the WeChat adapter to the UI. */
+export type WeixinUiEvent =
+  | { type: 'qr'; qrPayload: string }
+  | { type: 'connected'; account: string }
+  | { type: 'disconnected'; account: string; reason: string }
+  | { type: 'unavailable'; reason: string }
 
 // =============================================================================
 // Navigation types (renderer-only)

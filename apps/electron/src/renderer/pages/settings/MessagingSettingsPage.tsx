@@ -53,6 +53,7 @@ import { TelegramConnectDialog } from '@/components/messaging/TelegramConnectDia
 import { LarkConnectDialog } from '@/components/messaging/LarkConnectDialog'
 import { TelegramSupergroupPairingDialog } from '@/components/messaging/TelegramSupergroupPairingDialog'
 import { WhatsAppConnectDialog } from '@/components/messaging/WhatsAppConnectDialog'
+import { WeChatConnectDialog } from '@/components/messaging/WeChatConnectDialog'
 import {
   BindingAllowListPopover,
   TelegramAccessSection,
@@ -124,6 +125,9 @@ export default function MessagingSettingsPage() {
             <SettingsCard>
               <PlatformRow platform="lark" workspaceId={activeWorkspace.id} />
             </SettingsCard>
+            <SettingsCard>
+              <PlatformRow platform="weixin" workspaceId={activeWorkspace.id} />
+            </SettingsCard>
           </SettingsSection>
         </div>
       </ScrollArea>
@@ -135,12 +139,13 @@ export default function MessagingSettingsPage() {
 // Platform row
 // ---------------------------------------------------------------------------
 
-type Platform = 'telegram' | 'whatsapp' | 'lark'
+type Platform = 'telegram' | 'whatsapp' | 'lark' | 'weixin'
 
 const PLATFORM_LABEL_KEYS: Record<Platform, string> = {
   telegram: 'settings.messaging.telegram.title',
   whatsapp: 'settings.messaging.whatsapp.title',
   lark: 'settings.messaging.lark.title',
+  weixin: 'settings.messaging.weixin.title',
 }
 
 // Row column geometry shared across the bot header and all child rows.
@@ -472,6 +477,9 @@ function PlatformRow({ platform, workspaceId }: { platform: Platform; workspaceI
       )}
       {platform === 'lark' && (
         <LarkConnectDialog open={connectOpen} onOpenChange={setConnectOpen} reconfigure={reconfigure} />
+      )}
+      {platform === 'weixin' && (
+        <WeChatConnectDialog open={connectOpen} onOpenChange={setConnectOpen} />
       )}
     </>
   )
