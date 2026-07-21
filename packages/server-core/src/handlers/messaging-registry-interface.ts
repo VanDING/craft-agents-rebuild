@@ -212,7 +212,7 @@ export interface IMessagingGatewayRegistry {
   // ── WeChat(微信)──
   startWeixinConnect(workspaceId: string): Promise<{ qrPayload?: string; connected: boolean; account?: string } | void>;
   submitWeixinPhone?(workspaceId: string, phoneNumber: string): Promise<{ qrPayload?: string; connected: boolean; account?: string } | void>;
-
+  cancelWeixinConnect(workspaceId: string): void;
   // -------------------------------------------------------------------------
   // Access control (Phase 2/3)
   // -------------------------------------------------------------------------
