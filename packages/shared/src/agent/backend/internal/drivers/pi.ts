@@ -43,7 +43,7 @@ async function listModelsViaHttp(
   githubToken: string,
   timeoutMs: number,
 ): Promise<RawCopilotModel[]> {
-  const { refreshGitHubCopilotToken } = await import('@earendil-works/pi-ai/oauth');
+  const { refreshGitHubCopilotToken } = await import('../../../../auth/github-copilot.ts');
 
   // Step 1: Exchange GitHub OAuth token → Copilot API token
   const creds = await refreshGitHubCopilotToken(githubToken);

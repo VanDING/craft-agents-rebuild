@@ -2191,9 +2191,14 @@ async function interceptedFetch(
 
         const proxy = getProxyForUrl(url);
         const finalBody = JSON.stringify(parsed);
+        // Convert string body to Buffer to force Node.js fetch to use
+        // Content-Length instead of Transfer-Encoding: chunked.
+        // Node 24+ (undici v6) defaults to chunked for string bodies, which
+        // Console Go's DeepSeek Provider cannot handle correctly (#issue).
+        const bodyAsBuffer = Buffer.from(finalBody);
         const finalInit = {
           ...modifiedInit,
-          body: finalBody,
+          body: bodyAsBuffer,
           ...(proxy ? { proxy } : {}),
         };
 

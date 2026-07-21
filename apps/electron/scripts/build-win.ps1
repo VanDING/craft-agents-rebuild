@@ -139,7 +139,7 @@ try {
     # Use robocopy with retries - handles transient file locks better than Copy-Item
     # /R:5 = 5 retries, /W:3 = 3 second wait between retries, /NP = no progress, /NFL /NDL = quiet
     Write-Host "Copying bun.exe with robocopy..."
-    $robocopyResult = robocopy "$TempDir\$BunDownload" "$ElectronDir\vendor\bun" "bun.exe" /R:5 /W:3 /NP /NFL /NDL
+| pi-agent-server 从未构建/打包 | 添加 `bun build` 步骤 + ~~npm pack OAuth patch~~ (0.81.0 不再需要 OAuth patch) |
     # Robocopy exit codes: 0-7 are success, 8+ are errors
     if ($LASTEXITCODE -ge 8) {
         throw "robocopy failed with exit code $LASTEXITCODE"
@@ -255,42 +255,6 @@ foreach ($dep in @("interceptor-common.ts", "feature-flags.ts", "interceptor-req
 #     The packaged app resolves piServerPath from resources/pi-agent-server/index.js
 #     at runtime (see packages/shared/…/runtime-resolver.ts:resolveServerPath).
 Write-Host "Building Pi agent server..."
-
-# Pi SDK 0.80.8+ deleted pi-ai's oauth module but pi-coding-agent still imports
-# from it. Bun's bundler needs those exports at build time even though Node.js
-# runtime resolution doesn't trigger the same error. Fix: fetch pi-ai@0.80.7
-# (last version with oauth) via npm pack and copy its dist/ over every nested
-# pi-ai copy that the bundler will resolve — without touching root node_modules
-# so the dev runtime stays on 0.80.10.
-$PiAiPatchVersion = "0.80.7"
-$PiAiPatchDir = "$env:TEMP\pi-ai-patch-$([System.Guid]::NewGuid())"
-try {
-    Write-Host "  Fetching pi-ai@$PiAiPatchVersion for oauth shim..."
-    New-Item -ItemType Directory -Force -Path $PiAiPatchDir | Out-Null
-    Push-Location $PiAiPatchDir
-    $null = npm pack "@earendil-works/pi-ai@$PiAiPatchVersion"
-    $tarball = Get-ChildItem -Filter "earendil-works-pi-ai-*.tgz" | Select-Object -First 1
-    tar -xzf $tarball.Name
-    Pop-Location
-
-    $PiAiPatchDist = "$PiAiPatchDir\package\dist"
-    if (-not (Test-Path "$PiAiPatchDist\utils\oauth\index.js")) {
-        throw "pi-ai@$PiAiPatchVersion does not contain expected oauth module"
-    }
-
-    $BadCopies = @(Get-ChildItem -Path "$RootDir" -Recurse -Directory -Filter "pi-ai" -ErrorAction SilentlyContinue |
-        Where-Object { $_.FullName -match 'node_modules\\@earendil-works\\pi-ai$' -and $_.FullName -notmatch 'node_modules\\@earendil-works\\pi-ai\\node_modules' })
-    foreach ($copy in $BadCopies) {
-        $copyPkg = Get-Content "$($copy.FullName)\package.json" -Raw | ConvertFrom-Json
-        if ($copyPkg.version -ne $PiAiPatchVersion) {
-            Write-Host "  Patching $($copy.FullName) (v$($copyPkg.version) -> v$PiAiPatchVersion dist)"
-            Remove-Item -Recurse -Force "$($copy.FullName)\dist" -ErrorAction SilentlyContinue
-            Copy-Item -Recurse -Force $PiAiPatchDist "$($copy.FullName)\dist"
-        }
-    }
-} finally {
-    Remove-Item -Recurse -Force $PiAiPatchDir -ErrorAction SilentlyContinue
-}
 
 Push-Location "$RootDir\packages\pi-agent-server"
 try {

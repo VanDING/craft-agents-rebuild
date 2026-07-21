@@ -289,6 +289,8 @@ async function buildWhatsAppWorker(): Promise<void> {
       // link previews, no inline image processing, no terminal QR).
       "--external:link-preview-js",
       "--external:qrcode-terminal",
+      "--external:sharp",
+      "--external:@img/sharp-*",
       "--external:jimp",
     ],
     cwd: ROOT_DIR,

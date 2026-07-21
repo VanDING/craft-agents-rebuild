@@ -100,7 +100,7 @@
     "check-version": "bun run scripts/check-version.ts",
     "oss:sync": "bun run scripts/oss-sync.ts",
     "prepare": "husky",
-    "postinstall": "powershell -ExecutionPolicy Bypass -File scripts/dedupe.ps1"
+    "postinstall": ""
   },
   "devDependencies": {
     "@aws-sdk/client-s3": "^3.947.0",
@@ -144,8 +144,9 @@
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.3.215",
     "@anthropic-ai/sdk": "0.112.3",
-    "@earendil-works/pi-ai": "0.80.10",
-    "@earendil-works/pi-coding-agent": "0.80.10",
+    "@earendil-works/pi-ai": "0.81.0",
+    "@earendil-works/pi-coding-agent": "0.81.0",
+    "@dnd-kit/dom": "0.5.0",
     "@dnd-kit/helpers": "0.5.0",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",

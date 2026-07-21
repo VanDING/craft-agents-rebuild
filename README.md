@@ -23,13 +23,28 @@
 | @github/copilot-sdk | ^0.1.23 | 1.0.0 | **v0→v1** |
 | @anthropic-ai/claude-agent-sdk | 0.3.197 | 0.3.215 | patch |
 | @anthropic-ai/sdk | ^0.100.0 | 0.112.3 | minor |
-| @earendil-works/pi-ai | 0.80.6 | 0.80.10 | patch |
-| @earendil-works/pi-coding-agent | 0.80.6 | 0.80.10 | patch |
+| @earendil-works/pi-ai | 0.80.6 | 0.81.0 | minor (0.80.7→0.81.0) |
+| @earendil-works/pi-coding-agent | 0.80.6 | 0.81.0 | minor |
 | @sentry/react | ^10.36.0 | 10.62.0 | minor |
 | @sentry/electron | ^7.7.0 | ^7.15.0 | minor |
 | @tiptap/* | ^3.20.0 | ^3.28.0 | minor |
-| @dnd-kit/dom | ^0.4.0-beta | 0.5.0 | beta→stable |
-| @dnd-kit/helpers | ^0.4.0-beta | 0.5.0 | beta→stable |
+| @dnd-kit/core | — | ^6.3.1 | **新增**，替换 @dnd-kit/dom beta |
+| @dnd-kit/sortable | — | ^10.0.0 | **新增**，@dnd-kit/dom 拆分 |
+| @dnd-kit/utilities | ^3.2.2 (electron) | ^3.2.2 | 子包已有，移到根 |
+| @paper-design/shaders-react | ^0.0.69 (electron+ui) | 0.0.77 | 子包已有，升级+移到根 |
+| motion | ^12.0.0 (viewer) | ^12.42.2 | 子包已有，升级+移到根 |
+| sonner | ^2.0.7 (electron) | ^2.0.7 | 子包已有，移到根 |
+| vaul | ^1.1.2 (electron) | ^1.1.2 | 子包已有，移到根 |
+| cmdk | ^1.1.1 (electron) | ^1.1.1 | 子包已有，移到根 |
+| jose | ^6.0.0 (server-core) | ^6.2.3 | 子包已有，升级+移到根 |
+| ws | ^8.19.0 (server-core) | ^8.21.1 | 子包已有，升级+移到根 |
+| react-colorful | ^5.7.0 (electron) | ^5.8.0 | 子包已有，升级+移到根 |
+| react-day-picker | ^9.13.0 (electron) | ^10.0.1 | 子包已有，**v9→v10 大版本**+移到根 |
+| react-i18next | ^17.0.2 (electron) | ^17.0.10 | 子包已有，升级+移到根 |
+| react-pdf | ^10.3.0 (electron) | ^10.4.1 | 子包已有，升级+移到根 |
+| react-simple-code-editor | ^0.14.1 (electron) | ^0.14.1 | 子包已有，移到根 |
+| sharp (dependencies) | 0.34.5 (server-core+electron) | 0.35.3 | 子包已有，升级+移到根 deps（上游根只在 optionalDeps） |
+
 | @radix-ui/* | ^1.1.x–^2.2.x | ^1.1.17–^2.3.4 | minor |
 | @tailwindcss/typography | ^0.5.19 | ^0.5.20 | patch |
 | @vscode/ripgrep | ^1.17.1 | ^1.18.0 | minor |
@@ -45,26 +60,17 @@
 | tailwind-merge | ^3.4.0 | ^3.6.0 | minor |
 | tar | ^7.5.2 | ^7.5.20 | patch |
 
-#### 新增依赖（上游没有）
-| 包 | 版本 |
-|---|---|
-| @paper-design/shaders-react | 0.0.77 |
-| motion (framer-motion 继任) | ^12.42.2 |
-| @dnd-kit/core | ^6.3.1 |
-| @dnd-kit/sortable | ^10.0.0 |
-| @dnd-kit/utilities | ^3.2.2 |
-| sonner | ^2.0.7 |
-| vaul | ^1.1.2 |
-| cmdk | ^1.1.1 |
-| jose | ^6.2.3 |
-| ws | ^8.21.1 |
-| react-colorful | ^5.8.0 |
-| react-day-picker | ^10.0.1 |
-| react-i18next | ^17.0.10 |
-| react-pdf | ^10.4.1 |
-| react-simple-code-editor | ^0.14.1 |
-| playwright | 1.61.1 |
-| sharp (dependencies) | 0.35.3 |
+#### 注意事项
+上表"上游"列标注了子包来源的（如 `(electron)`、`(server-core)`），表示该包在上游的子包中存在，本仓库将其提升到根 `package.json`。
+原因：`bunfig.toml` 设置了 `linker=hoisted`，Bun 将所有 workspace 依赖提升到根 `node_modules`，
+显式在根声明可避免 hoisted linker 移除未在根声明的生产依赖。
+
+| 包 | 版本 | 说明 |
+|---|---|---|
+| @dnd-kit/core | ^6.3.1 | **真正新增** — 替换 `@dnd-kit/dom` beta，拆分后独立包 |
+| @dnd-kit/sortable | ^10.0.0 | **真正新增** — `@dnd-kit/dom` 拆分 |
+| playwright | 1.61.1 | **真正新增** — 构建/测试工具依赖 |
+
 
 ### 子包依赖升级
 
@@ -110,9 +116,9 @@
 #### packages/shared
 | 包 | 上游 | 本仓库 |
 |---|---|---|
-| @earendil-works/pi-agent-core | 0.80.6 | 0.80.10 |
-| @earendil-works/pi-ai | 0.80.6 | 0.80.10 |
-| @earendil-works/pi-coding-agent | 0.80.6 | 0.80.10 |
+| @earendil-works/pi-agent-core | 0.80.6 | 0.81.0 |
+| @earendil-works/pi-ai | 0.80.6 | 0.81.0 |
+| @earendil-works/pi-coding-agent | 0.80.6 | 0.81.0 |
 | @anthropic-ai/claude-agent-sdk (peer) | 0.3.197 | 0.3.215 |
 
 #### packages/ui
@@ -135,14 +141,23 @@
 | `@vscode/ripgrep` 二进制路径错误 | 从 `ripgrep-win32-x64/bin/` 解析 + 同时复制 wrapper 和 binary |
 | pi-agent-server 从未构建/打包 | 添加 `bun build` 步骤 + npm pack OAuth patch |
 
-### Pi SDK OAuth 兼容性
-- `pi-ai@0.80.8+` 删除了 `dist/utils/oauth/` 模块，`pi-coding-agent` 仍引用其导出，导致打包时 bundler 报错
-- 构建时通过 `npm pack @earendil-works/pi-ai@0.80.7` 提取 OAuth 模块覆盖嵌套副本
-- 开发环境保持 `0.80.10` 不受影响
+### Pi SDK 升级 (0.80.7 → 0.81.0)
+- `pi-ai@0.80.8+` 移除了 `dist/utils/oauth/` 运行时模块（`refreshGitHubCopilotToken`、`loginGitHubCopilot`），`./oauth` 子路径变为仅类型导出
+- **本仓库**：将 Copilot OAuth 函数内联为 `packages/shared/src/auth/github-copilot.ts`，不再依赖 pi-ai/oauth
+- `pi-ai@0.80.8+` 用 `ModelRuntime` 替代了 `AuthStorage` + `ModelRegistry.inMemory()` API
+- **本仓库**：`pi-agent-server` 迁移至 `ModelRuntime.create()` + `InMemoryCredentialStore`
+- `CreateAgentSessionOptions.authStorage`/`modelRegistry` 变更为 `modelRuntime`
+- `build-win.ps1` 中旧的 OAuth patch（npm pack pi-ai@0.80.7）不再需要
+### Extension 与 Provider 注册
+- pi v0.81.0 的 `ModelRuntime.registerProvider()` / `ModelRegistry.registerProvider()` 支持注册自定义 provider（含认证、模型发现、流式适配）
+- 当前 `pi-agent-server` 已通过 `registerProvider('custom-endpoint', {...})` 使用此能力
+- 后续可打包更多扩展 provider（如企业级 OAuth、自定义 API gateway）到 `packages/pi-agent-server/src/tools/` 或独立 extension 目录
 
-### 前端供应商列表
-- `ApiKeyInput.tsx` 的 `ANTHROPIC_PRESETS` 硬编码 21 个，Pi SDK 实际 35 个
-- 新增 14 个：nvidia, together, fireworks, moonshotai, moonshotai-cn, cloudflare-workers-ai, cloudflare-ai-gateway, ant-ling, zai-coding-cn, opencode, opencode-go, xiaomi
+#### 前端供应商列表（已删除）
+- `ApiKeyInput.tsx` 曾新增 14 个供应商：nvidia, together, fireworks, moonshotai, moonshotai-cn, cloudflare-workers-ai, cloudflare-ai-gateway, ant-ling, zai-coding-cn, ~~opencode~~, ~~opencode-go~~, xiaomi
+- `opencode` 和 `opencode-go` 已删除——Pi SDK 的 opencode-go provider 对 deepseek 模型存在 Console Go 上游请求失败的问题
+- 使用 Custom 预设 + 手动输入 `https://opencode.ai/zen/v1` 可达到相同效果，走通用 openai-compat 路径，不触发 Pi SDK 的 opencode 模型注册表
+- 保留：nvidia, together, fireworks, moonshotai, moonshotai-cn, cloudflare-workers-ai, cloudflare-ai-gateway, ant-ling, zai-coding-cn, xiaomi
 - 修复 `minimax-global` → `minimax` 键名对齐 Pi SDK
 
 ### TypeScript 预存错误修复
@@ -151,6 +166,16 @@
 | apps/webui | 61 个 `bun:test` + prosemirror 类型冲突 | `types: ["bun"]` + prosemirror 路径映射 |
 | apps/viewer | 3 个 prosemirror `Node`/`DecorationSet` 冲突 | prosemirror 路径映射 |
 | apps/electron | `captureConsoleIntegration` 类型不兼容 | @ts-expect-error |
+
+### 独有文件（上游没有）
+
+| 文件 | 用途 | 说明 |
+|---|---|---|
+| `tsconfig.base.json` | 子包共享 TypeScript 基线配置 | 上游 3 个子包 (`pi-agent-server`, `session-mcp-server`, `session-tools-core`) 的 `tsconfig.json` 已写了 `"extends": "../../tsconfig.base.json"`，但上游根从未创建此文件——extends 链断裂，静默失效。本仓库首次创建，让子包获得正确的 NodeNext 基础配置 |
+| `scripts/dedupe.ps1` | postinstall 去重脚本 | Bun hoisted linker 为 `prosemirror-*` 包创建嵌套版本副本，在 TS 7 下引发类型冲突。扫描 `node_modules/**/node_modules/` 删除嵌套副本，只保留根版本。挂接在 `postinstall` 和 `typecheck:all` 两个钩子上 |
+| `scripts/dedupe-prosemirror.cjs` | Node.js 版去重（未使用） | 功能类似但更激进：用根版本递归复制覆盖嵌套 `prosemirror-model`。**未接入任何脚本**，是历史遗留，被 `dedupe.ps1` 取代 |
+| `scripts/fix-lockfile.cjs` | 一次性 lockfile 修补 | `bun install` 有时锁定旧版 `prosemirror-model@1.25.4` 即使要求 `^1.25.11`。文本替换 `bun.lock` 强制修正。**未接入任何脚本**，一次性迁移工具，不可重入 |
+| `packages/ui/src/css.d.ts` | CSS Module 类型声明 | 让子包 `tsc --noEmit` 能识别 `import styles from '*.css'`。上游通过 Vite client types 获取此声明，但 typecheck 路径不经过 Vite |
 
 ### 文档
 - `resources/AGENTS.md`: 新增 `pi-agent-server/` 条目
