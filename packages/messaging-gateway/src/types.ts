@@ -9,7 +9,7 @@
 // Platform types
 // ---------------------------------------------------------------------------
 
-export type PlatformType = 'telegram' | 'whatsapp' | 'lark'
+export type PlatformType = 'telegram' | 'whatsapp' | 'lark' | 'weixin'
 
 // ---------------------------------------------------------------------------
 // Logger
@@ -70,7 +70,7 @@ export interface AdapterCapabilities {
   inlineButtons: boolean
   maxButtons: number
   maxMessageLength: number
-  markdown: 'v2' | 'whatsapp' | 'lark-post'
+  markdown: 'v2' | 'whatsapp' | 'lark-post' | 'plain'
   webhookSupport: boolean
 }
 
@@ -509,6 +509,13 @@ export interface MessagingConfig {
        */
       domain?: 'lark' | 'feishu'
     }
+    weixin?: {
+      enabled: boolean
+      /** WeChat backend gateway base URL. */
+      baseUrl?: string
+      /** botAgent identifier (default CraftAgent/0.12.0). */
+      botAgent?: string
+    }
   }
 }
 
@@ -516,3 +523,11 @@ export const DEFAULT_MESSAGING_CONFIG: MessagingConfig = {
   enabled: false,
   platforms: {},
 }
+
+/** WeChat 账号（登录凭据） */
+export interface WeixinAccount {
+  token: string;
+  uin: string;
+  botAgent?: string;
+}
+

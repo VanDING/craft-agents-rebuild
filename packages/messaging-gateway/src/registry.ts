@@ -30,6 +30,7 @@ import { PairingCodeManager } from './pairing'
 import { TelegramAdapter } from './adapters/telegram/index'
 import { WhatsAppAdapter, type WhatsAppEvent } from './adapters/whatsapp/index'
 import { LarkAdapter, parseLarkCredentials, type LarkCredentials } from './adapters/lark/index'
+import { WeixinAdapter } from './adapters/weixin/index'
 import { TopicRegistry } from './topic-registry'
 import type { SessionEvent } from './renderer'
 import type { EventSinkFn } from './event-fanout'
@@ -231,6 +232,7 @@ export class MessagingGatewayRegistry implements IMessagingGatewayRegistry {
         telegram: cloneRuntime(state.runtime.telegram),
         whatsapp: cloneRuntime(state.runtime.whatsapp),
         lark: cloneRuntime(state.runtime.lark),
+        weixin: cloneRuntime(state.runtime.weixin),
       },
     }
   }
@@ -250,6 +252,7 @@ export class MessagingGatewayRegistry implements IMessagingGatewayRegistry {
       await state.gateway.unregisterAdapter('telegram').catch(() => {})
       await state.gateway.unregisterAdapter('whatsapp').catch(() => {})
       await state.gateway.unregisterAdapter('lark').catch(() => {})
+      await state.gateway.unregisterAdapter('weixin').catch(() => {})
       state.whatsappOffEvent?.()
       state.whatsappOffEvent = undefined
       state.whatsapp = null
@@ -274,10 +277,17 @@ export class MessagingGatewayRegistry implements IMessagingGatewayRegistry {
         identity: undefined,
         lastError: undefined,
       })
+      this.setPlatformRuntime(workspaceId, state, 'weixin', {
+        configured: false,
+        connected: false,
+        state: 'disconnected',
+        identity: undefined,
+        lastError: undefined,
+      })
       return
     }
 
-    for (const platform of ['telegram', 'whatsapp', 'lark'] as const) {
+    for (const platform of ['telegram', 'whatsapp', 'lark', 'weixin'] as const) {
       const configured = isPlatformConfigured(cfg, platform)
       if (!configured && state.gateway.getAdapter(platform)) {
         await state.gateway.unregisterAdapter(platform).catch(() => {})
@@ -1015,6 +1025,7 @@ export class MessagingGatewayRegistry implements IMessagingGatewayRegistry {
         telegram: createRuntime('telegram', isPlatformConfigured(cfg, 'telegram')),
         whatsapp: createRuntime('whatsapp', isPlatformConfigured(cfg, 'whatsapp')),
         lark: createRuntime('lark', isPlatformConfigured(cfg, 'lark')),
+        weixin: createRuntime('weixin', isPlatformConfigured(cfg, 'weixin')),
       },
     }
     this.workspaces.set(workspaceId, state)
@@ -1481,6 +1492,57 @@ export class MessagingGatewayRegistry implements IMessagingGatewayRegistry {
     this.emitBindingChanged(workspaceId)
   }
 
+  async startWeixinConnect(workspaceId: string): Promise<{ qrPayload?: string; connected: boolean; account?: string } | void> {
+    const state = this.workspaces.get(workspaceId) ?? this.bootstrapWorkspace(workspaceId)
+    const config = state.configStore.get()
+    const baseUrl = config.platforms.weixin?.baseUrl ?? ''
+    const authDir = join(this.opts.getMessagingDir(workspaceId), 'weixin-auth')
+    const botAgent = config.platforms.weixin?.botAgent
+
+    if (!baseUrl) {
+      this.log.warn('startWeixinConnect: no baseUrl configured', { event: 'weixin_no_baseurl', workspaceId })
+      return { connected: false }
+    }
+
+    const adapter = new WeixinAdapter({ baseUrl, authDir, botAgent, logger: (...args: unknown[]) => this.log.info(String(args[0]), args[1] as never) })
+    state.gateway.registerAdapter(adapter)
+    this.setPlatformRuntime(workspaceId, state, 'weixin', {
+      configured: true,
+      connected: false,
+      state: 'connecting',
+    })
+
+    // Forward adapter lifecycle events to UI clients via WEIXIN_UI_EVENT.
+    adapter.onEvent((event) => {
+      this.opts.publishEvent?.(
+        RPC_CHANNELS.messaging.WEIXIN_UI_EVENT,
+        { to: 'workspace', workspaceId },
+        { workspaceId, event },
+      )
+    })
+
+    await adapter.initialize({})
+    const connected = adapter.isConnected()
+    this.setPlatformRuntime(workspaceId, state, 'weixin', {
+      configured: true,
+      connected,
+      state: connected ? 'connected' : 'disconnected',
+    })
+
+    // If no existing credentials, start QR login flow automatically.
+    if (!connected) {
+      adapter.startLogin().catch((err: unknown) => {
+        this.log.warn('startWeixinConnect: QR login failed', { event: 'weixin_qr_error', workspaceId, error: err })
+      })
+    }
+
+    return { connected, account: connected ? 'weixin' : undefined }
+  }
+
+  async submitWeixinPhone(workspaceId: string, _phoneNumber: string): Promise<{ qrPayload?: string; connected: boolean; account?: string } | void> {
+    return { connected: false }
+  }
+
   private emitPlatformStatus(
     workspaceId: string,
     platform: PlatformType,
@@ -1531,7 +1593,7 @@ function toBindingInfo(b: ChannelBinding): MessagingBindingInfo {
 }
 
 function isKnownPlatform(p: string): p is PlatformType {
-  return p === 'telegram' || p === 'whatsapp' || p === 'lark'
+  return p === 'telegram' || p === 'whatsapp' || p === 'lark' || p === 'weixin'
 }
 
 function capitalize(value: string): string {

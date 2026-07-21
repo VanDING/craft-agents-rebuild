@@ -11,6 +11,7 @@ export {
   type WhatsAppConfig,
   type WhatsAppEvent,
 } from './adapters/whatsapp/index'
+export { WeixinAdapter, type WeixinAccount, type WeixinAdapterEvent, type WeixinEventHandler } from './adapters/weixin/index'
 export { BindingStore } from './binding-store'
 export { ConfigStore } from './config-store'
 export { PairingCodeManager, PAIRING_TTL_MS, PAIRING_RATE_LIMIT_PER_MINUTE } from './pairing'
