@@ -126,7 +126,7 @@ interface CDNMedia {
   full_url?: string;
 }
 interface WeixinMessageItem {
-  type: number; // 1=TEXT, 2=IMAGE, 3=VOICE, 4=FILE, 5=VIDEO
+  type: number; // 1=TEXT, 2=IMAGE, 3=VOICE, 4=FILE, 5=VIDEO, 11=TOOL_CALL_START, 12=TOOL_CALL_RESULT
   text_item?: { text: string };
   image_item?: CDNMedia;
   voice_item?: CDNMedia & { duration_ms?: number };
@@ -811,7 +811,7 @@ export class WeixinAdapter implements PlatformAdapter {
     body: Record<string, unknown>,
     signal?: AbortSignal,
   ): Promise<WeixinApiResponse> {
-    const url = `${account.baseUrl ?? this.opts.baseUrl}/ilink/bot/${endpoint}`;
+    const url = `${account.baseUrl ?? (this.opts.baseUrl || QR_BASE_URL)}/ilink/bot/${endpoint}`;
     const controller = new AbortController();
     // Different timeouts for different endpoint types:
     const timeoutMs = endpoint === 'getupdates' ? LONGPOLL_TIMEOUT_MS + 5_000
