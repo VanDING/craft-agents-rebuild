@@ -133,7 +133,7 @@ const ANTHROPIC_PRESETS: Preset[] = [
  * OpenAI-compatible protocol. They behave like 'custom' on submit (customEndpoint
  * gets pinned to openai-completions) but stay branded in the dropdown.
  */
-const OPENAI_COMPAT_CUSTOM_URL_PRESETS: ReadonlySet<string> = new Set(['manifest'])
+const OPENAI_COMPAT_CUSTOM_URL_PRESETS: ReadonlySet<string> = new Set(['manifest', 'opencode', 'opencode-go'])
 
 // OpenAI provider presets - for Codex backend
 // Only direct OpenAI is supported; 3PP providers (OpenRouter, Vercel, Ollama) should be

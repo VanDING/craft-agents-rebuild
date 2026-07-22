@@ -139,7 +139,7 @@ try {
     # Use robocopy with retries - handles transient file locks better than Copy-Item
     # /R:5 = 5 retries, /W:3 = 3 second wait between retries, /NP = no progress, /NFL /NDL = quiet
     Write-Host "Copying bun.exe with robocopy..."
-| pi-agent-server 从未构建/打包 | 添加 `bun build` 步骤 + ~~npm pack OAuth patch~~ (0.81.0 不再需要 OAuth patch) |
+    robocopy "$TempDir\$BunDownload" "$ElectronDir\vendor\bun" bun.exe /R:5 /W:3 /NP /NFL /NDL
     # Robocopy exit codes: 0-7 are success, 8+ are errors
     if ($LASTEXITCODE -ge 8) {
         throw "robocopy failed with exit code $LASTEXITCODE"
