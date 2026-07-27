@@ -4,7 +4,7 @@
  */
 
 import { spawn } from "bun";
-import { existsSync, readFileSync, statSync, mkdirSync } from "fs";
+import { existsSync, readFileSync, statSync, mkdirSync, copyFileSync } from "fs";
 import { join } from "path";
 
 const ROOT_DIR = join(import.meta.dir, "..");
@@ -206,6 +206,12 @@ async function buildSessionServer(): Promise<void> {
   }
 
   console.log("✅ Session server built successfully");
+
+  // Copy to Electron resources so it gets picked up by electron:build:resources
+  const resourcesDest = join(ROOT_DIR, "apps", "electron", "resources", "session-mcp-server");
+  mkdirSync(resourcesDest, { recursive: true });
+  copyFileSync(SESSION_SERVER_OUTPUT, join(resourcesDest, "index.js"));
+  console.log("  → Copied to resources/session-mcp-server/index.js");
 }
 
 // Build the Pi Agent Server (subprocess for Pi SDK sessions)
@@ -255,6 +261,12 @@ async function buildPiAgentServer(): Promise<void> {
   }
 
   console.log("✅ Pi agent server built successfully");
+
+  // Copy to Electron resources so it gets picked up by electron:build:resources
+  const resourcesDest = join(ROOT_DIR, "apps", "electron", "resources", "pi-agent-server");
+  mkdirSync(resourcesDest, { recursive: true });
+  copyFileSync(PI_AGENT_SERVER_OUTPUT, join(resourcesDest, "index.js"));
+  console.log("  → Copied to resources/pi-agent-server/index.js");
 }
 
 // Build the WhatsApp worker (Baileys-backed subprocess spawned by WhatsAppAdapter)
@@ -355,7 +367,7 @@ async function main(): Promise<void> {
       // Externalize so Node loads the SDK natively as ESM (with a real import.meta.url).
       // Electron 39 ships Node 22.x which supports require() of ESM without TLA, so the
       // bundled main.cjs's `require('@anthropic-ai/claude-agent-sdk')` works.
-      "--external:@anthropic-ai/claude-agent-sdk",
+
       // Replace grammY's bundled polyfills (node-fetch@2 + abort-controller@3)
       // with native Node globals. esbuild otherwise renames the polyfill's
       // `class AbortSignal` to `_AbortSignal` to dodge collision with the

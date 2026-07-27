@@ -10,7 +10,7 @@
  * (getOrCreateForSession pattern), so commands don't need instance IDs.
  */
 
-import { tool } from '@anthropic-ai/claude-agent-sdk';
+import { defineTool } from './tool-definition.ts';
 import { z } from 'zod';
 import { executeBrowserToolCommand } from './browser-tool-runtime.ts';
 
@@ -241,7 +241,7 @@ export function createBrowserTools(options: BrowserToolsOptions) {
 
   return [
     // Single CLI-like tool for all browser actions
-    tool(
+    defineTool(
       'browser_tool',
       BROWSER_TOOL_DESCRIPTION,
       {
@@ -250,10 +250,10 @@ export function createBrowserTools(options: BrowserToolsOptions) {
           z.array(z.string()),
         ]).describe('Browser command as a string (e.g., "click @e1") or array (e.g., ["evaluate", "var x = 1; x + 2"]). Array mode preserves semicolons and whitespace in arguments.'),
       },
-      async (args) => {
+      async (args: Record<string, unknown>) => {
         try {
           const result = await executeBrowserToolCommand({
-            command: args.command,
+            command: args.command as string | string[],
             fns: getBrowserFns(),
             sessionId: options.sessionId,
           });

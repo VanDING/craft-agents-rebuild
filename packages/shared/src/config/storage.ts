@@ -1880,31 +1880,22 @@ function displayNameForMigratedModel(modelId: string): string {
 }
 
 function withUpdatedModelEntry(
-  connection: LlmConnection,
+  _connection: LlmConnection,
   entry: ModelDefinition | string,
   nextId: string,
 ): ModelDefinition | string {
   if (typeof entry === 'string') {
-    if (connection.providerType === 'anthropic' && nextId === OPUS_DEFAULT_ID) {
-      return { ...getModelById(OPUS_DEFAULT_ID)! };
-    }
     return nextId;
   }
 
   const nextEntry: ModelDefinition = { ...entry, id: nextId };
-  if (connection.providerType === 'anthropic' && nextId === OPUS_DEFAULT_ID) {
-    return { ...getModelById(OPUS_DEFAULT_ID)! };
-  }
   if (nextEntry.name && /Opus 4\.[56]/.test(nextEntry.name)) {
     nextEntry.name = displayNameForMigratedModel(nextId);
   }
   return nextEntry;
 }
 
-function modelEntryForDefault(connection: LlmConnection, modelId: string): ModelDefinition | string {
-  if (connection.providerType === 'anthropic' && modelId === OPUS_DEFAULT_ID) {
-    return { ...getModelById(OPUS_DEFAULT_ID)! };
-  }
+function modelEntryForDefault(_connection: LlmConnection, modelId: string): ModelDefinition | string {
   return modelId;
 }
 
@@ -1918,16 +1909,13 @@ function migrateLegacyOpusToDefaultOpus(config: StoredConfig): boolean {
   let changed = false;
 
   for (const connection of config.llmConnections) {
-    if (connection.providerType !== 'anthropic' && connection.providerType !== 'pi') continue;
+    if (connection.providerType !== 'pi') continue;
 
     if (connection.defaultModel) {
       let normalizedDefault = normalizeConnectionModelId(connection, connection.defaultModel);
       // The previous direct-Anthropic default was Opus 4.7. Move existing
       // direct-Anthropic defaults to Opus 4.8 while keeping 4.7 in the model list.
       // Pi stays on 4.7 until the current Pi catalog exposes 4.8.
-      if (connection.providerType === 'anthropic' && normalizedDefault === OPUS_FALLBACK_ID) {
-        normalizedDefault = OPUS_DEFAULT_ID;
-      }
       if (normalizedDefault !== connection.defaultModel) {
         connection.defaultModel = normalizedDefault;
         changed = true;
@@ -1985,10 +1973,9 @@ function migrateSonnet45ToSonnet46(config: StoredConfig): boolean {
   let changed = false;
 
   for (const connection of config.llmConnections) {
-    // Only migrate direct Anthropic connections (not compat/third-party)
-    if (connection.providerType !== 'anthropic') continue;
+    // Only migrate pi connections (not compat/third-party)
 
-    // Migrate defaultModel
+    if (connection.providerType !== 'pi') continue;
     if (connection.defaultModel === SONNET_45_ID) {
       connection.defaultModel = SONNET_46_ID;
       changed = true;
@@ -2129,6 +2116,13 @@ function migrateLegacyProviderTypes(config: StoredConfig): boolean {
       continue;
     }
 
+    // --- anthropic → pi ---
+    if (providerStr === 'anthropic') {
+      (connection as { providerType: LlmProviderType }).providerType = 'pi';
+      changed = true;
+      continue;
+    }
+
     // Forward: Pi+Bedrock connections need Bedrock-native IDs (pi-prefixed) for Pi SDK resolution
     if (connection.providerType === 'pi' && connection.piAuthProvider === 'amazon-bedrock') {
       if (connection.defaultModel) {
@@ -2173,13 +2167,13 @@ function migrateModelDefaultsToConnections(config: StoredConfig): boolean {
   if (!configAny.modelDefaults || !config.llmConnections) return false;
   let changed = false;
 
-  // Apply anthropic model default to the default anthropic connection
+  // Apply anthropic model default to the default pi connection
   if (configAny.modelDefaults.anthropic) {
     const defaultSlug = config.defaultLlmConnection;
     const anthropicConn = config.llmConnections.find(c =>
-      c.slug === defaultSlug && c.providerType === 'anthropic'
+      c.slug === defaultSlug && c.providerType === 'pi'
     ) || config.llmConnections.find(c =>
-      c.providerType === 'anthropic'
+      c.providerType === 'pi'
     );
     if (anthropicConn) {
       anthropicConn.defaultModel = configAny.modelDefaults.anthropic;
@@ -2370,9 +2364,9 @@ export function migrateLegacyLlmConnectionsConfig(): void {
       migrated = {
         slug: 'claude-max',
         name: 'Claude Max',
-        providerType: 'anthropic',
+        providerType: 'pi',
         authType: 'oauth',
-        models: getDefaultModelsForConnection('anthropic'),
+        models: getDefaultModelsForConnection('pi'),
         createdAt: Date.now(),
       };
     } else if (legacyAuthType === 'codex_oauth') {
@@ -2416,9 +2410,9 @@ export function migrateLegacyLlmConnectionsConfig(): void {
         migrated = {
           slug: 'anthropic-api',
           name: 'Anthropic (API Key)',
-          providerType: 'anthropic',
+          providerType: 'pi',
           authType: 'api_key',
-          models: getDefaultModelsForConnection('anthropic'),
+          models: getDefaultModelsForConnection('pi'),
           createdAt: Date.now(),
         };
       }

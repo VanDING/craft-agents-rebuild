@@ -21,7 +21,7 @@ import * as storage from '@/lib/local-storage'
 import { navigate, routes } from '@/lib/navigate'
 import { useOptionalAppShellContext } from '@/context/AppShellContext'
 import {
-  ANTHROPIC_MODELS,
+  MODEL_REGISTRY,
   getModelDisplayName,
   getModelShortName,
 } from '@config/models'
@@ -109,8 +109,8 @@ export function CompactModelSelector({
 
   const availableModels = React.useMemo(() => {
     if (connectionUnavailable) return []
-    if (!effectiveConnectionDetails) return ANTHROPIC_MODELS
-    return effectiveConnectionDetails.models || ANTHROPIC_MODELS
+    if (!effectiveConnectionDetails) return MODEL_REGISTRY
+    return effectiveConnectionDetails.models || MODEL_REGISTRY
   }, [effectiveConnectionDetails, connectionUnavailable])
 
   const currentModelDisplayName = React.useMemo(() => {
@@ -281,7 +281,7 @@ export function CompactModelSelector({
                       </button>
                       {isAuthenticated && isExpanded && (
                         <div className="pl-6 flex flex-col gap-0.5">
-                          {(conn.models || ANTHROPIC_MODELS).map(model => {
+                          {(conn.models || MODEL_REGISTRY).map(model => {
                             const modelId = typeof model === 'string' ? model : model.id
                             const modelName = typeof model === 'string'
                               ? stripPiPrefixForDisplay(getModelShortName(model))

@@ -4,12 +4,12 @@ import {
   mergeSessionScopedToolCallbacks,
   unregisterSessionScopedToolCallbacks,
 } from '../session-scoped-tools.ts';
-import { createClaudeContext } from '../claude-context.ts';
+import { createSessionContext } from '../session-context.ts';
 import { attachSessionSelfManagementBindings } from '../session-self-management-bindings.ts';
 import type { SessionToolContext, SessionInfo } from '@craft-agent/session-tools-core';
 import { SESSION_TOOL_REGISTRY } from '@craft-agent/session-tools-core';
 
-// Minimal noop callbacks for createClaudeContext
+// Minimal noop callbacks for createSessionContext
 const noopPlan = () => {};
 const noopAuth = () => {};
 
@@ -28,7 +28,7 @@ function makeSessionInfo(overrides: Partial<SessionInfo> = {}): SessionInfo {
 }
 
 function createBaseContext(sessionId: string): SessionToolContext {
-  return createClaudeContext({
+  return createSessionContext({
     sessionId,
     workspacePath: '/tmp/test-workspace',
     workspaceId: 'test-ws',
@@ -247,7 +247,7 @@ describe('Claude/Pi session self-management parity', () => {
       resolveStatusFn: (s) => ({ resolved: s, available: [] }),
     });
 
-    // Simulate Pi path: createClaudeContext + attachBindings
+    // Simulate Pi path: createSessionContext + attachBindings
     const piCtx = createBaseContext(sessionId);
     attachSessionSelfManagementBindings(piCtx, sessionId);
 

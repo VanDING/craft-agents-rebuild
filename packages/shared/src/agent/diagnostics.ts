@@ -2,16 +2,15 @@
  * Error diagnostics - runs quick checks to identify the specific cause
  * of a generic "process exited" error from the SDK.
  *
- * Provider-aware: routes checks based on providerType so non-Anthropic
- * sessions don't run Anthropic-specific credential/endpoint checks.
+ * Provider-agnostic: credential validation is provider-internal (Pi, Codex, Copilot
+ * handle auth themselves), so diagnostics focuses on captured API error codes and
+ * raw error messages that are universal across providers.
  */
 
 import { getLastApiError } from '../interceptor-common.ts';
-import { type AuthType, getDefaultLlmConnection, getLlmConnection } from '../config/storage.ts';
+import { type AuthType, getDefaultLlmConnection } from '../config/storage.ts';
 import { getCredentialManager } from '../credentials/index.ts';
-import { validateAnthropicConnection } from '../config/llm-validation.ts';
 import type { LlmProviderType } from '../config/llm-connections.ts';
-import { isAnthropicProvider } from '../config/llm-connections.ts';
 
 export type DiagnosticCode =
   | 'billing_error'         // HTTP 402 from API
@@ -134,7 +133,6 @@ function getProviderLabel(baseUrl: string): string {
 function getProviderLabelFromType(providerType?: LlmProviderType, baseUrl?: string): string {
   if (providerType) {
     switch (providerType) {
-      case 'anthropic': return 'Anthropic';
       case 'pi':
       case 'pi_compat': return 'Craft Agents Backend';
     }
@@ -218,76 +216,14 @@ async function checkWorkspaceToken(_workspaceId: string): Promise<CheckResult> {
   return { ok: true, detail: '✓ Workspace token: Present' };
 }
 
-/**
- * Validate an API key by making a minimal query through the Claude Agent SDK.
- * Uses validateAnthropicConnection() which runs query() with maxTurns:1.
- */
-async function validateApiKeyWithAnthropic(apiKey: string, baseUrl?: string | null, providerLabel: string = 'Anthropic'): Promise<CheckResult> {
-  try {
-    const { getDefaultSummarizationModel } = await import('../config/models.ts');
-    const model = getDefaultSummarizationModel();
-
-    const result = await validateAnthropicConnection({
-      model,
-      apiKey,
-      baseUrl: baseUrl || undefined,
-    });
-
-    if (result.success) {
-      return {
-        ok: true,
-        detail: '✓ API key: Valid',
-      };
-    }
-
-    const errorMsg = result.error || 'Unknown error';
-    const lowerMsg = errorMsg.toLowerCase();
-
-    // 401 = Invalid key
-    if (lowerMsg.includes('401') || lowerMsg.includes('authentication') || lowerMsg.includes('unauthorized')) {
-      return {
-        ok: false,
-        detail: '✗ API key: Invalid or expired',
-        failCode: 'invalid_credentials',
-        failTitle: 'Invalid API Key',
-        failMessage: `Your ${providerLabel} API key is invalid or has expired. Please update it in settings.`,
-      };
-    }
-
-    // 403 = Key valid but no permission
-    if (lowerMsg.includes('403') || lowerMsg.includes('permission') || lowerMsg.includes('forbidden')) {
-      return {
-        ok: false,
-        detail: '✗ API key: Insufficient permissions',
-        failCode: 'invalid_credentials',
-        failTitle: 'API Key Permission Error',
-        failMessage: `Your API key does not have permission to access the ${providerLabel} API. Check your dashboard.`,
-      };
-    }
-
-    // Other errors - don't fail diagnostics, just note them
-    return {
-      ok: true,
-      detail: `✓ API key: Validation skipped (${errorMsg.slice(0, 50)})`,
-    };
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
-    return {
-      ok: true,
-      detail: `✓ API key: Validation skipped (${msg.slice(0, 50)})`,
-    };
-  }
-}
 
 /** Check API key presence and validity */
 async function checkApiKey(providerLabel: string = 'Anthropic'): Promise<CheckResult> {
   try {
     // Resolve API key from the default LLM connection
     const defaultConnSlug = getDefaultLlmConnection();
-    const connection = defaultConnSlug ? getLlmConnection(defaultConnSlug) : null;
     const credManager = getCredentialManager();
     const apiKey = defaultConnSlug ? await credManager.getLlmApiKey(defaultConnSlug) : null;
-    const baseUrl = connection?.baseUrl ?? null;
 
     if (!apiKey) {
       return {
@@ -299,8 +235,8 @@ async function checkApiKey(providerLabel: string = 'Anthropic'): Promise<CheckRe
       };
     }
 
-    // Actually validate the key works
-    return await validateApiKeyWithAnthropic(apiKey, baseUrl, providerLabel);
+    // Key is present — validation is handled internally by the provider runtime
+    return { ok: true, detail: '✓ API key: Present' };
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     return { ok: true, detail: `✓ API key: Check failed (${msg})` };
@@ -388,12 +324,12 @@ async function checkMcpConnectivity(mcpUrl: string): Promise<CheckResult> {
  * Run error diagnostics to identify the specific cause of a failure.
  * All checks run in parallel with 5s timeouts.
  *
- * Provider-aware: only runs Anthropic-specific checks (API key validation,
- * endpoint availability) for Anthropic-based providers. Non-Anthropic
- * providers get the captured API error check plus the raw error details.
+ * Provider-agnostic: checks the captured API error code (most accurate
+ * source of truth) plus the raw error details. Credential validation is
+ * not performed here — Pi, Codex, and Copilot handle auth internally.
  */
 export async function runErrorDiagnostics(config: DiagnosticConfig): Promise<DiagnosticResult> {
-  const { authType, workspaceId, rawError, providerType, baseUrl } = config;
+  const { rawError, providerType, baseUrl } = config;
   const providerLabel = getProviderLabelFromType(providerType, baseUrl);
   const details: string[] = [];
   const defaultResult: CheckResult = { ok: true, detail: '? Check: Timeout' };
@@ -404,25 +340,6 @@ export async function runErrorDiagnostics(config: DiagnosticConfig): Promise<Dia
   // 0. FIRST: Check captured API error (most accurate source of truth)
   // This is provider-agnostic — HTTP status codes are universal.
   checks.push(withTimeout(checkCapturedApiError(providerLabel), 1000, defaultResult));
-
-  // Provider-specific checks: only run for Anthropic-based providers
-  // Codex, Copilot, and Pi handle auth internally — no env-var-based checks apply.
-  const isAnthropic = !providerType || isAnthropicProvider(providerType);
-
-  if (isAnthropic) {
-    // 1. API endpoint availability check (uses explicit baseUrl or env var)
-    checks.push(withTimeout(checkApiAvailability(baseUrl), 4000, defaultResult));
-
-    // 2. API key check with validation (only for api_key auth)
-    if (authType === 'api_key') {
-      checks.push(withTimeout(checkApiKey(providerLabel), 5000, defaultResult));
-    }
-
-    // 3. OAuth token check (only for oauth_token auth)
-    if (authType === 'oauth_token') {
-      checks.push(withTimeout(checkOAuthToken(providerLabel), 5000, defaultResult));
-    }
-  }
 
   // Run all checks in parallel
   const results = await Promise.all(checks);

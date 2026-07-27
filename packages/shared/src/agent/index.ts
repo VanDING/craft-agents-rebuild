@@ -1,11 +1,9 @@
 // Export ClaudeAgent (renamed from CraftAgent) and backward-compatible aliases
-export * from './claude-agent.ts';
 export * from './conversation-summary.ts';
 
 // Export PiAgent for direct use
 export { PiAgent, PiBackend } from './pi-agent.ts';
 export * from './errors.ts';
-export * from './options.ts';
 
 // Export session-scoped-tools - tools scoped to a specific session
 export {
@@ -164,9 +162,4 @@ export {
 // Export PowerShell validator root setter (for Electron startup on Windows)
 export { setPowerShellValidatorRoot } from './powershell-validator.ts';
 
-// WS2 keep-alive: shared flag resolver + pushable streaming-input utility.
-export {
-  resolveKeepBackgroundTasksAlive,
-  createPushableInputStream,
-  type PushableInputStream,
-} from './backend/claude/persistent-input.ts';
+export { resolveKeepBackgroundTasksAlive } from './core/keep-alive.ts';

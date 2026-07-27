@@ -14,7 +14,7 @@
  * All calls are delegated to the agent backend's queryLlm() implementation.
  */
 
-import { tool } from '@anthropic-ai/claude-agent-sdk';
+import { defineTool } from './tool-definition.ts';
 import { z } from 'zod';
 
 // Tool result type - matches what the SDK expects
@@ -560,7 +560,7 @@ export function createLLMTool(options: LLMToolOptions) {
   // sessionId captured in closure for potential future use (logging, rate limiting per session)
   const { sessionId: _sessionId } = options;
 
-  return tool(
+  return defineTool(
     'call_llm',
     `Invoke a secondary LLM for focused subtasks. Use for:
 - Cost optimization: use a smaller model for simple tasks (summarization, classification)
@@ -596,12 +596,12 @@ For large files (>2000 lines), use {path, startLine, endLine} to select a portio
       outputSchema: OutputSchemaParam.optional()
         .describe('Custom JSON Schema for structured output'),
     },
-    async (args) => {
+    async (args: Record<string, unknown>) => {
       // ========================================
       // VALIDATION PHASE
       // ========================================
 
-      if (!args.prompt?.trim()) {
+      if (!(args.prompt as string)?.trim()) {
         return errorResponse('Prompt is required and cannot be empty.');
       }
 
@@ -616,10 +616,10 @@ For large files (>2000 lines), use {path, startLine, endLine} to select a portio
 
       // --- Validate and resolve model against registry ---
       if (args.model) {
-        let modelDef = getModelById(args.model);
+        let modelDef = getModelById(args.model as string);
         if (!modelDef) {
-          modelDef = MODEL_REGISTRY.find(m => m.shortName.toLowerCase() === args.model!.toLowerCase())
-            || MODEL_REGISTRY.find(m => m.name.toLowerCase() === args.model!.toLowerCase());
+          modelDef = MODEL_REGISTRY.find(m => m.shortName.toLowerCase() === (args.model as string).toLowerCase())
+            || MODEL_REGISTRY.find(m => m.name.toLowerCase() === (args.model as string).toLowerCase());
           if (modelDef) {
             args.model = modelDef.id;
           } else {
@@ -652,9 +652,9 @@ For large files (>2000 lines), use {path, startLine, endLine} to select a portio
       const textParts: string[] = [];
       let totalContentBytes = 0;
 
-      if (args.attachments?.length) {
-        for (let i = 0; i < args.attachments.length; i++) {
-          const attachment = args.attachments[i]!;
+      if ((args.attachments as AttachmentInput[] | undefined)?.length) {
+        for (let i = 0; i < (args.attachments as AttachmentInput[]).length; i++) {
+          const attachment = (args.attachments as AttachmentInput[])[i]!;
           const result = await processAttachment(attachment, i, options.sessionPath);
 
           if (result.type === 'error') {
@@ -685,22 +685,22 @@ For large files (>2000 lines), use {path, startLine, endLine} to select a portio
         }
       }
 
-      textParts.push(args.prompt);
+      textParts.push(args.prompt as string);
 
       // ========================================
       // EXECUTE QUERY
       // ========================================
 
-      const model = args.model || getDefaultSummarizationModel();
-      const schema = args.outputSchema || (args.outputFormat ? OUTPUT_FORMATS[args.outputFormat] : null);
+      const model = (args.model as string) || getDefaultSummarizationModel();
+      const schema = (args.outputSchema as Record<string, unknown> | undefined) || ((args.outputFormat as string | undefined) ? OUTPUT_FORMATS[args.outputFormat as keyof typeof OUTPUT_FORMATS] : null);
 
       try {
         const result = await queryFn({
           prompt: textParts.join('\n\n'),
-          systemPrompt: args.systemPrompt || undefined,
+          systemPrompt: (args.systemPrompt as string | undefined) || undefined,
           model,
-          maxTokens: args.maxTokens,
-          temperature: args.temperature,
+          maxTokens: args.maxTokens as number | undefined,
+          temperature: args.temperature as number | undefined,
           outputSchema: schema ? (schema as Record<string, unknown>) : undefined,
         });
 

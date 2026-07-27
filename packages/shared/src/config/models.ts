@@ -89,7 +89,7 @@ export function normalizeDeprecatedModelId(modelId: string): string {
 /**
  * Provider identifier for AI backends.
  */
-export type ModelProvider = 'anthropic' | 'pi';
+export type ModelProvider = 'pi';
 
 /**
  * Full model definition with capabilities and costs.
@@ -127,7 +127,7 @@ export interface ModelDefinition {
  */
 export const MODEL_REGISTRY: ModelDefinition[] = [
   // ----------------------------------------
-  // Anthropic Claude Models
+  // Claude Models (served through Pi SDK)
   // ----------------------------------------
   {
     id: 'claude-opus-4-8',
@@ -135,7 +135,7 @@ export const MODEL_REGISTRY: ModelDefinition[] = [
     shortName: 'Opus',
     description: 'Most capable for complex work',
     descriptionKey: 'model.opusDesc',
-    provider: 'anthropic',
+    provider: 'pi',
     contextWindow: 1_000_000,
   },
   {
@@ -144,7 +144,7 @@ export const MODEL_REGISTRY: ModelDefinition[] = [
     shortName: 'Opus',
     description: 'Previous Opus generation',
     descriptionKey: 'model.opusDesc',
-    provider: 'anthropic',
+    provider: 'pi',
     contextWindow: 1_000_000,
   },
   {
@@ -153,7 +153,7 @@ export const MODEL_REGISTRY: ModelDefinition[] = [
     shortName: 'Sonnet',
     description: 'Best combination of speed and intelligence',
     descriptionKey: 'model.sonnetDesc',
-    provider: 'anthropic',
+    provider: 'pi',
     contextWindow: 1_000_000,
   },
   {
@@ -162,7 +162,7 @@ export const MODEL_REGISTRY: ModelDefinition[] = [
     shortName: 'Sonnet',
     description: 'Previous Sonnet generation',
     descriptionKey: 'model.sonnetDesc',
-    provider: 'anthropic',
+    provider: 'pi',
     contextWindow: 200_000,
   },
   {
@@ -171,7 +171,7 @@ export const MODEL_REGISTRY: ModelDefinition[] = [
     shortName: 'Haiku',
     description: 'Fastest for quick answers',
     descriptionKey: 'model.haikuDesc',
-    provider: 'anthropic',
+    provider: 'pi',
     contextWindow: 200_000,
   },
   {
@@ -180,7 +180,7 @@ export const MODEL_REGISTRY: ModelDefinition[] = [
     shortName: 'Fable',
     description: 'Next-generation model for complex work',
     descriptionKey: 'model.fableDesc',
-    provider: 'anthropic',
+    provider: 'pi',
     contextWindow: 1_000_000,
   },
 
@@ -203,16 +203,8 @@ export function getModelsByProvider(provider: ModelProvider): ModelDefinition[] 
   return MODEL_REGISTRY.filter(m => m.provider === provider);
 }
 
-/** All Anthropic Claude models */
-export const ANTHROPIC_MODELS = getModelsByProvider('anthropic');
-
-
-/**
- * Legacy compatibility export.
- * Used by existing code that imports MODELS (expects Claude models only).
- * @deprecated Use ANTHROPIC_MODELS or MODEL_REGISTRY instead
- */
-export const MODELS = ANTHROPIC_MODELS;
+/** All registered models (previously filtered to Claude-only). */
+export const MODELS = MODEL_REGISTRY;
 
 // ============================================
 // MODEL ID HELPERS (Derived from Registry)

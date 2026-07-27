@@ -55,8 +55,8 @@ function getUrls(domain: string) {
 
 export function getGitHubCopilotBaseUrl(token?: string, enterpriseDomain?: string): string {
   if (token) {
-    const match = token.match(/proxy-ep=([^;]+)/);
-    if (match) {
+    const match = token?.match(/proxy-ep=([^;]+)/);
+    if (match?.[1]) {
       const apiHost = match[1].replace(/^proxy\./, 'api.');
       return `https://${apiHost}`;
     }

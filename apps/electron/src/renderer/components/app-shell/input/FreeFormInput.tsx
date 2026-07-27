@@ -54,7 +54,7 @@ import { isMac } from '@/lib/platform'
 import { applySmartTypography } from '@/lib/smart-typography'
 import { AttachmentPreview } from '../AttachmentPreview'
 import { ImageSupportWarningBanner } from './ImageSupportWarningBanner'
-import { ANTHROPIC_MODELS, getModelShortName, getModelDisplayName, getModelContextWindow, type ModelDefinition } from '@config/models'
+import { MODEL_REGISTRY, getModelShortName, getModelDisplayName, getModelContextWindow, type ModelDefinition } from '@config/models'
 import {
   resolveEffectiveConnectionSlug,
   isCompatProvider,
@@ -361,10 +361,10 @@ export function FreeFormInput({
     const connection = llmConnections.find(c => c.slug === effectiveSlug)
 
     if (!connection) {
-      return ANTHROPIC_MODELS // Safety net — shouldn't happen
+      return MODEL_REGISTRY // Safety net — shouldn't happen
     }
 
-    return connection.models || ANTHROPIC_MODELS
+    return connection.models || MODEL_REGISTRY
   }, [llmConnections, currentConnection, workspaceDefaultConnection, connectionUnavailable])
 
   const availableThinkingLevels = THINKING_LEVELS
@@ -2184,7 +2184,7 @@ export function FreeFormInput({
                           {isAuthenticated && (
                             <StyledDropdownMenuSubContent className="min-w-[220px]">
                               {/* Show models for this connection - use provider-specific models as fallback */}
-                              {(conn.models || ANTHROPIC_MODELS).map((model) => {
+                              {(conn.models || MODEL_REGISTRY).map((model) => {
                                 const modelId = typeof model === 'string' ? model : model.id
                                 const modelName = typeof model === 'string'
                                   ? stripPiPrefixForDisplay(getModelShortName(model))

@@ -6,7 +6,6 @@
  */
 
 import { query, type Options } from '@anthropic-ai/claude-agent-sdk';
-import { getDefaultOptions } from '../agent/options.ts';
 import { getDefaultSummarizationModel } from '../config/models.ts';
 
 import { debug } from '../utils/debug.ts';
@@ -66,7 +65,6 @@ export async function validateMcpUrl(
 
   try {
     const options: Options = {
-      ...getDefaultOptions(),
       model: getDefaultSummarizationModel(),
       systemPrompt: SYSTEM_PROMPT,
       maxTurns: 1,

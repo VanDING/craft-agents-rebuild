@@ -9,7 +9,6 @@ import type {
 import type { LlmConnection } from '../../../config/storage.ts';
 import type { ModelFetchResult } from '../../../config/model-fetcher.ts';
 import type { CredentialManager } from '../../../credentials/manager.ts';
-import type { ResolvedBackendRuntimePaths } from './runtime-resolver.ts';
 
 export interface BackendRuntimePaths {
   copilotCli?: string;
@@ -18,6 +17,15 @@ export interface BackendRuntimePaths {
   node?: string;
   bridgeServer?: string;
   piServer?: string;
+}
+
+/**
+ * Resolved runtime paths with concrete file locations.
+ */
+export interface ResolvedBackendRuntimePaths {
+  piServerPath: string;
+  interceptorBundlePath: string;
+  nodeRuntimePath: string;
 }
 
 export interface BackendRuntimePayload extends Record<string, unknown> {
@@ -115,9 +123,9 @@ export function getBackendRuntime(config: BackendConfig): BackendRuntimePayload 
 
 export function getDefaultProviderType(provider: AgentProvider): LlmProviderType {
   switch (provider) {
-    case 'anthropic':
-      return 'anthropic';
     case 'pi':
+      return 'pi';
+    default:
       return 'pi';
   }
 }

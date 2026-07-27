@@ -1,106 +1,19 @@
 /**
- * Centralized LLM Connection Validation
+ * LLM Connection Validation
  *
- * Validates LLM connections by making a minimal query through the Claude Agent SDK.
- * Uses the same code path as actual agent sessions (query() with maxTurns:1).
- *
- * Follows the pattern established in ClaudeAgent.runMiniCompletion() — env-based
- * credential injection, no tools, minimal system prompt.
+ * Validates LLM connections by parsing error messages from LLM providers.
  */
-
-import { query } from '@anthropic-ai/claude-agent-sdk';
-import { getDefaultOptions } from '../agent/options.ts';
-import { debug } from '../utils/debug.ts';
-
-export interface LlmValidationConfig {
-  /** Model to test with */
-  model: string;
-  /** API key credential (x-api-key header) */
-  apiKey?: string;
-  /** OAuth/bearer token (Authorization: Bearer header) */
-  oauthToken?: string;
-  /** Custom base URL for Anthropic-compatible endpoints */
-  baseUrl?: string;
-}
 
 export interface LlmValidationResult {
   success: boolean;
   error?: string;
 }
-
-/**
- * Validate an Anthropic/Anthropic-compatible LLM connection.
- *
- * Makes a minimal query via the Claude Agent SDK to verify:
- * - Credentials are valid
- * - Model is accessible
- * - Endpoint is reachable
- *
- * @returns Validation result with parsed error message on failure
- */
-export async function validateAnthropicConnection(
-  config: LlmValidationConfig
-): Promise<LlmValidationResult> {
-  debug('[llm-validation] Validating connection', { model: config.model, hasApiKey: !!config.apiKey, hasOAuth: !!config.oauthToken, baseUrl: config.baseUrl });
-
-  // Build env overrides for credentials — avoids mutating process.env
-  const envOverrides: Record<string, string> = {};
-
-  if (config.apiKey) {
-    envOverrides.ANTHROPIC_API_KEY = config.apiKey;
-    // Clear OAuth to avoid conflicts
-    envOverrides.CLAUDE_CODE_OAUTH_TOKEN = '';
-  } else if (config.oauthToken) {
-    envOverrides.CLAUDE_CODE_OAUTH_TOKEN = config.oauthToken;
-    // Clear API key to avoid conflicts
-    envOverrides.ANTHROPIC_API_KEY = '';
-  }
-
-  if (config.baseUrl) {
-    envOverrides.ANTHROPIC_BASE_URL = config.baseUrl;
-  }
-
-  const abortController = new AbortController();
-
-  try {
-    const options = {
-      ...getDefaultOptions(envOverrides),
-      model: config.model,
-      maxTurns: 1,
-      abortController,
-      systemPrompt: 'Reply with OK.',
-      tools: [] as string[], // No tools
-      persistSession: false,
-    };
-
-    const q = query({ prompt: 'hi', options });
-
-    // Consume the query — we just need it to succeed or fail
-    for await (const msg of q) {
-      if (msg.type === 'assistant') {
-        // Check if the SDK reported an error on the assistant message
-        if (msg.error) {
-          abortController.abort();
-          return { success: false, error: parseValidationError(msg.error) };
-        }
-        // Got a successful response — connection works, abort early
-        abortController.abort();
-        break;
-      }
-    }
-
-    return { success: true };
-  } catch (error) {
-    abortController.abort();
-    const msg = error instanceof Error ? error.message : String(error);
-    debug('[llm-validation] Validation failed:', msg);
-    return { success: false, error: parseValidationError(msg) };
-  }
-}
-
 /**
  * Parse error messages into user-friendly descriptions.
  * Centralizes error message translation for all connection validation.
+ *
+ * @param msg - The raw error message to parse
+ * @returns A user-friendly error description
  */
 export function parseValidationError(msg: string): string {
   const lowerMsg = msg.toLowerCase();

@@ -1,5 +1,5 @@
 import { RPC_CHANNELS, type LlmConnectionSetup } from '@craft-agent/shared/protocol'
-import { getLlmConnections, getLlmConnection, addLlmConnection, updateLlmConnection, deleteLlmConnection, getDefaultLlmConnection, setDefaultLlmConnection, touchLlmConnection, isCompatProvider, isAnthropicProvider, getDefaultModelsForConnection, getDefaultModelForConnection, type LlmConnection, type LlmConnectionWithStatus, toBedrockNativeId, deriveBedrockRegionPrefix } from '@craft-agent/shared/config'
+import { getLlmConnections, getLlmConnection, addLlmConnection, updateLlmConnection, deleteLlmConnection, getDefaultLlmConnection, setDefaultLlmConnection, touchLlmConnection, isCompatProvider, getDefaultModelsForConnection, getDefaultModelForConnection, type LlmConnection, type LlmConnectionWithStatus, toBedrockNativeId, deriveBedrockRegionPrefix } from '@craft-agent/shared/config'
 import { getCredentialManager } from '@craft-agent/shared/credentials'
 import { setSetupDeferred } from '@craft-agent/shared/config/storage'
 import {
@@ -75,16 +75,15 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
         updates.baseUrl = setup.baseUrl?.trim() || undefined
 
         // Only mutate providerType for API key connections (not OAuth connections)
-        if (isAnthropicProvider(connection.providerType) && connection.authType !== 'oauth') {
+        // Base URL for Pi connections: configure as pi_compat when a custom endpoint is set
+        if (connection.authType !== 'oauth') {
           if (hasConfiguredBaseUrl) {
             updates.providerType = 'pi_compat'
             updates.authType = 'api_key_with_endpoint'
-            updates.customEndpoint = { api: 'anthropic-messages' }
+            updates.customEndpoint = { api: 'anthropic-messages' as const }
           } else {
-            updates.providerType = 'anthropic'
+            updates.providerType = 'pi'
             updates.authType = 'api_key'
-            updates.models = getDefaultModelsForConnection('anthropic')
-            updates.defaultModel = getDefaultModelForConnection('anthropic')
           }
         }
 

@@ -5,7 +5,8 @@
  * Each tool accepts { path, method, params } and auto-injects authentication.
  */
 
-import { createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk';
+import { createInProcessMcpServer } from '../mcp/sdk-mcp-server-factory.ts';
+import { defineTool } from '../agent/tool-definition.ts';
 import { z } from 'zod';
 import type { ApiConfig } from './types.ts';
 import { debug } from '../utils/debug.ts';
@@ -236,7 +237,7 @@ export function createApiTool(
 
   const description = buildToolDescription(config);
 
-  return tool(
+  return defineTool(
     toolName,
     description,
     {
@@ -245,8 +246,11 @@ export function createApiTool(
       params: z.record(z.string(), z.unknown()).optional().describe('Request body (POST/PUT/PATCH) or query parameters (GET). For non-JSON bodies, pass { _rawBody: "raw string content", _contentType: "text/plain" } — _rawBody is sent as-is without JSON encoding, _contentType defaults to text/plain if omitted'),
       _intent: z.string().optional().describe('REQUIRED: Describe what you are trying to accomplish with this API call (1-2 sentences)'),
     },
-    async (args) => {
-      const { path, method, params, _intent } = args;
+    async (args: Record<string, unknown>) => {
+      const path = args.path as string;
+      const method = args.method as 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
+      const params = args.params as Record<string, unknown> | undefined;
+      const _intent = args._intent as string | undefined;
 
       try {
         // Resolve credential — if a getter, call it to get a fresh credential.
@@ -357,12 +361,12 @@ export function createApiServer(
   credential: ApiCredentialSource,
   sessionPath?: string,
   summarize?: SummarizeCallback
-): ReturnType<typeof createSdkMcpServer> {
+): ReturnType<typeof createInProcessMcpServer> {
   debug(`[api-tools] Creating server for ${config.name}${sessionPath ? ` (session: ${sessionPath})` : ''}`);
 
   const apiTool = createApiTool(config, credential, sessionPath, summarize);
 
-  return createSdkMcpServer({
+  return createInProcessMcpServer({
     name: `api_${config.name}`,
     version: '1.0.0',
     tools: [apiTool],

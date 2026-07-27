@@ -74,7 +74,7 @@ import {
   SESSION_TOOL_REGISTRY,
   type ToolResult as SessionToolResult,
 } from '@craft-agent/session-tools-core';
-import { createClaudeContext, type SessionToolContext } from './claude-context.ts';
+import { createSessionContext, type SessionToolContext } from './session-context.ts';
 import { getPermissionModeDiagnostics } from './mode-manager.ts';
 
 // call_llm pre-execution pipeline
@@ -1483,7 +1483,7 @@ export class PiAgent extends BaseAgent {
     const workspacePath = this.config.workspace.rootPath;
     const workspaceId = this.config.workspace.id;
 
-    this._sessionToolContext = createClaudeContext({
+    this._sessionToolContext = createSessionContext({
       sessionId,
       workspacePath,
       workspaceId,

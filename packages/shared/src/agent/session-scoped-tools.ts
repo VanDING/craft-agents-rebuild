@@ -15,10 +15,11 @@
  * - call_llm (backend-specific, not in registry)
  */
 
-import { createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk';
+import { createInProcessMcpServer } from '../mcp/sdk-mcp-server-factory.ts';
+import { defineTool } from './tool-definition.ts';
 import { getSessionPlansPath, getSessionPath } from '../sessions/storage.ts';
 import { DOC_REFS } from '../docs/index.ts';
-import { createClaudeContext } from './claude-context.ts';
+import { createSessionContext } from './session-context.ts';
 import { basename } from 'node:path';
 
 // Import from session-tools-core: registry + schemas + base descriptions
@@ -168,7 +169,7 @@ function convertResult(result: ToolResult): { content: Array<{ type: 'text'; tex
 // query(), connect() is called again — but if the previous Query's subprocess hasn't
 // fully exited yet, _transport is still set and connect() throws
 // "Already connected to a transport". Creating a fresh server wrapper per query avoids this.
-const sessionToolsCache = new Map<string, ReturnType<typeof tool>[]>();
+const sessionToolsCache = new Map<string, any[]>();
 
 /**
  * Invalidate ALL session tool caches (e.g., when a global setting like browserToolEnabled changes).
@@ -218,14 +219,14 @@ export function getSessionScopedTools(
   sessionId: string,
   workspaceRootPath: string,
   workspaceId?: string
-): ReturnType<typeof createSdkMcpServer> {
+): ReturnType<typeof createInProcessMcpServer> {
   const cacheKey = `${sessionId}::${workspaceRootPath}`;
 
   // Return cached tools if available, but always create a fresh MCP server wrapper
   let tools: any[] | undefined = sessionToolsCache.get(cacheKey);
   if (!tools) {
-    // Create Claude context with full capabilities
-    const ctx = createClaudeContext({
+    // Create session context with full capabilities
+    const ctx = createSessionContext({
       sessionId,
       workspacePath: workspaceRootPath,
       workspaceId: workspaceId || basename(workspaceRootPath) || '',
@@ -248,7 +249,7 @@ export function getSessionScopedTools(
     // types (ZodType<string>) flow into Record<string, ZodType<unknown>>.
     function registryTool(name: string, schema: any) {
       const def = SESSION_TOOL_REGISTRY.get(name)!;
-      return tool(name, TOOL_DESCRIPTIONS[name] || def.description, schema, async (args: any) => {
+      return defineTool(name, TOOL_DESCRIPTIONS[name] || def.description, schema, async (args: any) => {
         const result = await def.handler!(ctx, args);
         return convertResult(result);
       }, def.readOnly ? { annotations: { readOnlyHint: true } } : undefined);
@@ -307,7 +308,7 @@ export function getSessionScopedTools(
 
   // Always create a fresh MCP server wrapper to avoid "Already connected to a transport"
   // race condition when queries are sent back-to-back (see comment on sessionToolsCache).
-  return createSdkMcpServer({
+  return createInProcessMcpServer({
     name: 'session',
     version: '1.0.0',
     tools,

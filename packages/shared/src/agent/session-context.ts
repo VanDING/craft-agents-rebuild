@@ -1,11 +1,11 @@
 /**
- * Claude Context Factory
+ * Session Context Factory
  *
- * Creates a SessionToolContext implementation for Claude with full access
+ * Creates a SessionToolContext implementation with full access
  * to Electron internals, credential managers, MCP validation, etc.
  *
  * This enables the shared handlers in session-tools-core to work with
- * Claude's full feature set.
+ * the full session feature set.
  */
 
 import { existsSync, readFileSync, writeFileSync, readdirSync, statSync, mkdirSync } from 'fs';
@@ -68,9 +68,9 @@ import { updatePreferences as updatePreferencesImpl } from '../config/preference
 export type { SessionToolContext, SessionToolCallbacks } from '@craft-agent/session-tools-core';
 
 /**
- * Options for creating a Claude context
+ * Options for creating a session context
  */
-export interface ClaudeContextOptions {
+export interface SessionContextOptions {
   sessionId: string;
   workspacePath: string;
   workspaceId: string;
@@ -79,7 +79,7 @@ export interface ClaudeContextOptions {
 }
 
 /**
- * Create a SessionToolContext for Claude with full capabilities.
+ * Create a SessionToolContext for session tools with full capabilities.
  *
  * This provides:
  * - Full file system access
@@ -88,7 +88,7 @@ export interface ClaudeContextOptions {
  * - MCP connection validation
  * - Icon management
  */
-export function createClaudeContext(options: ClaudeContextOptions): SessionToolContext {
+export function createSessionContext(options: SessionContextOptions): SessionToolContext {
   const { sessionId, workspacePath, workspaceId, onPlanSubmitted, onAuthRequest } = options;
 
   // File system implementation
@@ -232,7 +232,7 @@ export function createClaudeContext(options: ClaudeContextOptions): SessionToolC
       mkdirSync(feedbackDir, { recursive: true });
       const filePath = join(feedbackDir, `${feedback.id}.json`);
       writeFileSync(filePath, JSON.stringify(feedback, null, 2), 'utf-8');
-      debug('claude-context', `Developer feedback written to ${filePath}`);
+      debug('session-context', `Developer feedback written to ${filePath}`);
     },
     // Source management
     loadSourceConfig: (sourceSlug: string): SourceConfig | null => {

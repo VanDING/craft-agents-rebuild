@@ -4,7 +4,7 @@ import { toast } from 'sonner'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import { Spinner, LoadingIndicator, Markdown } from '@craft-agent/ui'
-import { ANTHROPIC_MODELS, DEFAULT_MODEL, getModelShortName } from '@config/models'
+import { MODEL_REGISTRY, DEFAULT_MODEL, getModelShortName } from '@config/models'
 import { useAtomValue, useStore } from 'jotai'
 import { useProjects } from '@/hooks/useProjects'
 import { sourcesAtom } from '@/atoms/sources'
@@ -52,7 +52,7 @@ const GENERATE_CLIENT_TIMEOUT_MS = 200_000
 // with an Anthropic fallback when nothing is connected yet.
 // ---------------------------------------------------------------------------
 const FALLBACK_MODEL_GROUPS: KanbanModelProviderGroup[] = [
-  { provider: 'anthropic', label: 'Anthropic', models: ANTHROPIC_MODELS.map((m) => ({ id: m.id, name: m.name })) },
+  { provider: 'anthropic', label: 'Anthropic', models: MODEL_REGISTRY.map((m) => ({ id: m.id, name: m.name })) },
 ]
 function resolveModelName(groups: KanbanModelProviderGroup[], id: string): string {
   for (const g of groups) {
