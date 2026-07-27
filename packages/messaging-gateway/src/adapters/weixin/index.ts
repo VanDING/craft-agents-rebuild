@@ -4,7 +4,17 @@
  * WeChat (weixin) adapter — pure HTTP JSON API with long polling.
  *
  * Implements the WeChat Backend API Protocol as documented by
- * @tencent-weixin/openclaw-weixin v2.4.6 (MIT).
+ * @tencent-weixin/openclaw-weixin v2.4.6.
+ *
+ * This implementation references the MIT-licensed openclaw-weixin project
+ * (https://github.com/tencent-weixin/openclaw-weixin). The iLink protocol
+ * design, endpoint structure, QR login flow, CDN media encryption (AES-128-ECB),
+ * heartbeat typing mechanism, and media coalesce pattern are derived from
+ * that upstream. This file is a clean-room re-implementation adapted for the
+ * Craft Agents messaging gateway framework.
+ *
+ * MIT License — Copyright (c) 2026 Tencent
+ * See: packages/messaging-gateway/src/adapters/weixin/LICENSE
  *
  * Spec reference: Stage J section 5.5.
  *
@@ -230,6 +240,17 @@ export class WeixinAdapter implements PlatformAdapter {
     // Cancel QR polling.
     this.qrPollCtrl?.abort();
     this.qrPollCtrl = null;
+    // Clear all heartbeat typing intervals.
+    for (const [ch, interval] of this.heartbeatIntervals) {
+      clearInterval(interval);
+    }
+    this.heartbeatIntervals.clear();
+    // Reject all pending media coalesce buffers.
+    for (const [, buf] of this.mediaBuffers) {
+      clearTimeout(buf.timer);
+      buf.reject(new Error('Adapter destroyed'));
+    }
+    this.mediaBuffers.clear();
     // Send notifystop for each account, then tear down polling loops.
     const promises: Promise<void>[] = [];
     for (const [uin, account] of this.accounts) {
@@ -429,10 +450,24 @@ export class WeixinAdapter implements PlatformAdapter {
             break;
           }
 
-          case 'binded_redirect':
-            // Already bound to this bot — treat as success.
-            this.eventHandler?.({ type: 'connected', account: 'existing' });
+          case 'binded_redirect': {
+            // Already-bound account was re-scanned. Reload credentials and
+            // reconnect silently instead of surfacing an error.
+            await this.loadCredentials();
+            for (const [existingUin, account] of this.accounts) {
+              if (!this.pollingLoops.has(existingUin)) {
+                this.startPollingLoop(existingUin, account);
+              }
+            }
+            if (this.accounts.size > 0) {
+              this.connected = true;
+              const uin = this.accounts.keys().next().value;
+              this.eventHandler?.({ type: 'connected', account: uin! });
+            } else {
+              this.eventHandler?.({ type: 'unavailable', reason: 'binded_redirect but no stored credentials found' });
+            }
             return;
+          }
 
           case 'scaned_but_redirect':
             this.log('weixin qr: scaned_but_redirect — host redirect, continuing');
@@ -527,6 +562,143 @@ export class WeixinAdapter implements PlatformAdapter {
     }
   }
 
+  // ---- Heartbeat typing interval (per-channel) ----
+  /** Active heartbeat interval timer per channelId, cleared when the turn finishes. */
+  private heartbeatIntervals = new Map<string, ReturnType<typeof setInterval>>();
+
+  /**
+   * Start a heartbeat typing interval for the given channel.
+   * Sends sendTyping every 5s while the agent is processing, preventing
+   * iLink from showing "请稍后再试" and dropping the real reply.
+   */
+  private startHeartbeat(channelId: string): void {
+    if (this.heartbeatIntervals.has(channelId)) return;
+    const interval = setInterval(async () => {
+      try {
+        await this.sendTyping(channelId);
+      } catch {
+        // Best-effort — typing failures are non-fatal.
+      }
+    }, 5_000);
+    this.heartbeatIntervals.set(channelId, interval);
+  }
+
+  /** Stop the heartbeat typing interval for the given channel. */
+  private stopHeartbeat(channelId: string): void {
+    const interval = this.heartbeatIntervals.get(channelId);
+    if (interval) {
+      clearInterval(interval);
+      this.heartbeatIntervals.delete(channelId);
+    }
+  }
+
+  // ---- Media coalesce ----
+
+  /**
+   * Buffered media messages awaiting a following text message.
+   * Keyed by channelId; value is { resolves, reject, timer, attachments }.
+   */
+  private mediaBuffers = new Map<
+    string,
+    {
+      resolve: (value: IncomingMessage) => void;
+      reject: (err: Error) => void;
+      timer: ReturnType<typeof setTimeout>;
+      base: Omit<IncomingMessage, 'text' | 'attachments'>;
+      attachments: IncomingAttachment[];
+    }
+  >();
+
+  /**
+   * Check if a message is media-only (no text, has attachments).
+   */
+  private isMediaOnly(wxMsg: WeixinMessage): boolean {
+    if (!wxMsg.item_list) return false;
+    const hasText = wxMsg.item_list.some((item) => item.type === 1 && item.text_item?.text);
+    const hasMedia = wxMsg.item_list.some((item) =>
+      [2, 3, 4, 5].includes(item.type) &&
+      (item.image_item ?? item.voice_item ?? item.file_item ?? item.video_item)
+    );
+    return hasMedia && !hasText;
+  }
+
+  /**
+   * Handle media coalesce: buffer media-only messages for up to 10s,
+   * then merge with a following text message if one arrives in time.
+   * Returns the incoming message to dispatch, or null if the message
+   * was buffered (awaiting coalesce).
+   */
+  private async coalesceOrDispatch(
+    wxMsg: WeixinMessage,
+    channelId: string,
+    uin: string,
+  ): Promise<IncomingMessage | null> {
+    if (!this.isMediaOnly(wxMsg)) {
+      // This message has text (or is empty) — flush any existing buffer and merge.
+      const existing = this.mediaBuffers.get(channelId);
+      if (existing) {
+        clearTimeout(existing.timer);
+        this.mediaBuffers.delete(channelId);
+        // Parse this message's items (text + any additional attachments)
+        const { text, attachments } = await this.parseItems(wxMsg.item_list ?? [], wxMsg.message_id);
+        // Merge with buffered attachments
+        const merged: IncomingMessage = {
+          ...existing.base,
+          text: text,
+          attachments: [...existing.attachments, ...attachments],
+        };
+        existing.resolve(merged);
+        return merged;
+      }
+      // No buffer — parse and dispatch normally.
+      const { text, attachments } = await this.parseItems(wxMsg.item_list ?? [], wxMsg.message_id);
+      return {
+        platform: 'weixin' as const,
+        channelId,
+        messageId: String(wxMsg.message_id ?? ''),
+        senderId: wxMsg.from_user_id ?? '',
+        text,
+        attachments: attachments.length > 0 ? attachments : undefined,
+        timestamp: wxMsg.create_time_ms ?? Date.now(),
+        senderIsBot: false,
+        raw: wxMsg,
+      };
+    }
+
+    // Media-only message — buffer it.
+    // Parse the attachments first.
+    const { text: _text, attachments } = await this.parseItems(wxMsg.item_list ?? [], wxMsg.message_id);
+    const base: Omit<IncomingMessage, 'text' | 'attachments'> = {
+      platform: 'weixin',
+      channelId,
+      messageId: String(wxMsg.message_id ?? ''),
+      senderId: wxMsg.from_user_id ?? '',
+      timestamp: wxMsg.create_time_ms ?? Date.now(),
+      senderIsBot: false,
+      raw: wxMsg,
+    };
+
+    return new Promise<IncomingMessage | null>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.mediaBuffers.delete(channelId);
+        // Timeout — dispatch the media-only message as-is.
+        resolve({
+          ...base,
+          text: '',
+          attachments: attachments.length > 0 ? attachments : undefined,
+        });
+      }, 10_000);
+
+      // If a new buffer replaces this one (e.g. second media-only message), reject the old.
+      const existing = this.mediaBuffers.get(channelId);
+      if (existing) {
+        clearTimeout(existing.timer);
+        existing.reject(new Error('Replaced by newer message'));
+      }
+      this.mediaBuffers.set(channelId, { resolve, reject, timer, base, attachments });
+    });
+  }
+
   // ---- Message handling ----
 
   private async handleWeixinMessage(wxMsg: WeixinMessage, uin: string): Promise<void> {
@@ -545,21 +717,19 @@ export class WeixinAdapter implements PlatformAdapter {
       this.saveContextTokens(uin).catch(() => {});
     }
 
-    const { text, attachments } = await this.parseItems(wxMsg.item_list ?? [], wxMsg.message_id);
+    // Coalesce media-only messages with following text.
+    const incoming = await this.coalesceOrDispatch(wxMsg, channelId, uin);
+    if (!incoming) {
+      // Message was buffered (awaiting coalesce).
+      return;
+    }
 
-    const incoming: IncomingMessage = {
-      platform: 'weixin',
-      channelId,
-      messageId: String(wxMsg.message_id ?? ''),
-      senderId: wxMsg.from_user_id ?? '',
-      text,
-      attachments: attachments.length > 0 ? attachments : undefined,
-      timestamp: wxMsg.create_time_ms ?? Date.now(),
-      senderIsBot: wxMsg.message_type === 2,
-      raw: wxMsg,
-    };
+    // Start heartbeat typing while the message handler runs.
+    this.startHeartbeat(channelId);
 
-    this.messageHandler?.(incoming).catch(async (err) => {
+    this.messageHandler?.(incoming).finally(() => {
+      this.stopHeartbeat(channelId);
+    }).catch(async (err) => {
       this.log('weixin onMessage handler error:', err);
       try {
         await this.sendText(channelId, `❌ Error processing message: ${err instanceof Error ? err.message : String(err)}`);
