@@ -8,6 +8,7 @@
 import type { ModelDefinition } from '@craft-agent/shared/config/models'
 import {
   type LlmConnection,
+  type LlmProviderType,
   type CustomEndpointApi,
   getDefaultModelsForConnection,
   getDefaultModelForConnection,
@@ -53,7 +54,7 @@ export function parseTestConnectionError(msg: string): string {
  * Guard against ambiguous Pi custom endpoint tests where no provider routing is selected.
  */
 export function validateSetupTestInput(params: {
-  provider: 'anthropic' | 'pi'
+  provider: LlmProviderType
   baseUrl?: string
   piAuthProvider?: string
 }): { valid: true } | { valid: false; error: string } {
@@ -139,13 +140,14 @@ export const BUILT_IN_CONNECTION_TEMPLATES: Record<string, {
 }> = {
   'anthropic-api': {
     name: (h) => h ? 'Custom Anthropic-Compatible' : 'Anthropic (API Key)',
-    providerType: (h) => h ? 'pi_compat' : 'anthropic',
+    providerType: (h) => h ? 'pi_compat' : 'pi' as LlmProviderType,
     authType: (h) => h ? 'api_key_with_endpoint' : 'api_key',
   },
   'claude-max': {
     name: 'Claude Max',
-    providerType: 'anthropic',
+    providerType: 'pi',
     authType: 'oauth',
+    piAuthProvider: 'anthropic',
   },
   'chatgpt-plus': {
     name: 'ChatGPT Plus',

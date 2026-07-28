@@ -40,9 +40,9 @@ export function apiSetupMethodToConnectionTypes(method: ApiSetupMethod): {
 } {
   switch (method) {
     case 'claude_oauth':
-      return { providerType: 'anthropic', authType: 'oauth' };
+      return { providerType: 'pi', authType: 'oauth' };
     case 'anthropic_api_key':
-      return { providerType: 'anthropic', authType: 'api_key' };
+      return { providerType: 'pi', authType: 'api_key' };
     case 'pi_chatgpt_oauth':
       return { providerType: 'pi', authType: 'oauth' };
     case 'pi_copilot_oauth':
@@ -204,14 +204,14 @@ export function APISetupStep({
       name: t("onboarding.apiSetup.claudeProMax"),
       description: t("onboarding.apiSetup.claudeProMaxDesc"),
       icon: API_SETUP_ICONS.claude_oauth,
-      providerType: 'anthropic',
+      providerType: 'pi',
     },
     {
       id: 'anthropic_api_key',
       name: t("onboarding.apiSetup.anthropicApiKey"),
       description: t("onboarding.apiSetup.anthropicApiKeyDesc"),
       icon: API_SETUP_ICONS.anthropic_api_key,
-      providerType: 'anthropic',
+      providerType: 'pi',
     },
     {
       id: 'pi_chatgpt_oauth',

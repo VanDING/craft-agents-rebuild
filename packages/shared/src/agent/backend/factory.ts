@@ -320,7 +320,7 @@ export function resolveBackendContext(args: {
  * Keeps provider-specific hint mapping out of Electron main IPC handlers.
  */
 export function resolveSetupTestConnectionHint(args: {
-  provider: AgentProvider;
+  provider: LlmProviderType;
   baseUrl?: string;
   piAuthProvider?: string;
   customEndpoint?: CustomEndpointConfig;

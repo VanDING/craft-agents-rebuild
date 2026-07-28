@@ -14,6 +14,7 @@
 import { z } from 'zod';
 import type { ZodObject } from 'zod';
 import type { ToolResult } from './types.ts';
+import type { SessionToolContext } from './context.ts';
 
 // Handlers
 import { handleSubmitPlan } from './handlers/submit-plan.ts';

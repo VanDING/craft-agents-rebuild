@@ -21,8 +21,8 @@ describe('validateModelList', () => {
 
   it('accepts ModelDefinition[] with a matching default', () => {
     const models: ModelDefinition[] = [
-      { id: 'claude-sonnet-4-6', name: 'Sonnet 4.6', shortName: 'Sonnet', description: '', provider: 'anthropic', contextWindow: 200000 },
-      { id: 'claude-haiku-4-5', name: 'Haiku 4.5', shortName: 'Haiku', description: '', provider: 'anthropic', contextWindow: 200000 },
+      { id: 'claude-sonnet-4-6', name: 'Sonnet 4.6', shortName: 'Sonnet', description: '', provider: 'pi', contextWindow: 200000 },
+      { id: 'claude-haiku-4-5', name: 'Haiku 4.5', shortName: 'Haiku', description: '', provider: 'pi', contextWindow: 200000 },
     ]
     const result = validateModelList(models, 'claude-haiku-4-5')
     expect(result.valid).toBe(true)
@@ -54,7 +54,7 @@ describe('validateModelList', () => {
 
   it('auto-selects first ModelDefinition.id when default is undefined', () => {
     const models: ModelDefinition[] = [
-      { id: 'def-first', name: 'First', shortName: 'F', description: '', provider: 'anthropic', contextWindow: 200000 },
+      { id: 'def-first', name: 'First', shortName: 'F', description: '', provider: 'pi', contextWindow: 200000 },
     ]
     const result = validateModelList(models, undefined)
     expect(result.valid).toBe(true)
@@ -75,7 +75,7 @@ describe('createBuiltInConnection', () => {
   it('creates anthropic-api with correct defaults', () => {
     const conn = createBuiltInConnection('anthropic-api')
     expect(conn.slug).toBe('anthropic-api')
-    expect(conn.providerType).toBe('anthropic')
+    expect(conn.providerType).toBe('pi')
     expect(conn.authType).toBe('api_key')
     expect(conn.name).toBe('Anthropic (API Key)')
   })
@@ -89,7 +89,7 @@ describe('createBuiltInConnection', () => {
 
   it('creates claude-max with oauth', () => {
     const conn = createBuiltInConnection('claude-max')
-    expect(conn.providerType).toBe('anthropic')
+    expect(conn.providerType).toBe('pi')
     expect(conn.authType).toBe('oauth')
   })
 
@@ -103,7 +103,7 @@ describe('createBuiltInConnection', () => {
   it('handles numeric suffix slugs (anthropic-api-2) by deriving from base template', () => {
     const conn = createBuiltInConnection('anthropic-api-2')
     expect(conn.slug).toBe('anthropic-api-2')
-    expect(conn.providerType).toBe('anthropic')
+    expect(conn.providerType).toBe('pi')
     expect(conn.name).toBe('Anthropic (API Key) 2')
   })
 
@@ -158,13 +158,6 @@ describe('validateSetupTestInput', () => {
     expect(result.valid).toBe(true)
   })
 
-  it('accepts anthropic custom endpoint without piAuthProvider', () => {
-    const result = validateSetupTestInput({
-      provider: 'anthropic',
-      baseUrl: 'https://custom.endpoint.com',
-    })
-    expect(result.valid).toBe(true)
-  })
 })
 
 // ============================================================

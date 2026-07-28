@@ -6,6 +6,7 @@ import {
   resolveSetupTestConnectionHint,
   testBackendConnection,
   validateStoredBackendConnection,
+  type AgentProvider,
 } from '@craft-agent/shared/agent/backend'
 import { getModelRefreshService } from '@craft-agent/server-core/model-fetchers'
 import { parseTestConnectionError, createBuiltInConnection, validateModelList, piAuthProviderDisplayName, validateSetupTestInput, setupTestRequiresApiKey, resolveCustomEndpointSetup } from '@craft-agent/server-core/domain'
@@ -332,9 +333,9 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
     const startedAt = Date.now()
     try {
       const testModel = model || getDefaultModelForConnection(provider, piAuthProvider)
-      deps.platform.logger?.info(`[testLlmConnectionSetup] Resolved model: ${testModel}`)
+      const agentProvider: AgentProvider = 'pi'
       const result = await testBackendConnection({
-        provider,
+        provider: agentProvider,
         apiKey: trimmedKey,
         allowEmptyApiKey,
         model: testModel,

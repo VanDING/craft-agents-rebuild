@@ -59,6 +59,10 @@ interface TopBarProps {
   onAddBrowserPanel: () => void
   /** When true, hides controls that don't apply in compact/mobile layout */
   isCompact?: boolean
+  /** Current active view: 'list' (sessions) or 'board' (kanban) */
+  currentView?: 'list' | 'board'
+  /** Navigate to a view when the user clicks a list/board button */
+  onNavigateToView?: (view: 'list' | 'board') => void
 }
 
 export function TopBar({
@@ -84,7 +88,9 @@ export function TopBar({
   onAddSessionPanel,
   onAddBrowserPanel,
   isCompact,
-}: TopBarProps) {
+  currentView,
+  onNavigateToView,
+ }: TopBarProps) {
   const { t } = useTranslation()
   const [maxVisibleBrowserBadges, setMaxVisibleBrowserBadges] = useState(3)
   const rightSlotRef = useRef<HTMLDivElement | null>(null)
@@ -227,7 +233,27 @@ export function TopBar({
         <div className="min-w-0">
           <BrowserTabStrip activeSessionId={activeSessionId} maxVisibleBadges={maxVisibleBrowserBadges} />
         </div>
-        <DropdownMenu>
+        {onNavigateToView && (
+          <div className="inline-flex items-center gap-0.5 rounded-lg border border-border/60 bg-foreground/[0.02] p-0.5">
+            <TopBarButton
+              aria-label={t('kanban.list')}
+              isActive={currentView === 'list'}
+              onClick={() => onNavigateToView('list')}
+              className="h-[22px] w-[22px] rounded-md"
+            >
+              <Icons.List className="h-3.5 w-3.5" strokeWidth={2} />
+            </TopBarButton>
+            <TopBarButton
+              aria-label={t('kanban.board')}
+              isActive={currentView === 'board'}
+              onClick={() => onNavigateToView('board')}
+              className="h-[22px] w-[22px] rounded-md"
+            >
+              <Icons.LayoutGrid className="h-3.5 w-3.5" strokeWidth={2} />
+            </TopBarButton>
+          </div>
+        )}
+         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <TopBarButton aria-label={t("menu.addPanelMenu")} className="ml-1 h-[26px] w-[26px] rounded-lg">
               <Icons.Plus className="h-4 w-4 text-foreground/50" strokeWidth={1.5} />

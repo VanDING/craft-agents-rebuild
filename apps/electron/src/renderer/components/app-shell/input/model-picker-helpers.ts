@@ -42,12 +42,12 @@ export function groupConnectionsByProvider<T extends LlmConnection>(
     'Craft Agents Backend': [],
   }
   for (const conn of connections) {
-    const provider = conn.providerType || 'anthropic'
-    if (provider === 'anthropic') {
+    const provider = conn.providerType || 'pi'
+    if (provider === 'pi') {
       groups['Anthropic'].push(conn)
     } else if (provider === 'pi_compat' && isLocalConnection(conn)) {
       groups['Local'].push(conn)
-    } else if (provider === 'pi' || provider === 'pi_compat') {
+    } else if (provider === 'pi_compat') {
       groups['Craft Agents Backend'].push(conn)
     }
   }

@@ -121,10 +121,12 @@ export function getBackendRuntime(config: BackendConfig): BackendRuntimePayload 
   return (config.runtime ?? {}) as BackendRuntimePayload;
 }
 
-export function getDefaultProviderType(provider: AgentProvider): LlmProviderType {
+export function getDefaultProviderType(provider: LlmProviderType): LlmProviderType {
   switch (provider) {
     case 'pi':
       return 'pi';
+    case 'pi_compat':
+      return 'pi_compat';
     default:
       return 'pi';
   }

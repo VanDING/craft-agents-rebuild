@@ -237,7 +237,6 @@ function ConnectionRow({ connection, isLastConnection, onRenameClick, onDelete, 
     const provider = connection.providerType || connection.type
     const isSubscription = connection.authType === 'oauth'
     switch (provider) {
-      case 'anthropic': parts.push(isSubscription ? 'Anthropic Subscription' : 'Anthropic API'); break
       case 'pi': {
         // Show upstream provider name for API key connections (e.g. "Google AI Studio")
         const piLabel = !isSubscription && connection.piAuthProvider
@@ -259,8 +258,7 @@ function ConnectionRow({ connection, isLastConnection, onRenameClick, onDelete, 
       let endpoint = connection.baseUrl
       // Use default endpoints for standard providers if no custom baseUrl
       if (!endpoint) {
-        if (provider === 'anthropic') endpoint = 'https://api.anthropic.com'
-        else if (provider === 'pi' && connection.piAuthProvider) {
+        if (provider === 'pi' && connection.piAuthProvider) {
           endpoint = piBaseUrl
         }
       }
@@ -568,8 +566,7 @@ function WorkspaceOverrideCard({ workspace, llmConnections, onSettingsChange }: 
                   ...llmConnections.map((conn) => ({
                     value: conn.slug,
                     label: conn.name,
-                    description: conn.providerType === 'anthropic' ? 'Anthropic' :
-                                 conn.providerType === 'pi' ? 'Craft Agents Backend' :
+                    description: conn.providerType === 'pi' ? 'Craft Agents Backend' :
                                  conn.providerType || 'Unknown',
                   })),
                 ]}
@@ -1054,8 +1051,7 @@ export default function AiSettingsPage() {
                     options={llmConnections.map((conn) => ({
                       value: conn.slug,
                       label: conn.name,
-                      description: conn.providerType === 'anthropic' ? 'Anthropic API' :
-                                   conn.providerType === 'pi' ? 'Craft Agents Backend' :
+                      description: conn.providerType === 'pi' ? 'Craft Agents Backend' :
                                    conn.providerType === 'pi_compat' ? (conn.baseUrl?.toLowerCase().includes('manifest.build') ? 'Manifest' : 'Craft Agents Backend Compatible') :
                                    conn.providerType || 'Unknown',
                     }))}

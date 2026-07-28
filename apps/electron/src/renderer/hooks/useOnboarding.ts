@@ -16,6 +16,7 @@ import type {
   ApiSetupMethod,
 } from '@/components/onboarding'
 import type { ProviderChoice } from '@/components/onboarding/ProviderSelectStep'
+import type { LlmProviderType } from '@craft-agent/shared/config/llm-connections'
 import type { LocalModelSubmitData } from '@/components/onboarding/LocalModelStep'
 import type { ApiKeySubmitData } from '@/components/apisetup'
 import type { CustomEndpointConfig } from '@config/llm-connections'
@@ -451,7 +452,7 @@ export function useOnboarding({
 
       // Validate connection by spawning a lightweight subprocess test.
       // Custom endpoint protocol routes through PiAgent at runtime, so test with Pi too.
-      const setupTestProvider = data.customEndpoint ? 'pi' : (isPiApiKeyFlow ? 'pi' : 'anthropic')
+      const setupTestProvider: LlmProviderType = 'pi'
       const testResult = await window.electronAPI.testLlmConnectionSetup({
         provider: setupTestProvider,
         apiKey: data.apiKey,
