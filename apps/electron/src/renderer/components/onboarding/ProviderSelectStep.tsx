@@ -1,18 +1,21 @@
 import { useTranslation } from "react-i18next"
 import { cn } from "@/lib/utils"
-import { Key, Monitor } from "lucide-react"
+import { Key, Monitor, Network } from "lucide-react"
 import { CraftAgentsSymbol } from "@/components/icons/CraftAgentsSymbol"
 import { StepFormLayout } from "./primitives"
 
 import claudeIcon from "@/assets/provider-icons/claude.svg"
 import openaiIcon from "@/assets/provider-icons/openai.svg"
 import copilotIcon from "@/assets/provider-icons/copilot.svg"
+import xaiIcon from "@/assets/provider-icons/xai.svg"
+import openrouterIcon from "@/assets/provider-icons/openrouter.svg"
+import kimiIcon from "@/assets/provider-icons/kimi.svg"
 
 /**
  * The high-level provider choice the user makes on first launch.
  * This maps to one or more ApiSetupMethods downstream.
  */
-export type ProviderChoice = 'claude' | 'chatgpt' | 'copilot' | 'api_key' | 'local'
+export type ProviderChoice = 'claude' | 'chatgpt' | 'copilot' | 'xai' | 'openrouter' | 'kimi' | 'radius' | 'api_key' | 'local'
 
 interface ProviderOption {
   id: ProviderChoice
@@ -22,11 +25,15 @@ interface ProviderOption {
 }
 
 const PROVIDER_ICONS: Record<ProviderChoice, React.ReactNode> = {
-  claude: <img src={claudeIcon} alt="" className="size-5 rounded-[3px]" />,
-  chatgpt: <img src={openaiIcon} alt="" className="size-5 rounded-[3px]" />,
-  copilot: <img src={copilotIcon} alt="" className="size-5 rounded-[3px]" />,
-  api_key: <Key className="size-5" />,
-  local: <Monitor className="size-5" />,
+  claude: <img src={claudeIcon} alt="" className="size-6 rounded-[4px]" />,
+  chatgpt: <img src={openaiIcon} alt="" className="size-6 rounded-[4px]" />,
+  copilot: <img src={copilotIcon} alt="" className="size-6 rounded-[4px]" />,
+  xai: <img src={xaiIcon} alt="" className="size-6 rounded-[4px]" />,
+  openrouter: <img src={openrouterIcon} alt="" className="size-6" />,
+  kimi: <img src={kimiIcon} alt="" className="size-6" />,
+  radius: <Network className="size-6" />,
+  api_key: <Key className="size-6" />,
+  local: <Monitor className="size-6" />,
 }
 
 interface ProviderSelectStepProps {
@@ -65,6 +72,30 @@ export function ProviderSelectStep({ onSelect, onSkip }: ProviderSelectStepProps
       icon: PROVIDER_ICONS.copilot,
     },
     {
+      id: 'xai',
+      name: t("onboarding.providerSelect.xai"),
+      description: t("onboarding.providerSelect.xaiDesc"),
+      icon: PROVIDER_ICONS.xai,
+    },
+    {
+      id: 'openrouter',
+      name: t("onboarding.providerSelect.openrouter"),
+      description: t("onboarding.providerSelect.openrouterDesc"),
+      icon: PROVIDER_ICONS.openrouter,
+    },
+    {
+      id: 'kimi',
+      name: t("onboarding.providerSelect.kimi"),
+      description: t("onboarding.providerSelect.kimiDesc"),
+      icon: PROVIDER_ICONS.kimi,
+    },
+    {
+      id: 'radius',
+      name: t("onboarding.providerSelect.radius"),
+      description: t("onboarding.providerSelect.radiusDesc"),
+      icon: PROVIDER_ICONS.radius,
+    },
+    {
       id: 'api_key',
       name: t("onboarding.providerSelect.otherProvider"),
       description: 'Anthropic, AWS Bedrock, OpenRouter, Google or any compatible provider.',
@@ -87,28 +118,27 @@ export function ProviderSelectStep({ onSelect, onSkip }: ProviderSelectStepProps
       }
       title={t("onboarding.providerSelect.title")}
       description={t("onboarding.providerSelect.description")}
-    >
-      <div className="space-y-2 sm:space-y-3">
+      className="max-w-[42rem]">
+      <div className="grid grid-cols-3 gap-3">
         {PROVIDER_OPTIONS.map((option) => (
           <button
             key={option.id}
             onClick={() => onSelect(option.id)}
             className={cn(
-              "flex w-full items-center gap-3 rounded-xl bg-foreground-2 p-3 text-left transition-all",
-              "sm:items-start sm:gap-4 sm:p-4",
+              "flex flex-col items-center gap-2 rounded-xl bg-foreground-2 p-4 text-center transition-all",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-              "hover:bg-foreground/[0.02] shadow-minimal",
+              "hover:bg-foreground/[0.02] shadow-minimal cursor-pointer"
             )}
           >
             {/* Icon */}
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+            <div className="flex size-12 items-center justify-center rounded-lg bg-muted text-muted-foreground">
               {option.icon}
             </div>
 
             {/* Content */}
-            <div className="flex-1 min-w-0">
-              <span className="font-medium text-sm">{option.name}</span>
-              <p className="mt-0 hidden sm:block text-xs text-muted-foreground">
+            <div className="min-w-0">
+              <span className="block font-medium text-sm">{option.name}</span>
+              <p className="mt-1 text-xs text-muted-foreground leading-snug">
                 {option.description}
               </p>
             </div>

@@ -802,9 +802,19 @@ export default function AiSettingsPage() {
     apiSetupOnboarding.reset()
 
     if (connection.authType === 'oauth') {
-      const method = connection.providerType === 'pi'
-                   ? (connection.piAuthProvider === 'github-copilot' ? 'pi_copilot_oauth' : 'pi_chatgpt_oauth')
-                   : 'claude_oauth'
+      const piAuth = connection.piAuthProvider
+      let method: ApiSetupMethod
+      if (connection.providerType === 'pi') {
+        if (piAuth === 'github-copilot') method = 'pi_copilot_oauth'
+        else if (piAuth === 'chatgpt-plus') method = 'pi_chatgpt_oauth'
+        else if (piAuth === 'grok-x') method = 'pi_xai_oauth'
+        else if (piAuth === 'openrouter') method = 'pi_openrouter_oauth'
+        else if (piAuth === 'kimi-coding') method = 'pi_kimi_oauth'
+        else if (piAuth === 'radius') method = 'pi_radius_oauth'
+        else method = 'pi_chatgpt_oauth'
+      } else {
+        method = 'claude_oauth'
+      }
       apiSetupOnboarding.handleStartOAuth(method, connection.slug)
     }
   }, [apiSetupOnboarding, openApiSetup])

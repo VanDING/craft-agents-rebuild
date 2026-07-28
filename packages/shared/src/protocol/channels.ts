@@ -227,6 +227,7 @@ export const RPC_CHANNELS = {
     GET_SERVER_STATUS: 'settings:getServerStatus',
   },
   pi: {
+    START_OAUTH: 'pi:startOAuth',
     GET_API_KEY_PROVIDERS: 'pi:getApiKeyProviders',
     GET_PROVIDER_BASE_URL: 'pi:getProviderBaseUrl',
     GET_PROVIDER_MODELS: 'pi:getProviderModels',

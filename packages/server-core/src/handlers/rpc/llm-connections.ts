@@ -13,7 +13,8 @@ import { parseTestConnectionError, createBuiltInConnection, validateModelList, p
 import { getWorkspaceOrThrow, buildBackendHostRuntimeContext } from '@craft-agent/server-core/handlers'
 import { pushTyped, type RpcServer } from '@craft-agent/server-core/transport'
 import type { HandlerDeps } from '../handler-deps'
-import { randomUUID } from 'node:crypto'
+import { randomUUID, createHash, randomBytes } from 'node:crypto'
+import * as http from 'node:http'
 import { CLIENT_OPEN_EXTERNAL } from '@craft-agent/server-core/transport'
 
 // Local OAuth state
@@ -41,6 +42,7 @@ export const HANDLED_CHANNELS = [
   RPC_CHANNELS.copilot.LOGOUT,
   RPC_CHANNELS.settings.SETUP_LLM_CONNECTION,
   RPC_CHANNELS.settings.TEST_LLM_CONNECTION_SETUP,
+  RPC_CHANNELS.pi.START_OAUTH,
   RPC_CHANNELS.pi.GET_API_KEY_PROVIDERS,
   RPC_CHANNELS.pi.GET_PROVIDER_BASE_URL,
   RPC_CHANNELS.pi.GET_PROVIDER_MODELS,
@@ -858,6 +860,215 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
     } catch (error) {
       deps.platform.logger?.error('Failed to clear Copilot credentials:', error)
       return { success: false }
+    }
+  })
+
+  // ============================================================
+  // Pi SDK Unified OAuth
+  // ============================================================
+  server.handle(RPC_CHANNELS.pi.START_OAUTH, async (ctx, connectionSlug: string): Promise<{
+    success: boolean
+    error?: string
+    deviceCode?: { userCode: string; verificationUri: string }
+    authUrl?: string
+  }> => {
+    const credentialManager = getCredentialManager()
+
+    try {
+      switch (connectionSlug) {
+
+        // ── xAI / Grok (device-code flow) ────────────────────────
+        case 'grok-x': {
+          const XAI_CLIENT_ID = 'b1a00492-073a-47ea-816f-4c329264a828'
+          const XAI_SCOPE = 'openid profile email offline_access grok-cli:access api:access'
+
+          // Request device code
+          const deviceRes = await fetch('https://auth.x.ai/oauth2/device/code', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({ client_id: XAI_CLIENT_ID, scope: XAI_SCOPE }),
+          })
+          if (!deviceRes.ok) return { success: false, error: `xAI device code request failed (${deviceRes.status})` }
+          const device = await deviceRes.json() as Record<string, unknown>
+          const userCode = String(device.user_code ?? '')
+          const verificationUri = String(device.verification_uri ?? '')
+          const deviceCodeValue = String(device.device_code ?? '')
+          const interval = (Number(device.interval) || 5) * 1000
+
+          // Push device code to renderer
+          pushTyped(server, 'copilot:deviceCode', { to: 'client', clientId: ctx.clientId }, {
+            userCode,
+            verificationUri,
+          })
+          // Open browser
+          server.invokeClient(ctx.clientId, CLIENT_OPEN_EXTERNAL, verificationUri).catch(() => {})
+
+          // Poll for token
+          const deadline = Date.now() + 300_000
+          while (Date.now() < deadline) {
+            await new Promise(r => setTimeout(r, interval))
+            const res = await fetch('https://auth.x.ai/oauth2/token', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+              body: new URLSearchParams({
+                client_id: XAI_CLIENT_ID,
+                device_code: deviceCodeValue,
+                grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
+              }),
+            })
+            const data = await res.json() as Record<string, unknown>
+            if (data.access_token) {
+              await credentialManager.setLlmOAuth(connectionSlug, {
+                accessToken: String(data.access_token),
+                refreshToken: String(data.refresh_token ?? ''),
+                expiresAt: Date.now() + (Number(data.expires_in) || 3600) * 1000,
+              })
+              return { success: true, deviceCode: { userCode, verificationUri } }
+            }
+            if (data.error === 'authorization_pending') continue
+            if (data.error === 'access_denied') return { success: false, error: 'Access denied' }
+            if (data.error === 'expired_token') return { success: false, error: 'Code expired, try again' }
+            if (data.error) return { success: false, error: `xAI error: ${data.error}` }
+          }
+          return { success: false, error: 'xAI OAuth timed out' }
+        }
+
+        // ── Kimi Code (device-code flow) ────────────────────────
+        case 'kimi-coding': {
+          const KIMI_CLIENT_ID = '17e5f671-d194-4dfb-9706-5516cb48c098'
+
+          const deviceRes = await fetch('https://auth.kimi.com/oauth2/device/code', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({ client_id: KIMI_CLIENT_ID, scope: 'openid profile email offline_access' }),
+          })
+          if (!deviceRes.ok) return { success: false, error: `Kimi device code request failed (${deviceRes.status})` }
+          const device = await deviceRes.json() as Record<string, unknown>
+          const userCode = String(device.user_code ?? '')
+          const verificationUri = String(device.verification_uri ?? '')
+          const deviceCodeValue = String(device.device_code ?? '')
+          const interval = (Number(device.interval) || 5) * 1000
+
+          pushTyped(server, 'copilot:deviceCode', { to: 'client', clientId: ctx.clientId }, {
+            userCode,
+            verificationUri,
+          })
+          server.invokeClient(ctx.clientId, CLIENT_OPEN_EXTERNAL, verificationUri).catch(() => {})
+
+          const deadline = Date.now() + 300_000
+          while (Date.now() < deadline) {
+            await new Promise(r => setTimeout(r, interval))
+            const res = await fetch('https://auth.kimi.com/oauth2/token', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+              body: new URLSearchParams({
+                client_id: KIMI_CLIENT_ID,
+                device_code: deviceCodeValue,
+                grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
+              }),
+            })
+            const data = await res.json() as Record<string, unknown>
+            if (data.access_token) {
+              await credentialManager.setLlmOAuth(connectionSlug, {
+                accessToken: String(data.access_token),
+                refreshToken: String(data.refresh_token ?? ''),
+                expiresAt: Date.now() + (Number(data.expires_in) || 3600) * 1000,
+              })
+              return { success: true, deviceCode: { userCode, verificationUri } }
+            }
+            if (data.error === 'authorization_pending') continue
+            if (data.error === 'access_denied') return { success: false, error: 'Access denied' }
+            if (data.error === 'expired_token') return { success: false, error: 'Code expired, try again' }
+            if (data.error) return { success: false, error: `Kimi error: ${data.error}` }
+          }
+          return { success: false, error: 'Kimi OAuth timed out' }
+        }
+
+        // ── OpenRouter (PKCE + callback server) ─────────────────
+        case 'openrouter': {
+          const AUTH_URL = 'https://openrouter.ai/auth'
+          const TOKEN_URL = 'https://openrouter.ai/api/v1/auth/keys'
+          const verifier = randomBytes(32).toString('base64url')
+          const challenge = createHash('sha256').update(verifier).digest('base64url')
+          const callbackPath = `/oauth/callback/${randomUUID()}`
+
+          // Create credential promise with resolvers
+          const { promise: credPromise, resolve: resolveCred } = Promise.withResolvers<{ access: string; expires: number }>()
+
+          const httpServer = http.createServer((req, res) => {
+            if (!req.url?.startsWith(callbackPath)) { res.writeHead(404); res.end(); return }
+            const url = new URL(req.url, 'http://localhost')
+            const code = url.searchParams.get('code')
+            if (!code) { res.writeHead(400); res.end('Missing code'); return }
+
+            fetch(TOKEN_URL, {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ code, code_verifier: verifier }),
+            }).then(async r => {
+              const data = await r.json() as Record<string, unknown>
+              if (data.key) {
+                resolveCred({ access: String(data.key), expires: Date.now() + 365 * 86400 * 1000 })
+                res.writeHead(200, { 'Content-Type': 'text/html' })
+                res.end('<html><body><h1>✅ Authorized — you can close this window.</h1></body></html>')
+              } else {
+                res.writeHead(400).end('Exchange failed')
+                resolveCred(Promise.reject(new Error('OpenRouter token exchange failed')) as any)
+              }
+            }).catch((e: Error) => {
+              resolveCred(Promise.reject(e) as any)
+              res.writeHead(500).end('Error')
+            })
+          })
+
+          const { promise: listenPromise, resolve: resolveListen } = Promise.withResolvers<void>()
+          httpServer.listen(0, '127.0.0.1', () => resolveListen())
+          await listenPromise
+          const addr = httpServer.address() as { port: number } | null
+          if (!addr) { httpServer.close(); return { success: false, error: 'Failed to start callback server' } }
+          const callbackUrl = `http://127.0.0.1:${addr.port}${callbackPath}`
+          const authorizeUrl = `${AUTH_URL}?${new URLSearchParams({ callback_url: callbackUrl, code_challenge: challenge, code_challenge_method: 'S256' }).toString()}`
+
+          // Push auth URL to renderer and open browser
+          pushTyped(server, 'copilot:deviceCode', { to: 'client', clientId: ctx.clientId }, {
+            userCode: '',
+            verificationUri: authorizeUrl,
+          })
+          server.invokeClient(ctx.clientId, CLIENT_OPEN_EXTERNAL, authorizeUrl).catch(() => {})
+
+          // Block until callback received
+          const cred = await credPromise
+          httpServer.close()
+
+          await credentialManager.setLlmOAuth(connectionSlug, {
+            accessToken: cred.access,
+            refreshToken: '',
+            expiresAt: cred.expires,
+          })
+          return { success: true, authUrl: authorizeUrl }
+        }
+
+        // ── Radius (requires gateway config) ────────────────────
+        case 'radius':
+          return { success: false, error: 'Radius OAuth requires gateway configuration. Set up via Craft Agents settings.' }
+
+        // ── Legacy providers ────────────────────────────────────
+        case 'chatgpt-plus':
+          return { success: false, error: 'Use ChatGPT OAuth flow' }
+        case 'claude-max':
+          return { success: false, error: 'Use Claude OAuth flow' }
+        case 'github-copilot':
+          return { success: false, error: 'Use GitHub Copilot OAuth flow' }
+
+        default:
+          return { success: false, error: `Unknown OAuth provider: ${connectionSlug}` }
+      }
+    } catch (error) {
+      deps.platform.logger?.error(`Pi OAuth failed for ${connectionSlug}:`, error)
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'OAuth failed',
+      }
     }
   })
 }

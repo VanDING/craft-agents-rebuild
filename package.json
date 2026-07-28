@@ -142,12 +142,12 @@
     "vite": "^8.1.5"
   },
   "dependencies": {
-    "@earendil-works/pi-ai": "0.81.0",
-    "@earendil-works/pi-coding-agent": "0.81.0",
     "@dnd-kit/dom": "0.5.0",
     "@dnd-kit/helpers": "0.5.0",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
+    "@earendil-works/pi-ai": "0.82.1",
+    "@earendil-works/pi-coding-agent": "0.82.1",
     "@github/copilot-sdk": "1.0.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@paper-design/shaders-react": "0.0.77",

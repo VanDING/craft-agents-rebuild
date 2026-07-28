@@ -334,6 +334,8 @@ export const REMOTE_ELIGIBLE_CHANNELS = new Set<string>([
   RPC_CHANNELS.settings.SET_DEFAULT_THINKING_LEVEL,
 
   // pi — provider config on workspace server
+  // pi — Pi SDK capabilities
+  RPC_CHANNELS.pi.START_OAUTH,
   RPC_CHANNELS.pi.GET_API_KEY_PROVIDERS,
   RPC_CHANNELS.pi.GET_PROVIDER_BASE_URL,
   RPC_CHANNELS.pi.GET_PROVIDER_MODELS,

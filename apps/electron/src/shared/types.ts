@@ -444,6 +444,14 @@ export interface ElectronAPI {
   getPiProviderBaseUrl(provider: string): Promise<string | undefined>
   getPiProviderModels(provider: string): Promise<{ models: Array<{ id: string; name: string; costInput: number; costOutput: number; contextWindow: number; reasoning: boolean }>; totalCount: number }>
 
+  // Pi SDK unified OAuth (handles all Pi subscription providers)
+  startPiOAuth(connectionSlug: string): Promise<{
+    success: boolean
+    error?: string
+    deviceCode?: { userCode: string; verificationUri: string }
+    authUrl?: string
+  }>
+
   // Session-specific model (overrides global)
   getSessionModel(sessionId: string, workspaceId: string): Promise<string | null>
   setSessionModel(sessionId: string, workspaceId: string, model: string | null, connection?: string): Promise<void>

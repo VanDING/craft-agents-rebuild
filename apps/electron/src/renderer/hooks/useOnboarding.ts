@@ -97,6 +97,10 @@ export const BASE_SLUG_FOR_METHOD: Record<ApiSetupMethod, string> = {
   claude_oauth: 'claude-max',
   pi_chatgpt_oauth: 'chatgpt-plus',
   pi_copilot_oauth: 'github-copilot',
+  pi_xai_oauth: 'grok-x',
+  pi_openrouter_oauth: 'openrouter',
+  pi_kimi_oauth: 'kimi-coding',
+  pi_radius_oauth: 'radius',
   pi_api_key: 'pi-api-key',
 }
 
@@ -173,6 +177,10 @@ export function apiSetupMethodToConnectionSetup(
       }
     case 'pi_chatgpt_oauth':
     case 'pi_copilot_oauth':
+    case 'pi_xai_oauth':
+    case 'pi_openrouter_oauth':
+    case 'pi_kimi_oauth':
+    case 'pi_radius_oauth':
       return {
         slug,
         credential: options.credential,
@@ -601,6 +609,37 @@ export function useOnboarding({
         return
       }
 
+      // Pi SDK Unified OAuth (xAI, OpenRouter, Kimi, Radius)
+      const piOAuthMethods = ['pi_xai_oauth', 'pi_openrouter_oauth', 'pi_kimi_oauth', 'pi_radius_oauth']
+      if (piOAuthMethods.includes(effectiveMethod)) {
+        const effectiveEditingSlug = connectionSlugOverride ?? editingSlug
+        const isReauth = !!effectiveEditingSlug
+        const connectionSlug = apiSetupMethodToConnectionSetup(effectiveMethod, {}, effectiveEditingSlug, existingSlugs).slug
+
+        // Subscribe to device code events (used by xAI, Kimi device-code flows)
+        const cleanup = window.electronAPI.onCopilotDeviceCode((data) => {
+          if (data.userCode) setCopilotDeviceCode(data)
+        })
+
+        try {
+          const result = await window.electronAPI.startPiOAuth(connectionSlug)
+
+          if (result.success) {
+            await saveAndValidateConnection(connectionSlug, effectiveMethod, undefined, isReauth)
+          } else {
+            setState(s => ({
+              ...s,
+              credentialStatus: 'error',
+              errorMessage: result.error || 'Authentication failed',
+            }))
+          }
+        } finally {
+          cleanup()
+          setCopilotDeviceCode(undefined)
+        }
+        return
+      }
+
       // Claude OAuth (two-step flow - opens browser, user copies code)
       // Remaining method must be claude_oauth
       if (effectiveMethod !== 'claude_oauth') {
@@ -640,6 +679,10 @@ export function useOnboarding({
       claude: 'claude_oauth',
       chatgpt: 'pi_chatgpt_oauth',
       copilot: 'pi_copilot_oauth',
+      xai: 'pi_xai_oauth',
+      openrouter: 'pi_openrouter_oauth',
+      kimi: 'pi_kimi_oauth',
+      radius: 'pi_radius_oauth',
       api_key: 'pi_api_key',
     }
 
@@ -659,7 +702,7 @@ export function useOnboarding({
     }))
 
     // OAuth methods start immediately
-    if (choice === 'claude' || choice === 'chatgpt' || choice === 'copilot') {
+    if (choice === 'claude' || choice === 'chatgpt' || choice === 'copilot' || choice === 'xai' || choice === 'openrouter' || choice === 'kimi' || choice === 'radius') {
       // Defer to next tick so state is updated before handleStartOAuth reads it
       setTimeout(() => handleStartOAuth(method), 0)
     }

@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
 import { cn } from "@/lib/utils"
-import { Check, CreditCard, Key, Cpu } from "lucide-react"
+import { Check, CreditCard, Key, Cpu, Globe, Variable, Atom, Network } from "lucide-react"
 import { StepFormLayout, BackButton, ContinueButton } from "./primitives"
 import type { LlmAuthType, LlmProviderType } from "@craft-agent/shared/config/llm-connections"
 
@@ -29,6 +29,10 @@ export type ApiSetupMethod =
   | 'claude_oauth'
   | 'pi_chatgpt_oauth'
   | 'pi_copilot_oauth'
+  | 'pi_xai_oauth'
+  | 'pi_openrouter_oauth'
+  | 'pi_kimi_oauth'
+  | 'pi_radius_oauth'
   | 'pi_api_key'
 
 /**
@@ -46,6 +50,14 @@ export function apiSetupMethodToConnectionTypes(method: ApiSetupMethod): {
     case 'pi_chatgpt_oauth':
       return { providerType: 'pi', authType: 'oauth' };
     case 'pi_copilot_oauth':
+      return { providerType: 'pi', authType: 'oauth' };
+    case 'pi_xai_oauth':
+      return { providerType: 'pi', authType: 'oauth' };
+    case 'pi_openrouter_oauth':
+      return { providerType: 'pi', authType: 'oauth' };
+    case 'pi_kimi_oauth':
+      return { providerType: 'pi', authType: 'oauth' };
+    case 'pi_radius_oauth':
       return { providerType: 'pi', authType: 'oauth' };
     case 'pi_api_key':
       return { providerType: 'pi', authType: 'api_key' };
@@ -65,6 +77,10 @@ const API_SETUP_ICONS: Record<ApiSetupMethod, React.ReactNode> = {
   anthropic_api_key: <Key className="size-4" />,
   pi_chatgpt_oauth: <Cpu className="size-4" />,
   pi_copilot_oauth: <Cpu className="size-4" />,
+  pi_xai_oauth: <Globe className="size-4" />,
+  pi_openrouter_oauth: <Variable className="size-4" />,
+  pi_kimi_oauth: <Atom className="size-4" />,
+  pi_radius_oauth: <Network className="size-4" />,
   pi_api_key: <Key className="size-4" />,
 }
 

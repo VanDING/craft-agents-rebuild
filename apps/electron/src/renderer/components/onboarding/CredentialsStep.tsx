@@ -62,6 +62,7 @@ export function CredentialsStep({
   const isClaudeOAuth = apiSetupMethod === 'claude_oauth'
   const isChatGptOAuth = apiSetupMethod === 'pi_chatgpt_oauth'
   const isCopilotOAuth = apiSetupMethod === 'pi_copilot_oauth'
+  const isSimpleOAuth = ['pi_xai_oauth', 'pi_openrouter_oauth', 'pi_kimi_oauth', 'pi_radius_oauth'].includes(apiSetupMethod)
   const isAnthropicApiKey = apiSetupMethod === 'anthropic_api_key'
   const isPiApiKey = apiSetupMethod === 'pi_api_key'
   const isApiKey = isAnthropicApiKey || isPiApiKey
@@ -123,6 +124,52 @@ export function CredentialsStep({
           {status === 'success' && (
             <div className="rounded-lg bg-success/10 text-success text-sm p-3">
               {t("onboarding.credentials.chatGPTConnected")}
+            </div>
+          )}
+        </div>
+      </StepFormLayout>
+    )
+  }
+
+  // --- Generic Pi OAuth flow (xAI, OpenRouter, Kimi, Radius) ---
+  if (isSimpleOAuth) {
+    return (
+      <StepFormLayout
+        title={t("onboarding.credentials.connectOAuth")}
+        description={t("onboarding.credentials.connectOAuthDesc")}
+        actions={
+          <>
+            <BackButton onClick={onBack} disabled={status === 'validating'} />
+            <ContinueButton
+              onClick={() => onStartOAuth?.()}
+              className="gap-2"
+              loading={status === 'validating'}
+              loadingText={t("common.connecting")}
+            >
+              <ExternalLink className="size-4" />
+              {t("onboarding.credentials.signInOAuth")}
+            </ContinueButton>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div className="rounded-xl bg-foreground-2 p-4 text-sm text-muted-foreground">
+            <p>{t("onboarding.credentials.connectOAuthInstructions")}</p>
+            {copilotDeviceCode && (
+              <div className="mt-3 p-3 bg-background rounded-lg border border-border text-center">
+                <p className="text-xs text-muted-foreground mb-2">{t("onboarding.credentials.enterCodeOnGitHub")}</p>
+                <code className="text-lg font-mono font-bold tracking-widest">{copilotDeviceCode.userCode}</code>
+              </div>
+            )}
+          </div>
+          {status === 'error' && errorMessage && (
+            <div className="rounded-lg bg-destructive/10 text-destructive text-sm p-3">
+              {errorMessage}
+            </div>
+          )}
+          {status === 'success' && (
+            <div className="rounded-lg bg-success/10 text-success text-sm p-3">
+              {t("onboarding.credentials.oauthConnected")}
             </div>
           )}
         </div>
