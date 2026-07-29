@@ -209,10 +209,17 @@ export interface IMessagingGatewayRegistry {
    */
   submitWhatsAppPhone(workspaceId: string, phoneNumber: string): Promise<void>
 
-  // ── WeChat(微信)──
-  startWeixinConnect(workspaceId: string): Promise<{ qrPayload?: string; connected: boolean; account?: string } | void>;
-  submitWeixinPhone?(workspaceId: string, phoneNumber: string): Promise<{ qrPayload?: string; connected: boolean; account?: string } | void>;
-  cancelWeixinConnect(workspaceId: string): void;
+  /**
+   * Start the WeChat (微信) connect flow: fetches an iLink QR and emits
+   * qr / scanned / need_verifycode / connected / error via WECHAT_UI_EVENT.
+   */
+  startWeChatConnect(workspaceId: string): Promise<void>
+
+  /** Submit a verify code from the UI for an in-progress WeChat QR login. */
+  submitWeChatVerifyCode(workspaceId: string, code: string): void
+
+  /** Cancel an in-progress WeChat QR login. */
+  cancelWeChatConnect(workspaceId: string): void
   // -------------------------------------------------------------------------
   // Access control (Phase 2/3)
   // -------------------------------------------------------------------------

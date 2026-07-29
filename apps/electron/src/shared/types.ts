@@ -731,10 +731,11 @@ export interface ElectronAPI {
   startWhatsAppConnect(): Promise<{ success: boolean }>
   submitWhatsAppPhone(phoneNumber: string): Promise<{ success: boolean }>
   onWhatsAppEvent(callback: (payload: { workspaceId: string; event: WhatsAppUiEvent }) => void): () => void
-  // WeChat (weixin — pure HTTP adapter)
-  startWeixinConnect(): Promise<{ connected: boolean }>
-  cancelWeixinConnect(): Promise<void>
-  onWeixinEvent(callback: (payload: { workspaceId: string; event: WeixinUiEvent }) => void): () => void
+  // WeChat (微信 iLink ClawBot adapter)
+  startWeChatConnect(): Promise<{ success: boolean }>
+  submitWeChatVerifyCode(code: string): Promise<{ success: boolean }>
+  cancelWeChatConnect(): Promise<void>
+  onWeChatEvent(callback: (payload: { workspaceId: string; event: WeChatUiEvent }) => void): () => void
   // Messaging access control (Phase 3)
   getMessagingPlatformOwners(platform: string): Promise<MessagingPlatformOwnerInfo[]>
   setMessagingPlatformOwners(platform: string, owners: MessagingPlatformOwnerInfo[]): Promise<MessagingPlatformOwnerInfo[]>
@@ -802,14 +803,13 @@ export type WhatsAppUiEvent =
   | { type: 'unavailable'; reason: string; message: string }
   | { type: 'error'; message: string }
 
-/** Event payloads broadcast from the WeChat adapter to the UI. */
-export type WeixinUiEvent =
-  | { type: 'qr'; qrPayload: string }
-  | { type: 'connected'; account: string }
-  | { type: 'disconnected'; account: string; reason: string }
-  | { type: 'unavailable'; reason: string }
+/** Event payloads broadcast from the WeChat login flow to the UI. */
+export type WeChatUiEvent =
+  | { type: 'qr'; qr: string }
+  | { type: 'scanned' }
+  | { type: 'need_verifycode' }
+  | { type: 'connected' }
   | { type: 'error'; message: string }
-  | { type: 'need_verifycode' };
 // Navigation types (renderer-only)
 // =============================================================================
 

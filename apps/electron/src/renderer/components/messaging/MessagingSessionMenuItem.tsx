@@ -27,7 +27,7 @@ import { navigate, routes } from '@/lib/navigate'
 import { useMenuComponents } from '@/components/ui/menu-context'
 import { messagingDialogAtom } from '@/atoms/messaging'
 
-export type MessagingPlatform = 'telegram' | 'whatsapp' | 'lark' | 'weixin'
+export type MessagingPlatform = 'telegram' | 'whatsapp' | 'lark' | 'wechat'
 
 export interface UseMessagingConnectOptions {
   /** Session to bind the pairing code to. */
@@ -69,8 +69,8 @@ export function useMessagingConnect({
       if (!isConnected) {
         if (platform === 'whatsapp') {
           setMessagingDialog({ kind: 'wa_connect', continueToPairingSessionId: sessionId })
-        } else if (platform === 'weixin') {
-          setMessagingDialog({ kind: 'wx_connect', continueToPairingSessionId: sessionId })
+        } else if (platform === 'wechat') {
+          setMessagingDialog({ kind: 'wechat_connect', continueToPairingSessionId: sessionId })
         } else if (onTelegramNotConfigured) {
           onTelegramNotConfigured()
         } else {
@@ -138,7 +138,7 @@ export function MessagingSessionMenuItem(props: MessagingSessionMenuItemProps) {
         <MenuItem onClick={() => handleConnectMessaging('lark')}>
           <span>Lark / Feishu</span>
         </MenuItem>
-        <MenuItem onClick={() => handleConnectMessaging('weixin')}>
+        <MenuItem onClick={() => handleConnectMessaging('wechat')}>
           <span>WeChat</span>
         </MenuItem>
       </SubContent>

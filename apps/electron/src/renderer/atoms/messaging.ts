@@ -60,7 +60,7 @@ export type MessagingDialogState =
   | { kind: 'closed' }
   | {
       kind: 'pairing'
-      platform: 'telegram' | 'whatsapp' | 'lark' | 'weixin'
+      platform: 'telegram' | 'whatsapp' | 'lark' | 'wechat'
       sessionId: string
       code: string | null
       expiresAt: number | null
@@ -72,7 +72,7 @@ export type MessagingDialogState =
       continueToPairingSessionId?: string
     }
   | {
-      kind: 'wx_connect'
+      kind: 'wechat_connect'
       continueToPairingSessionId?: string
     }
 export const messagingDialogAtom = atom<MessagingDialogState>({ kind: 'closed' })

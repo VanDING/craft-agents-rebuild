@@ -446,12 +446,12 @@ export const RPC_CHANNELS = {
     WA_SUBMIT_PHONE: 'messaging:wa:submitPhone',
     /** Broadcast to UI clients: QR string, pairing code, status, unavailable, error. */
     WA_UI_EVENT: 'messaging:wa:uiEvent',
-    // UI ↔ Server — WeChat (weixin) connection flow (pure HTTP adapter)
-    WEIXIN_START_CONNECT: 'messaging:weixinStartConnect',
-    WEIXIN_SUBMIT_PHONE: 'messaging:weixinSubmitPhone',
-    /** Broadcast to UI clients: QR string, connection status, error. */
-    WEIXIN_UI_EVENT: 'messaging:weixinUiEvent',
-    WEIXIN_CANCEL_CONNECT: 'messaging:weixinCancelConnect',
+    // UI ↔ Server — WeChat (微信) iLink ClawBot adapter
+    WECHAT_START_CONNECT: 'messaging:wechat:startConnect',
+    WECHAT_SUBMIT_CODE: 'messaging:wechat:submitCode',
+    /** Broadcast to UI clients: QR string, verify code prompt, connection status, error. */
+    WECHAT_UI_EVENT: 'messaging:wechat:uiEvent',
+    WECHAT_CANCEL_CONNECT: 'messaging:wechat:cancelConnect',
     // UI ↔ Server — Access control (per-platform owners + per-binding allow-list)
     GET_PLATFORM_OWNERS: 'messaging:access:getOwners',
     SET_PLATFORM_OWNERS: 'messaging:access:setOwners',

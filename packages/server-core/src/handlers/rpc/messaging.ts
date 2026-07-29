@@ -195,18 +195,21 @@ export function registerMessagingHandlers(server: RpcServer, deps: HandlerDeps):
   )
 
   // ── WeChat(微信)──
-  server.handle(RPC_CHANNELS.messaging.WEIXIN_START_CONNECT, async (ctx) => {
+  server.handle(RPC_CHANNELS.messaging.WECHAT_START_CONNECT, async (ctx) => {
     if (!ctx.workspaceId) throw new Error('Missing workspaceId')
-    return registry.startWeixinConnect(ctx.workspaceId)
+    await registry.startWeChatConnect(ctx.workspaceId)
+    return { success: true }
   })
 
-  server.handle(RPC_CHANNELS.messaging.WEIXIN_SUBMIT_PHONE, async (ctx, phone: unknown) => {
+  server.handle(RPC_CHANNELS.messaging.WECHAT_SUBMIT_CODE, async (ctx, code: string) => {
     if (!ctx.workspaceId) throw new Error('Missing workspaceId')
-    return registry.submitWeixinPhone?.(ctx.workspaceId, String(phone))
+    registry.submitWeChatVerifyCode(ctx.workspaceId, code)
+    return { success: true }
   })
 
-  server.handle(RPC_CHANNELS.messaging.WEIXIN_CANCEL_CONNECT, async (ctx) => {
+  server.handle(RPC_CHANNELS.messaging.WECHAT_CANCEL_CONNECT, async (ctx) => {
     if (!ctx.workspaceId) throw new Error('Missing workspaceId')
-    registry.cancelWeixinConnect(ctx.workspaceId)
+    registry.cancelWeChatConnect(ctx.workspaceId)
+    return { success: true }
   })
 }

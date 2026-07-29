@@ -33,7 +33,7 @@ const PLATFORM_PILL: Record<string, { label: string; colorClass: string }> = {
     label: 'WhatsApp',
     colorClass: 'bg-emerald-500/10 text-emerald-600 dark:bg-emerald-400/15 dark:text-emerald-300',
   },
-  weixin: {
+  wechat: {
     label: 'WeChat',
     colorClass: 'bg-green-500/10 text-green-600 dark:bg-green-400/15 dark:text-green-300',
   },

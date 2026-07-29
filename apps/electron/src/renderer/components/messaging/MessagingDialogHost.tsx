@@ -57,7 +57,7 @@ export function MessagingDialogHost() {
     return off
   }, [isWaitingForPair, setState, t])
 
-  const openPairing = async (sessionId: string, platform: 'telegram' | 'whatsapp' | 'weixin') => {
+  const openPairing = async (sessionId: string, platform: 'telegram' | 'whatsapp' | 'lark' | 'wechat') => {
     setState({
       kind: 'pairing',
       platform,
@@ -96,8 +96,8 @@ export function MessagingDialogHost() {
   }
 
   const handleWeChatConnected = () => {
-    if (state.kind === 'wx_connect' && state.continueToPairingSessionId) {
-      void openPairing(state.continueToPairingSessionId, 'weixin')
+    if (state.kind === 'wechat_connect' && state.continueToPairingSessionId) {
+      void openPairing(state.continueToPairingSessionId, 'wechat')
       return
     }
     close()
@@ -120,10 +120,10 @@ export function MessagingDialogHost() {
         onConnected={handleWhatsAppConnected}
       />
       <WeChatConnectDialog
-        open={state.kind === 'wx_connect'}
+        open={state.kind === 'wechat_connect'}
         onOpenChange={(o) => {
           if (!o) {
-            window.electronAPI.cancelWeixinConnect().catch(() => {})
+            window.electronAPI.cancelWeChatConnect().catch(() => {})
             close()
           }
         }}

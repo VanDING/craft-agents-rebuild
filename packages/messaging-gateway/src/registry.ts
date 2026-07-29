@@ -30,7 +30,13 @@ import { PairingCodeManager } from './pairing'
 import { TelegramAdapter } from './adapters/telegram/index'
 import { WhatsAppAdapter, type WhatsAppEvent } from './adapters/whatsapp/index'
 import { LarkAdapter, parseLarkCredentials, type LarkCredentials } from './adapters/lark/index'
-import { WeixinAdapter } from './adapters/weixin/index'
+import {
+  WeChatAdapter,
+  parseWeChatCredentials,
+  startWeChatQrLogin,
+  type WeChatCredentials,
+  type WeChatLoginEvent,
+} from './adapters/wechat/index'
 import { TopicRegistry } from './topic-registry'
 import type { SessionEvent } from './renderer'
 import type { EventSinkFn } from './event-fanout'
@@ -94,6 +100,8 @@ interface WorkspaceState {
 
 export class MessagingGatewayRegistry implements IMessagingGatewayRegistry {
   private readonly workspaces = new Map<string, WorkspaceState>()
+  /** In-flight WeChat QR logins awaiting a verify code from the UI, per workspace. */
+  private readonly wechatVerifyResolvers = new Map<string, Array<(code: string) => void>>()
   private readonly pairing = new PairingCodeManager()
   private readonly log: MessagingLogger
 
@@ -199,36 +207,20 @@ export class MessagingGatewayRegistry implements IMessagingGatewayRegistry {
       }
     }
 
-    if (isPlatformConfigured(config, 'weixin')) {
-      if (this.hasWeixinAuthState(workspaceId)) {
-        this.setPlatformRuntime(workspaceId, state, 'weixin', {
-          configured: true,
-          connected: false,
-          state: 'connecting',
-          lastError: undefined,
+    if (isPlatformConfigured(config, 'wechat')) {
+      this.setPlatformRuntime(workspaceId, state, 'wechat', {
+        configured: true,
+        connected: false,
+        state: 'connecting',
+        lastError: undefined,
+      })
+      void this.tryConnectWeChat(workspaceId, state).catch((err) => {
+        this.log.error('background WeChat connect failed', {
+          event: 'wechat_connect_failed',
+          workspaceId,
+          error: err,
         })
-        void this.startWeixinConnect(workspaceId).then((r) => {
-          if (!r?.connected) {
-            this.setPlatformRuntime(workspaceId, state, 'weixin', {
-              configured: true,
-              connected: false,
-              state: 'disconnected',
-            })
-          }
-        }).catch((err) => {
-          this.log.error('background WeChat restore failed', {
-            event: 'weixin_restore_failed',
-            workspaceId,
-            error: err,
-          })
-        })
-      } else {
-        this.setPlatformRuntime(workspaceId, state, 'weixin', {
-          configured: true,
-          connected: false,
-          state: 'disconnected',
-        })
-      }
+      })
     }
   }
 
@@ -264,7 +256,7 @@ export class MessagingGatewayRegistry implements IMessagingGatewayRegistry {
         telegram: cloneRuntime(state.runtime.telegram),
         whatsapp: cloneRuntime(state.runtime.whatsapp),
         lark: cloneRuntime(state.runtime.lark),
-        weixin: cloneRuntime(state.runtime.weixin),
+        wechat: cloneRuntime(state.runtime.wechat),
       },
     }
   }
@@ -284,7 +276,7 @@ export class MessagingGatewayRegistry implements IMessagingGatewayRegistry {
       await state.gateway.unregisterAdapter('telegram').catch(() => {})
       await state.gateway.unregisterAdapter('whatsapp').catch(() => {})
       await state.gateway.unregisterAdapter('lark').catch(() => {})
-      await state.gateway.unregisterAdapter('weixin').catch(() => {})
+      await state.gateway.unregisterAdapter('wechat').catch(() => {})
       state.whatsappOffEvent?.()
       state.whatsappOffEvent = undefined
       state.whatsapp = null
@@ -309,7 +301,7 @@ export class MessagingGatewayRegistry implements IMessagingGatewayRegistry {
         identity: undefined,
         lastError: undefined,
       })
-      this.setPlatformRuntime(workspaceId, state, 'weixin', {
+      this.setPlatformRuntime(workspaceId, state, 'wechat', {
         configured: false,
         connected: false,
         state: 'disconnected',
@@ -319,7 +311,7 @@ export class MessagingGatewayRegistry implements IMessagingGatewayRegistry {
       return
     }
 
-    for (const platform of ['telegram', 'whatsapp', 'lark', 'weixin'] as const) {
+    for (const platform of ['telegram', 'whatsapp', 'lark', 'wechat'] as const) {
       const configured = isPlatformConfigured(cfg, platform)
       if (!configured && state.gateway.getAdapter(platform)) {
         await state.gateway.unregisterAdapter(platform).catch(() => {})
@@ -821,20 +813,17 @@ export class MessagingGatewayRegistry implements IMessagingGatewayRegistry {
         throw err
       }
     }
-    if (platform === 'weixin') {
-      const authDir = join(this.opts.getMessagingDir(workspaceId), 'weixin-auth')
+    if (platform === 'wechat') {
       try {
-        rmSync(authDir, { recursive: true, force: true })
+        await this.opts.credentialManager.delete({ type: 'messaging_bearer', workspaceId, name: 'wechat' })
         this.log.info('forgot WeChat auth state', {
-          event: 'weixin_auth_forgotten',
+          event: 'wechat_auth_forgotten',
           workspaceId,
-          authDir,
         })
       } catch (err) {
         this.log.error('failed to forget WeChat auth state', {
-          event: 'weixin_auth_forget_failed',
+          event: 'wechat_auth_forget_failed',
           workspaceId,
-          authDir,
           error: err,
         })
         throw err
@@ -1076,7 +1065,7 @@ export class MessagingGatewayRegistry implements IMessagingGatewayRegistry {
         telegram: createRuntime('telegram', isPlatformConfigured(cfg, 'telegram')),
         whatsapp: createRuntime('whatsapp', isPlatformConfigured(cfg, 'whatsapp')),
         lark: createRuntime('lark', isPlatformConfigured(cfg, 'lark')),
-        weixin: createRuntime('weixin', isPlatformConfigured(cfg, 'weixin')),
+        wechat: createRuntime('wechat', isPlatformConfigured(cfg, 'wechat')),
       },
     }
     this.workspaces.set(workspaceId, state)
@@ -1398,9 +1387,9 @@ export class MessagingGatewayRegistry implements IMessagingGatewayRegistry {
     if (!state) return
     const store = state.gateway.getBindingStore()
     for (const b of store.getAll()) {
-      if (b.platform !== 'telegram' && b.platform !== 'weixin') continue
+      if (b.platform !== 'telegram' && b.platform !== 'wechat') continue
       // WeChat bindings don't support access modes — skip.
-      if (b.platform === 'weixin') continue
+      if (b.platform === 'wechat') continue
       if (b.config.accessMode !== 'open') continue
       store.updateBindingConfig(b.id, { accessMode: 'inherit', allowedSenderIds: [] })
     }
@@ -1551,98 +1540,143 @@ export class MessagingGatewayRegistry implements IMessagingGatewayRegistry {
     this.emitBindingChanged(workspaceId)
   }
 
-  async startWeixinConnect(workspaceId: string): Promise<{ qrPayload?: string; connected: boolean; account?: string } | void> {
+  async startWeChatConnect(workspaceId: string): Promise<void> {
     const state = this.workspaces.get(workspaceId) ?? this.bootstrapWorkspace(workspaceId)
-    const config = state.configStore.get()
-    // BaseUrl from config is a fallback; the QR login flow uses the fixed
-    // endpoint https://ilinkai.weixin.qq.com and discovers the real gateway
-    // URL from the 'confirmed' response (resp.baseurl), saving it per-account.
-    const baseUrl = config.platforms.weixin?.baseUrl ?? ''
-    const authDir = join(this.opts.getMessagingDir(workspaceId), 'weixin-auth')
-    const botAgent = config.platforms.weixin?.botAgent
+    this.setPlatformRuntime(workspaceId, state, 'wechat', {
+      configured: true,
+      connected: false,
+      state: 'connecting',
+      lastError: undefined,
+    })
 
-    try {
-      const adapter = new WeixinAdapter({ baseUrl, authDir, botAgent, logger: (...args: unknown[]) => this.log.info(String(args[0]), args[1] as never) })
-      state.gateway.registerAdapter(adapter)
-      this.setPlatformRuntime(workspaceId, state, 'weixin', {
-        configured: true,
-        connected: false,
-        state: 'connecting',
-      })
+    const verifyResolvers: Array<(code: string) => void> = []
+    const prior = this.wechatVerifyResolvers.get(workspaceId)
+    if (prior) for (const resolve of prior.splice(0)) resolve('')
+    this.wechatVerifyResolvers.set(workspaceId, verifyResolvers)
 
-      // Forward adapter lifecycle events:
-      //   - WEIXIN_UI_EVENT → UI dialog (qr, connected, disconnected, unavailable)
-      //   - setPlatformRuntime → PLATFORM_STATUS broadcast
-      adapter.onEvent((event) => {
+    const result = await startWeChatQrLogin({
+      onEvent: (event: WeChatLoginEvent) => {
         this.opts.publishEvent?.(
-          RPC_CHANNELS.messaging.WEIXIN_UI_EVENT,
+          RPC_CHANNELS.messaging.WECHAT_UI_EVENT,
           { to: 'workspace', workspaceId },
           { workspaceId, event },
         )
-        if (event.type === 'connected') {
-          // Persist enabled flag so initializeWorkspace auto-starts on restart.
-          try { state.configStore.update({ platforms: { weixin: { enabled: true } } }) } catch {}
-          this.setPlatformRuntime(workspaceId, state, 'weixin', {
-            configured: true,
-            connected: true,
-            state: 'connected',
-          })
-        } else if (event.type === 'disconnected') {
-          this.setPlatformRuntime(workspaceId, state, 'weixin', {
-            configured: true,
-            connected: false,
-            state: 'disconnected',
-            lastError: event.reason,
-          })
-        } else if (event.type === 'unavailable') {
-          this.setPlatformRuntime(workspaceId, state, 'weixin', {
-            configured: true,
+        if (event.type === 'error') {
+          this.setPlatformRuntime(workspaceId, state, 'wechat', {
+            configured: false,
             connected: false,
             state: 'error',
-            lastError: event.reason,
+            lastError: event.message,
           })
         }
-      })
-
-      await adapter.initialize({})
-      const connected = adapter.isConnected()
-      this.setPlatformRuntime(workspaceId, state, 'weixin', {
-        configured: true,
-        connected,
-        state: connected ? 'connected' : 'disconnected',
-      })
-
-      if (!connected) {
-        adapter.startLogin().catch((err: unknown) => {
-          const reason = err instanceof Error ? err.message : String(err)
-          this.log.warn('startWeixinConnect: QR login failed', { event: 'weixin_qr_error', workspaceId, error: err })
-          this.opts.publishEvent?.(
-            RPC_CHANNELS.messaging.WEIXIN_UI_EVENT,
-            { to: 'workspace', workspaceId },
-            { workspaceId, event: { type: 'unavailable', reason } },
-          )
-        })
+      },
+      verifyCodeProvider: () =>
+        new Promise<string>((resolve) => {
+          verifyResolvers.push(resolve)
+        }),
+    }).finally(() => {
+      if (this.wechatVerifyResolvers.get(workspaceId) === verifyResolvers) {
+        this.wechatVerifyResolvers.delete(workspaceId)
       }
+    })
 
-      return { connected, account: connected ? 'weixin' : undefined }
+    if (!result) return
+
+    if (result === 'already-connected') {
+      await this.tryConnectWeChat(workspaceId, state)
+      await state.gateway.start()
+      return
+    }
+
+    await this.opts.credentialManager.set(
+      { type: 'messaging_bearer', workspaceId, name: 'wechat' },
+      { value: JSON.stringify(result) },
+    )
+    state.configStore.update({
+      enabled: true,
+      platforms: { wechat: { enabled: true } },
+    })
+    await this.tryConnectWeChat(workspaceId, state)
+    await state.gateway.start()
+  }
+
+  /** Submit a verify code from the UI for an in-progress WeChat login. */
+  submitWeChatVerifyCode(workspaceId: string, code: string): void {
+    const resolvers = this.wechatVerifyResolvers.get(workspaceId)
+    const resolve = resolvers?.shift()
+    if (resolve) resolve(code)
+  }
+
+  cancelWeChatConnect(workspaceId: string): void {
+    const resolvers = this.wechatVerifyResolvers.get(workspaceId)
+    if (resolvers) {
+      for (const resolve of resolvers.splice(0)) resolve('')
+      this.wechatVerifyResolvers.delete(workspaceId)
+    }
+  }
+
+  private async tryConnectWeChat(workspaceId: string, state: WorkspaceState): Promise<void> {
+    const cred = await this.opts.credentialManager
+      .get({ type: 'messaging_bearer', workspaceId, name: 'wechat' })
+      .catch(() => null)
+
+    if (!cred?.value) {
+      this.setPlatformRuntime(workspaceId, state, 'wechat', {
+        configured: true,
+        connected: false,
+        state: 'error',
+        lastError: 'WeChat credentials are missing.',
+      })
+      return
+    }
+
+    let creds: WeChatCredentials
+    try {
+      creds = parseWeChatCredentials(cred.value)
     } catch (err) {
-      this.log.error('startWeixinConnect: unexpected error', { event: 'weixin_connect_error', workspaceId, error: err })
-      this.setPlatformRuntime(workspaceId, state, 'weixin', {
+      this.setPlatformRuntime(workspaceId, state, 'wechat', {
+        configured: true,
+        connected: false,
+        state: 'error',
+        lastError: err instanceof Error ? err.message : 'WeChat credentials are malformed',
+      })
+      return
+    }
+
+    await state.gateway.unregisterAdapter('wechat').catch(() => {})
+
+    try {
+      const adapter = new WeChatAdapter()
+      await adapter.initialize({
+        token: cred.value,
+        logger: this.log.child({
+          component: 'wechat-adapter',
+          workspaceId,
+          platform: 'wechat',
+        }),
+      })
+      state.botUsernames.wechat = adapter.getBotInfo().name
+      state.gateway.registerAdapter(adapter)
+      this.setPlatformRuntime(workspaceId, state, 'wechat', {
+        configured: true,
+        connected: true,
+        state: 'connected',
+        identity: state.botUsernames.wechat ?? creds.userId,
+        lastError: undefined,
+      })
+    } catch (err) {
+      this.log.error('failed to connect WeChat', {
+        event: 'wechat_connect_failed',
+        workspaceId,
+        error: err,
+      })
+      this.setPlatformRuntime(workspaceId, state, 'wechat', {
         configured: true,
         connected: false,
         state: 'error',
         lastError: err instanceof Error ? err.message : String(err),
       })
-      return { connected: false }
-    }
-  }
-
-  cancelWeixinConnect(workspaceId: string): void {
-    const state = this.workspaces.get(workspaceId)
-    if (!state) return
-    const adapter = state.gateway.getAdapter('weixin')
-    if (adapter && typeof adapter === 'object' && 'cancelLogin' in adapter) {
-      (adapter.cancelLogin as () => void)()
+      throw err
     }
   }
   private emitPlatformStatus(
@@ -1672,16 +1706,6 @@ export class MessagingGatewayRegistry implements IMessagingGatewayRegistry {
   private getWhatsAppAuthStateDir(workspaceId: string): string {
     return join(this.opts.getMessagingDir(workspaceId), 'whatsapp-auth')
   }
-
-  private hasWeixinAuthState(workspaceId: string): boolean {
-    const dir = join(this.opts.getMessagingDir(workspaceId), 'weixin-auth')
-    if (!existsSync(dir)) return false
-    try {
-      return readdirSync(dir).some((entry) => entry.startsWith('credentials-') && entry.endsWith('.json'))
-    } catch {
-      return false
-    }
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1705,7 +1729,7 @@ function toBindingInfo(b: ChannelBinding): MessagingBindingInfo {
 }
 
 function isKnownPlatform(p: string): p is PlatformType {
-  return p === 'telegram' || p === 'whatsapp' || p === 'lark' || p === 'weixin'
+  return p === 'telegram' || p === 'whatsapp' || p === 'lark' || p === 'wechat'
 }
 
 function capitalize(value: string): string {

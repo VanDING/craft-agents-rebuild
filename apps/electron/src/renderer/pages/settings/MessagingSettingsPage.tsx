@@ -126,7 +126,7 @@ export default function MessagingSettingsPage() {
               <PlatformRow platform="lark" workspaceId={activeWorkspace.id} />
             </SettingsCard>
             <SettingsCard>
-              <PlatformRow platform="weixin" workspaceId={activeWorkspace.id} />
+              <PlatformRow platform="wechat" workspaceId={activeWorkspace.id} />
             </SettingsCard>
           </SettingsSection>
         </div>
@@ -139,13 +139,13 @@ export default function MessagingSettingsPage() {
 // Platform row
 // ---------------------------------------------------------------------------
 
-type Platform = 'telegram' | 'whatsapp' | 'lark' | 'weixin'
+type Platform = 'telegram' | 'whatsapp' | 'lark' | 'wechat'
 
 const PLATFORM_LABEL_KEYS: Record<Platform, string> = {
   telegram: 'settings.messaging.telegram.title',
   whatsapp: 'settings.messaging.whatsapp.title',
   lark: 'settings.messaging.lark.title',
-  weixin: 'settings.messaging.weixin.title',
+  wechat: 'settings.messaging.wechat.title',
 }
 
 // Row column geometry shared across the bot header and all child rows.
@@ -478,7 +478,7 @@ function PlatformRow({ platform, workspaceId }: { platform: Platform; workspaceI
       {platform === 'lark' && (
         <LarkConnectDialog open={connectOpen} onOpenChange={setConnectOpen} reconfigure={reconfigure} />
       )}
-      {platform === 'weixin' && (
+      {platform === 'wechat' && (
         <WeChatConnectDialog open={connectOpen} onOpenChange={setConnectOpen} />
       )}
     </>

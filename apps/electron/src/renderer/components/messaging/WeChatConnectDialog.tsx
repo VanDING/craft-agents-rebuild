@@ -1,19 +1,13 @@
 /**
- * WeChatConnectDialog — drives the WeChat QR-scan login flow from the UI.
- *
- * The WeChat adapter uses the fixed endpoint https://ilinkai.weixin.qq.com
- * for QR login. No gateway URL needs to be configured ahead of time — the
- * real gateway URL is returned in the 'confirmed' response and saved with
- * the account credentials.
- *
- * References @tencent-weixin/openclaw-weixin v2.4.6 auth/login-qr.ts.
+ * WeChatConnectDialog — drives the WeChat (微信) iLink QR-scan login flow from
+ * the UI. Mirrors WhatsAppConnectDialog, plus a verify-code step (WeChat may
+ * ask the user to type a number shown on their phone).
  */
 
 import * as React from 'react'
 import { Check } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
 import {
   Dialog,
   DialogContent,
@@ -21,9 +15,10 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog'
+import { Button } from '@/components/ui/button'
 import { Spinner } from '@craft-agent/ui'
 import { useActiveWorkspace } from '@/context/AppShellContext'
-import type { WeixinUiEvent } from '../../../shared/types'
+import type { WeChatUiEvent } from '../../../shared/types'
 
 interface WeChatConnectDialogProps {
   open: boolean
@@ -35,7 +30,8 @@ type Phase =
   | { kind: 'idle' }
   | { kind: 'starting' }
   | { kind: 'show_qr'; qr: string }
-  | { kind: 'connected'; account?: string }
+  | { kind: 'verify' }
+  | { kind: 'connected' }
   | { kind: 'error'; message: string }
 
 export function WeChatConnectDialog({ open, onOpenChange, onConnected }: WeChatConnectDialogProps) {
@@ -43,11 +39,11 @@ export function WeChatConnectDialog({ open, onOpenChange, onConnected }: WeChatC
   const activeWorkspace = useActiveWorkspace()
   const activeWorkspaceId = activeWorkspace?.id
   const [phase, setPhase] = React.useState<Phase>({ kind: 'idle' })
+  const [code, setCode] = React.useState('')
 
-  // Subscribe to WeChat UI events from the main process.
   React.useEffect(() => {
     if (!open || !activeWorkspaceId) return
-    const off = window.electronAPI.onWeixinEvent(({ workspaceId, event }) => {
+    const off = window.electronAPI.onWeChatEvent(({ workspaceId, event }) => {
       if (workspaceId !== activeWorkspaceId) return
       handleEvent(event)
     })
@@ -55,58 +51,50 @@ export function WeChatConnectDialog({ open, onOpenChange, onConnected }: WeChatC
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, activeWorkspaceId])
 
-  // Trigger connection on first open.
   React.useEffect(() => {
     if (!open || phase.kind !== 'idle') return
     setPhase({ kind: 'starting' })
-    let cancelled = false
-    const timeout = setTimeout(() => {
-      if (cancelled) return
-      setPhase({ kind: 'error', message: t('dialog.wechat.timeout') })
-    }, 15_000)
     window.electronAPI
-      .startWeixinConnect()
-      .then(() => { clearTimeout(timeout) })
-      .catch((err: unknown) => {
-        clearTimeout(timeout)
-        if (!cancelled) setPhase({ kind: 'error', message: errorMsg(err) })
-      })
-    return () => { cancelled = true; clearTimeout(timeout) }
+      .startWeChatConnect()
+      .catch((err) => setPhase({ kind: 'error', message: errorMsg(err) }))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
-  // Reset state on close.
   React.useEffect(() => {
     if (!open) {
       setPhase({ kind: 'idle' })
+      setCode('')
     }
   }, [open])
 
-  const handleEvent = (event: WeixinUiEvent) => {
+  const handleEvent = (event: WeChatUiEvent) => {
     switch (event.type) {
       case 'qr':
-        setPhase({ kind: 'show_qr', qr: event.qrPayload })
-        return
-      case 'connected':
-        setPhase({ kind: 'connected', account: event.account })
-        toast.success(t('dialog.wechat.connected'))
-        setTimeout(() => {
-          if (onConnected) {
-            onConnected()
-          } else {
-            onOpenChange(false)
-          }
-        }, 1200)
-        return
-      case 'disconnected':
-        return
-      case 'unavailable':
-        setPhase({ kind: 'error', message: event.reason })
+        setPhase({ kind: 'show_qr', qr: event.qr })
         return
       case 'need_verifycode':
-        setPhase({ kind: 'error', message: t('dialog.wechat.needVerifyCode') })
+        setPhase({ kind: 'verify' })
         return
+      case 'connected':
+        setPhase({ kind: 'connected' })
+        setTimeout(() => {
+          if (onConnected) onConnected()
+          else onOpenChange(false)
+        }, 1200)
+        return
+      case 'error':
+        setPhase({ kind: 'error', message: event.message })
+        return
+      // 'scanned' is informational — keep showing the current step.
     }
+  }
+
+  const submitCode = () => {
+    const trimmed = code.trim()
+    if (!trimmed) return
+    window.electronAPI.submitWeChatVerifyCode(trimmed).catch(() => {})
+    setCode('')
+    setPhase({ kind: 'starting' })
   }
 
   return (
@@ -135,11 +123,30 @@ export function WeChatConnectDialog({ open, onOpenChange, onConnected }: WeChatC
             </div>
           )}
 
+          {phase.kind === 'verify' && (
+            <div className="flex flex-col gap-3">
+              <p className="text-sm text-muted-foreground">{t('dialog.wechat.verifyPrompt')}</p>
+              <div className="flex items-center gap-2">
+                <input
+                  autoFocus
+                  value={code}
+                  onChange={(e) => setCode(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') submitCode()
+                  }}
+                  placeholder={t('dialog.wechat.verifyPlaceholder')}
+                  className="flex-1 rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring"
+                />
+                <Button size="sm" onClick={submitCode} disabled={!code.trim()}>
+                  {t('dialog.wechat.submit')}
+                </Button>
+              </div>
+            </div>
+          )}
+
           {phase.kind === 'connected' && (
             <StatusRow icon={<Check className="h-4 w-4 text-emerald-500" />}>
-              {phase.account
-                ? t('dialog.wechat.connectedAs', { account: phase.account })
-                : t('dialog.wechat.connected')}
+              {t('dialog.wechat.connected')}
             </StatusRow>
           )}
 
