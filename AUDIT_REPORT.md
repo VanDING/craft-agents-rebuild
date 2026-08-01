@@ -50,7 +50,7 @@
 - **权限注记**: 本机 `/Users/van` 0750 缓解"任意本地用户",但默认 macOS 布局 (home 0755) 下成立。
 - **修复**: 两者改 `safeMode: 'block'` 或接入 Bash 同款权限门;`transform_data` 复用 sandbox 隔离;读权限收敛到 session 树;凭据缓存加密或移出。
 
-### C-3 [OPEN, fork-caused] 依赖供应链: 34 个已知漏洞 (2 critical + 19 high),含直接依赖
+### C-3 [PARTIAL 74f4453d: 34→22 vulns; 残留为 markitdown-js/baileys 传递依赖, fork-caused] 依赖供应链: 34 个已知漏洞 (2 critical + 19 high),含直接依赖
 - **证据** (`bun audit` 实测,升级 Pi 0.83.0 后复测仍 34): critical — `xmldom` + `node-tesseract-ocr` 命令注入 (markitdown-js,CLI 文档工具处理不可信文件);high — `undici 8.0.0` (apps/electron/package.json:77 直接 pin,TLS 校验绕过 GHSA-vmh5-mc38-953g 等,`main/network-proxy.ts:10` 直接用)、`marked 18.0.0` (OOM DoS)、`js-yaml 5.0.0` (指数解析 DoS)、`sharp 0.34.5` (electron 侧,与根 0.35.3 双版本)、`music-metadata` (baileys/whatsapp)。
 - **归属**: **全部 fork-caused** — 上游 pin 为 `typescript ^5.0.0`/`undici ^7.22.0`/`marked ^17.0.1`/`js-yaml ^4.1.1`,fork 升级到 `7`/`8.0.0`/`18.0.0`/`5.0.0` 时未做漏洞检查 (TS7 → 201 个 tsc 错;undici 8.0.0 → TLS 绕过;其余同上)。
 - **修复**: undici ≥8.5.0、marked >18.0.1、js-yaml ≥5.1.1、tar >7.5.20、统一 sharp 0.35.x;评估 markitdown-js 对不可信文件的暴露。
@@ -94,7 +94,7 @@
 ### H-9 [FIXED 131d717c + 6b1ca9df, 未核实上游] workspace SVG 图标存储型 XSS
 - `server-core/handlers/rpc/workspace.ts:206-280` (WRITE_IMAGE 不净化) + `:150-188` (注释: "caller will use as innerHTML")。恶意仓库/技能图标 → renderer 任意 JS → 可调 H-7/H-8。修复: 改 `<img src>` 或 DOMPurify。
 
-### H-10 [OPEN, 未核实上游] `web_fetch` `redirect: 'follow'` 不重新校验
+### H-10 [FIXED 74f4453d, 未核实上游] `web_fetch` `redirect: 'follow'` 不重新校验
 - `pi-agent-server/src/tools/web-fetch.ts:366` (仅初始 URL 校验 `:73-95`)。公开 URL 302 到 `127.0.0.1`/云 metadata → SSRF;IPv4-mapped IPv6 `[::ffff:7f00:1]` 仅被"偶然"拦截 (bracketed 字面量 DNS 失败),AAAA 记录直通。修复: `redirect: 'manual'` 逐跳校验。
 
 ### H-11 [FIXED 5d8ccaa4, 混合: inherited 骨架 + fork 激活] token 刷新 provider 混淆: xAI/Kimi 的 refresh token POST 到 ChatGPT 端点
@@ -104,7 +104,7 @@
 ### H-13 [FIXED b0e8f3d5, 未核实上游] `source_test`/`config_validate` sourceSlug 无校验 → 路径穿越 + SSRF + 自动激活
 - `session-tools-core/src/source-helpers.ts:31`;`handlers/source-test.ts:100-118`。`../../` 可读任意目录 config.json 并以其 baseUrl 发起带凭据探测 (`safeMode: 'allow'`);`skill_validate` 有 `validateSlug`,这俩没有。修复: 两处补 `validateSlug`。
 
-### H-14 [OPEN, 未核实上游] MCP server: tool args 从不 zod 校验;`_precomputedResult` 模型可伪造;docs 代理原样转发
+### H-14 [FIXED 74f4453d, 未核实上游] MCP server: tool args 从不 zod 校验;`_precomputedResult` 模型可伪造;docs 代理原样转发
 - `session-mcp-server/src/index.ts:425-460, 277-306`。Schema 只用于广告不用于校验;`call_llm`/`spawn_session` 信任参数里 JSON 串;`docsUpstream` 把工作区数据发给第三方 `agents.craft.do`。修复: safeParse + 去掉 `_precomputedResult`。
 
 ### H-15 [FIXED 6b1ca9df, fork-caused] 远程服务器 WS token 驻留 renderer 内存
@@ -224,11 +224,11 @@ TS7 升级 (201 错) · anthropic→pi 迁移未同步测试 (CI 红) · `typech
 - [x] H-11 (5d8ccaa4): SDK provider-native 刷新,未知 provider 强制重认证
 
 **P1 (高危):**
-- [ ] H-1/H-2/H-3 browser pane 三件套 (file:// 拦截、EVALUATE gate、权限白名单)+ H-16 capability 边界校验
-- [ ] H-7/H-8 文件读取收口 (drafts.json 溯源 + `.craft-agent` 进黑名单 + 密钥改 keychain 派生)
-- [ ] H-9 SVG 图标改 `<img src>`;H-10 web_fetch redirect 逐跳校验;H-13 sourceSlug 校验;H-14 MCP args safeParse + 去 `_precomputedResult`
-- [ ] H-5/H-6/H-15 媒体超时上限、出站错误处理、token 移出 renderer
-- [ ] 依赖升级: undici ≥8.5.0 / marked / js-yaml / tar / sharp 统一;Dockerfile.server 删 3 条幽灵 COPY;electronVersion 对齐 43.x
+- [x] H-1\/H-2\/H-3\/H-16 (6b1ca9df)
+- [x] H-7\/H-8 (131d717c);密钥改 keychain 派生 仍 OPEN
+- [x] H-9 SVG (DOMParser 净化 6b1ca9df);H-10 redirect 逐跳校验 (74f4453d);H-13 (b0e8f3d5);H-14 args safeParse + 去 _precomputedResult (74f4453d)
+- [x] H-5\/H-6 (74b269d4)、H-15 (6b1ca9df)
+- [x] 依赖升级 (74f4453d): undici 8.9.0 / marked 18.0.7 / js-yaml 5.2.3 / tar 7.5.22 / sharp 统一 0.35.3;Dockerfile 幽灵 COPY 已删;electronVersion 已对齐 (b4fd6ecc)
 
 **P2 (迭代):**
 - [ ] M-1 session/workspace 归属校验;M-2 call_llm 鉴权;M-3 限流按真实 IP;M-9 maxPayload;M-10 传输上限
@@ -251,5 +251,6 @@ TS7 升级 (201 错) · anthropic→pi 迁移未同步测试 (CI 红) · `typech
 | `131d717c` | drafts 溯源 + 黑名单补 .craft-agent + SVG 写入门禁 | H-7/H-8/H-9 server 侧 (FIXED) |
 | `5d8ccaa4` | provider-native 刷新 (SDK OAuth);markdown rehype-sanitize | H-11 (FIXED)、C-1 (FIXED) |
 | `6b372f71` | typecheck 链/tsconfig types/i18n 修复/测试修正 | CI 全绿 (FIXED) |
+| `74f4453d` | redirect 逐跳校验;MCP zod 校验 + 去 _precomputedResult;依赖升级;Dockerfile 幽灵 COPY | H-10/H-14 (FIXED)、C-3 (PARTIAL 34→22)、C-1 Dockerfile (FIXED) |
 
 *方法说明: 静态代码审计 + 实测 (typecheck:all / 各包 tsc / bun audit / 全量 bun test / 脚本存在性 / 上游 raw 抓取逐文件对比)。竞态与时序类发现基于代码路径分析;标注 [未核实上游] 的项表示未做逐行 diff,不表示无问题。*
