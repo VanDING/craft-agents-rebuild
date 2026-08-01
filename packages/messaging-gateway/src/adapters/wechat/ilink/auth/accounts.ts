@@ -3,7 +3,7 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { resolveStateDir } from '../storage/state-dir';
+import { ensureStateDir, resolveStateDir } from '../storage/state-dir';
 import { logger } from '../util/logger';
 
 // ---------------------------------------------------------------------------
@@ -110,6 +110,7 @@ function readAccountIndex(): string[] {
 
 /** Persist the account index to disk, creating parent directories as needed. */
 function writeAccountIndex(ids: string[]): void {
+  ensureStateDir();
   const file = accountsIndexPath();
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const data: AccountIndex = { ids };
@@ -298,13 +299,17 @@ export function clearWeixinAccount(accountId: string): void {
 /**
  * Write account data to disk, creating parent directories as needed.
  * Uses an atomic write (temp file + rename) to avoid partial writes.
+ *
+ * The state dir is created 0700 and the data file 0600 so the plaintext
+ * OAuth/session token is not world-readable.
  */
 function saveWeixinAccountImmediate(accountId: string, data: WeixinAccountData): void {
+  ensureStateDir();
   const file = accountFilePath(accountId);
   fs.mkdirSync(path.dirname(file), { recursive: true });
 
   const tmp = `${file}.tmp.${process.pid}`;
-  fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf-8');
+  fs.writeFileSync(tmp, JSON.stringify(data, null, 2), { encoding: 'utf-8', mode: 0o600 });
   fs.renameSync(tmp, file);
 }
 

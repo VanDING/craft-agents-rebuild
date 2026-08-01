@@ -1,10 +1,10 @@
 // Vendored from @tencent-weixin/openclaw-weixin@2.4.4 (MIT, Copyright (C) 2026 Tencent).
 // See ../LICENSE and ../README.md (paths relative to ilink/) for license text and local adaptations.
 
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { deriveRawAccountId } from '../auth/accounts';
-import { resolveStateDir } from './state-dir';
+import { ensureStateDir, resolveStateDir } from './state-dir';
 
 /** Shape of the persisted sync buffer file. */
 export interface SyncBufData {
@@ -103,6 +103,33 @@ export function saveGetUpdatesBuf(
   filePath: string,
   getUpdatesBuf: string,
 ): void {
+  ensureStateDir();
   const data: SyncBufData = { get_updates_buf: getUpdatesBuf };
   writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
+}
+
+/**
+ * Delete every sync-buf persistence file that {@link loadGetUpdatesBuf} could
+ * read for the given account (primary normalized-ID file, compat raw-ID
+ * `.sync.json`, and legacy raw-ID `.json`).
+ *
+ * Used when an account is forgotten so no offset state survives the wipe.
+ */
+export function clearSyncBuf(accountId: string): void {
+  const stateDir = resolveStateDir();
+  const candidates = [join(stateDir, `sync-buf-${accountId}.sync.json`)];
+
+  const rawId = deriveRawAccountId(accountId);
+  if (rawId && rawId !== accountId) {
+    candidates.push(join(stateDir, `sync-buf-${rawId}.sync.json`));
+    candidates.push(join(stateDir, `sync-buf-${rawId}.json`));
+  }
+
+  for (const fp of candidates) {
+    try {
+      unlinkSync(fp);
+    } catch {
+      // Already gone or never created — nothing to clean.
+    }
+  }
 }

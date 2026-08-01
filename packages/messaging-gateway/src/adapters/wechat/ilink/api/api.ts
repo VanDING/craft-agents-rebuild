@@ -56,6 +56,34 @@ export type WeixinApiOptions = {
   longPollTimeoutMs?: number;
 };
 
+/**
+ * Error thrown by {@link apiPostFetch} when the iLink server answers with a
+ * non-2xx HTTP status. Carries the status and the (redacted-at-log) body so
+ * callers can decide whether the failure is transient.
+ */
+export class ApiHttpError extends Error {
+  readonly status: number;
+  readonly statusText: string;
+  readonly body: string;
+
+  constructor(status: number, statusText: string, body: string, label: string) {
+    const detail = body.trim() ? ` — ${redactBody(body)}` : '';
+    super(`${label} failed: HTTP ${status} ${statusText}${detail}`);
+    this.name = 'ApiHttpError';
+    this.status = status;
+    this.statusText = statusText;
+    this.body = body;
+  }
+}
+
+/**
+ * Whether an HTTP status code represents a transient failure worth retrying
+ * (rate limiting or server-side errors).
+ */
+export function isTransientHttpStatus(status: number): boolean {
+  return status === 429 || status >= 500;
+}
+
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 /**
@@ -261,6 +289,9 @@ export async function apiPostFetch(params: {
         status: response.status,
         body: redactBody(text),
       });
+      // Treat non-2xx responses as failures (H-6): previously the raw body was
+      // returned and JSON-parsable error bodies were consumed as success.
+      throw new ApiHttpError(response.status, response.statusText, text, label);
     }
 
     return text;
@@ -359,52 +390,115 @@ export async function getUploadUrl(
 }
 
 /**
- * Parse a `SendMessage` response body. Returns `null` for empty or non-JSON
- * responses, which the caller treats as an implicit success.
+ * Parse a `SendMessage` response body.
+ *
+ * Returns `null` for empty bodies, which the caller treats as an implicit
+ * success. Non-JSON bodies are a failure and throw (H-6): a malformed
+ * response must never be consumed as success.
  */
 function parseSendMessageResp(raw: string): SendMessageResp | null {
   if (!raw || raw.trim().length === 0) return null;
+  let parsed: unknown;
   try {
-    return JSON.parse(raw) as SendMessageResp;
+    parsed = JSON.parse(raw);
   } catch {
-    return null;
+    throw new Error(
+      `sendMessage failed: server returned a non-JSON body: ${redactBody(raw)}`,
+    );
   }
+  return parsed as SendMessageResp;
+}
+
+/**
+ * Whether a parsed sendMessage response carries a transient business errcode
+ * worth retrying (rate limit / server-side errors), mirroring the HTTP-status
+ * classification in {@link isTransientHttpStatus}.
+ */
+function isTransientSendErrcode(resp: SendMessageResp | null): boolean {
+  const code = resp?.errcode;
+  return typeof code === 'number' && (code === 429 || code >= 500);
+}
+
+/** Maximum attempts for one logical send (1 initial + 2 retries). */
+const MAX_SEND_ATTEMPTS = 3;
+
+/** Base delay for sendMessage retry backoff (doubles per attempt). */
+const SEND_RETRY_BASE_DELAY_MS = 300;
+
+/** Sleep for `ms` milliseconds. */
+async function sleep(ms: number): Promise<void> {
+  const { promise, resolve } = Promise.withResolvers<void>();
+  setTimeout(resolve, ms);
+  return promise;
 }
 
 /**
  * Send a message to a WeChat user.
  *
  * Parses the server response and logs the outcome with state, clientId,
- * ret, errcode, and errmsg. Throws an `Error` when `ret` or `errcode` is
- * non-zero. Empty or non-JSON responses are treated as success.
+ * ret, errcode, and errmsg. Throws when `ret` or `errcode` is non-zero, when
+ * the body is not JSON, and when the HTTP request fails (non-2xx).
+ *
+ * Transient failures — HTTP 429/5xx or transient business errcodes — are
+ * retried up to {@link MAX_SEND_ATTEMPTS} attempts with exponential backoff.
+ * The same request body (and therefore the same `client_id`) is reused across
+ * retries of the same logical send.
  */
 export async function sendMessage(
   params: WeixinApiOptions & { body: SendMessageReq },
 ): Promise<void> {
-  const respText = await apiPostFetch({
-    baseUrl: params.baseUrl,
-    endpoint: 'ilink/bot/sendmessage',
-    body: params.body,
-    token: params.token,
-    timeoutMs: params.timeoutMs,
-    label: 'sendMessage',
-  });
+  let attempt = 0;
+  for (;;) {
+    attempt += 1;
+    try {
+      const respText = await apiPostFetch({
+        baseUrl: params.baseUrl,
+        endpoint: 'ilink/bot/sendmessage',
+        body: params.body,
+        token: params.token,
+        timeoutMs: params.timeoutMs,
+        label: 'sendMessage',
+      });
 
-  const resp = parseSendMessageResp(respText);
+      const resp = parseSendMessageResp(respText);
 
-  const msg = params.body.msg;
-  logger.info('sendMessage outcome', {
-    state: (resp as Record<string, unknown> | null)?.state,
-    clientId: msg?.client_id,
-    ret: resp?.ret,
-    errcode: resp?.errcode,
-    errmsg: resp?.errmsg,
-  });
+      const msg = params.body.msg;
+      logger.info('sendMessage outcome', {
+        state: (resp as Record<string, unknown> | null)?.state,
+        clientId: msg?.client_id,
+        ret: resp?.ret,
+        errcode: resp?.errcode,
+        errmsg: resp?.errmsg,
+      });
 
-  if (resp && ((resp.ret !== undefined && resp.ret !== 0) || (resp.errcode !== undefined && resp.errcode !== 0))) {
-    throw new Error(
-      `sendMessage failed: ret=${resp.ret} errcode=${resp.errcode} errmsg=${resp.errmsg ?? ''}`,
-    );
+      const rejected =
+        resp
+        && ((resp.ret !== undefined && resp.ret !== 0)
+          || (resp.errcode !== undefined && resp.errcode !== 0));
+
+      if (!rejected) {
+        return; // success (including empty success bodies)
+      }
+
+      if (attempt < MAX_SEND_ATTEMPTS && isTransientSendErrcode(resp)) {
+        await sleep(SEND_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1));
+        continue;
+      }
+
+      throw new Error(
+        `sendMessage failed: ret=${resp.ret} errcode=${resp.errcode} errmsg=${resp.errmsg ?? ''}`,
+      );
+    } catch (err) {
+      if (
+        attempt < MAX_SEND_ATTEMPTS
+        && err instanceof ApiHttpError
+        && isTransientHttpStatus(err.status)
+      ) {
+        await sleep(SEND_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1));
+        continue;
+      }
+      throw err;
+    }
   }
 }
 

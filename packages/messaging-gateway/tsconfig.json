@@ -1,9 +1,18 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": {
-    "rootDir": "src",
-    "outDir": "dist",
-    "composite": true
+    "noEmit": true,
+    "types": ["node", "bun"],
+    // Match the workspace packages' effective strictness (server-core/shared
+    // do not enable noUncheckedIndexedAccess); keep the root's other checks.
+    "noUncheckedIndexedAccess": false,
+    "paths": {
+      "*": ["./*"],
+      "@craft-agent/shared": ["../shared/src/index.ts"],
+      "@craft-agent/shared/*": ["../shared/src/*"],
+      "@craft-agent/server-core": ["../server-core/src/index.ts"],
+      "@craft-agent/server-core/*": ["../server-core/src/*"]
+    }
   },
   "include": ["src"]
 }

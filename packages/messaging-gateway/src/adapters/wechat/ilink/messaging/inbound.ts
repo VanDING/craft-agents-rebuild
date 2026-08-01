@@ -10,7 +10,7 @@ import {
   type MessageItem,
   type WeixinMessage,
 } from '../api/types';
-import { resolveStateDir } from '../storage/state-dir';
+import { ensureStateDir, resolveStateDir } from '../storage/state-dir';
 
 // ---------------------------------------------------------------------------
 // Context token store
@@ -147,8 +147,12 @@ export function findAccountIdsByContextToken(
  *
  * Only tokens whose key starts with `"<accountId>:"` are included in the
  * persisted JSON object (keyed by `userId` without the account prefix).
+ *
+ * The file is written 0600 (with the state dir created 0700) because the
+ * context tokens are plaintext credentials that must not be world-readable.
  */
 function persistContextTokensForAccount(accountId: string): void {
+  ensureStateDir();
   const dir = path.join(resolveStateDir(), 'openclaw-weixin', 'accounts');
   fs.mkdirSync(dir, { recursive: true });
 
@@ -162,7 +166,7 @@ function persistContextTokensForAccount(accountId: string): void {
   }
 
   const fp = path.join(dir, `${accountId}.context-tokens.json`);
-  fs.writeFileSync(fp, JSON.stringify(tokens, null, 2), 'utf-8');
+  fs.writeFileSync(fp, JSON.stringify(tokens, null, 2), { encoding: 'utf-8', mode: 0o600 });
 }
 
 // ---------------------------------------------------------------------------

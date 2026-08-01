@@ -3,8 +3,8 @@
 
 import { randomUUID } from 'node:crypto';
 import * as readline from 'node:readline';
-import { apiGetFetch, apiPostFetch } from '../api/api';
-import { loadWeixinAccount, listIndexedWeixinAccountIds } from './accounts';
+import { apiPostFetch } from '../api/api';
+import { loadWeixinAccount } from './accounts';
 import { logger } from '../util/logger';
 import { redactToken } from '../util/redact';
 
@@ -247,15 +247,16 @@ export function readVerifyCodeFromStdin(): Promise<string> {
 /**
  * Start a WeChat QR code login flow for the iLink ClawBot.
  *
- * Fetches a QR code from the iLink API and optionally collects up to 10
- * local account tokens for session reuse.  Use the returned `sessionKey`
- * with {@link waitForWeixinLogin} to poll for completion.
+ * Fetches a QR code from the iLink API. Only the token of the account being
+ * logged in (pinned via `accountId`) may be submitted for session reuse;
+ * historical tokens from other accounts are never re-submitted. Use the
+ * returned `sessionKey` with {@link waitForWeixinLogin} to poll for completion.
  *
  * @param opts             - Login options.
  * @param opts.apiBaseUrl  - iLink API base URL.
  * @param opts.verbose     - Enable verbose logging to the iLink logger.
- * @param opts.force       - Skip collecting local account tokens.
- * @param opts.accountId   - Restrict token collection to a specific account.
+ * @param opts.force       - Skip collecting the current account's local token.
+ * @param opts.accountId   - Pin the account whose token may be submitted.
  * @param opts.botType     - Bot type (defaults to `DEFAULT_ILINK_BOT_TYPE`).
  * @returns The QR code URL, session key, and any API message.
  */
@@ -271,19 +272,17 @@ export async function startWeixinLoginWithQr(
   const baseUrl = opts.apiBaseUrl;
   const botType = opts.botType ?? DEFAULT_ILINK_BOT_TYPE;
 
-  // Collect up to 10 local tokens for session reuse
+  // Security: never re-submit historical tokens on a QR login. Re-submitting
+  // up to 10 previously-stored account tokens lets the new session silently
+  // re-validate credentials the operator may have forgotten or rotated, and
+  // cross-links accounts that were never part of this login. Only the token of
+  // the account currently being logged in is submitted (when one is pinned via
+  // `accountId`); fresh logins submit none.
   const localTokens: string[] = [];
-  if (!opts.force) {
-    const accountIds = opts.accountId
-      ? [opts.accountId]
-      : listIndexedWeixinAccountIds();
-
-    for (const id of accountIds) {
-      if (localTokens.length >= 10) break;
-      const account = loadWeixinAccount(id);
-      if (account?.token) {
-        localTokens.push(account.token);
-      }
+  if (!opts.force && opts.accountId) {
+    const account = loadWeixinAccount(opts.accountId);
+    if (account?.token) {
+      localTokens.push(account.token);
     }
   }
 

@@ -44,9 +44,24 @@ import {
 } from './ilink/messaging/inbound'
 import { sendMessageWeixin } from './ilink/messaging/send'
 import { sendWeixinMediaFile } from './ilink/messaging/send-media'
-import { downloadMediaFromItem } from './ilink/media/media-download'
+import { downloadMediaFromItem, type WeixinInboundMediaOpts } from './ilink/media/media-download'
 import { getConfig, sendTyping } from './ilink/api/api'
 import { TypingStatus, type WeixinMessage } from './ilink/api/types'
+
+// ---------------------------------------------------------------------------
+// Forget-cleanup exports (consumed by the registry's forgetPlatform)
+// ---------------------------------------------------------------------------
+
+/** Delete the per-account credential JSON file. */
+export { clearWeixinAccount } from './ilink/auth/accounts'
+/** Remove the account from the accounts.json index. */
+export { unregisterWeixinAccountId } from './ilink/auth/accounts'
+/** List all indexed WeChat account IDs (used when no credential blob exists). */
+export { listIndexedWeixinAccountIds } from './ilink/auth/accounts'
+/** Delete an account's context-token JSON file and in-memory entries. */
+export { clearContextTokensForAccount } from './ilink/messaging/inbound'
+/** Delete an account's sync-buf offset files (primary + legacy variants). */
+export { clearSyncBuf } from './ilink/storage/sync-buf'
 
 // ---------------------------------------------------------------------------
 // Credentials
@@ -155,6 +170,8 @@ const MAX_MESSAGE_LENGTH = 4000
 const COALESCE_WINDOW_MS = 10_000
 const TYPING_HEARTBEAT_INTERVAL_MS = 5_000
 const TYPING_HEARTBEAT_MAX_TICKS = 60
+/** Maximum concurrent CDN media downloads across one message's attachments. */
+const MEDIA_DOWNLOAD_CONCURRENCY = 3
 
 export class WeChatAdapter implements PlatformAdapter {
   readonly platform = 'wechat' as const
@@ -324,9 +341,17 @@ export class WeChatAdapter implements PlatformAdapter {
     buffer: Buffer,
     contentType?: string,
     subdir?: string,
-    _maxBytes?: number,
+    maxBytes?: number,
     originalFilename?: string,
   ): Promise<{ path: string }> => {
+    // Enforce the caller's size cap (previously ignored). Throwing surfaces
+    // the rejection to the media pipeline, which logs it and drops the item
+    // instead of persisting an oversized file.
+    if (maxBytes !== undefined && buffer.length > maxBytes) {
+      throw new Error(
+        `wechat media exceeds size cap: ${buffer.length} bytes > ${maxBytes} bytes`,
+      )
+    }
     const dir = join(tmpdir(), 'craft-wechat-media', subdir ?? 'inbound')
     mkdirSync(dir, { recursive: true })
     let ext = originalFilename ? extname(originalFilename) : ''
@@ -483,15 +508,36 @@ export class WeChatAdapter implements PlatformAdapter {
     const out: IncomingAttachment[] = []
     const log = (m: string) => this.logger?.info(m, { event: 'wechat_media' })
     const errLog = (m: string) => this.logger?.error(m, { event: 'wechat_media' })
-    for (const item of msg.item_list ?? []) {
-      if (!isMediaItem(item)) continue
-      const media = await downloadMediaFromItem(item, {
-        cdnBaseUrl: this.cdnBaseUrl,
-        saveMedia: this.saveMedia,
-        log,
-        errLog,
-        label: 'inbound',
-      })
+
+    const mediaItems = (msg.item_list ?? []).filter(isMediaItem)
+    // Download attachments with bounded concurrency instead of one-at-a-time,
+    // so a multi-attachment message does not block the long-poll loop for the
+    // sum of all download times. Result order is preserved by index.
+    const downloaded = new Array<WeixinInboundMediaOpts | undefined>(mediaItems.length)
+    let cursor = 0
+    const worker = async (): Promise<void> => {
+      while (cursor < mediaItems.length) {
+        const pos = cursor
+        cursor += 1
+        const media = await downloadMediaFromItem(mediaItems[pos]!, {
+          cdnBaseUrl: this.cdnBaseUrl,
+          saveMedia: this.saveMedia,
+          log,
+          errLog,
+          label: 'inbound',
+        })
+        downloaded[pos] = media
+      }
+    }
+    const runners = Array.from(
+      { length: Math.min(MEDIA_DOWNLOAD_CONCURRENCY, mediaItems.length) },
+      () => worker(),
+    )
+    await Promise.all(runners)
+
+    for (let i = 0; i < mediaItems.length; i++) {
+      const media = downloaded[i]!
+      const item = mediaItems[i]!
       const fileId = item.msg_id ?? randomBytes(6).toString('hex')
       if (media.decryptedPicPath) {
         out.push({

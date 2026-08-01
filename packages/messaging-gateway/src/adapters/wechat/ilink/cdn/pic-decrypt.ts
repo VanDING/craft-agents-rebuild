@@ -6,6 +6,16 @@ import { buildCdnDownloadUrl } from './cdn-url';
 import { logger } from '../util/logger';
 
 // ---------------------------------------------------------------------------
+// Download limits
+// ---------------------------------------------------------------------------
+
+/** Hard cap on the size of a single CDN download (50 MB). */
+const MAX_CDN_BYTES = 50 * 1024 * 1024;
+
+/** Timeout for a single CDN download, covering headers and body read (60 s). */
+const CDN_FETCH_TIMEOUT_MS = 60_000;
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -45,12 +55,19 @@ function parseAesKey(aesKeyBase64: string, label: string): Buffer {
 /**
  * Fetch raw bytes from a CDN URL via `fetch`.
  *
+ * The request is bounded by a hard timeout ({@link CDN_FETCH_TIMEOUT_MS}) and
+ * the response body is capped at {@link MAX_CDN_BYTES} bytes. The cap is
+ * enforced while streaming (not just via `content-length`) so a lying or
+ * missing `content-length` cannot bypass it.
+ *
  * @param url   - Fully-qualified CDN download URL.
  * @param label - Context label for log/error messages.
  * @returns The response body as a `Buffer`.
  */
 async function fetchCdnBytes(url: string, label: string): Promise<Buffer> {
-  const response = await fetch(url);
+  const response = await fetch(url, {
+    signal: AbortSignal.timeout(CDN_FETCH_TIMEOUT_MS),
+  });
 
   if (!response.ok) {
     throw new Error(
@@ -58,8 +75,36 @@ async function fetchCdnBytes(url: string, label: string): Promise<Buffer> {
     );
   }
 
-  const arrayBuffer = await response.arrayBuffer();
-  return Buffer.from(arrayBuffer);
+  // Reject oversized payloads up front when the server advertises a length.
+  const contentLength = Number(response.headers.get('content-length') ?? 0);
+  if (contentLength > MAX_CDN_BYTES) {
+    throw new Error(
+      `[pic-decrypt:${label}] CDN payload too large: ${contentLength} bytes (cap ${MAX_CDN_BYTES})`,
+    );
+  }
+
+  if (!response.body) {
+    const arrayBuffer = await response.arrayBuffer();
+    if (arrayBuffer.byteLength > MAX_CDN_BYTES) {
+      throw new Error(
+        `[pic-decrypt:${label}] CDN payload exceeds ${MAX_CDN_BYTES} bytes`,
+      );
+    }
+    return Buffer.from(arrayBuffer);
+  }
+
+  const chunks: Buffer[] = [];
+  let total = 0;
+  for await (const chunk of response.body) {
+    total += chunk.byteLength;
+    if (total > MAX_CDN_BYTES) {
+      throw new Error(
+        `[pic-decrypt:${label}] CDN payload exceeds ${MAX_CDN_BYTES} bytes (got ${total} so far)`,
+      );
+    }
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+  return Buffer.concat(chunks);
 }
 
 // ---------------------------------------------------------------------------

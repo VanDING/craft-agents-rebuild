@@ -34,6 +34,11 @@ import {
   WeChatAdapter,
   parseWeChatCredentials,
   startWeChatQrLogin,
+  clearWeixinAccount,
+  unregisterWeixinAccountId,
+  listIndexedWeixinAccountIds,
+  clearContextTokensForAccount,
+  clearSyncBuf,
   type WeChatCredentials,
   type WeChatLoginEvent,
 } from './adapters/wechat/index'
@@ -793,6 +798,22 @@ export class MessagingGatewayRegistry implements IMessagingGatewayRegistry {
 
   async forgetPlatform(workspaceId: string, platform: string): Promise<void> {
     if (!isKnownPlatform(platform)) return
+    // Capture the WeChat account ID BEFORE disconnectPlatform deletes the
+    // credential (it does for every non-whatsapp platform), so the artifact
+    // cleanup below can target exactly the account this workspace owns.
+    let wechatAccountId: string | undefined
+    if (platform === 'wechat') {
+      const cred = await this.opts.credentialManager
+        .get({ type: 'messaging_bearer', workspaceId, name: 'wechat' })
+        .catch(() => null)
+      if (cred?.value) {
+        try {
+          wechatAccountId = parseWeChatCredentials(cred.value).accountId
+        } catch {
+          // Unparsable credential blob — fall back to the account index.
+        }
+      }
+    }
     await this.disconnectPlatform(workspaceId, platform)
     if (platform === 'whatsapp') {
       const authDir = this.getWhatsAppAuthStateDir(workspaceId)
@@ -815,10 +836,25 @@ export class MessagingGatewayRegistry implements IMessagingGatewayRegistry {
     }
     if (platform === 'wechat') {
       try {
+        // Remove the plaintext artifacts that live in the shared WeChat state
+        // dir (~/.craft-agent/wechat): per-account credential JSON, context
+        // tokens, sync-buf offset files, and the accounts.json index entry
+        // (H-4). When the credential could not be read, wipe every indexed
+        // account so no token file survives the forget.
+        const accountIds = wechatAccountId
+          ? [wechatAccountId]
+          : listIndexedWeixinAccountIds()
+        for (const accountId of accountIds) {
+          clearWeixinAccount(accountId)
+          clearContextTokensForAccount(accountId)
+          clearSyncBuf(accountId)
+          unregisterWeixinAccountId(accountId)
+        }
         await this.opts.credentialManager.delete({ type: 'messaging_bearer', workspaceId, name: 'wechat' })
         this.log.info('forgot WeChat auth state', {
           event: 'wechat_auth_forgotten',
           workspaceId,
+          removedAccounts: accountIds,
         })
       } catch (err) {
         this.log.error('failed to forget WeChat auth state', {
