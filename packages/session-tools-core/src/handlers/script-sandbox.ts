@@ -128,21 +128,45 @@ export async function handleScriptSandbox(
         cwd: dataDir,
         env,
         stdio: ['pipe', 'pipe', 'pipe'],
+        // Make the child a process-group leader so the timeout can SIGKILL the
+        // whole group (N-5: previously only the direct child was killed,
+        // orphaning grandchildren spawned by the script).
+        detached: true,
       });
 
       let stdout = '';
       let stderr = '';
       let timedOut = false;
+      let settled = false;
+
+      const settle = (value: { stdout: string; stderr: string; code: number | null; timedOut: boolean }) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(killTimer);
+        resolvePromise(value);
+      };
+
+      // Settle on the timer itself so a `close` that never fires can't hang the
+      // caller; the group kill below then reaps the whole process tree.
+      const killTimer = setTimeout(() => {
+        timedOut = true;
+        try {
+          if (child.pid !== undefined) {
+            process.kill(-child.pid, 'SIGKILL');
+          } else {
+            child.kill('SIGKILL');
+          }
+        } catch {
+          // Negative-PID kill unsupported on this platform — fall back to the child only.
+          child.kill('SIGKILL');
+        }
+        settle({ stdout, stderr, code: null, timedOut: true });
+      }, timeoutMs);
 
       if (typeof args.stdin === 'string') {
         child.stdin.write(args.stdin);
       }
       child.stdin.end();
-
-      const killTimer = setTimeout(() => {
-        timedOut = true;
-        child.kill('SIGKILL');
-      }, timeoutMs);
 
       child.stdout.on('data', (chunk: Buffer) => {
         stdout += chunk.toString();
@@ -153,11 +177,12 @@ export async function handleScriptSandbox(
       });
 
       child.on('close', (code) => {
-        clearTimeout(killTimer);
-        resolvePromise({ stdout, stderr, code, timedOut });
+        settle({ stdout, stderr, code, timedOut });
       });
 
       child.on('error', (err) => {
+        if (settled) return;
+        settled = true;
         clearTimeout(killTimer);
         reject(err);
       });

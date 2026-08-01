@@ -47,6 +47,10 @@ export function buildDarwinSandboxProfile(
     '(allow process*)',
     '(allow sysctl-read)',
     '(allow file-read*)',
+    // Reads of the app's plaintext credential cache are never allowed,
+    // even within the session tree (audit C-2). Must come AFTER the
+    // blanket read allow — the last matching rule wins in sandbox-exec.
+    '(deny file-read* (regex "^.*/\\.credential-cache\\.json$"))',
     '(deny file-write*)',
     `(allow file-write* (subpath "${escapedRoot}"))`,
   ];
@@ -87,16 +91,28 @@ export function applyFilesystemIsolation(
 
   if (process.platform === 'linux') {
     if (existsOnPath('bwrap')) {
-      // Read-only root + writable bind mount for the session subtree.
-      // This limits writes to sessionRoot while preserving runtime/library access.
+      // Whitelist mounts instead of `--ro-bind / /` (which made the whole
+      // root readable, exposing ~/.ssh, ~/.aws, and ~/.craft-agent to
+      // sandboxed scripts — audit C-2). Only the session tree and essential
+      // system dirs are bound; everything else is absent from the sandbox.
       return {
         status: 'enforced',
         backend: 'bwrap',
         command: 'bwrap',
         args: [
           '--die-with-parent',
-          '--ro-bind', '/', '/',
-          '--bind', sessionRoot, sessionRoot,
+          '--ro-bind', sessionRoot, sessionRoot,
+          // Essential runtime dirs (interpreters, shared libs, certs/locale).
+          // --ro-bind-try tolerates dirs absent on some distros (e.g. /opt).
+          '--ro-bind-try', '/usr', '/usr',
+          '--ro-bind-try', '/lib', '/lib',
+          '--ro-bind-try', '/lib64', '/lib64',
+          '--ro-bind-try', '/bin', '/bin',
+          '--ro-bind-try', '/sbin', '/sbin',
+          '--ro-bind-try', '/etc', '/etc',
+          '--ro-bind-try', '/opt', '/opt',
+          // Empty writable tmp for interpreter scratch space.
+          '--tmpfs', '/tmp',
           '--proc', '/proc',
           '--dev', '/dev',
           '--',

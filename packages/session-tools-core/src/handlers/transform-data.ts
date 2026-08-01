@@ -99,42 +99,69 @@ export async function handleTransformData(
       dataDir,
     });
 
-    // Spawn subprocess with manual timeout that escalates to SIGKILL.
-    // We can't rely on spawn()'s built-in `timeout` option because it only sends
-    // SIGTERM, which can be caught/ignored — leaving the promise hanging forever.
-    const result = await new Promise<{ stdout: string; stderr: string; code: number | null }>((resolvePromise, reject) => {
+    // Spawn subprocess with manual timeout that escalates to killing the whole
+    // process group. We can't rely on spawn()'s built-in `timeout` option because
+    // it only sends SIGTERM, which can be caught/ignored — leaving the promise
+    // hanging forever. `detached: true` makes the child a process-group leader so
+    // the timer can SIGKILL the group (N-5: previously only the direct child was
+    // killed, orphaning grandchildren). The promise settles on the timer itself,
+    // so a `close` that never fires cannot hang the caller.
+    const result = await new Promise<{ stdout: string; stderr: string; code: number | null; timedOut: boolean }>((resolvePromise, reject) => {
       const child = spawn(cmd, spawnArgs, {
         cwd: dataDir,
         env,
         stdio: ['ignore', 'pipe', 'pipe'],
+        detached: true,
       });
 
       let stdout = '';
       let stderr = '';
       let timedOut = false;
+      let settled = false;
+
+      const settle = (value: { stdout: string; stderr: string; code: number | null; timedOut: boolean }) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(killTimer);
+        resolvePromise(value);
+      };
 
       const killTimer = setTimeout(() => {
         timedOut = true;
-        child.kill('SIGKILL');
+        // Kill the whole process group so grandchildren die with the child.
+        try {
+          if (child.pid !== undefined) {
+            process.kill(-child.pid, 'SIGKILL');
+          } else {
+            child.kill('SIGKILL');
+          }
+        } catch {
+          // Negative-PID kill unsupported on this platform — fall back to the child only.
+          child.kill('SIGKILL');
+        }
+        settle({ stdout, stderr: `Script timed out after ${TRANSFORM_DATA_TIMEOUT_MS / 1000}s and was killed`, code: null, timedOut: true });
       }, TRANSFORM_DATA_TIMEOUT_MS);
 
       child.stdout.on('data', (data: Buffer) => { stdout += data.toString(); });
       child.stderr.on('data', (data: Buffer) => { stderr += data.toString(); });
 
       child.on('close', (code) => {
-        clearTimeout(killTimer);
-        if (timedOut) {
-          resolvePromise({ stdout, stderr: `Script timed out after ${TRANSFORM_DATA_TIMEOUT_MS / 1000}s and was killed`, code });
-        } else {
-          resolvePromise({ stdout, stderr, code });
-        }
+        settle({ stdout, stderr, code, timedOut });
       });
 
       child.on('error', (err) => {
+        if (settled) return;
+        settled = true;
         clearTimeout(killTimer);
         reject(err);
       });
     });
+
+    if (result.timedOut) {
+      return errorResponse(
+        `Script timed out after ${TRANSFORM_DATA_TIMEOUT_MS / 1000}s and was killed (including child processes).`
+      );
+    }
 
     if (result.code !== 0) {
       const errorOutput = result.stderr || result.stdout || 'Script exited with non-zero code';

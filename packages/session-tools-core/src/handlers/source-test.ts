@@ -13,6 +13,8 @@ import { errorResponse } from '../response.ts';
 import {
   validateJsonFileHasFields,
   validateSourceConfigBasic,
+  validateSlug,
+  formatValidationResult,
 } from '../validation.ts';
 import {
   sourceExists,
@@ -62,6 +64,11 @@ export async function handleSourceTest(
   args: SourceTestArgs
 ): Promise<ToolResult> {
   const { sourceSlug } = args;
+  // Audit H-13: reject traversal/odd slugs before any path construction.
+  const slugResult = validateSlug(sourceSlug);
+  if (!slugResult.valid) {
+    return errorResponse(`Invalid source slug '${sourceSlug}': ${formatValidationResult(slugResult)}`);
+  }
   const lines: string[] = [];
   let hasErrors = false;
   let hasWarnings = false;

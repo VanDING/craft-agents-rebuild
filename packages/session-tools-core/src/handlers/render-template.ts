@@ -10,6 +10,7 @@ import type { ToolResult } from '../types.ts';
 import { successResponse, errorResponse } from '../response.ts';
 import { loadTemplate, validateTemplateData } from '../templates/loader.ts';
 import { renderMustache } from '../templates/mustache.ts';
+import { validateSlug, formatValidationResult } from '../validation.ts';
 import { join } from 'node:path';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 
@@ -34,6 +35,18 @@ export async function handleRenderTemplate(
 ): Promise<ToolResult> {
   if (!ctx.dataPath) {
     return errorResponse('render_template requires dataPath in context.');
+  }
+
+  // Audit H-13/N-9: both args are path-joined below — reject traversal.
+  const slugResult = validateSlug(args.source);
+  if (!slugResult.valid) {
+    return errorResponse(`Invalid source slug '${args.source}': ${formatValidationResult(slugResult)}`);
+  }
+  if (args.template) {
+    const templateResult = validateSlug(args.template);
+    if (!templateResult.valid) {
+      return errorResponse(`Invalid template name '${args.template}': ${formatValidationResult(templateResult)}`);
+    }
   }
 
   const sourcePath = join(ctx.workspacePath, 'sources', args.source);

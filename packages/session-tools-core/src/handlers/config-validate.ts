@@ -16,6 +16,7 @@ import {
   formatValidationResult,
   validateJsonFileHasFields,
   mergeResults,
+  validateSlug,
 } from '../validation.ts';
 import { getSourceConfigPath } from '../source-helpers.ts';
 
@@ -36,6 +37,14 @@ export async function handleConfigValidate(
 ): Promise<ToolResult> {
   const { target, sourceSlug } = args;
   const craftAgentRoot = join(homedir(), '.craft-agent');
+
+  // Audit H-13: sourceSlug is used in join() below — reject traversal.
+  if (sourceSlug) {
+    const slugResult = validateSlug(sourceSlug);
+    if (!slugResult.valid) {
+      return errorResponse(`Invalid source slug '${sourceSlug}': ${formatValidationResult(slugResult)}`);
+    }
+  }
 
   // If full validators available (Claude), use them
   if (ctx.validators) {
