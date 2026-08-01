@@ -7,7 +7,7 @@ import { RPC_CHANNELS, type FileAttachment, type DirectoryListingResult } from '
 import type { StoredAttachment } from '@craft-agent/core/types'
 import { readFileAttachment, validateImageForClaudeAPI, IMAGE_LIMITS } from '@craft-agent/shared/utils'
 import { getSessionAttachmentsPath, validateSessionId } from '@craft-agent/shared/sessions'
-import { getWorkspaceByNameOrId } from '@craft-agent/shared/config'
+import { getWorkspaceByNameOrId, getAllSessionDrafts } from '@craft-agent/shared/config'
 import { resizeImageForAPI, inspectImageBuffer } from '@craft-agent/server-core/services'
 import { sanitizeFilename, validateFilePath, getWorkspaceAllowedDirs } from '@craft-agent/server-core/handlers'
 import { MarkItDown } from 'markitdown-js'
@@ -162,15 +162,43 @@ export function registerFilesHandlers(server: RpcServer, deps: HandlerDeps): voi
     }
   })
 
-  // Read a user-attached file (bypasses workspace-dir validation).
-  // Used only by renderer draft hydration: the path was written to drafts.json by a
-  // previous user-initiated OS-picker / Finder-drag attach, so the path implies consent.
-  // NOT exposed to agent code — no equivalent MCP tool. Kept separate from readFileAttachment
-  // on purpose to preserve the agent-facing read's narrow trust boundary.
+  // Read a user-attached file. Used only by renderer draft hydration: the path was
+  // written to drafts.json by a previous user-initiated OS-picker / Finder-drag attach.
+  // SECURITY (H-7): the path is only trusted because that attach action recorded it in
+  // drafts.json, so we enforce provenance — the requested path must be one of the
+  // attachment paths referenced by a draft of a session in the calling workspace.
+  // A compromised renderer can therefore re-read files the user explicitly attached,
+  // never arbitrary files on disk (~/.ssh/id_rsa, ~/.aws/credentials, …).
+  // NOT exposed to agent code — no equivalent MCP tool. Kept separate from
+  // readFileAttachment on purpose to preserve the agent-facing read's narrow trust boundary.
   const USER_ATTACHMENT_MAX_BYTES = 50 * 1024 * 1024
-  server.handle(RPC_CHANNELS.file.READ_USER_ATTACHMENT, async (_ctx, path: string) => {
+  server.handle(RPC_CHANNELS.file.READ_USER_ATTACHMENT, async (ctx, path: string) => {
     try {
       if (!path || typeof path !== 'string' || !isAbsolute(path)) return null
+
+      // Provenance: collect every absolute path recorded in the workspace's drafts.
+      const workspaceId = ctx.workspaceId ?? deps.windowManager?.getWorkspaceForWindow(ctx.webContentsId!)
+      const drafts = getAllSessionDrafts()
+      const allowedPaths = new Set<string>()
+      const addDraftPaths = (draft: { attachments?: Array<{ path: string }> }) => {
+        for (const ref of draft.attachments ?? []) {
+          if (ref.path && isAbsolute(ref.path)) allowedPaths.add(ref.path)
+        }
+      }
+      if (workspaceId) {
+        // Drafts are keyed by sessionId app-wide; narrow to this workspace's sessions.
+        const sessionIds = new Set(deps.sessionManager.getSessions(workspaceId).map(s => s.id))
+        for (const [sessionId, draft] of Object.entries(drafts)) {
+          if (sessionIds.has(sessionId)) addDraftPaths(draft)
+        }
+      } else {
+        // No window/workspace context — fall back to all drafts (still user-consented paths only).
+        for (const draft of Object.values(drafts)) addDraftPaths(draft)
+      }
+      if (!allowedPaths.has(path)) {
+        deps.platform.logger.warn(`[readUserAttachment] path not recorded in drafts, denying read: ${path}`)
+        return null
+      }
       const info = await stat(path).catch(() => null)
       if (!info || !info.isFile()) return null
       if (info.size > USER_ATTACHMENT_MAX_BYTES) {

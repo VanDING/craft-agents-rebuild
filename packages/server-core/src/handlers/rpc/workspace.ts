@@ -183,7 +183,11 @@ export function registerWorkspaceCoreHandlers(server: RpcServer, deps: HandlerDe
     // Read file as buffer
     const buffer = readFileSync(absolutePath)
 
-    // If SVG, return as UTF-8 string (caller will use as innerHTML)
+    // If SVG, return as UTF-8 text. The renderer consumes this as a
+    // data:image/svg+xml URL in a script-disabled <img> context (or through its own
+    // sanitizer) — never as executable inline HTML. WRITE_IMAGE rejects
+    // script-capable SVGs server-side; raw text is kept so the renderer's theming
+    // pipeline (color injection) can operate on the source markup.
     if (ext === '.svg') {
       return buffer.toString('utf-8')
     }
@@ -249,8 +253,24 @@ export function registerWorkspaceCoreHandlers(server: RpcServer, deps: HandlerDe
     // Decode base64 to buffer
     const buffer = Buffer.from(base64, 'base64')
 
-    // For SVGs, just write directly (no resizing needed)
-    if (mimeType === 'image/svg+xml' || ext === '.svg') {
+    // For SVGs, write directly (no resizing needed) — but reject script-capable
+    // content first. SECURITY (H-9): stored SVG icons can end up rendered as
+    // markup, so a malicious workspace/icon SVG must not be able to carry script
+    // tags, event-handler attributes, javascript: URLs, or foreignObject payloads.
+    // Minimal regex gate = defense-in-depth; the renderer also renders icons via
+    // <img src> (script-disabled) on the client side.
+    const isSvg = ext === '.svg' || (mimeType ?? '').toLowerCase() === 'image/svg+xml'
+    if (isSvg) {
+      const svgText = buffer.toString('utf-8')
+      const svgDangerousPatterns: RegExp[] = [
+        /<\s*script/i,
+        /\son[a-z]+\s*=/i,
+        /javascript\s*:/i,
+        /foreignobject/i,
+      ]
+      if (svgDangerousPatterns.some(pattern => pattern.test(svgText))) {
+        throw new Error('Invalid SVG: workspace icons may not contain script tags, event handler attributes, javascript: URLs, or foreignObject')
+      }
       writeFileSync(absolutePath, buffer)
       return
     }

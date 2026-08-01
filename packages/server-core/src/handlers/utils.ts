@@ -126,6 +126,16 @@ export async function validateFilePath(
     /secrets?\./i,
     /\.pem$/,
     /\.key$/,
+    // H-8: encrypted credential vault (~/.craft-agent/credentials.enc, AES-256-GCM
+    // keyed from the machine UUID) and any other *.enc payload.
+    /credentials\.enc$/,
+    /\.enc$/,
+    // Cached OAuth/bearer tokens: <workspace>/sources/<slug>/.credential-cache.json
+    /[\\/]\.credential-cache\.json$/,
+    // App-level config root (~/.craft-agent/config.json) holds serverConfig.token.
+    // Anchored to the exact config root so workspace trees
+    // (~/.craft-agent/workspaces/<id>/...) stay readable.
+    /[\\/]\.craft-agent[\\/]config\.json$/,
   ]
 
   if (sensitivePatterns.some(pattern => pattern.test(realFilePath))) {

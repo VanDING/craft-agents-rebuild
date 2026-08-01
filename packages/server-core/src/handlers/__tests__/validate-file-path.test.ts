@@ -84,4 +84,41 @@ describe('validateFilePath', () => {
     const result = await validateFilePath(path, ['', undefined as unknown as string])
     expect(result).toContain('test.txt')
   })
+
+  // H-8: encrypted credential vault + config root blocklist
+  it('blocks the encrypted credential vault (credentials.enc)', async () => {
+    const path = join(home, '.craft-agent', 'credentials.enc')
+    await expect(validateFilePath(path)).rejects.toThrow('sensitive')
+  })
+
+  it('blocks any *.enc payload even inside additionalAllowedDirs', async () => {
+    const projectDir = join(home, 'project')
+    const path = join(projectDir, 'vault.enc')
+    await expect(validateFilePath(path, [projectDir])).rejects.toThrow('sensitive')
+  })
+
+  it('blocks source credential cache (.credential-cache.json)', async () => {
+    const projectDir = join(home, 'project')
+    const path = join(projectDir, 'sources', 'linear', '.credential-cache.json')
+    await expect(validateFilePath(path, [projectDir])).rejects.toThrow('sensitive')
+  })
+
+  it('blocks the app-level config root config.json', async () => {
+    const path = join(home, '.craft-agent', 'config.json')
+    await expect(validateFilePath(path)).rejects.toThrow('sensitive')
+  })
+
+  it('still allows workspace-tree files under ~/.craft-agent/workspaces', async () => {
+    const workspaceDir = join(home, '.craft-agent', 'workspaces', 'ws-1')
+    const path = join(workspaceDir, 'config.json')
+    const result = await validateFilePath(path, [workspaceDir])
+    expect(result).toContain('config.json')
+  })
+
+  it('new sensitive patterns match Windows backslash separators', () => {
+    expect(/credentials\.enc$/.test('C:\\Users\\me\\.craft-agent\\credentials.enc')).toBe(true)
+    expect(/[\\/]\.credential-cache\.json$/.test('C:\\ws\\sources\\linear\\.credential-cache.json')).toBe(true)
+    expect(/[\\/]\.craft-agent[\\/]config\.json$/.test('C:\\Users\\me\\.craft-agent\\config.json')).toBe(true)
+    expect(/[\\/]\.craft-agent[\\/]config\.json$/.test('C:\\Users\\me\\.craft-agent\\workspaces\\ws-1\\config.json')).toBe(false)
+  })
 })
