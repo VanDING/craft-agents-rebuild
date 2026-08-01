@@ -145,7 +145,7 @@
 - M-23 [OPEN] source config/会话记录 0644 世界可读 (`shared/src/sources/storage.ts:142` 等)。
 
 **构建/配置:**
-- M-24 [OPEN, 混合] 打包产物 EOL Electron 39.2.7,dev 用 43.1.1 (`electron-builder.yml:7`;pin 本身 inherited,不一致是 fork 升级 dev 未同步)。
+- M-24 [FIXED b4fd6ecc, 混合] 打包产物 EOL Electron 39.2.7,dev 用 43.1.1 (`electron-builder.yml:7` 改 43.1.1;pin 本身 inherited,不一致是 fork 升级 dev 未同步)。
 - M-25 [OPEN, fork-caused] OAuth define 双构建路径不一致,`build:main` 会把 `GOOGLE_OAUTH_CLIENT_SECRET` 烘焙进 bundle (`apps/electron/package.json:18` vs `electron-build-main.ts:30-47` 注释声称不烘焙)。
 - M-26 [OPEN] GitHub Actions 未 pin SHA、无 `permissions:`;bun 版本三处不一致。
 - M-27 [OPEN] `.env.example` 过期 (记录已删除的 ANTHROPIC_API_KEY,`CRAFT_SERVER_TOKEN` 等 ~30 个未记录)。
@@ -244,5 +244,6 @@ TS7 升级 (201 错) · anthropic→pi 迁移未同步测试 (CI 红) · `typech
 | `27140e2a` | Pi SDK 0.83.0 全 workspace 统一 + lockfile 重新解析 + shiki peer ^4.0.0 | 版本漂移 (FIXED)、shiki peer (FIXED)、C-3 部分缓解 (Pi 相关传递依赖仍在) |
 | `be8ad661` | SDK 无头 OpenRouter OAuth 替换 (协议 + 服务端 + renderer + i18n) | H-12 (FIXED)、M-1 OpenRouter 部分缓解 |
 | `80559086` | 审计报告 + 对抗性审查 (本文档前身) | — |
+| `b4fd6ecc` | electron-builder 打包对齐 Electron 43.1.1;清理过时 Claude SDK 注释 | M-24 (FIXED) |
 
 *方法说明: 静态代码审计 + 实测 (typecheck:all / 各包 tsc / bun audit / 全量 bun test / 脚本存在性 / 上游 raw 抓取逐文件对比)。竞态与时序类发现基于代码路径分析;标注 [未核实上游] 的项表示未做逐行 diff,不表示无问题。*
