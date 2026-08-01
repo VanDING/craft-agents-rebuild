@@ -33,6 +33,12 @@ export interface MonitorWeixinOpts {
   token?: string;
   /** Account identifier used for state isolation and session tracking. */
   accountId: string;
+  /**
+   * Optional workspace-scoped state root. When provided, the sync-buf cursor
+   * is persisted under this root instead of the shared state dir, so two
+   * workspaces binding the same account never share an offset file.
+   */
+  stateRoot?: string;
   /** Callback invoked for each received message. */
   onMessage: (msg: WeixinMessage) => Promise<void> | void;
   /** When signalled the poll loop exits after the current iteration. */
@@ -149,7 +155,7 @@ export async function monitorWeixinProvider(
     });
 
   // ---- Persisted state ----
-  const bufFilePath = getSyncBufFilePath(accountId);
+  const bufFilePath = getSyncBufFilePath(accountId, opts.stateRoot);
   let buf = loadGetUpdatesBuf(bufFilePath) ?? '';
 
   // Server-advertised long-poll timeout.  Starts from the caller's default and
@@ -259,7 +265,7 @@ export async function monitorWeixinProvider(
       // duplicates are tolerated upstream via message ids.
       if (resp.get_updates_buf && allDispatched) {
         buf = resp.get_updates_buf;
-        saveGetUpdatesBuf(bufFilePath, buf);
+        saveGetUpdatesBuf(bufFilePath, buf, opts.stateRoot);
       }
     } catch (cause) {
       // Network errors or unexpected failures from getUpdates.

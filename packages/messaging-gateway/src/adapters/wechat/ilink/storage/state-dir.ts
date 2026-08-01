@@ -50,3 +50,51 @@ export function ensureStateDir(): string {
   }
   return dir;
 }
+
+/**
+ * Resolve the state directory for a specific workspace.
+ *
+ * Every workspace gets its own subdirectory under the global state dir so
+ * per-workspace adapters never share persistent state (sync-buf cursors,
+ * account credentials, context tokens, account index) — two workspaces
+ * binding the same WeChat account must not read or write each other's files.
+ *
+ * @param workspaceId - The workspace identifier to scope state under.
+ * @returns `join(resolveStateDir(), workspaceId)`.
+ */
+export function resolveStateDirForWorkspace(workspaceId: string): string {
+  return join(resolveStateDir(), workspaceId);
+}
+
+/**
+ * Create the workspace-scoped state directory with owner-only permissions
+ * (0700) when it does not already exist, and return its path.
+ *
+ * Same 0700 rationale as {@link ensureStateDir}: the workspace dir holds
+ * plaintext credentials, so it must not be created via a default-mode
+ * (umask-derived, typically 0755) recursive mkdir.
+ *
+ * @param workspaceId - The workspace identifier to scope state under.
+ */
+export function ensureStateDirForWorkspace(workspaceId: string): string {
+  const dir = resolveStateDirForWorkspace(workspaceId);
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { mode: 0o700 });
+  }
+  return dir;
+}
+
+/**
+ * Create an explicit workspace state root (a path returned by
+ * {@link resolveStateDirForWorkspace}) with owner-only permissions (0700)
+ * when it does not already exist, and return it.
+ *
+ * Path-level variant of {@link ensureStateDirForWorkspace} for callers that
+ * hold a `stateRoot` path rather than the originating workspace ID.
+ */
+export function ensureStateRootDir(stateRoot: string): string {
+  if (!existsSync(stateRoot)) {
+    mkdirSync(stateRoot, { mode: 0o700 });
+  }
+  return stateRoot;
+}

@@ -30,6 +30,9 @@ import { stripMarkdownForWeChat } from './format'
 import {
   DEFAULT_BASE_URL,
   CDN_BASE_URL,
+  clearWeixinAccount as clearWeixinAccountIlink,
+  unregisterWeixinAccountId as unregisterWeixinAccountIdIlink,
+  listIndexedWeixinAccountIds as listIndexedWeixinAccountIdsIlink,
   saveWeixinAccount,
   registerWeixinAccountId,
 } from './ilink/auth/accounts'
@@ -41,7 +44,13 @@ import {
   setContextToken,
   getContextToken,
   restoreContextTokens,
+  clearContextTokensForAccount as clearContextTokensForAccountIlink,
 } from './ilink/messaging/inbound'
+import { clearSyncBuf as clearSyncBufIlink } from './ilink/storage/sync-buf'
+import {
+  ensureStateDirForWorkspace,
+  resolveStateDirForWorkspace,
+} from './ilink/storage/state-dir'
 import { sendMessageWeixin } from './ilink/messaging/send'
 import { sendWeixinMediaFile } from './ilink/messaging/send-media'
 import { downloadMediaFromItem, type WeixinInboundMediaOpts } from './ilink/media/media-download'
@@ -52,16 +61,58 @@ import { TypingStatus, type WeixinMessage } from './ilink/api/types'
 // Forget-cleanup exports (consumed by the registry's forgetPlatform)
 // ---------------------------------------------------------------------------
 
-/** Delete the per-account credential JSON file. */
-export { clearWeixinAccount } from './ilink/auth/accounts'
-/** Remove the account from the accounts.json index. */
-export { unregisterWeixinAccountId } from './ilink/auth/accounts'
-/** List all indexed WeChat account IDs (used when no credential blob exists). */
-export { listIndexedWeixinAccountIds } from './ilink/auth/accounts'
-/** Delete an account's context-token JSON file and in-memory entries. */
-export { clearContextTokensForAccount } from './ilink/messaging/inbound'
-/** Delete an account's sync-buf offset files (primary + legacy variants). */
-export { clearSyncBuf } from './ilink/storage/sync-buf'
+/**
+ * Compute the workspace-scoped iLink state root (`~/.craft-agent/wechat/{workspaceId}`).
+ * Exported for the registry so forgetPlatform wipes the same files the
+ * adapter writes.
+ */
+export { resolveStateDirForWorkspace }
+
+/**
+ * Delete the per-account credential JSON file.
+ *
+ * @param stateRoot - Optional workspace-scoped state root; without it the
+ *                    shared state dir is used (non-workspace callers).
+ */
+export function clearWeixinAccount(accountId: string, stateRoot?: string): void {
+  clearWeixinAccountIlink(accountId, stateRoot)
+}
+
+/**
+ * Remove the account from the accounts.json index.
+ *
+ * @param stateRoot - Optional workspace-scoped state root.
+ */
+export function unregisterWeixinAccountId(accountId: string, stateRoot?: string): void {
+  unregisterWeixinAccountIdIlink(accountId, stateRoot)
+}
+
+/**
+ * List all indexed WeChat account IDs (used when no credential blob exists).
+ *
+ * @param stateRoot - Optional workspace-scoped state root.
+ */
+export function listIndexedWeixinAccountIds(stateRoot?: string): string[] {
+  return listIndexedWeixinAccountIdsIlink(stateRoot)
+}
+
+/**
+ * Delete an account's context-token JSON file and in-memory entries.
+ *
+ * @param stateRoot - Optional workspace-scoped state root.
+ */
+export function clearContextTokensForAccount(accountId: string, stateRoot?: string): void {
+  clearContextTokensForAccountIlink(accountId, stateRoot)
+}
+
+/**
+ * Delete an account's sync-buf offset files (primary + legacy variants).
+ *
+ * @param stateRoot - Optional workspace-scoped state root.
+ */
+export function clearSyncBuf(accountId: string, stateRoot?: string): void {
+  clearSyncBufIlink(accountId, stateRoot)
+}
 
 // ---------------------------------------------------------------------------
 // Credentials
@@ -112,13 +163,24 @@ export type WeChatLoginEvent =
  * Run a QR login against the iLink ClawBot endpoint. Emits events for the UI
  * (qr → [scanned] → [need_verifycode] → connected/error) and resolves with the
  * bound credentials, or null on failure.
+ *
+ * @param opts.workspaceId - When provided, the login's persisted state
+ *                           (credentials + account index) is scoped to this
+ *                           workspace so sibling workspaces never see the
+ *                           freshly-bound token.
  */
 export async function startWeChatQrLogin(opts: {
   onEvent: (event: WeChatLoginEvent) => void
   verifyCodeProvider?: () => Promise<string>
   timeoutMs?: number
+  workspaceId?: string
 }): Promise<WeChatCredentials | 'already-connected' | null> {
-  const start = await startWeixinLoginWithQr({ apiBaseUrl: DEFAULT_BASE_URL })
+  const stateRoot = opts.workspaceId ? resolveStateDirForWorkspace(opts.workspaceId) : undefined
+  if (stateRoot) ensureStateDirForWorkspace(opts.workspaceId!)
+  const start = await startWeixinLoginWithQr({
+    apiBaseUrl: DEFAULT_BASE_URL,
+    stateRoot,
+  })
   if (!start.qrcodeUrl) {
     opts.onEvent({ type: 'error', message: start.message })
     return null
@@ -152,12 +214,16 @@ export async function startWeChatQrLogin(opts: {
     baseUrl: result.baseUrl || DEFAULT_BASE_URL,
     userId: result.userId,
   }
-  saveWeixinAccount(credentials.accountId, {
-    token: credentials.token,
-    baseUrl: credentials.baseUrl,
-    userId: credentials.userId,
-  })
-  registerWeixinAccountId(credentials.accountId)
+  saveWeixinAccount(
+    credentials.accountId,
+    {
+      token: credentials.token,
+      baseUrl: credentials.baseUrl,
+      userId: credentials.userId,
+    },
+    stateRoot,
+  )
+  registerWeixinAccountId(credentials.accountId, stateRoot)
   opts.onEvent({ type: 'connected', credentials })
   return credentials
 }
@@ -173,6 +239,15 @@ const TYPING_HEARTBEAT_MAX_TICKS = 60
 /** Maximum concurrent CDN media downloads across one message's attachments. */
 const MEDIA_DOWNLOAD_CONCURRENCY = 3
 
+export interface WeChatAdapterOptions {
+  /**
+   * Workspace ID used to namespace persistent state (sync-buf cursors,
+   * credentials, context tokens, account index). When omitted the adapter
+   * falls back to the shared state dir (non-workspace callers / tests).
+   */
+  workspaceId?: string
+}
+
 export class WeChatAdapter implements PlatformAdapter {
   readonly platform = 'wechat' as const
   readonly capabilities: AdapterCapabilities = {
@@ -182,6 +257,18 @@ export class WeChatAdapter implements PlatformAdapter {
     maxMessageLength: MAX_MESSAGE_LENGTH,
     markdown: 'wechat',
     webhookSupport: false,
+  }
+
+  /** Workspace ID scoping persistent state (undefined = shared state dir). */
+  private readonly workspaceId?: string
+  /** Workspace-scoped state root (`~/.craft-agent/wechat/{workspaceId}`). */
+  private readonly stateRoot?: string
+
+  constructor(opts: WeChatAdapterOptions = {}) {
+    this.workspaceId = opts.workspaceId
+    this.stateRoot = opts.workspaceId
+      ? resolveStateDirForWorkspace(opts.workspaceId)
+      : undefined
   }
 
   private accountId = ''
@@ -213,13 +300,24 @@ export class WeChatAdapter implements PlatformAdapter {
     this.userId = creds.userId
     this.logger = config.logger
 
-    saveWeixinAccount(this.accountId, {
-      token: this.token,
-      baseUrl: this.baseUrl,
-      userId: this.userId,
-    })
-    registerWeixinAccountId(this.accountId)
-    restoreContextTokens(this.accountId)
+    if (this.stateRoot && this.workspaceId) {
+      // Create the workspace-scoped state dir 0700 before any writer runs,
+      // so the recursive mkdirs inside the persistence helpers never create
+      // it with the default (typically 0755) mode.
+      ensureStateDirForWorkspace(this.workspaceId)
+    }
+
+    saveWeixinAccount(
+      this.accountId,
+      {
+        token: this.token,
+        baseUrl: this.baseUrl,
+        userId: this.userId,
+      },
+      this.stateRoot,
+    )
+    registerWeixinAccountId(this.accountId, this.stateRoot)
+    restoreContextTokens(this.accountId, this.stateRoot)
 
     this.abort = new AbortController()
     this.connected = true
@@ -231,6 +329,7 @@ export class WeChatAdapter implements PlatformAdapter {
       baseUrl: this.baseUrl,
       token: this.token,
       accountId: this.accountId,
+      stateRoot: this.stateRoot,
       abortSignal: this.abort.signal,
       runtime: { log, error: errLog },
       onMessage: (msg) => this.handleInbound(msg),
@@ -276,7 +375,7 @@ export class WeChatAdapter implements PlatformAdapter {
       opts: {
         baseUrl: this.baseUrl,
         token: this.token,
-        contextToken: getContextToken(this.accountId, channelId),
+        contextToken: getContextToken(this.accountId, channelId, this.stateRoot),
       },
     })
     return { platform: 'wechat', channelId, messageId }
@@ -323,7 +422,7 @@ export class WeChatAdapter implements PlatformAdapter {
         opts: {
           baseUrl: this.baseUrl,
           token: this.token,
-          contextToken: getContextToken(this.accountId, channelId),
+          contextToken: getContextToken(this.accountId, channelId, this.stateRoot),
         },
         cdnBaseUrl: this.cdnBaseUrl,
       })
@@ -367,7 +466,7 @@ export class WeChatAdapter implements PlatformAdapter {
     const from = msg.from_user_id ?? ''
     if (!from) return
 
-    if (msg.context_token) setContextToken(this.accountId, from, msg.context_token)
+    if (msg.context_token) setContextToken(this.accountId, from, msg.context_token, this.stateRoot)
 
     const hasText = (weixinMessageToMsgContext(msg, this.accountId).Body ?? '').trim().length > 0
     const hasMedia = (msg.item_list ?? []).some(isMediaItem)
@@ -419,7 +518,7 @@ export class WeChatAdapter implements PlatformAdapter {
         baseUrl: this.baseUrl,
         token: this.token,
         ilinkUserId: channelId,
-        contextToken: getContextToken(this.accountId, channelId),
+        contextToken: getContextToken(this.accountId, channelId, this.stateRoot),
       })
       const ticket = resp.typing_ticket
       if (ticket) this.typingTickets.set(channelId, ticket)

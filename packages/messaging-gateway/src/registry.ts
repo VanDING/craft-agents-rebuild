@@ -39,6 +39,7 @@ import {
   listIndexedWeixinAccountIds,
   clearContextTokensForAccount,
   clearSyncBuf,
+  resolveStateDirForWorkspace,
   type WeChatCredentials,
   type WeChatLoginEvent,
 } from './adapters/wechat/index'
@@ -836,19 +837,22 @@ export class MessagingGatewayRegistry implements IMessagingGatewayRegistry {
     }
     if (platform === 'wechat') {
       try {
-        // Remove the plaintext artifacts that live in the shared WeChat state
-        // dir (~/.craft-agent/wechat): per-account credential JSON, context
-        // tokens, sync-buf offset files, and the accounts.json index entry
-        // (H-4). When the credential could not be read, wipe every indexed
-        // account so no token file survives the forget.
+        // Remove the plaintext artifacts that live in this workspace's
+        // scoped WeChat state dir (~/.craft-agent/wechat/{workspaceId}):
+        // per-account credential JSON, context tokens, sync-buf offset files,
+        // and the accounts.json index entry (H-4). Everything is scoped via
+        // the workspace state root so a sibling workspace binding the same
+        // account is untouched. When the credential could not be read, wipe
+        // every indexed account so no token file survives the forget.
+        const stateRoot = resolveStateDirForWorkspace(workspaceId)
         const accountIds = wechatAccountId
           ? [wechatAccountId]
-          : listIndexedWeixinAccountIds()
+          : listIndexedWeixinAccountIds(stateRoot)
         for (const accountId of accountIds) {
-          clearWeixinAccount(accountId)
-          clearContextTokensForAccount(accountId)
-          clearSyncBuf(accountId)
-          unregisterWeixinAccountId(accountId)
+          clearWeixinAccount(accountId, stateRoot)
+          clearContextTokensForAccount(accountId, stateRoot)
+          clearSyncBuf(accountId, stateRoot)
+          unregisterWeixinAccountId(accountId, stateRoot)
         }
         await this.opts.credentialManager.delete({ type: 'messaging_bearer', workspaceId, name: 'wechat' })
         this.log.info('forgot WeChat auth state', {
@@ -1591,6 +1595,7 @@ export class MessagingGatewayRegistry implements IMessagingGatewayRegistry {
     this.wechatVerifyResolvers.set(workspaceId, verifyResolvers)
 
     const result = await startWeChatQrLogin({
+      workspaceId,
       onEvent: (event: WeChatLoginEvent) => {
         this.opts.publishEvent?.(
           RPC_CHANNELS.messaging.WECHAT_UI_EVENT,
@@ -1682,7 +1687,7 @@ export class MessagingGatewayRegistry implements IMessagingGatewayRegistry {
     await state.gateway.unregisterAdapter('wechat').catch(() => {})
 
     try {
-      const adapter = new WeChatAdapter()
+      const adapter = new WeChatAdapter({ workspaceId })
       await adapter.initialize({
         token: cred.value,
         logger: this.log.child({

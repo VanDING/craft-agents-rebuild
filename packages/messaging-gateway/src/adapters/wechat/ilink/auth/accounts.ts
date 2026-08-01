@@ -3,7 +3,11 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { ensureStateDir, resolveStateDir } from '../storage/state-dir';
+import {
+  ensureStateDir,
+  ensureStateRootDir,
+  resolveStateDir,
+} from '../storage/state-dir';
 import { logger } from '../util/logger';
 
 // ---------------------------------------------------------------------------
@@ -24,25 +28,42 @@ export const CDN_BASE_URL = 'https://novac2c.cdn.weixin.qq.com/c2c';
 // Path helpers
 // ---------------------------------------------------------------------------
 
-/** Directory holding the account index and per-account data files. */
-function accountsDir(): string {
-  return path.join(resolveStateDir(), 'openclaw-weixin');
+/**
+ * Directory holding the account index and per-account data files.
+ *
+ * @param stateRoot - Optional workspace-scoped state root. Defaults to
+ *                    {@link resolveStateDir} when omitted.
+ */
+function accountsDir(stateRoot?: string): string {
+  return path.join(stateRoot ?? resolveStateDir(), 'openclaw-weixin');
 }
 
-/** Path to the JSON file that lists all registered account IDs. */
-function accountsIndexPath(): string {
-  return path.join(accountsDir(), 'accounts.json');
+/**
+ * Path to the JSON file that lists all registered account IDs.
+ *
+ * @param stateRoot - Optional workspace-scoped state root.
+ */
+function accountsIndexPath(stateRoot?: string): string {
+  return path.join(accountsDir(stateRoot), 'accounts.json');
 }
 
-/** Per-account data file. */
-function accountFilePath(accountId: string): string {
-  const dir = path.join(accountsDir(), 'accounts');
+/**
+ * Per-account data file.
+ *
+ * @param stateRoot - Optional workspace-scoped state root.
+ */
+function accountFilePath(accountId: string, stateRoot?: string): string {
+  const dir = path.join(accountsDir(stateRoot), 'accounts');
   return path.join(dir, `${accountId}.json`);
 }
 
-/** Legacy credentials file used as a fallback during migration. */
-function legacyCredentialsPath(): string {
-  return path.join(resolveStateDir(), 'credentials', 'openclaw-weixin', 'credentials.json');
+/**
+ * Legacy credentials file used as a fallback during migration.
+ *
+ * @param stateRoot - Optional workspace-scoped state root.
+ */
+function legacyCredentialsPath(stateRoot?: string): string {
+  return path.join(stateRoot ?? resolveStateDir(), 'credentials', 'openclaw-weixin', 'credentials.json');
 }
 
 // ---------------------------------------------------------------------------
@@ -98,9 +119,9 @@ interface AccountIndex {
  * Read the account index from disk.
  * Returns an empty list when the file does not exist or cannot be parsed.
  */
-function readAccountIndex(): string[] {
+function readAccountIndex(stateRoot?: string): string[] {
   try {
-    const data = fs.readFileSync(accountsIndexPath(), 'utf-8');
+    const data = fs.readFileSync(accountsIndexPath(stateRoot), 'utf-8');
     const parsed: AccountIndex = JSON.parse(data);
     return Array.isArray(parsed.ids) ? parsed.ids : [];
   } catch {
@@ -108,10 +129,20 @@ function readAccountIndex(): string[] {
   }
 }
 
-/** Persist the account index to disk, creating parent directories as needed. */
-function writeAccountIndex(ids: string[]): void {
-  ensureStateDir();
-  const file = accountsIndexPath();
+/**
+ * Persist the account index to disk, creating parent directories as needed.
+ *
+ * The workspace-scoped root (when `stateRoot` is given) is created 0700
+ * before the recursive mkdir so the plaintext index never lands under a
+ * default-mode (typically 0755) directory.
+ */
+function writeAccountIndex(ids: string[], stateRoot?: string): void {
+  if (stateRoot) {
+    ensureStateRootDir(stateRoot);
+  } else {
+    ensureStateDir();
+  }
+  const file = accountsIndexPath(stateRoot);
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const data: AccountIndex = { ids };
   fs.writeFileSync(file, JSON.stringify(data, null, 2), 'utf-8');
@@ -120,9 +151,11 @@ function writeAccountIndex(ids: string[]): void {
 /**
  * Return the list of all normalised WeChat account IDs that have been
  * registered in the account index.
+ *
+ * @param stateRoot - Optional workspace-scoped state root.
  */
-export function listIndexedWeixinAccountIds(): string[] {
-  return readAccountIndex();
+export function listIndexedWeixinAccountIds(stateRoot?: string): string[] {
+  return readAccountIndex(stateRoot);
 }
 
 /**
@@ -130,14 +163,16 @@ export function listIndexedWeixinAccountIds(): string[] {
  *
  * The ID is added only if it is not already present. The index is persisted
  * immediately.
+ *
+ * @param stateRoot - Optional workspace-scoped state root.
  */
-export function registerWeixinAccountId(accountId: string): void {
-  const ids = readAccountIndex();
+export function registerWeixinAccountId(accountId: string, stateRoot?: string): void {
+  const ids = readAccountIndex(stateRoot);
   if (ids.includes(accountId)) {
     return;
   }
   ids.push(accountId);
-  writeAccountIndex(ids);
+  writeAccountIndex(ids, stateRoot);
   logger.info('Registered WeChat account ID', { accountId });
 }
 
@@ -146,15 +181,17 @@ export function registerWeixinAccountId(accountId: string): void {
  *
  * No-op if the ID is not indexed. The index is persisted immediately.
  * The per-account data file is **not** removed by this function.
+ *
+ * @param stateRoot - Optional workspace-scoped state root.
  */
-export function unregisterWeixinAccountId(accountId: string): void {
-  const ids = readAccountIndex();
+export function unregisterWeixinAccountId(accountId: string, stateRoot?: string): void {
+  const ids = readAccountIndex(stateRoot);
   const idx = ids.indexOf(accountId);
   if (idx === -1) {
     return;
   }
   ids.splice(idx, 1);
-  writeAccountIndex(ids);
+  writeAccountIndex(ids, stateRoot);
   logger.info('Unregistered WeChat account ID', { accountId });
 }
 
@@ -178,8 +215,9 @@ export function clearStaleAccountsForUserId(
   currentAccountId: string,
   userId: string,
   onClearContextTokens?: (removedAccountId: string) => void,
+  stateRoot?: string,
 ): void {
-  const ids = readAccountIndex();
+  const ids = readAccountIndex(stateRoot);
   const toRemove = ids.filter((id) => id !== currentAccountId);
 
   if (toRemove.length === 0) {
@@ -193,12 +231,12 @@ export function clearStaleAccountsForUserId(
   });
 
   for (const staleId of toRemove) {
-    clearWeixinAccount(staleId);
+    clearWeixinAccount(staleId, stateRoot);
     onClearContextTokens?.(staleId);
   }
 
   // Re-write index with only the current account.
-  writeAccountIndex([currentAccountId]);
+  writeAccountIndex([currentAccountId], stateRoot);
 }
 
 // ---------------------------------------------------------------------------
@@ -226,9 +264,12 @@ export interface WeixinAccountData {
  * credentials file for backward compatibility. Returns `null` when no data
  * can be found.
  */
-export function loadWeixinAccount(accountId: string): WeixinAccountData | null {
+export function loadWeixinAccount(
+  accountId: string,
+  stateRoot?: string,
+): WeixinAccountData | null {
   // 1. Try the per-account file.
-  const file = accountFilePath(accountId);
+  const file = accountFilePath(accountId, stateRoot);
   try {
     const data = fs.readFileSync(file, 'utf-8');
     const parsed: WeixinAccountData = JSON.parse(data);
@@ -237,14 +278,14 @@ export function loadWeixinAccount(accountId: string): WeixinAccountData | null {
     // Not found or unreadable — continue to fallback.
   }
 
-  // 2. Try the legacy credentials file.
-  const legacy: WeixinAccountData | null = loadLegacyCredentials();
+  // 2. Try the legacy credentials file (scoped to the same state root).
+  const legacy: WeixinAccountData | null = loadLegacyCredentials(stateRoot);
   if (legacy) {
     logger.info('Migrating account data from legacy credentials file', { accountId });
     // Persist the migrated data to the new location so the next read is fast.
-    saveWeixinAccountImmediate(accountId, legacy);
+    saveWeixinAccountImmediate(accountId, legacy, stateRoot);
     // Clear the legacy file so it is not re-read.
-    clearLegacyCredentials();
+    clearLegacyCredentials(stateRoot);
     return legacy;
   }
 
@@ -263,17 +304,18 @@ export function loadWeixinAccount(accountId: string): WeixinAccountData | null {
 export function saveWeixinAccount(
   accountId: string,
   update: { token?: string; baseUrl?: string; userId?: string },
+  stateRoot?: string,
 ): void {
-  registerWeixinAccountId(accountId);
+  registerWeixinAccountId(accountId, stateRoot);
 
-  const existing = loadWeixinAccount(accountId) ?? {};
+  const existing = loadWeixinAccount(accountId, stateRoot) ?? {};
   const data: WeixinAccountData = {
     ...existing,
     ...update,
     savedAt: new Date().toISOString(),
   };
 
-  saveWeixinAccountImmediate(accountId, data);
+  saveWeixinAccountImmediate(accountId, data, stateRoot);
 }
 
 /**
@@ -282,8 +324,8 @@ export function saveWeixinAccount(
  * Does **not** unregister the account from the index. Use
  * `unregisterWeixinAccountId` for index removal.
  */
-export function clearWeixinAccount(accountId: string): void {
-  const file = accountFilePath(accountId);
+export function clearWeixinAccount(accountId: string, stateRoot?: string): void {
+  const file = accountFilePath(accountId, stateRoot);
   try {
     fs.unlinkSync(file);
     logger.info('Cleared WeChat account data', { accountId });
@@ -303,9 +345,17 @@ export function clearWeixinAccount(accountId: string): void {
  * The state dir is created 0700 and the data file 0600 so the plaintext
  * OAuth/session token is not world-readable.
  */
-function saveWeixinAccountImmediate(accountId: string, data: WeixinAccountData): void {
-  ensureStateDir();
-  const file = accountFilePath(accountId);
+function saveWeixinAccountImmediate(
+  accountId: string,
+  data: WeixinAccountData,
+  stateRoot?: string,
+): void {
+  if (stateRoot) {
+    ensureStateRootDir(stateRoot);
+  } else {
+    ensureStateDir();
+  }
+  const file = accountFilePath(accountId, stateRoot);
   fs.mkdirSync(path.dirname(file), { recursive: true });
 
   const tmp = `${file}.tmp.${process.pid}`;
@@ -321,8 +371,8 @@ function saveWeixinAccountImmediate(accountId: string, data: WeixinAccountData):
  * Read and parse the legacy flat credentials file.
  * Returns `null` when the file is missing or unparseable.
  */
-function loadLegacyCredentials(): WeixinAccountData | null {
-  const file = legacyCredentialsPath();
+function loadLegacyCredentials(stateRoot?: string): WeixinAccountData | null {
+  const file = legacyCredentialsPath(stateRoot);
   try {
     const data = fs.readFileSync(file, 'utf-8');
     const parsed: WeixinAccountData = JSON.parse(data);
@@ -335,8 +385,8 @@ function loadLegacyCredentials(): WeixinAccountData | null {
 /**
  * Remove the legacy credentials file so migration runs only once.
  */
-function clearLegacyCredentials(): void {
-  const file = legacyCredentialsPath();
+function clearLegacyCredentials(stateRoot?: string): void {
+  const file = legacyCredentialsPath(stateRoot);
   try {
     fs.unlinkSync(file);
   } catch {
@@ -359,12 +409,12 @@ function clearLegacyCredentials(): void {
  *                    accounts are indexed.
  * @returns The route tag value, or `undefined` if not set.
  */
-export function loadConfigRouteTag(accountId?: string): string | undefined {
-  const id = accountId ?? listIndexedWeixinAccountIds()[0];
+export function loadConfigRouteTag(accountId?: string, stateRoot?: string): string | undefined {
+  const id = accountId ?? listIndexedWeixinAccountIds(stateRoot)[0];
   if (!id) {
     return undefined;
   }
-  const data = loadWeixinAccount(id);
+  const data = loadWeixinAccount(id, stateRoot);
   return data?.baseUrl ?? DEFAULT_BASE_URL;
 }
 
@@ -379,12 +429,12 @@ export function loadConfigRouteTag(accountId?: string): string | undefined {
  * @returns The bot agent value, or `undefined` if no accounts are indexed or
  *          the value is not set.
  */
-export function loadConfigBotAgent(): string | undefined {
-  const ids = listIndexedWeixinAccountIds();
+export function loadConfigBotAgent(stateRoot?: string): string | undefined {
+  const ids = listIndexedWeixinAccountIds(stateRoot);
   const id = ids[0];
   if (!id) {
     return undefined;
   }
-  const data = loadWeixinAccount(id);
+  const data = loadWeixinAccount(id, stateRoot);
   return data?.userId;
 }

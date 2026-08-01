@@ -10,7 +10,11 @@ import {
   type MessageItem,
   type WeixinMessage,
 } from '../api/types';
-import { ensureStateDir, resolveStateDir } from '../storage/state-dir';
+import {
+  ensureStateDir,
+  ensureStateRootDir,
+  resolveStateDir,
+} from '../storage/state-dir';
 
 // ---------------------------------------------------------------------------
 // Context token store
@@ -20,13 +24,42 @@ import { ensureStateDir, resolveStateDir } from '../storage/state-dir';
  * In-memory cache of context tokens keyed by `"{accountId}:{userId}"`.
  *
  * Persisted to disk so tokens survive process restarts without re-auth.
+ * When a `stateRoot` is provided, keys are additionally namespaced by it
+ * (see {@link tokenStoreKey}) so two workspaces sharing one account never
+ * see each other's in-memory tokens — the same isolation the disk files get
+ * from the workspace-scoped paths.
  */
 export const contextTokenStore: Map<string, string> = new Map();
 
-/** Path to the per-account context-tokens JSON file. */
-function contextTokensPath(accountId: string): string {
+/**
+ * Build the in-memory store key for a context token.
+ *
+ * Workspace-scoped entries are prefixed with the `stateRoot` path separated
+ * by a NUL character (which cannot appear in a filesystem path), so the same
+ * `accountId:userId` pair from two workspaces does not collide.
+ */
+function tokenStoreKey(
+  stateRoot: string | undefined,
+  accountId: string,
+  userId: string,
+): string {
+  return stateRoot ? `${stateRoot}\u0000${accountId}:${userId}` : `${accountId}:${userId}`;
+}
+
+/** Prefix of every store key belonging to `accountId` under a given state root. */
+function tokenStorePrefix(stateRoot: string | undefined, accountId: string): string {
+  return stateRoot ? `${stateRoot}\u0000${accountId}:` : `${accountId}:`;
+}
+
+/**
+ * Path to the per-account context-tokens JSON file.
+ *
+ * @param stateRoot - Optional workspace-scoped state root; defaults to
+ *                    {@link resolveStateDir} when omitted.
+ */
+function contextTokensPath(accountId: string, stateRoot?: string): string {
   return path.join(
-    resolveStateDir(),
+    stateRoot ?? resolveStateDir(),
     'openclaw-weixin',
     'accounts',
     `${accountId}.context-tokens.json`,
@@ -40,18 +73,18 @@ function contextTokensPath(accountId: string): string {
  * and populates the in-memory store. Existing entries for this account are
  * replaced.  Missing or corrupt files are silently treated as empty.
  */
-export function restoreContextTokens(accountId: string): void {
-  const fp = contextTokensPath(accountId);
+export function restoreContextTokens(accountId: string, stateRoot?: string): void {
+  const fp = contextTokensPath(accountId, stateRoot);
   try {
     const raw = fs.readFileSync(fp, 'utf-8');
     const parsed = JSON.parse(raw) as Record<string, string>;
-    const prefix = `${accountId}:`;
+    const prefix = tokenStorePrefix(stateRoot, accountId);
     // Remove stale entries for this account first.
     for (const key of contextTokenStore.keys()) {
       if (key.startsWith(prefix)) contextTokenStore.delete(key);
     }
     for (const [userId, token] of Object.entries(parsed)) {
-      contextTokenStore.set(`${accountId}:${userId}`, token);
+      contextTokenStore.set(tokenStoreKey(stateRoot, accountId, userId), token);
     }
     logger.debug(`Restored ${Object.keys(parsed).length} context tokens from ${fp}`);
   } catch (err: unknown) {
@@ -71,13 +104,14 @@ export function setContextToken(
   accountId: string,
   userId: string,
   token: string,
+  stateRoot?: string,
 ): void {
-  const key = `${accountId}:${userId}`;
+  const key = tokenStoreKey(stateRoot, accountId, userId);
   const prev = contextTokenStore.get(key);
   contextTokenStore.set(key, token);
 
   // Persist to disk.
-  persistContextTokensForAccount(accountId);
+  persistContextTokensForAccount(accountId, stateRoot);
 
   if (prev !== token) {
     logger.debug(`Context token updated for account=${accountId} userId=${userId}`);
@@ -92,21 +126,22 @@ export function setContextToken(
 export function getContextToken(
   accountId: string,
   userId: string,
+  stateRoot?: string,
 ): string | undefined {
-  return contextTokenStore.get(`${accountId}:${userId}`);
+  return contextTokenStore.get(tokenStoreKey(stateRoot, accountId, userId));
 }
 
 /**
  * Remove all context tokens belonging to an account and delete the disk file.
  */
-export function clearContextTokensForAccount(accountId: string): void {
-  const prefix = `${accountId}:`;
+export function clearContextTokensForAccount(accountId: string, stateRoot?: string): void {
+  const prefix = tokenStorePrefix(stateRoot, accountId);
   for (const key of contextTokenStore.keys()) {
     if (key.startsWith(prefix)) contextTokenStore.delete(key);
   }
 
   // Remove the disk file.
-  const fp = contextTokensPath(accountId);
+  const fp = contextTokensPath(accountId, stateRoot);
   try {
     fs.unlinkSync(fp);
     logger.debug(`Deleted context tokens file ${fp}`);
@@ -128,10 +163,11 @@ export function clearContextTokensForAccount(accountId: string): void {
 export function findAccountIdsByContextToken(
   accountIds: string[],
   userId: string,
+  stateRoot?: string,
 ): string[] {
   const result: string[] = [];
   for (const accountId of accountIds) {
-    if (contextTokenStore.get(`${accountId}:${userId}`) !== undefined) {
+    if (contextTokenStore.get(tokenStoreKey(stateRoot, accountId, userId)) !== undefined) {
       result.push(accountId);
     }
   }
@@ -151,12 +187,16 @@ export function findAccountIdsByContextToken(
  * The file is written 0600 (with the state dir created 0700) because the
  * context tokens are plaintext credentials that must not be world-readable.
  */
-function persistContextTokensForAccount(accountId: string): void {
-  ensureStateDir();
-  const dir = path.join(resolveStateDir(), 'openclaw-weixin', 'accounts');
+function persistContextTokensForAccount(accountId: string, stateRoot?: string): void {
+  if (stateRoot) {
+    ensureStateRootDir(stateRoot);
+  } else {
+    ensureStateDir();
+  }
+  const dir = path.join(stateRoot ?? resolveStateDir(), 'openclaw-weixin', 'accounts');
   fs.mkdirSync(dir, { recursive: true });
 
-  const prefix = `${accountId}:`;
+  const prefix = tokenStorePrefix(stateRoot, accountId);
   const tokens: Record<string, string> = {};
   for (const [key, token] of contextTokenStore) {
     if (key.startsWith(prefix)) {

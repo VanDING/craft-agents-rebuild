@@ -258,6 +258,10 @@ export function readVerifyCodeFromStdin(): Promise<string> {
  * @param opts.force       - Skip collecting the current account's local token.
  * @param opts.accountId   - Pin the account whose token may be submitted.
  * @param opts.botType     - Bot type (defaults to `DEFAULT_ILINK_BOT_TYPE`).
+ * @param opts.stateRoot   - Optional workspace-scoped state root; the pinned
+ *                           account's token is read from this root instead of
+ *                           the shared state dir, so a QR login never ships a
+ *                           sibling workspace's stored token.
  * @returns The QR code URL, session key, and any API message.
  */
 export async function startWeixinLoginWithQr(
@@ -267,6 +271,7 @@ export async function startWeixinLoginWithQr(
     accountId?: string;
     apiBaseUrl: string;
     botType?: string;
+    stateRoot?: string;
   },
 ): Promise<WeixinQrStartResult> {
   const baseUrl = opts.apiBaseUrl;
@@ -280,7 +285,7 @@ export async function startWeixinLoginWithQr(
   // `accountId`); fresh logins submit none.
   const localTokens: string[] = [];
   if (!opts.force && opts.accountId) {
-    const account = loadWeixinAccount(opts.accountId);
+    const account = loadWeixinAccount(opts.accountId, opts.stateRoot);
     if (account?.token) {
       localTokens.push(account.token);
     }

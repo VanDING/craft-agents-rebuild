@@ -4,7 +4,7 @@
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { deriveRawAccountId } from '../auth/accounts';
-import { ensureStateDir, resolveStateDir } from './state-dir';
+import { ensureStateDir, ensureStateRootDir, resolveStateDir } from './state-dir';
 
 /** Shape of the persisted sync buffer file. */
 export interface SyncBufData {
@@ -13,10 +13,11 @@ export interface SyncBufData {
 
 /**
  * Build the filesystem path for an account's sync-buf persistence file.
- * The file is stored under the shared state directory (see {@link resolveStateDir}).
+ * The file is stored under the shared state directory (see {@link resolveStateDir})
+ * or under the workspace-scoped state root when `stateRoot` is provided.
  */
-export function getSyncBufFilePath(accountId: string): string {
-  return join(resolveStateDir(), `sync-buf-${accountId}.sync.json`);
+export function getSyncBufFilePath(accountId: string, stateRoot?: string): string {
+  return join(stateRoot ?? resolveStateDir(), `sync-buf-${accountId}.sync.json`);
 }
 
 /**
@@ -98,12 +99,20 @@ export function loadGetUpdatesBuf(filePath: string): string | undefined {
  *
  * @param filePath — path produced by {@link getSyncBufFilePath}
  * @param getUpdatesBuf — the opaque cursor string to store
+ * @param stateRoot — optional workspace-scoped state root; when provided the
+ *                    root directory is created 0700 before the write (the
+ *                    file itself lives in that directory).
  */
 export function saveGetUpdatesBuf(
   filePath: string,
   getUpdatesBuf: string,
+  stateRoot?: string,
 ): void {
-  ensureStateDir();
+  if (stateRoot) {
+    ensureStateRootDir(stateRoot);
+  } else {
+    ensureStateDir();
+  }
   const data: SyncBufData = { get_updates_buf: getUpdatesBuf };
   writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
 }
@@ -114,9 +123,12 @@ export function saveGetUpdatesBuf(
  * `.sync.json`, and legacy raw-ID `.json`).
  *
  * Used when an account is forgotten so no offset state survives the wipe.
+ *
+ * @param stateRoot — optional workspace-scoped state root; when provided only
+ *                    files under that root are removed.
  */
-export function clearSyncBuf(accountId: string): void {
-  const stateDir = resolveStateDir();
+export function clearSyncBuf(accountId: string, stateRoot?: string): void {
+  const stateDir = stateRoot ?? resolveStateDir();
   const candidates = [join(stateDir, `sync-buf-${accountId}.sync.json`)];
 
   const rawId = deriveRawAccountId(accountId);
