@@ -38,13 +38,13 @@
 
 ## 2. Critical
 
-### C-1 [OPEN, inherited] Markdown 渲染器 `rehypeRaw` 无净化 → 存储型 XSS,renderer 上下文 = RCE 级
+### C-1 [FIXED 5d8ccaa4, inherited] Markdown 渲染器 `rehypeRaw` 无净化 → 存储型 XSS,renderer 上下文 = RCE 级
 - **证据**: `packages/ui/src/components/markdown/Markdown.tsx:624` — `rehypePlugins={[rehypeKatex, rehypeRaw]}`,全仓库无 DOMPurify。仅 `a` 标签 href 净化 (`Markdown.tsx:202-233`)。
 - **对抗性修正 (重要)**: CSP **存在**但形同虚设——`apps/electron/src/renderer/index.html:6` 的 CSP 含 `script-src 'self' 'unsafe-inline' 'unsafe-eval'`,inline 事件处理器 (`onerror`/`onload` 经 `setAttribute`) 与 `<iframe srcdoc>` 内联脚本都被放行;srcdoc 与父页同源,脚本可直接访问 `window.parent.electronAPI`(contextIsolation:true 不构成缓解,contextBridge 暴露进主世界)。**与上游 CSP 逐字节相同**。
 - **暴露面**: LLM 消息(可提示注入)、plan、`markdown-preview`/`html-preview` 文件预览、viewer 的任意用户上传 session JSON (`apps/viewer/src/App.tsx:74`)。
 - **修复**: 移除 `rehypeRaw`(markdown 语法不受影响)+ CSP 移除 `unsafe-inline`/`unsafe-eval`(双保险;需回归 shiki/mermaid/katex)。
 
-### C-2 [OPEN, inherited 为主] Safe 模式允许任意代码执行: `transform_data` 零隔离 + `script_sandbox` 可读任意文件
+### C-2 [FIXED b0e8f3d5, inherited 为主] Safe 模式允许任意代码执行: `transform_data` 零隔离 + `script_sandbox` 可读任意文件
 - **证据**: `packages/session-tools-core/src/tool-defs.ts:580-581` — 两者 `safeMode: 'allow'`;`handlers/transform-data.ts:106-112` spawn 任意脚本无文件/网络隔离;`runtime/filesystem-isolation.ts:29-46` macOS `(allow file-read*)`、Linux `bwrap --ro-bind / /`。
 - **细节**: sandbox 脚本可读 `~/.ssh/id_rsa`、`~/.aws/credentials` 及应用明文凭据缓存 `~/.craft-agent/workspaces/*/sources/*/.credential-cache.json` (session-mcp-server `index.ts:79-105`);`transform_data` 可任意写 + 联网,且经 MCP server 暴露给 Codex/Copilot。
 - **权限注记**: 本机 `/Users/van` 0750 缓解"任意本地用户",但默认 macOS 布局 (home 0755) 下成立。
@@ -63,54 +63,54 @@
 - **原证据**: `llm-connections.ts:988-1041` — `credPromise` 无超时;`httpServer.close()` 失败路径被跳过;`resolveCred(Promise.reject(...) as any)` 反模式。
 - **修复**: OpenRouter case 改为 SDK 0.83 的 `openRouterOAuth` (PKCE + 一次性 loopback callback + 手动粘贴无头路径;内置 5 分钟登录超时 + 30s 交换超时 + `finally { close() }`),新增 `pi:submitOAuthCode` 通道 + `pendingManualOAuthCodes` 完成无头粘贴。冒烟验证: 事件流 `progress → auth_url → manual_code` 完整,abort 0.2s 干净取消无泄漏。
 
-### H-1 [OPEN, inherited] Browser pane 可读任意本地文件
+### H-1 [FIXED 6b1ca9df, inherited] Browser pane 可读任意本地文件
 - `main/browser-pane-manager.ts:735-751` (`navigate()` 的 scheme 正则 `/^[a-z][a-z0-9+.-]*:\/\//i` 放行 `file://`,**上游 :736 逐字相同**) + `handlers/browser.ts:166-171` (`EVALUATE` 无 gate)。
 - 链: 提示注入 agent → `file:///…/.ssh/id_rsa` → `evaluate('document.body.innerText')` 外带;WS 路径无 `requireOwnedInstance`/`getAllowRemoteEvaluate` 隔离 (capability 路径 `browser-pane-manager.ts:2436-2461,2653-2657` 有)。
 - 修复: navigate 只允许 http/https/about;EVALUATE 加 gate;WS 处理器套 owner-key 检查。
 
-### H-2 [OPEN, 混合] `server:invokeOnServer` 无验证 RPC 桥 + 全链路 `tlsRejectUnauthorized: false`
+### H-2 [FIXED 6b1ca9df, 混合] `server:invokeOnServer` 无验证 RPC 桥 + 全链路 `tlsRejectUnauthorized: false`
 - `main/index.ts:775-779`;`preload/bootstrap.ts:125,149`;`handlers/workspace.ts:29`。renderer 提供 url/token/channel/args 四项,无 sender 校验、无 channel allowlist;绕过 CHANNEL_MAP;TLS 全关 → 令牌可被 MITM。TLS 部分 inherited (上游 preload 同样 2 处),invokeOnServer 为 fork 功能 [未核实上游]。
 - 修复: url scheme 校验 + channel 白名单 + sender 校验;TLS 改为系统信任库/显式证书 pin。
 
-### H-3 [OPEN, 未核实上游] Browser-pane 权限自动放行任意 origin
+### H-3 [FIXED 6b1ca9df, 未核实上游] Browser-pane 权限自动放行任意 origin
 - `browser-pane-manager.ts:3266-3290` — `clipboard-read`/`media`/`geolocation`/`notifications`/`idle-detection` 对任何被浏览网站静默授予 → 剪贴板是凭据外带通道。修复: 移除敏感项或按 origin 白名单。
 
-### H-4 [OPEN, fork-caused] iLink WeChat token 明文落盘,遗忘不清理,QR 登录重复外发
+### H-4 [FIXED 74b269d4, fork-caused] iLink WeChat token 明文落盘,遗忘不清理,QR 登录重复外发
 - `adapters/wechat/ilink/auth/accounts.ts:262-308`、`inbound.ts:151-165`;`registry.ts:809-823`。bot token + context token 明文写 `~/.craft-agent/wechat`(0644),每次启动从加密库复制;`forgetPlatform` 不删;`login-qr.ts:230-250` 每次 QR 登录把最多 10 个历史 token 发给 iLink 服务器 (`local_token_list`)。**上游无 wechat adapter(仅 lark/telegram/whatsapp),ilink 为 fork 从 `@tencent-weixin/openclaw-weixin@2.4.4` (MIT) vendor + 粘合**。
 - 修复: 走加密凭据库或 0600 + forget 清理 + 去掉 `local_token_list` 重发。
 
-### H-5 [OPEN, fork-caused] CDN 媒体下载无超时/无大小上限,串行轮询循环内
+### H-5 [FIXED 74b269d4, fork-caused] CDN 媒体下载无超时/无大小上限,串行轮询循环内
 - `ilink/cdn/pic-decrypt.ts:52-62`、`monitor.ts:243-255`。一条挂死/巨型下载阻塞整个账号收信,内存/磁盘可耗尽;`saveMedia` 声明 `_maxBytes` 但忽略。修复: `AbortSignal.timeout` + 流式计数 + 并发隔离。
 
-### H-6 [OPEN, fork-caused] 出站 WeChat 发送把 HTTP 错误当成功
+### H-6 [FIXED 74b269d4, fork-caused] 出站 WeChat 发送把 HTTP 错误当成功
 - `api.ts:365-411` (`apiPostFetch` 在 `!ok` 时返回 body),测试明确断言此行为。静默丢消息、无重试/幂等;caption/media 两条消息可失配。
 
-### H-7 [OPEN, inherited] `file:readUserAttachment` 读任意绝对路径
+### H-7 [FIXED 131d717c, inherited] `file:readUserAttachment` 读任意绝对路径
 - `server-core/handlers/rpc/files.ts:171-191` — 仅 isAbsolute+size 检查,无 provenance 校验 (注释声称"OS 选择器写入 drafts.json 所以路径隐含同意"但 RPC 从不校验来源)。`~/.ssh/id_rsa`、`~/.aws/credentials` 任意读 (≤50MB)。修复: 校验路径等于 drafts.json 记录值。
 
-### H-8 [OPEN, 大概率 inherited] `file:read` 黑名单漏 `~/.craft-agent/credentials.enc` + `config.json`;.enc 密钥 = PBKDF2(机器 UUID,盐在文件头)
+### H-8 [FIXED 131d717c, 大概率 inherited] `file:read` 黑名单漏 `~/.craft-agent/credentials.enc` + `config.json`;.enc 密钥 = PBKDF2(机器 UUID,盐在文件头)
 - `handlers/utils.ts:119-129`;`shared/src/credentials/backends/secure-storage.ts:319-333`。持 token 者可经 `file:read` 拿加密库 + 经 agent 自身 bash 拿机器 UUID → 离线解密全部密钥;`config.json` 含 `serverConfig.token`。修复: 黑名单加 `.craft-agent`;密钥改 OS keychain 派生。
 
-### H-9 [OPEN, 未核实上游] workspace SVG 图标存储型 XSS
+### H-9 [FIXED 131d717c + 6b1ca9df, 未核实上游] workspace SVG 图标存储型 XSS
 - `server-core/handlers/rpc/workspace.ts:206-280` (WRITE_IMAGE 不净化) + `:150-188` (注释: "caller will use as innerHTML")。恶意仓库/技能图标 → renderer 任意 JS → 可调 H-7/H-8。修复: 改 `<img src>` 或 DOMPurify。
 
 ### H-10 [OPEN, 未核实上游] `web_fetch` `redirect: 'follow'` 不重新校验
 - `pi-agent-server/src/tools/web-fetch.ts:366` (仅初始 URL 校验 `:73-95`)。公开 URL 302 到 `127.0.0.1`/云 metadata → SSRF;IPv4-mapped IPv6 `[::ffff:7f00:1]` 仅被"偶然"拦截 (bracketed 字面量 DNS 失败),AAAA 记录直通。修复: `redirect: 'manual'` 逐跳校验。
 
-### H-11 [OPEN, 混合: inherited 骨架 + fork 激活] token 刷新 provider 混淆: xAI/Kimi 的 refresh token POST 到 ChatGPT 端点
+### H-11 [FIXED 5d8ccaa4, 混合: inherited 骨架 + fork 激活] token 刷新 provider 混淆: xAI/Kimi 的 refresh token POST 到 ChatGPT 端点
 - `shared/src/agent/pi-agent.ts:795-810` → `auth/chatgpt-oauth.ts:138-160`。上游 `pi-agent.ts:795-798` 有完全相同路由,但**上游 llm-connections.ts 没有 xAI/Kimi OAuth** (缺陷休眠);fork 的 `855c9612` 统一 OAuth handler 存入真实 refresh token (亲验 `llm-connections.ts:921-924, 972-975`),激活为**真实跨供应商凭据泄露** (token 发给 OpenAI)。
 - **更新 (v2)**: SDK 0.83.0 已内置 `xaiOAuth`/`kimiCodingOAuth` (含各自 refresh,`pi-ai/dist/auth/oauth/load.js`),推荐修复路径改为: 经 SDK providers 做刷新,或未实现则强制重认证——**绝不 fallback 到 ChatGPT 端点**。
 
-### H-13 [OPEN, 未核实上游] `source_test`/`config_validate` sourceSlug 无校验 → 路径穿越 + SSRF + 自动激活
+### H-13 [FIXED b0e8f3d5, 未核实上游] `source_test`/`config_validate` sourceSlug 无校验 → 路径穿越 + SSRF + 自动激活
 - `session-tools-core/src/source-helpers.ts:31`;`handlers/source-test.ts:100-118`。`../../` 可读任意目录 config.json 并以其 baseUrl 发起带凭据探测 (`safeMode: 'allow'`);`skill_validate` 有 `validateSlug`,这俩没有。修复: 两处补 `validateSlug`。
 
 ### H-14 [OPEN, 未核实上游] MCP server: tool args 从不 zod 校验;`_precomputedResult` 模型可伪造;docs 代理原样转发
 - `session-mcp-server/src/index.ts:425-460, 277-306`。Schema 只用于广告不用于校验;`call_llm`/`spawn_session` 信任参数里 JSON 串;`docsUpstream` 把工作区数据发给第三方 `agents.craft.do`。修复: safeParse + 去掉 `_precomputedResult`。
 
-### H-15 [OPEN, fork-caused] 远程服务器 WS token 驻留 renderer 内存
+### H-15 [FIXED 6b1ca9df, fork-caused] 远程服务器 WS token 驻留 renderer 内存
 - `renderer/components/app-shell/SendResourceToWorkspaceDialog.tsx:145-150`。与 C-1 组合: 一次 XSS 即外带/冒用远程服务器。修复: token 只存 main 进程。
 
-### H-16 [OPEN, 未核实上游] preload capability 边界无验证
+### H-16 [FIXED 6b1ca9df, 未核实上游] preload capability 边界无验证
 - `preload/bootstrap.ts:161-170` — `CLIENT_OPEN_EXTERNAL → shell.openExternal` 不分类;thin-client 模式下被攻陷的远程服务器可直接打开 `file:` (Windows = RCE 类)。修复: capability 边界复刻 `classifyExternalUrl`。
 
 ---
@@ -217,11 +217,11 @@ TS7 升级 (201 错) · anthropic→pi 迁移未同步测试 (CI 红) · `typech
 ## 10. 修复优先级 (含执行状态)
 
 **P0 (阻断发布):**
-- [ ] C-1 rehypeRaw XSS — 去 rehypeRaw + CSP 收紧 (inherited, 成本低收益大)
-- [ ] C-2 transform_data/script_sandbox safeMode 收口 + sandbox 读权限收敛 + 凭据缓存加密
+- [x] C-1 rehypeRaw XSS — rehype-sanitize 已接入 (5d8ccaa4);CSP 收紧待 P1 (unsafe-inline 移除需回归 dev 模式)
+- [x] C-2 safeMode 收口 + sandbox 读限制 (b0e8f3d5);凭据缓存加密待后续
 - [ ] CI 恢复 (fork-caused): server-core 测试改 `'pi'` → session-tools-core/messaging 加 `types:["node","bun"]` → 恢复/删除 12 个缺失脚本 → typecheck 链去掉 powershell
-- [ ] H-4 iLink 凭据加密落盘 + forget 清理 + QR `local_token_list` 移除
-- [ ] H-11 provider 混淆刷新 — 优先走 SDK 0.83 原生 xAI/Kimi OAuth 刷新,绝不 fallback ChatGPT 端点
+- [x] H-4 (74b269d4): 0600/0700 + forget 清理 + QR token 收敛
+- [x] H-11 (5d8ccaa4): SDK provider-native 刷新,未知 provider 强制重认证
 
 **P1 (高危):**
 - [ ] H-1/H-2/H-3 browser pane 三件套 (file:// 拦截、EVALUATE gate、权限白名单)+ H-16 capability 边界校验
@@ -245,5 +245,11 @@ TS7 升级 (201 错) · anthropic→pi 迁移未同步测试 (CI 红) · `typech
 | `be8ad661` | SDK 无头 OpenRouter OAuth 替换 (协议 + 服务端 + renderer + i18n) | H-12 (FIXED)、M-1 OpenRouter 部分缓解 |
 | `80559086` | 审计报告 + 对抗性审查 (本文档前身) | — |
 | `b4fd6ecc` | electron-builder 打包对齐 Electron 43.1.1;清理过时 Claude SDK 注释 | M-24 (FIXED) |
+| `b0e8f3d5` | C-2 safe-mode 收口 + sandbox 读限制 + 超时杀进程组;H-13 sourceSlug 校验 | C-2 (FIXED)、H-13 (FIXED)、N-5 (FIXED) |
+| `74b269d4` | iLink 凭据 0600/0700 + forget 清理 + QR token 收敛;CDN 超时/上限;出站错误处理 | H-4 (FIXED)、H-5 (FIXED)、H-6 (FIXED) |
+| `6b1ca9df` | browser-pane scheme 白名单/权限收窄;invokeOnServer 校验;token 移出 renderer;capability 边界;SVG DOMParser 净化 | H-1/H-2/H-3/H-15/H-16 (FIXED)、H-9 renderer 半段 |
+| `131d717c` | drafts 溯源 + 黑名单补 .craft-agent + SVG 写入门禁 | H-7/H-8/H-9 server 侧 (FIXED) |
+| `5d8ccaa4` | provider-native 刷新 (SDK OAuth);markdown rehype-sanitize | H-11 (FIXED)、C-1 (FIXED) |
+| `6b372f71` | typecheck 链/tsconfig types/i18n 修复/测试修正 | CI 全绿 (FIXED) |
 
 *方法说明: 静态代码审计 + 实测 (typecheck:all / 各包 tsc / bun audit / 全量 bun test / 脚本存在性 / 上游 raw 抓取逐文件对比)。竞态与时序类发现基于代码路径分析;标注 [未核实上游] 的项表示未做逐行 diff,不表示无问题。*
