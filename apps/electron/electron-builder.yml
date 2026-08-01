@@ -4,7 +4,7 @@ copyright: Copyright © 2026 Craft Docs Ltd.
 
 artifactName: Craft-Agents-${arch}.${ext}
 
-electronVersion: "39.2.7"
+electronVersion: "43.1.1"
 
 # Hook to compile macOS 26+ Liquid Glass icon after packaging
 afterPack: scripts/afterPack.cjs
