@@ -703,17 +703,35 @@ async function loadIconFile(
 
 /**
  * Sanitize SVG content for safe inline rendering via dangerouslySetInnerHTML.
- * Removes script tags, event handlers, and JavaScript URLs.
- * Also strips width/height attributes so SVG fills its container.
+ * Audit H-9/M-7: the old regex approach was bypassable (unquoted attrs,
+ * entity-encoded javascript:, JAVASCRIPT: case). Uses a real XML parser
+ * (DOMParser, available in the renderer) and removes dangerous elements,
+ * event-handler attributes and javascript: URLs, then strips width/height
+ * so the SVG fills its container.
  */
 function sanitizeSvgForInline(svg: string): string {
-  return svg
-    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-    .replace(/on\w+="[^"]*"/gi, '')
-    .replace(/on\w+='[^']*'/gi, '')
-    .replace(/javascript:/gi, '')
-    .replace(/\s+width="[^"]*"/gi, '')
-    .replace(/\s+height="[^"]*"/gi, '')
+  try {
+    const doc = new DOMParser().parseFromString(svg, 'image/svg+xml')
+    if (doc.querySelector('parsererror')) return '' // not parseable — render nothing
+
+    for (const el of doc.querySelectorAll('script, foreignObject, embed, object')) {
+      el.remove()
+    }
+    for (const el of doc.querySelectorAll('*')) {
+      for (const attr of Array.from(el.attributes)) {
+        if (/^on[a-z]+$/i.test(attr.name) || /^javascript:/i.test(attr.value.trim())) {
+          el.removeAttribute(attr.name)
+        }
+      }
+      if (el.tagName.toLowerCase() === 'svg') {
+        el.removeAttribute('width')
+        el.removeAttribute('height')
+      }
+    }
+    return new XMLSerializer().serializeToString(doc)
+  } catch {
+    return ''
+  }
 }
 
 /**

@@ -4,7 +4,8 @@
  * Uses the resources:export → resources:import RPC pipeline.
  * Supports both local and remote target workspaces:
  * - Local: both RPC calls go to the same server
- * - Remote: export runs locally, import runs via invokeOnServer on the target
+ * - Remote: export runs locally, import runs via sendResourcesToRemote — main
+ *   resolves the target workspace's remote url/token (H-15)
  *
  * Adapted from SendToWorkspaceDialog (session transfer).
  */
@@ -140,12 +141,13 @@ export function SendResourceToWorkspaceDialog({
       // 2. Import into target workspace
       let importResult
       if (targetWorkspace.remoteServer) {
-        // Remote target — use invokeOnServer
-        const { url, token, remoteWorkspaceId } = targetWorkspace.remoteServer
-        importResult = await window.electronAPI.invokeOnServer(
-          url, token,
+        // Remote target — main process resolves the remote url/token/
+        // remoteWorkspaceId from the workspace config, so the stored remote
+        // token never crosses into renderer memory (H-15).
+        importResult = await window.electronAPI.sendResourcesToRemote(
+          targetWorkspace.id,
           'resources:import',
-          remoteWorkspaceId, bundle, mode,
+          bundle, mode,
         )
       } else {
         // Local target — direct RPC

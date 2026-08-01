@@ -232,6 +232,7 @@ export function createWebApi(options: WebApiOptions): {
     relaunchApp: () => { window.location.reload(); return Promise.resolve() },
     removeWorkspace: () => Promise.resolve(false), // not supported in web UI
     invokeOnServer: () => Promise.reject(new Error('Cross-server RPC not available in web UI')),
+    sendResourcesToRemote: () => Promise.reject(new Error('Cross-server resource transfer not available in web UI')),
   }
 
   // OAuth overrides — web-compatible browser opening

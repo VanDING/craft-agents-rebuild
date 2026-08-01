@@ -155,6 +155,11 @@ export function AddWorkspaceStep_ConnectRemote({
       if (!name) return
 
       try {
+        // Token here is the credential the user just typed into this form (not a
+        // stored workspace token), and no local workspace exists yet for
+        // sendResourcesToRemote to resolve — so this goes through the validated
+        // invokeOnServer bridge (H-2: scheme allowlist + channel allowlist +
+        // main-frame sender check enforced main-side).
         const created = await window.electronAPI.invokeOnServer(
           serverUrl, token, 'server:createWorkspace', name
         ) as { id: string; name: string }

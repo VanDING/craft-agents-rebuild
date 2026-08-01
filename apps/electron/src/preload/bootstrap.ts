@@ -22,6 +22,7 @@ import { WsRpcClient, type TransportConnectionState } from '../transport/client'
 import { RoutedClient } from '../transport/routed-client'
 import { buildClientApi } from '../transport/build-api'
 import { CHANNEL_MAP } from '../transport/channel-map'
+import { classifyExternalUrl, formatBlockedUrlError } from '@craft-agent/shared/utils/url-safety'
 import { createCallbackServer } from '@craft-agent/shared/auth/callback-server'
 import { CHATGPT_OAUTH_CONFIG } from '@craft-agent/shared/auth/chatgpt-oauth-config'
 import {
@@ -158,15 +159,31 @@ if (isClientOnly) {
 // Register client-side capability handlers (server can invoke these)
 // ---------------------------------------------------------------------------
 
-client.handleCapability(CLIENT_OPEN_EXTERNAL, (url: string) => shell.openExternal(url))
+// H-16: capability boundary validation. A compromised remote server (thin-client
+// mode) must not be able to make the local machine open arbitrary URLs or paths.
+// CLIENT_OPEN_EXTERNAL runs the same classifyExternalUrl check the main-process
+// window handlers use (blocks file:/data:/javascript: — RCE-class on Windows).
+// CLIENT_OPEN_PATH / CLIENT_SHOW_IN_FOLDER defer path validation to a main-side
+// IPC channel that reuses validateFilePath + getWorkspaceAllowedDirs — the exact
+// pair the shell:openFile / shell:showInFolder RPC handlers use — rather than
+// duplicating filesystem logic in the preload.
+client.handleCapability(CLIENT_OPEN_EXTERNAL, async (url: string) => {
+  const classification = classifyExternalUrl(url)
+  if (classification.kind === 'dangerous') {
+    throw new Error(formatBlockedUrlError(classification))
+  }
+  await shell.openExternal(url)
+})
 
 client.handleCapability(CLIENT_OPEN_PATH, async (path: string) => {
-  const error = await shell.openPath(path)
+  const safePath = await ipcRenderer.invoke('__client:validatePath', path)
+  const error = await shell.openPath(safePath as string)
   return { error: error || undefined }
 })
 
-client.handleCapability(CLIENT_SHOW_IN_FOLDER, (path: string) => {
-  shell.showItemInFolder(path)
+client.handleCapability(CLIENT_SHOW_IN_FOLDER, async (path: string) => {
+  const safePath = await ipcRenderer.invoke('__client:validatePath', path)
+  shell.showItemInFolder(safePath as string)
 })
 
 client.handleCapability(CLIENT_CONFIRM_DIALOG, async (spec: ConfirmDialogSpec) => {
@@ -415,6 +432,10 @@ client.onConnectionStateChanged((state) => {
 ;(api as ElectronAPI).removeWorkspace = (workspaceId: string) => ipcRenderer.invoke('workspace:remove', workspaceId)
 ;(api as ElectronAPI).invokeOnServer = (url: string, token: string, channel: string, ...args: any[]) =>
   ipcRenderer.invoke('server:invokeOnServer', url, token, channel, ...args)
+// H-15: remote token never crosses into the renderer — main resolves the
+// workspace's remoteServer url/token/remoteWorkspaceId from local config.
+;(api as ElectronAPI).sendResourcesToRemote = (workspaceId: string, channel: string, ...args: any[]) =>
+  ipcRenderer.invoke('server:sendResourcesToRemote', workspaceId, channel, ...args)
 ;(api as ElectronAPI).transferSessionToWorkspace = (sessionId: string, targetWorkspaceId: string, sessionIndex?: number, sessionCount?: number) =>
   ipcRenderer.invoke('session:transferToWorkspace', sessionId, targetWorkspaceId, sessionIndex, sessionCount)
 ;(api as ElectronAPI).onTransferProgress = (cb: (progress: { sessionIndex: number; sessionCount: number; chunkSent: number; chunkTotal: number }) => void) => {

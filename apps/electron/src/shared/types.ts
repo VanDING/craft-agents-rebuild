@@ -268,6 +268,10 @@ export interface ElectronAPI {
   relaunchApp(): Promise<void>
   removeWorkspace(workspaceId: string): Promise<boolean>
   invokeOnServer(url: string, token: string, channel: string, ...args: any[]): Promise<any>
+  /** Invoke a channel on the remote server of an existing remote workspace.
+   *  The remote url/token/remoteWorkspaceId are resolved main-side from the
+   *  workspace config — the remote token never reaches renderer memory (H-15). */
+  sendResourcesToRemote(workspaceId: string, channel: string, ...args: any[]): Promise<any>
 
   // Remote session transfer (main-process orchestrated, supports chunked upload)
   transferSessionToWorkspace(sessionId: string, targetWorkspaceId: string, sessionIndex?: number, sessionCount?: number): Promise<{ sessionId: string }>

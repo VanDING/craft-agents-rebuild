@@ -744,6 +744,17 @@ export class BrowserPaneManager implements IBrowserPaneManager {
       }
     }
 
+    // Scheme allowlist (H-1): only http/https (post-normalization) and about:
+    // are navigable. file:, data:, smb:, javascript: and any other scheme are
+    // rejected here — a prompt-injected agent must never read local files by
+    // pointing the browser pane at a file:// URL.
+    if (!/^https?:\/\//i.test(normalizedUrl) && !/^about:/i.test(normalizedUrl)) {
+      throw new CodedError(
+        'HANDLER_ERROR',
+        `Navigation blocked: scheme not allowed for URL "${normalizedUrl}". Only http, https and about: URLs can be opened in the browser pane.`,
+      )
+    }
+
     const timeoutMs = 30_000
     let timeoutHandle: ReturnType<typeof setTimeout> | null = null
 
@@ -3252,16 +3263,17 @@ export class BrowserPaneManager implements IBrowserPaneManager {
     if (this.partitionPermissionsInitialized) return
     this.partitionPermissionsInitialized = true
 
+    // H-3: only low-risk permissions are auto-allowed for any browsed origin.
+    // clipboard-read, media, geolocation, notifications and idle-detection were
+    // silently granted to arbitrary websites — a prompt-injected agent could
+    // exfiltrate clipboard contents or fingerprint the machine through them.
+    // clipboard-sanitized-write is kept: it only allows writing scrubbed data
+    // (no URLs/paths/filenames), which is what sites like image editors need.
     const allow = new Set([
       'fullscreen',
       'pointerLock',
       'window-management',
-      'notifications',
-      'geolocation',
-      'media',
-      'clipboard-read',
       'clipboard-sanitized-write',
-      'idle-detection',
     ])
 
     if (typeof ses.setPermissionCheckHandler === 'function') {

@@ -4,6 +4,7 @@ import { loadShellEnv } from './shell-env'
 loadShellEnv()
 
 import { app, BrowserWindow, dialog, ipcMain, nativeImage, nativeTheme, shell } from 'electron'
+import type { IpcMainInvokeEvent } from 'electron'
 import { createHash, randomUUID } from 'crypto'
 import { hostname, homedir } from 'os'
 import * as Sentry from '@sentry/electron/main'
@@ -83,7 +84,7 @@ Sentry.setUser({ id: machineId })
 
 import { join, delimiter } from 'path'
 import { existsSync, readFileSync } from 'fs'
-import { RPC_CHANNELS } from '@craft-agent/shared/protocol'
+import { RPC_CHANNELS, REMOTE_ELIGIBLE_CHANNELS } from '@craft-agent/shared/protocol'
 import { SessionManager, setSessionPlatform, setSessionRuntimeHooks } from '@craft-agent/server-core/sessions'
 import { registerAllRpcHandlers } from './handlers/index'
 import { registerCoreRpcHandlers, cleanupSessionFileWatchForClient } from '@craft-agent/server-core/handlers/rpc'
@@ -256,6 +257,40 @@ function normalizeOriginForCert(urlStr: string): string {
   if (u.protocol === 'wss:') u.protocol = 'https:'
   else if (u.protocol === 'ws:') u.protocol = 'http:'
   return u.origin
+}
+
+/**
+ * Schemes a remote server URL may use when the main process opens a direct
+ * WebSocket connection to it (H-2). The transport accepts ws:// / wss://
+ * (WebSocket) and http:// / https:// (upgrade-compatible aliases the `ws`
+ * library normalizes); everything else — file:, data:, javascript:, smb:,
+ * custom schemes — is rejected so a compromised renderer cannot point the
+ * bridge at local files or non-HTTP endpoints.
+ */
+const ALLOWED_REMOTE_SERVER_SCHEMES: ReadonlySet<string> = new Set(['ws:', 'wss:', 'http:', 'https:'])
+
+function assertSafeRemoteServerUrl(urlStr: string): void {
+  let parsed: URL
+  try {
+    parsed = new URL(String(urlStr).trim())
+  } catch {
+    throw new Error(`Invalid remote server URL: "${String(urlStr)}"`)
+  }
+  if (!ALLOWED_REMOTE_SERVER_SCHEMES.has(parsed.protocol)) {
+    throw new Error(`Unsupported remote server URL scheme "${parsed.protocol}" — only ws:, wss:, http: and https: are allowed`)
+  }
+}
+
+/**
+ * True when an IPC invoke event was sent by the main frame of a
+ * window-manager-managed window (i.e. the app UI itself). Blocks stray
+ * webContents and compromised sub-frames (XSS'd iframes are same-origin but
+ * are not the main frame) from reaching privileged main-process handlers.
+ */
+function isTrustedWindowSender(event: IpcMainInvokeEvent): boolean {
+  if (!windowManager?.getWindowByWebContentsId(event.sender.id)) return false
+  if (event.senderFrame && event.senderFrame !== event.sender.mainFrame) return false
+  return true
 }
 
 if (process.env.CRAFT_SERVER_URL) {
@@ -533,6 +568,23 @@ app.whenReady().then(async () => {
       }
     })
 
+    // H-16: client capability path validation bridge. The preload's
+    // CLIENT_OPEN_PATH / CLIENT_SHOW_IN_FOLDER handlers must not open arbitrary
+    // paths on behalf of a (possibly compromised) remote server, so validation
+    // lives here in main — reusing the same validateFilePath +
+    // getWorkspaceAllowedDirs pair the shell:openFile / shell:showInFolder RPC
+    // handlers use — instead of duplicating filesystem checks in the preload.
+    ipcMain.handle('__client:validatePath', async (event, path: string) => {
+      if (!isTrustedWindowSender(event)) {
+        throw new Error('Blocked: __client:validatePath must be called from the main frame of a Craft Agents window')
+      }
+      // The workspace is resolved from the sending window (current binding),
+      // never trusted from the renderer payload.
+      const workspaceId = windowManager?.getWorkspaceForWindow(event.sender.id) ?? null
+      const { validateFilePath, getWorkspaceAllowedDirs } = await import('@craft-agent/server-core/handlers')
+      return validateFilePath(path, getWorkspaceAllowedDirs(workspaceId))
+    })
+
     // Dialog bridge — preload capability handlers use ipcRenderer.invoke to
     // call main-process-only dialog APIs (dialog, BrowserWindow).
     ipcMain.handle('__dialog:showMessageBox', async (event, spec) => {
@@ -771,13 +823,60 @@ app.whenReady().then(async () => {
         return remove(workspaceId)
       })
 
-      // Cross-server RPC — invoke a channel on an arbitrary remote server
-      ipcMain.handle('server:invokeOnServer', async (_event, url: string, token: string, channel: string, ...args: unknown[]) => {
+      // Cross-server RPC — invoke a channel on an arbitrary remote server.
+      // H-2: the renderer supplies url/token/channel/args, so every input is
+      // validated here — URL scheme allowlist, channel allowlist (only
+      // REMOTE_ELIGIBLE channels designed to run on a remote server), and the
+      // sender must be the main frame of a window-manager-managed window.
+      ipcMain.handle('server:invokeOnServer', async (event, url: string, token: string, channel: string, ...args: unknown[]) => {
+        if (!isTrustedWindowSender(event)) {
+          throw new Error('Blocked: server:invokeOnServer must be called from the main frame of a Craft Agents window')
+        }
+        if (typeof channel !== 'string' || !REMOTE_ELIGIBLE_CHANNELS.has(channel)) {
+          throw new Error(`Blocked: channel "${String(channel)}" is not allowed for cross-server invocation`)
+        }
+        assertSafeRemoteServerUrl(url)
+
         const { connectToRemote } = await import('./handlers/workspace')
         const { client, error } = await connectToRemote(url, token)
         if (!client) throw new Error(error ?? 'Connection failed')
         try {
           return await client.invoke(channel, ...args)
+        } finally {
+          client.destroy()
+        }
+      })
+
+      // H-15: cross-server resource transfer for an already-connected remote
+      // workspace. The url/token/remoteWorkspaceId are resolved MAIN-side from
+      // the workspace's stored remoteServer config — the remote token never
+      // crosses into renderer memory (it previously lived in
+      // SendResourceToWorkspaceDialog via `workspace.remoteServer.token`).
+      ipcMain.handle('server:sendResourcesToRemote', async (event, workspaceId: string, channel: string, ...args: unknown[]) => {
+        if (!isTrustedWindowSender(event)) {
+          throw new Error('Blocked: server:sendResourcesToRemote must be called from the main frame of a Craft Agents window')
+        }
+        if (typeof channel !== 'string' || !REMOTE_ELIGIBLE_CHANNELS.has(channel)) {
+          throw new Error(`Blocked: channel "${String(channel)}" is not allowed for cross-server invocation`)
+        }
+        if (typeof workspaceId !== 'string' || !workspaceId) {
+          throw new Error('Blocked: workspaceId is required')
+        }
+
+        const workspace = getWorkspaceByNameOrId(workspaceId)
+        const remoteServer = workspace?.remoteServer
+        if (!workspace || !remoteServer || !remoteServer.url || !remoteServer.token) {
+          throw new Error(`Workspace ${workspaceId} is not connected to a remote server`)
+        }
+        assertSafeRemoteServerUrl(remoteServer.url)
+
+        const { connectToRemote } = await import('./handlers/workspace')
+        const { client, error } = await connectToRemote(remoteServer.url, remoteServer.token, remoteServer.remoteWorkspaceId)
+        if (!client) throw new Error(error ?? 'Connection failed')
+        try {
+          // Remote import is scoped to the remote workspace id, which is also
+          // resolved here rather than trusting a renderer-supplied value.
+          return await client.invoke(channel, remoteServer.remoteWorkspaceId, ...args)
         } finally {
           client.destroy()
         }

@@ -558,6 +558,46 @@ describe('BrowserPaneManager', () => {
     )
   })
 
+  it('rejects non-http(s)/about schemes (file:, smb:, ftp:, …)', async () => {
+    // file: is the H-1 exfiltration vector (browser pane reading local files);
+    // any scheme with :// that is not http/https/about is rejected outright.
+    const blocked = [
+      'file:///Users/user/.ssh/id_rsa',
+      'file:///etc/passwd',
+      'smb://server/share',
+      'ftp://example.com/file',
+    ]
+    for (const url of blocked) {
+      manager.createInstance('nav-blocked')
+      await expect(manager.navigate('nav-blocked', url)).rejects.toThrow(/Navigation blocked/)
+      const instance = (manager as any).instances.get('nav-blocked')
+      expect(instance.pageView.webContents.loadURL).not.toHaveBeenCalledWith(url)
+      manager.destroyInstance('nav-blocked')
+    }
+  })
+
+  it('neutralizes scheme-like inputs without :// (data:, javascript:) as search queries', async () => {
+    // These are treated as schemeless input and routed through the DDG fallback,
+    // so they can never execute: the pane only ever loads https://duckduckgo.com.
+    manager.createInstance('nav-scheme-like')
+    await manager.navigate('nav-scheme-like', 'data:text/html,<script>alert(1)</script>')
+    await manager.navigate('nav-scheme-like', 'javascript:alert(1)')
+    const instance = (manager as any).instances.get('nav-scheme-like')
+    const called: string[] = instance.pageView.webContents.loadURL.mock.calls.map((c: any[]) => c[0])
+    expect(called.every((u: string) => u.startsWith('https://duckduckgo.com/'))).toBe(true)
+  })
+
+  it('still allows http, https and about:blank', async () => {
+    manager.createInstance('nav-allowed')
+    await manager.navigate('nav-allowed', 'https://example.com')
+    await manager.navigate('nav-allowed', 'http://example.com')
+    await manager.navigate('nav-allowed', 'about:blank')
+    const instance = (manager as any).instances.get('nav-allowed')
+    expect(instance.pageView.webContents.loadURL).toHaveBeenCalledWith('https://example.com')
+    expect(instance.pageView.webContents.loadURL).toHaveBeenCalledWith('http://example.com')
+    expect(instance.pageView.webContents.loadURL).toHaveBeenCalledWith('about:blank')
+  })
+
   it('clears navigation timeout timer on success', async () => {
     manager.createInstance('nav-timeout')
 
