@@ -155,21 +155,21 @@
 
 ## 5. Low (精选)
 
-- L-1 [OPEN] `StoredMessage` 仍缺 `hidden` 字段;`message-mapper.ts` 单断言掩盖 (`core/src/types/message.ts:236,300-390`)。
-- L-2 [OPEN] `generateMessageId` 仍用 `Math.random()` (`message.ts:590-592`);`source-helpers.ts:182` 同。
-- L-3 [OPEN] `summarize.ts` 空存根仍被 SessionManager 3 处"带注释地"调用 (注释虚构) (`shared/src/utils/summarize.ts`)。
-- L-4 [OPEN] 死代码: `AnthropicModelFetcher` + `BedrockVertexModelFetcher` 未注册;`shared/src/validation/url-validator.ts:8` 仍 import 已删除的 `@anthropic-ai/claude-agent-sdk`;`ilink/cdn/cdn-upload.ts` 零调用。
-- L-5 [OPEN] 迁移残留 `packages/shared/src/agent/backend/factory.ts.bak` 已提交。
-- L-6 [OPEN] `killShell` 正则转义当 shell 转义 (`SessionManager.ts:6680-6701`);privileged 审计日志明文存完整命令 (`privileged-execution-broker.ts:178-184`)。
-- L-7 [OPEN] `thumbnail://` 协议可对任意绝对路径出缩略图 (`thumbnail-protocol.ts:130-163`)。
-- L-8 [OPEN] 应用级 IPC 无 sender 校验: `workspace:remove`/`app:relaunch`/`__get-ws-token` (`main/index.ts:494-498,769-772,909-911,943`)。
+- L-1 [FIXED bdc8147c] `StoredMessage` 仍缺 `hidden` 字段;`message-mapper.ts` 单断言掩盖 (`core/src/types/message.ts:236,300-390`)。
+- L-2 [FIXED bdc8147c] `generateMessageId` 仍用 `Math.random()` (`message.ts:590-592`);`source-helpers.ts:182` 同。
+- L-3 [FIXED bdc8147c] `summarize.ts` 空存根仍被 SessionManager 3 处"带注释地"调用 (注释虚构) (`shared/src/utils/summarize.ts`)。
+- L-4 [FIXED bdc8147c] 死代码: `AnthropicModelFetcher` + `BedrockVertexModelFetcher` 未注册;`shared/src/validation/url-validator.ts:8` 仍 import 已删除的 `@anthropic-ai/claude-agent-sdk`;`ilink/cdn/cdn-upload.ts` 零调用。
+- L-5 [FIXED bdc8147c] 迁移残留 `packages/shared/src/agent/backend/factory.ts.bak` 已提交。
+- L-6 [FIXED bdc8147c] `killShell` 正则转义当 shell 转义 (`SessionManager.ts:6680-6701`);privileged 审计日志明文存完整命令 (`privileged-execution-broker.ts:178-184`)。
+- L-7 [FIXED bdc8147c] `thumbnail://` 协议可对任意绝对路径出缩略图 (`thumbnail-protocol.ts:130-163`)。
+- L-8 [FIXED bdc8147c] 应用级 IPC 无 sender 校验: `workspace:remove`/`app:relaunch`/`__get-ws-token` (`main/index.ts:494-498,769-772,909-911,943`)。
 - L-9 [OPEN] 主窗口 + toolbar BrowserView 仍 `sandbox: false` (`window-manager.ts:257-261`、`browser-pane-manager.ts:402-408`)。
 - L-10 [OPEN] preload 仍 6 个 `sendSync` (`bootstrap.ts:56,81,99-101,113`);`(api as any)` 7 处。
-- L-11 [OPEN] `install-server.sh:52-81` 明文打印 server token;`main/index.ts:1051` headless 打印 `CRAFT_SERVER_TOKEN`;CLI `--api-key` 进 ps。
+- L-11 [FIXED bdc8147c] `install-server.sh:52-81` 明文打印 server token;`main/index.ts:1051` headless 打印 `CRAFT_SERVER_TOKEN`;CLI `--api-key` 进 ps。
 - L-12 [OPEN] deep-link 查询参数仍原样透传 (`deep-link.ts:181-188`) + 100ms 时序假设;`craftagents://` 协议注册使任意网页可触发 `delete-session` action。
-- L-13 [OPEN] husky 零钩子;`test-workflow-local.sh:5` 硬编码个人路径。
-- L-14 [OPEN] renderer: `MemoizedMarkdown` 比较器丢弃回调 (`Markdown.tsx:640-655`);菜单订阅 `[]` deps 捕获首帧闭包 (`App.tsx:1148-1163`);3 处 render 期 `clientHeight` 读取;Mermaid ref 渲染期写入。
-- L-15 [OPEN] `CRAFT_HEALTH_PORT` NaN 绕过端口守卫 (`server/src/index.ts:293`);server token `===` 非恒时比较。
+- L-13 [FIXED bdc8147c] husky 零钩子;`test-workflow-local.sh:5` 硬编码个人路径。
+- L-14 [PARTIAL bdc8147c] renderer: MemoizedMarkdown 比较器已修;菜单闭包/render 期读取/Mermaid ref 仍 OPEN。
+- L-15 [FIXED bdc8147c] `CRAFT_HEALTH_PORT` NaN 绕过端口守卫 (`server/src/index.ts:293`);server token `===` 非恒时比较。
 
 ---
 
@@ -219,7 +219,7 @@ TS7 升级 (201 错) · anthropic→pi 迁移未同步测试 (CI 红) · `typech
 **P0 (阻断发布):**
 - [x] C-1 rehypeRaw XSS — rehype-sanitize 已接入 (5d8ccaa4);CSP 收紧待 P1 (unsafe-inline 移除需回归 dev 模式)
 - [x] C-2 safeMode 收口 + sandbox 读限制 (b0e8f3d5);凭据缓存加密待后续
-- [ ] CI 恢复 (fork-caused): server-core 测试改 `'pi'` → session-tools-core/messaging 加 `types:["node","bun"]` → 恢复/删除 12 个缺失脚本 → typecheck 链去掉 powershell
+- [x] CI 恢复 (6b372f71): typecheck:all 11 包全绿;test:shared:all 31/31;doc-tools 通过;i18n 三检全绿
 - [x] H-4 (74b269d4): 0600/0700 + forget 清理 + QR token 收敛
 - [x] H-11 (5d8ccaa4): SDK provider-native 刷新,未知 provider 强制重认证
 
@@ -231,9 +231,9 @@ TS7 升级 (201 错) · anthropic→pi 迁移未同步测试 (CI 红) · `typech
 - [x] 依赖升级 (74f4453d): undici 8.9.0 / marked 18.0.7 / js-yaml 5.2.3 / tar 7.5.22 / sharp 统一 0.35.3;Dockerfile 幽灵 COPY 已删;electronVersion 已对齐 (b4fd6ecc)
 
 **P2 (迭代):**
-- [ ] M-1 session/workspace 归属校验;M-2 call_llm 鉴权;M-3 限流按真实 IP;M-9 maxPayload;M-10 传输上限
-- [ ] M-11~M-17 资源清理/超时/原子写 (cleanup 函数接生产路径、pendingPermissions 崩溃 reject、flush 等写、凭据库备份而非删除)
-- [ ] 旧低危批量清理 (死代码、0644、factory.ts.bak、.env.example、IPC sender 校验)
+- [x] M-1/M-2/M-3/M-9/M-10 (1e95a35c)
+- [x] M-12~M-17 (1e95a35c);M-11 已随 C-2 修复
+- [x] 旧低危批量 (bdc8147c);0644 属 M-23 已修
 
 ---
 
@@ -252,5 +252,7 @@ TS7 升级 (201 错) · anthropic→pi 迁移未同步测试 (CI 红) · `typech
 | `5d8ccaa4` | provider-native 刷新 (SDK OAuth);markdown rehype-sanitize | H-11 (FIXED)、C-1 (FIXED) |
 | `6b372f71` | typecheck 链/tsconfig types/i18n 修复/测试修正 | CI 全绿 (FIXED) |
 | `74f4453d` | redirect 逐跳校验;MCP zod 校验 + 去 _precomputedResult;依赖升级;Dockerfile 幽灵 COPY | H-10/H-14 (FIXED)、C-3 (PARTIAL 34→22)、C-1 Dockerfile (FIXED) |
+| `1e95a35c` | P2 agent 批: 归属校验/logout 确认/maxPayload/传输上限/限流+JWT 撤销/墙钟/callback token/baseUrl 校验/原子写/lark 停止/状态清理/凭据备份/flush/0644 | M-1/2/3/4/8/9/10/12-17/19-23 (FIXED) |
+| `bdc8147c` | P2 low 批: 死代码清理/密钥烘焙移除/thumbnail 限定/IPC sender 校验/env.example 重写/health port | L-1~L-8/L-11/L-13/L-15、M-25/27 (FIXED) |
 
 *方法说明: 静态代码审计 + 实测 (typecheck:all / 各包 tsc / bun audit / 全量 bun test / 脚本存在性 / 上游 raw 抓取逐文件对比)。竞态与时序类发现基于代码路径分析;标注 [未核实上游] 的项表示未做逐行 diff,不表示无问题。*
