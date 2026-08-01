@@ -284,6 +284,22 @@ function readMetadataFileFromDir(dir: string): Record<string, ToolMetadata> {
 // In-memory Map for same-process lookups (accumulates entries across all sessions)
 const _metadataMap = new Map<string, ToolMetadata>();
 
+// M-18: bound the in-memory map (FIFO eviction) and coalesce disk writes so a
+// long session doesn't rewrite the whole file per tool call (O(n²)).
+const MAX_METADATA_ENTRIES = 10_000;
+const METADATA_WRITE_DEBOUNCE_MS = 150;
+let metadataWriteTimer: ReturnType<typeof setTimeout> | null = null;
+let metadataDirty = false;
+
+/** Drop oldest entries once the map exceeds the cap. */
+function evictMetadataIfNeeded(): void {
+  while (_metadataMap.size > MAX_METADATA_ENTRIES) {
+    const oldest = _metadataMap.keys().next().value;
+    if (oldest === undefined) break;
+    _metadataMap.delete(oldest);
+  }
+}
+
 /** Read the entire metadata file from disk (uses current _sessionDir) */
 function readMetadataFile(): Record<string, ToolMetadata> {
   if (!_sessionDir) return {};
@@ -359,12 +375,26 @@ export const toolMetadataStore = {
     }
   },
 
-  /** Store metadata — writes to in-memory Map + cached file */
+  /** Store metadata — writes to in-memory Map + coalesced disk write */
   set(toolUseId: string, metadata: ToolMetadata): void {
     _metadataMap.set(toolUseId, metadata);
-    mergeAndWriteMetadata((all) => {
-      all[toolUseId] = metadata;
-    });
+    evictMetadataIfNeeded();
+    // M-18: debounce the full-file rewrite; the pending flush writes the
+    // latest merged state, so intermediate states are never persisted.
+    metadataDirty = true;
+    if (metadataWriteTimer === null) {
+      metadataWriteTimer = setTimeout(() => {
+        metadataWriteTimer = null;
+        if (!metadataDirty) return;
+        metadataDirty = false;
+        mergeAndWriteMetadata((all) => {
+          for (const [id, meta] of _metadataMap) all[id] = meta;
+        });
+      }, METADATA_WRITE_DEBOUNCE_MS);
+      if (typeof (metadataWriteTimer as { unref?: () => void }).unref === 'function') {
+        (metadataWriteTimer as { unref: () => void }).unref();
+      }
+    }
   },
 
   /**
@@ -391,9 +421,21 @@ export const toolMetadataStore = {
 
   delete(toolUseId: string): void {
     _metadataMap.delete(toolUseId);
-    mergeAndWriteMetadata((all) => {
-      delete all[toolUseId];
-    });
+    metadataDirty = true;
+    if (metadataWriteTimer === null) {
+      metadataWriteTimer = setTimeout(() => {
+        metadataWriteTimer = null;
+        if (!metadataDirty) return;
+        metadataDirty = false;
+        mergeAndWriteMetadata((all) => {
+          delete all[toolUseId];
+          for (const [id, meta] of _metadataMap) all[id] = meta;
+        });
+      }, METADATA_WRITE_DEBOUNCE_MS);
+      if (typeof (metadataWriteTimer as { unref?: () => void }).unref === 'function') {
+        (metadataWriteTimer as { unref: () => void }).unref();
+      }
+    }
   },
 
   get size(): number {
@@ -403,6 +445,22 @@ export const toolMetadataStore = {
   /** Clear all in-memory entries. Used by tests to prevent cross-file state leaks. */
   _clearForTesting(): void {
     _metadataMap.clear();
+  },
+
+  /**
+   * Run the coalesced disk write now (tests + explicit shutdown paths).
+   * Idempotent; safe to call when nothing is pending.
+   */
+  _flushForTesting(): void {
+    if (metadataWriteTimer !== null) {
+      clearTimeout(metadataWriteTimer);
+      metadataWriteTimer = null;
+    }
+    if (!metadataDirty) return;
+    metadataDirty = false;
+    mergeAndWriteMetadata((all) => {
+      for (const [id, meta] of _metadataMap) all[id] = meta;
+    });
   },
 };
 

@@ -67,6 +67,9 @@ describe('interceptor-common', () => {
       timestamp: Date.now(),
     });
 
+    // M-18: writes are coalesced (debounced) — flush before asserting.
+    toolMetadataStore._flushForTesting();
+
     const persisted = JSON.parse(readFileSync(join(sessionDirA, 'tool-metadata.json'), 'utf-8')) as Record<string, unknown>;
     expect(persisted.existingTool).toBeDefined();
     expect(persisted.newTool).toBeDefined();

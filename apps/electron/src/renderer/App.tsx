@@ -1144,15 +1144,21 @@ export default function App() {
   }, [store, sessionSelection.selected, refreshSessionFromServer, refreshSessionListMetadataFromServer])
 
   // Listen for menu bar events
+  // Audit L-14: the [] deps captured first-render closures (navigate/handleOpenSettings
+  // are workspace-dependent). Route through refs so menu events always use the
+  // current handlers. The refs are re-pointed below (after handleOpenSettings
+  // is declared).
+  const menuNavigateRef = useRef(navigate)
+  const menuOpenSettingsRef = useRef<() => void>(() => {})
   useEffect(() => {
     const unsubNewChat = window.electronAPI.onMenuNewChat(() => {
       setMenuNewChatTrigger(n => n + 1)
     })
     const unsubSettings = window.electronAPI.onMenuOpenSettings(() => {
-      handleOpenSettings()
+      menuOpenSettingsRef.current()
     })
     const unsubShortcuts = window.electronAPI.onMenuKeyboardShortcuts(() => {
-      navigate(routes.view.settings('shortcuts'))
+      menuNavigateRef.current(routes.view.settings('shortcuts'))
     })
     return () => {
       unsubNewChat()
@@ -1728,6 +1734,9 @@ export default function App() {
   const handleOpenSettings = useCallback(() => {
     navigate(routes.view.settings())
   }, [])
+  // Audit L-14: re-point menu refs at the current handlers every render.
+  menuNavigateRef.current = navigate
+  menuOpenSettingsRef.current = handleOpenSettings
 
   const handleOpenKeyboardShortcuts = useCallback(() => {
     navigate(routes.view.settings('shortcuts'))

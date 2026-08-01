@@ -113,7 +113,12 @@ export function parseDeepLink(url: string): DeepLinkTarget | null {
       return null
     }
 
-    // Compound route prefixes
+// Audit L-12: only these query params may flow into the renderer's deep-link
+// navigation payload. `id` is handled via the path segment; `send` drives the
+// new-chat auto-send flag.
+const DEEP_LINK_ALLOWED_PARAMS: ReadonlySet<string> = new Set(['send'])
+
+// Compound route prefixes
     const COMPOUND_ROUTE_PREFIXES = [
       'allSessions', 'flagged', 'state', 'sources', 'settings', 'skills'
     ]
@@ -185,7 +190,12 @@ export function parseDeepLink(url: string): DeepLinkTarget | null {
       parsed.searchParams.forEach((value, key) => {
         // Skip the window and sidebar params - they're handled separately
         if (key !== 'window' && key !== 'sidebar') {
-          result.actionParams![key] = value
+          // Audit L-12: only forward known, bounded params. Arbitrary query
+          // params previously flowed straight into the renderer's deep-link
+          // navigation payload.
+          if (DEEP_LINK_ALLOWED_PARAMS.has(key) && value.length <= 500) {
+            result.actionParams![key] = value
+          }
         }
       })
 

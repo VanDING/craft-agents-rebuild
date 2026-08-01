@@ -1,9 +1,18 @@
 import { writeFileSync, readFileSync, unlinkSync, existsSync } from 'node:fs'
+import { timingSafeEqual } from 'node:crypto'
 import { uptime as osUptime } from 'node:os'
 import { join } from 'node:path'
 import { OAuthFlowStore } from '@craft-agent/shared/auth'
 import { ensureConfigDir, loadStoredConfig, saveConfig } from '@craft-agent/shared/config'
 import { CONFIG_DIR } from '@craft-agent/shared/config/paths'
+
+/** Constant-time string comparison for bearer-token validation (audit L-15). */
+function timingSafeEqualStrings(a: string, b: string): boolean {
+  const aBuf = Buffer.from(String(a));
+  const bBuf = Buffer.from(String(b));
+  if (aBuf.length !== bBuf.length) return false;
+  return timingSafeEqual(aBuf, bBuf);
+}
 import { setBundledAssetsRoot } from '@craft-agent/shared/utils'
 import { WsRpcServer, type WsRpcTlsOptions } from '../transport/server'
 import type { EventSink, RpcServer } from '../transport/types'
@@ -299,7 +308,10 @@ export async function bootstrapServer<TSessionManager, THandlerDeps>(
     host: rpcHost,
     port: rpcPort,
     requireAuth: true,
-    validateToken: async (t) => t === serverToken,
+    // Audit L-15: constant-time comparison (short user tokens make a timing
+    // side-channel measurable; 192-bit tokens make it impractical but the fix
+    // is free).
+    validateToken: async (t) => timingSafeEqualStrings(t, serverToken),
     validateSessionCookie: options.validateSessionCookie,
     serverId: options.serverId ?? 'headless',
     serverVersion: options.serverVersion,
