@@ -32,8 +32,18 @@ interface CredentialsStepProps {
   isWaitingForCode?: boolean
   onSubmitAuthCode?: (code: string) => void
   onCancelOAuth?: () => void
-  // Device flow (Copilot)
-  copilotDeviceCode?: { userCode: string; verificationUri: string }
+  // Device flow (Copilot) + unified Pi OAuth events (xAI/Kimi device codes,
+  // OpenRouter auth URL / headless manual-code prompt)
+  copilotDeviceCode?: {
+    userCode: string
+    verificationUri: string
+    instructions?: string
+    progressMessage?: string
+    manualCodeRequested?: boolean
+    placeholder?: string
+  }
+  /** Headless Pi OAuth: submit a pasted authorization code / redirect URL. */
+  onSubmitPiOAuthCode?: (code: string) => void
   // Edit mode (pre-fill existing connection values)
   editInitialValues?: {
     apiKey?: string
@@ -56,6 +66,7 @@ export function CredentialsStep({
   onSubmitAuthCode,
   onCancelOAuth,
   copilotDeviceCode,
+  onSubmitPiOAuthCode,
   editInitialValues,
 }: CredentialsStepProps) {
   const { t } = useTranslation()
@@ -155,11 +166,38 @@ export function CredentialsStep({
         <div className="space-y-4">
           <div className="rounded-xl bg-foreground-2 p-4 text-sm text-muted-foreground">
             <p>{t("onboarding.credentials.connectOAuthInstructions")}</p>
-            {copilotDeviceCode && (
+            {copilotDeviceCode?.userCode && (
               <div className="mt-3 p-3 bg-background rounded-lg border border-border text-center">
                 <p className="text-xs text-muted-foreground mb-2">{t("onboarding.credentials.enterCodeOnGitHub")}</p>
                 <code className="text-lg font-mono font-bold tracking-widest">{copilotDeviceCode.userCode}</code>
               </div>
+            )}
+            {copilotDeviceCode?.verificationUri && !copilotDeviceCode.userCode && !copilotDeviceCode.manualCodeRequested && (
+              <div className="mt-3 p-3 bg-background rounded-lg border border-border text-center">
+                <p className="text-xs text-muted-foreground mb-2">
+                  {t("onboarding.credentials.browserOpenedOAuth")}
+                </p>
+                <a
+                  href={copilotDeviceCode.verificationUri}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-sm text-primary underline break-all hover:opacity-80"
+                >
+                  {copilotDeviceCode.verificationUri}
+                </a>
+                {copilotDeviceCode.instructions && (
+                  <p className="text-xs text-muted-foreground mt-2">{copilotDeviceCode.instructions}</p>
+                )}
+              </div>
+            )}
+            {copilotDeviceCode?.progressMessage && (
+              <p className="mt-3 text-xs text-muted-foreground">{copilotDeviceCode.progressMessage}</p>
+            )}
+            {copilotDeviceCode?.manualCodeRequested && (
+              <ManualCodeForm
+                placeholder={copilotDeviceCode.placeholder}
+                onSubmit={onSubmitPiOAuthCode}
+              />
             )}
           </div>
           {status === 'error' && errorMessage && (
@@ -347,5 +385,52 @@ export function CredentialsStep({
         initialValues={editInitialValues}
       />
     </StepFormLayout>
+  )
+}
+
+/** Paste box for the headless OpenRouter login (manual authorization code). */
+function ManualCodeForm({
+  placeholder,
+  onSubmit,
+}: {
+  placeholder?: string
+  onSubmit?: (code: string) => void
+}) {
+  const { t } = useTranslation()
+  const [code, setCode] = useState('')
+  const [submitted, setSubmitted] = useState(false)
+
+  const handleSubmit = () => {
+    if (!code.trim() || !onSubmit) return
+    setSubmitted(true)
+    onSubmit(code.trim())
+  }
+
+  return (
+    <div className="mt-3 p-3 bg-background rounded-lg border border-border space-y-2">
+      <p className="text-xs text-muted-foreground">{t("onboarding.credentials.pasteOAuthCode")}</p>
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={code}
+          onChange={(e) => setCode(e.target.value)}
+          placeholder={placeholder ?? '…'}
+          onKeyDown={(e) => { if (e.key === 'Enter') handleSubmit() }}
+          disabled={submitted}
+          className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-50"
+        />
+        <button
+          type="button"
+          onClick={handleSubmit}
+          disabled={submitted || !code.trim()}
+          className="rounded-lg bg-primary px-3 py-2 text-sm text-primary-foreground hover:opacity-90 disabled:opacity-50 cursor-pointer"
+        >
+          {t("common.continue")}
+        </button>
+      </div>
+      {submitted && (
+        <p className="text-xs text-success">{t("onboarding.credentials.oauthCodeSubmitted")}</p>
+      )}
+    </div>
   )
 }

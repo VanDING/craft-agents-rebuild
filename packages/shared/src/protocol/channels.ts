@@ -228,6 +228,7 @@ export const RPC_CHANNELS = {
   },
   pi: {
     START_OAUTH: 'pi:startOAuth',
+    SUBMIT_OAUTH_CODE: 'pi:submitOAuthCode',
     GET_API_KEY_PROVIDERS: 'pi:getApiKeyProviders',
     GET_PROVIDER_BASE_URL: 'pi:getProviderBaseUrl',
     GET_PROVIDER_MODELS: 'pi:getProviderModels',

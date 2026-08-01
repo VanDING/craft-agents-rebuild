@@ -49,8 +49,17 @@ interface OnboardingWizardProps {
   onSubmitAuthCode?: (code: string) => void
   onCancelOAuth?: () => void
 
-  // Copilot device flow
-  copilotDeviceCode?: { userCode: string; verificationUri: string }
+  // Copilot device flow + unified Pi OAuth events
+  copilotDeviceCode?: {
+    userCode: string
+    verificationUri: string
+    instructions?: string
+    progressMessage?: string
+    manualCodeRequested?: boolean
+    placeholder?: string
+  }
+  /** Headless Pi OAuth: submit a pasted authorization code / redirect URL. */
+  onSubmitPiOAuthCode?: (code: string) => void
 
   // Git Bash (Windows)
   onBrowseGitBash?: () => Promise<string | null>
@@ -102,6 +111,8 @@ export function OnboardingWizard({
   onCancelOAuth,
   // Copilot device flow
   copilotDeviceCode,
+  // Headless Pi OAuth code submit
+  onSubmitPiOAuthCode,
   // Git Bash (Windows)
   onBrowseGitBash,
   onUseGitBashPath,
@@ -170,6 +181,7 @@ export function OnboardingWizard({
             onBack={onBack}
             isWaitingForCode={isWaitingForCode}
             onSubmitAuthCode={onSubmitAuthCode}
+            onSubmitPiOAuthCode={onSubmitPiOAuthCode}
             editInitialValues={editInitialValues}
             onCancelOAuth={onCancelOAuth}
             copilotDeviceCode={copilotDeviceCode}

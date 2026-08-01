@@ -13,12 +13,18 @@ import { parseTestConnectionError, createBuiltInConnection, validateModelList, p
 import { getWorkspaceOrThrow, buildBackendHostRuntimeContext } from '@craft-agent/server-core/handlers'
 import { pushTyped, type RpcServer } from '@craft-agent/server-core/transport'
 import type { HandlerDeps } from '../handler-deps'
-import { randomUUID, createHash, randomBytes } from 'node:crypto'
-import * as http from 'node:http'
+import { randomUUID } from 'node:crypto'
 import { CLIENT_OPEN_EXTERNAL } from '@craft-agent/server-core/transport'
 
 // Local OAuth state
 let copilotOAuthAbort: AbortController | null = null
+
+// Pending headless manual-code prompts for the unified Pi OAuth flows.
+// Keyed by `${clientId}:${connectionSlug}`; resolved by `pi:submitOAuthCode`.
+const pendingManualOAuthCodes = new Map<string, {
+  resolve: (code: string) => void
+  reject: (err: Error) => void
+}>()
 
 export const HANDLED_CHANNELS = [
   RPC_CHANNELS.llmConnections.LIST,
@@ -43,6 +49,7 @@ export const HANDLED_CHANNELS = [
   RPC_CHANNELS.settings.SETUP_LLM_CONNECTION,
   RPC_CHANNELS.settings.TEST_LLM_CONNECTION_SETUP,
   RPC_CHANNELS.pi.START_OAUTH,
+  RPC_CHANNELS.pi.SUBMIT_OAUTH_CODE,
   RPC_CHANNELS.pi.GET_API_KEY_PROVIDERS,
   RPC_CHANNELS.pi.GET_PROVIDER_BASE_URL,
   RPC_CHANNELS.pi.GET_PROVIDER_MODELS,
@@ -984,68 +991,63 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
           return { success: false, error: 'Kimi OAuth timed out' }
         }
 
-        // ── OpenRouter (PKCE + callback server) ─────────────────
+        // ── OpenRouter (SDK PKCE flow: loopback callback + headless paste) ──
         case 'openrouter': {
-          const AUTH_URL = 'https://openrouter.ai/auth'
-          const TOKEN_URL = 'https://openrouter.ai/api/v1/auth/keys'
-          const verifier = randomBytes(32).toString('base64url')
-          const challenge = createHash('sha256').update(verifier).digest('base64url')
-          const callbackPath = `/oauth/callback/${randomUUID()}`
+          // Use the Pi SDK's bundled OpenRouter OAuth flow (v0.83+): PKCE with a
+          // one-shot loopback callback server, raced against a manual prompt so
+          // remote/headless sessions can paste the redirect URL or auth code.
+          const { openrouterProvider } = await import('@earendil-works/pi-ai/providers/openrouter')
+          const oauth = openrouterProvider().auth.oauth
+          if (!oauth) return { success: false, error: 'OpenRouter OAuth flow unavailable' }
 
-          // Create credential promise with resolvers
-          const { promise: credPromise, resolve: resolveCred } = Promise.withResolvers<{ access: string; expires: number }>()
-
-          const httpServer = http.createServer((req, res) => {
-            if (!req.url?.startsWith(callbackPath)) { res.writeHead(404); res.end(); return }
-            const url = new URL(req.url, 'http://localhost')
-            const code = url.searchParams.get('code')
-            if (!code) { res.writeHead(400); res.end('Missing code'); return }
-
-            fetch(TOKEN_URL, {
-              method: 'POST',
-              headers: { 'content-type': 'application/json' },
-              body: JSON.stringify({ code, code_verifier: verifier }),
-            }).then(async r => {
-              const data = await r.json() as Record<string, unknown>
-              if (data.key) {
-                resolveCred({ access: String(data.key), expires: Date.now() + 365 * 86400 * 1000 })
-                res.writeHead(200, { 'Content-Type': 'text/html' })
-                res.end('<html><body><h1>✅ Authorized — you can close this window.</h1></body></html>')
-              } else {
-                res.writeHead(400).end('Exchange failed')
-                resolveCred(Promise.reject(new Error('OpenRouter token exchange failed')) as any)
-              }
-            }).catch((e: Error) => {
-              resolveCred(Promise.reject(e) as any)
-              res.writeHead(500).end('Error')
+          const promptKey = `${ctx.clientId}:${connectionSlug}`
+          try {
+            const credential = await oauth.login({
+              notify: (event) => {
+                if (event.type === 'auth_url') {
+                  pushTyped(server, RPC_CHANNELS.copilot.DEVICE_CODE, { to: 'client', clientId: ctx.clientId }, {
+                    userCode: '',
+                    verificationUri: event.url,
+                    instructions: event.instructions,
+                  })
+                  server.invokeClient(ctx.clientId, CLIENT_OPEN_EXTERNAL, event.url).catch(() => {})
+                } else if (event.type === 'progress') {
+                  pushTyped(server, RPC_CHANNELS.copilot.DEVICE_CODE, { to: 'client', clientId: ctx.clientId }, {
+                    userCode: '',
+                    verificationUri: '',
+                    progressMessage: event.message,
+                  })
+                }
+              },
+              prompt: async (prompt) => {
+                if (prompt.type === 'manual_code') {
+                  pushTyped(server, RPC_CHANNELS.copilot.DEVICE_CODE, { to: 'client', clientId: ctx.clientId }, {
+                    userCode: '',
+                    verificationUri: '',
+                    manualCodeRequested: true,
+                    placeholder: prompt.placeholder,
+                  })
+                  return await new Promise<string>((resolve, reject) => {
+                    pendingManualOAuthCodes.set(promptKey, { resolve, reject })
+                    prompt.signal?.addEventListener('abort', () => {
+                      pendingManualOAuthCodes.delete(promptKey)
+                      reject(new Error('Login cancelled'))
+                    }, { once: true })
+                  })
+                }
+                throw new Error(`Unsupported OpenRouter login prompt: ${(prompt as { type: string }).type}`)
+              },
             })
-          })
 
-          const { promise: listenPromise, resolve: resolveListen } = Promise.withResolvers<void>()
-          httpServer.listen(0, '127.0.0.1', () => resolveListen())
-          await listenPromise
-          const addr = httpServer.address() as { port: number } | null
-          if (!addr) { httpServer.close(); return { success: false, error: 'Failed to start callback server' } }
-          const callbackUrl = `http://127.0.0.1:${addr.port}${callbackPath}`
-          const authorizeUrl = `${AUTH_URL}?${new URLSearchParams({ callback_url: callbackUrl, code_challenge: challenge, code_challenge_method: 'S256' }).toString()}`
-
-          // Push auth URL to renderer and open browser
-          pushTyped(server, 'copilot:deviceCode', { to: 'client', clientId: ctx.clientId }, {
-            userCode: '',
-            verificationUri: authorizeUrl,
-          })
-          server.invokeClient(ctx.clientId, CLIENT_OPEN_EXTERNAL, authorizeUrl).catch(() => {})
-
-          // Block until callback received
-          const cred = await credPromise
-          httpServer.close()
-
-          await credentialManager.setLlmOAuth(connectionSlug, {
-            accessToken: cred.access,
-            refreshToken: '',
-            expiresAt: cred.expires,
-          })
-          return { success: true, authUrl: authorizeUrl }
+            await credentialManager.setLlmOAuth(connectionSlug, {
+              accessToken: credential.access,
+              refreshToken: credential.refresh,
+              expiresAt: credential.expires,
+            })
+            return { success: true }
+          } finally {
+            pendingManualOAuthCodes.delete(promptKey)
+          }
         }
 
         // ── Radius (requires gateway config) ────────────────────
@@ -1070,5 +1072,19 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
         error: error instanceof Error ? error.message : 'OAuth failed',
       }
     }
+  })
+
+  // Headless OAuth: submit a pasted authorization code / redirect URL.
+  // Resolves the pending `manual_code` prompt of the OpenRouter SDK login flow.
+  server.handle(RPC_CHANNELS.pi.SUBMIT_OAUTH_CODE, async (ctx, connectionSlug: string, code: string): Promise<{ success: boolean; error?: string }> => {
+    const trimmed = typeof code === 'string' ? code.trim() : ''
+    if (!trimmed) return { success: false, error: 'Missing authorization code' }
+
+    const entry = pendingManualOAuthCodes.get(`${ctx.clientId}:${connectionSlug}`)
+    if (!entry) return { success: false, error: 'No pending OAuth code prompt for this connection' }
+
+    pendingManualOAuthCodes.delete(`${ctx.clientId}:${connectionSlug}`)
+    entry.resolve(trimmed)
+    return { success: true }
   })
 }

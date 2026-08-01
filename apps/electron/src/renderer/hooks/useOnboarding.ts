@@ -68,8 +68,17 @@ interface UseOnboardingReturn {
   handleSubmitAuthCode: (code: string) => void
   handleCancelOAuth: () => void
 
-  // Copilot device code (displayed during device flow)
-  copilotDeviceCode?: { userCode: string; verificationUri: string }
+  // Copilot device code + unified Pi OAuth events
+  copilotDeviceCode?: {
+    userCode: string
+    verificationUri: string
+    instructions?: string
+    progressMessage?: string
+    manualCodeRequested?: boolean
+    placeholder?: string
+  }
+  /** Headless Pi OAuth: forward a pasted authorization code / redirect URL. */
+  handleSubmitPiOAuthCode: (code: string) => void
 
   // Git Bash (Windows)
   handleBrowseGitBash: () => Promise<string | null>
@@ -531,8 +540,18 @@ export function useOnboarding({
   // Two-step OAuth flow state
   const [isWaitingForCode, setIsWaitingForCode] = useState(false)
 
-  // Copilot device code (displayed during device flow)
-  const [copilotDeviceCode, setCopilotDeviceCode] = useState<{ userCode: string; verificationUri: string } | undefined>()
+  // Copilot device code (displayed during device flow; also carries the
+  // unified Pi OAuth events: auth URL, progress, headless manual-code prompt)
+  const [copilotDeviceCode, setCopilotDeviceCode] = useState<{
+    userCode: string
+    verificationUri: string
+    instructions?: string
+    progressMessage?: string
+    manualCodeRequested?: boolean
+    placeholder?: string
+  } | undefined>()
+  // Connection slug of the in-flight Pi OAuth flow (for headless code submit)
+  const [piOAuthSlug, setPiOAuthSlug] = useState<string | undefined>()
 
   // Start OAuth flow (Claude or ChatGPT depending on selected method)
   const handleStartOAuth = useCallback(async (methodOverride?: ApiSetupMethod, connectionSlugOverride?: string) => {
@@ -616,9 +635,11 @@ export function useOnboarding({
         const isReauth = !!effectiveEditingSlug
         const connectionSlug = apiSetupMethodToConnectionSetup(effectiveMethod, {}, effectiveEditingSlug, existingSlugs).slug
 
-        // Subscribe to device code events (used by xAI, Kimi device-code flows)
+        // Subscribe to device code events (used by xAI, Kimi device-code flows
+        // and OpenRouter auth-URL / headless manual-code prompts)
+        setPiOAuthSlug(connectionSlug)
         const cleanup = window.electronAPI.onCopilotDeviceCode((data) => {
-          if (data.userCode) setCopilotDeviceCode(data)
+          setCopilotDeviceCode(data)
         })
 
         try {
@@ -636,6 +657,7 @@ export function useOnboarding({
         } finally {
           cleanup()
           setCopilotDeviceCode(undefined)
+          setPiOAuthSlug(undefined)
         }
         return
       }
@@ -672,6 +694,13 @@ export function useOnboarding({
       }))
     }
   }, [state.apiSetupMethod, saveAndValidateConnection, editingSlug, existingSlugs])
+
+  // Headless OAuth: forward a pasted authorization code / redirect URL to the
+  // in-flight Pi OAuth flow (OpenRouter manual-code prompt).
+  const handleSubmitPiOAuthCode = useCallback(async (code: string) => {
+    if (!piOAuthSlug) return
+    await window.electronAPI.submitPiOAuthCode(piOAuthSlug, code)
+  }, [piOAuthSlug])
 
   // Map ProviderChoice → ApiSetupMethod and navigate to the right step
   const handleSelectProvider = useCallback((choice: ProviderChoice) => {
@@ -886,6 +915,8 @@ export function useOnboarding({
     handleCancelOAuth,
     // Copilot device code
     copilotDeviceCode,
+    // Headless Pi OAuth code submit
+    handleSubmitPiOAuthCode,
     // Git Bash (Windows)
     handleBrowseGitBash,
     handleUseGitBashPath,

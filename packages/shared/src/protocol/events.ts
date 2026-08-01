@@ -61,8 +61,18 @@ export interface BroadcastEventMap {
   [RPC_CHANNELS.notification.NAVIGATE]: [data: { workspaceId: string; sessionId: string }]
   [RPC_CHANNELS.deeplink.NAVIGATE]: [navigation: DeepLinkNavigation]
 
-  // Copilot device code event
-  [RPC_CHANNELS.copilot.DEVICE_CODE]: [data: { userCode: string; verificationUri: string }]
+  // Copilot device code event (also used by the unified Pi OAuth flows: xAI/Kimi
+  // device codes, OpenRouter auth URL + headless manual-code prompt)
+  [RPC_CHANNELS.copilot.DEVICE_CODE]: [data: {
+    userCode: string
+    verificationUri: string
+    /** OpenRouter headless hint / progress text from the SDK login flow. */
+    instructions?: string
+    progressMessage?: string
+    /** True when the SDK login is waiting for a pasted authorization code. */
+    manualCodeRequested?: boolean
+    placeholder?: string
+  }]
 
   // Menu events (per-window, no payload)
   [RPC_CHANNELS.menu.NEW_CHAT]: []

@@ -177,6 +177,7 @@ export const CHANNEL_MAP = {
   // Pi provider discovery
   getPiApiKeyProviders: invoke(RPC_CHANNELS.pi.GET_API_KEY_PROVIDERS),
   startPiOAuth: invoke(RPC_CHANNELS.pi.START_OAUTH),
+  submitPiOAuthCode: invoke(RPC_CHANNELS.pi.SUBMIT_OAUTH_CODE),
   getPiProviderBaseUrl: invoke(RPC_CHANNELS.pi.GET_PROVIDER_BASE_URL),
   getPiProviderModels: invoke(RPC_CHANNELS.pi.GET_PROVIDER_MODELS),
 

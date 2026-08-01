@@ -433,7 +433,14 @@ export interface ElectronAPI {
   cancelCopilotOAuth(): Promise<{ success: boolean }>
   getCopilotAuthStatus(connectionSlug: string): Promise<{ authenticated: boolean }>
   copilotLogout(connectionSlug: string): Promise<{ success: boolean }>
-  onCopilotDeviceCode(callback: (data: { userCode: string; verificationUri: string }) => void): () => void
+  onCopilotDeviceCode(callback: (data: {
+    userCode: string
+    verificationUri: string
+    instructions?: string
+    progressMessage?: string
+    manualCodeRequested?: boolean
+    placeholder?: string
+  }) => void): () => void
 
   /** Unified LLM connection setup */
   setupLlmConnection(setup: LlmConnectionSetup): Promise<{ success: boolean; error?: string }>
@@ -451,6 +458,8 @@ export interface ElectronAPI {
     deviceCode?: { userCode: string; verificationUri: string }
     authUrl?: string
   }>
+  /** Headless OAuth: submit a pasted authorization code / redirect URL (OpenRouter). */
+  submitPiOAuthCode(connectionSlug: string, code: string): Promise<{ success: boolean; error?: string }>
 
   // Session-specific model (overrides global)
   getSessionModel(sessionId: string, workspaceId: string): Promise<string | null>
