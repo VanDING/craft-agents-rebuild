@@ -115,16 +115,18 @@ describe('resolveCustomEndpointSetup', () => {
 // per-connection submenu in Settings → AI shows a checkmark on the right item
 // out of the box (no read-time fallback needed for fresh connections).
 describe('createBuiltInConnection seeds midStreamBehavior', () => {
-  it("Anthropic API key → 'queue' (Claude's emulated steer is fragile)", () => {
+  // Post-migration: only Pi-based providers remain, and Pi's native steer is
+  // non-destructive — defaultMidStreamBehavior always returns 'steer'.
+  it("Anthropic API key → 'steer' (Pi backend)", () => {
     const conn = createBuiltInConnection('anthropic-api')
-    expect(conn.providerType).toBe('anthropic')
-    expect(conn.midStreamBehavior).toBe('queue')
+    expect(conn.providerType).toBe('pi')
+    expect(conn.midStreamBehavior).toBe('steer')
   })
 
-  it("Claude Max OAuth → 'queue' (still uses Claude SDK)", () => {
+  it("Claude Max OAuth → 'steer' (Anthropic subscription via Pi backend)", () => {
     const conn = createBuiltInConnection('claude-max')
-    expect(conn.providerType).toBe('anthropic')
-    expect(conn.midStreamBehavior).toBe('queue')
+    expect(conn.providerType).toBe('pi')
+    expect(conn.midStreamBehavior).toBe('steer')
   })
 
   it("ChatGPT Plus → 'steer' (Pi backend, native polite steer)", () => {

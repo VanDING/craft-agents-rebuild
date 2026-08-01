@@ -308,12 +308,15 @@ describe('legacy Opus migration to default Opus (integration)', () => {
 
     const connection = findConnection(configPath, 'anthropic')
     const ids = modelIdsOf(connection)
-    expect(connection.defaultModel).toBe('claude-opus-4-8')
-    expect(ids).toContain('claude-opus-4-8')
+    // Post-Pi-migration model ids carry the 'pi/' provider prefix; 4.6
+    // defaults are upgraded to the current catalog default 4.8.
+    expect(connection.defaultModel).toBe('pi/claude-opus-4-8')
+    expect(ids).toContain('pi/claude-opus-4-8')
+    // 4.7 stays as the bare fallback entry.
     expect(ids).toContain('claude-opus-4-7')
     expect(ids).not.toContain('claude-opus-4-6')
-    expect(ids.filter(id => id === 'claude-opus-4-8')).toHaveLength(1)
-    const opus = connection.models.find((m: any) => (typeof m === 'string' ? m : m.id) === 'claude-opus-4-8')
+    expect(ids.filter(id => id === 'pi/claude-opus-4-8')).toHaveLength(1)
+    const opus = connection.models.find((m: any) => (typeof m === 'string' ? m : m.id) === 'pi/claude-opus-4-8')
     expect(typeof opus).toBe('object')
     expect(opus.name).toBe('Opus 4.8')
   })
@@ -337,8 +340,8 @@ describe('legacy Opus migration to default Opus (integration)', () => {
 
     const connection = findConnection(configPath, 'anthropic')
     const ids = modelIdsOf(connection)
-    expect(connection.defaultModel).toBe('claude-opus-4-8')
-    expect(ids).toContain('claude-opus-4-8')
+    expect(connection.defaultModel).toBe('pi/claude-opus-4-8')
+    expect(ids).toContain('pi/claude-opus-4-8')
     expect(ids).not.toContain('claude-opus-4-5-20251101')
   })
 
@@ -371,8 +374,10 @@ describe('legacy Opus migration to default Opus (integration)', () => {
     runMigration(configDir)
 
     const anthropic = findConnection(configPath, 'anthropic')
-    expect(anthropic.defaultModel).toBe('claude-opus-4-8')
-    expect(modelIdsOf(anthropic)).toEqual(['claude-opus-4-8', 'claude-opus-4-7', 'claude-sonnet-4-6'])
+    // 4.7 defaults stay put: the migration only upgrades 4.5/4.6 defaults to
+    // 4.8, and keeps 4.7 (current fallback) until the Pi catalog promotes 4.8.
+    expect(anthropic.defaultModel).toBe('claude-opus-4-7')
+    expect(modelIdsOf(anthropic)).toEqual(['claude-opus-4-7', 'claude-sonnet-4-6'])
 
     const pi = readPiApiKeyConnection(configPath)
     expect(pi.defaultModel).toBe('pi/claude-opus-4-7')

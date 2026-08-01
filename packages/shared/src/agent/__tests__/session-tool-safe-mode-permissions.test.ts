@@ -13,13 +13,17 @@ describe('session tool safe-mode classification', () => {
     const allowedTools = [
       'mcp__session__call_llm',
       'mcp__session__browser_tool',
-      'mcp__session__script_sandbox',
     ] as const;
 
     for (const toolName of allowedTools) {
       const result = shouldAllowToolInMode(toolName, {}, 'safe');
       expect(result.allowed).toBe(true);
     }
+  });
+
+  it('blocks script_sandbox in safe mode (audit C-2: arbitrary code execution)', () => {
+    const result = shouldAllowToolInMode('mcp__session__script_sandbox', {}, 'safe');
+    expect(result.allowed).toBe(false);
   });
 
   it('blocks mutating/auth session tools in safe mode', () => {
