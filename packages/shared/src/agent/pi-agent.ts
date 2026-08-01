@@ -55,6 +55,23 @@ import { getCredentialManager } from '../credentials/manager.ts';
 // ChatGPT OAuth token refresh (used when Pi routes ChatGPT auth)
 import { refreshChatGptTokens } from '../auth/chatgpt-oauth.ts';
 
+// Pi SDK OAuth flows — provider-native refresh (audit H-11: never send a
+// third-party provider's refresh token to ChatGPT's endpoint).
+import type { OAuthAuth, OAuthCredential } from '@earendil-works/pi-ai';
+import { xaiProvider } from '@earendil-works/pi-ai/providers/xai';
+import { kimiCodingProvider } from '@earendil-works/pi-ai/providers/kimi-coding';
+import { openrouterProvider } from '@earendil-works/pi-ai/providers/openrouter';
+import { anthropicProvider } from '@earendil-works/pi-ai/providers/anthropic';
+
+// Provider-id → SDK OAuth refresh. The provider modules only lazily load
+// their OAuth flows (lazyOAuth), so this table is cheap at import time.
+const PI_SUBSCRIPTION_OAUTH_REFRESH: Record<string, OAuthAuth['refresh'] | undefined> = {
+  xai: xaiProvider().auth.oauth?.refresh,
+  'kimi-coding': kimiCodingProvider().auth.oauth?.refresh,
+  openrouter: openrouterProvider().auth.oauth?.refresh,
+  anthropic: anthropicProvider().auth.oauth?.refresh,
+};
+
 // Session-scoped tool callbacks (for SubmitPlan, source auth, etc.)
 import {
   registerSessionScopedToolCallbacks,
@@ -801,14 +818,35 @@ export class PiAgent extends BaseAgent {
             refreshToken: newCreds.refresh,
             expiresAt: newCreds.expires,
           });
-        } else {
-          // ChatGPT Plus: use existing refresh utility
+        } else if (piAuthProvider === 'openai-codex') {
+          // ChatGPT Plus: use the ChatGPT refresh utility (correct endpoint)
           const newTokens = await refreshChatGptTokens(stored.refreshToken);
           await credentialManager.setLlmOAuth(slug, {
             accessToken: newTokens.accessToken,
             idToken: newTokens.idToken,
             refreshToken: newTokens.refreshToken,
             expiresAt: newTokens.expiresAt,
+          });
+        } else {
+          // Audit H-11: NEVER fall back to ChatGPT's token endpoint for other
+          // providers — that would POST the provider's refresh token to OpenAI
+          // (credential disclosure) and break the session. Route through the Pi
+          // SDK's own provider flow instead.
+          const refresh = piAuthProvider ? (PI_SUBSCRIPTION_OAUTH_REFRESH[piAuthProvider] ?? null) : null;
+          if (!refresh) {
+            this.onBackendAuthRequired?.(`Unsupported OAuth provider '${piAuthProvider}' — please sign in again`);
+            return;
+          }
+          const refreshed = await refresh({
+            type: 'oauth',
+            access: stored.accessToken,
+            refresh: stored.refreshToken,
+            expires: stored.expiresAt ?? Date.now(),
+          });
+          await credentialManager.setLlmOAuth(slug, {
+            accessToken: refreshed.access,
+            refreshToken: refreshed.refresh,
+            expiresAt: refreshed.expires,
           });
         }
         this.debug('Token refresh successful');

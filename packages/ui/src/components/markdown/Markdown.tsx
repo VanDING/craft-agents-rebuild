@@ -2,6 +2,7 @@ import * as React from 'react'
 import ReactMarkdown, { defaultUrlTransform, type Components } from 'react-markdown'
 import rehypeKatex from 'rehype-katex'
 import rehypeRaw from 'rehype-raw'
+import rehypeSanitize, { defaultSchema } from 'rehype-sanitize'
 import remarkGfm from 'remark-gfm'
 import remarkMath from 'remark-math'
 import 'katex/dist/katex.min.css'
@@ -51,6 +52,29 @@ export type DisablablePreviewBlock =
  *   Best for: Documentation, long-form content, when presentation matters
  */
 export type RenderMode = 'terminal' | 'minimal' | 'full'
+
+/**
+ * Sanitization schema for raw HTML inside markdown (rehype-sanitize).
+ *
+ * Built on the default schema: allows common formatting tags and the
+ * `className` attribute, strips script/iframe/object/embed/form/meta/base,
+ * all `on*` handlers, `srcdoc`, `style` and `javascript:` URLs. Audit C-1.
+ */
+const markdownSanitizeSchema = {
+  ...defaultSchema,
+  tagNames: [
+    ...(defaultSchema.tagNames ?? []),
+    // Collapsible blocks commonly produced by LLM output.
+    'details',
+    'summary',
+  ],
+  attributes: {
+    ...defaultSchema.attributes,
+    // Keep styling hooks on raw HTML (the default schema's legacy list has
+    // no className/class).
+    '*': [...(defaultSchema.attributes?.['*'] ?? []), 'className', 'class'],
+  },
+}
 
 export interface MarkdownProps {
   children: string
@@ -621,7 +645,7 @@ export function Markdown({
     <div className={cn('markdown-content', className)}>
       <ReactMarkdown
         remarkPlugins={remarkPlugins}
-        rehypePlugins={[rehypeKatex, rehypeRaw]}
+        rehypePlugins={[rehypeKatex, rehypeRaw, [rehypeSanitize, { schema: markdownSanitizeSchema }]]}
         components={components}
         urlTransform={markdownUrlTransform}
       >
