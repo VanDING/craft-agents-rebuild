@@ -17,7 +17,7 @@ import { existsSync } from 'node:fs'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { RPC_CHANNELS } from '@craft-agent/shared/protocol'
+import { CodedError, RPC_CHANNELS } from '@craft-agent/shared/protocol'
 import type { HandlerFn, RequestContext, RpcServer } from '../../transport/types'
 
 interface TransferState {
@@ -27,6 +27,8 @@ interface TransferState {
   totalBytes: number
   chunkCount: number
   received: Set<number>
+  /** Decoded bytes accumulated so far (M-10 cap enforcement). */
+  receivedBytes: number
   channel: string
   args: any[]
   largeArgIndex: number
@@ -35,6 +37,14 @@ interface TransferState {
 }
 
 const DEFAULT_TRANSFER_TTL_MS = 5 * 60 * 1000
+
+/**
+ * M-10: hard caps for chunked transfers so a malicious/buggy client cannot
+ * exhaust disk or memory. COMMIT loads every chunk file into memory for
+ * reassembly, so both the total payload size and the chunk count are bounded.
+ */
+const MAX_TRANSFER_TOTAL_BYTES = 512 * 1024 * 1024
+const MAX_TRANSFER_CHUNK_COUNT = 2000
 
 export const HANDLED_CHANNELS = [
   RPC_CHANNELS.transfer.START,
@@ -105,11 +115,17 @@ export function registerTransferHandlers(server: RpcServer): void {
     largeArgIndex: number
     checksum?: string
   }) => {
-    if (!opts || typeof opts.chunkCount !== 'number' || opts.chunkCount < 1) {
+    if (!opts || !Number.isInteger(opts.chunkCount) || opts.chunkCount < 1) {
       throw new Error('Invalid chunkCount')
     }
-    if (typeof opts.totalBytes !== 'number' || opts.totalBytes < 0) {
+    if (!Number.isInteger(opts.totalBytes) || opts.totalBytes < 0) {
       throw new Error('Invalid totalBytes')
+    }
+    if (opts.totalBytes > MAX_TRANSFER_TOTAL_BYTES) {
+      throw new CodedError('TRANSFER_TOO_LARGE', `Transfer too large: ${opts.totalBytes} bytes exceeds the ${MAX_TRANSFER_TOTAL_BYTES} byte limit`)
+    }
+    if (opts.chunkCount > MAX_TRANSFER_CHUNK_COUNT) {
+      throw new CodedError('TRANSFER_TOO_LARGE', `Too many chunks: ${opts.chunkCount} exceeds the ${MAX_TRANSFER_CHUNK_COUNT} chunk limit`)
     }
     if (!opts.channel || typeof opts.channel !== 'string') {
       throw new Error('Missing target channel')
@@ -135,6 +151,7 @@ export function registerTransferHandlers(server: RpcServer): void {
       totalBytes: opts.totalBytes,
       chunkCount: opts.chunkCount,
       received: new Set(),
+      receivedBytes: 0,
       channel: opts.channel,
       args: opts.args,
       largeArgIndex: opts.largeArgIndex,
@@ -169,9 +186,22 @@ export function registerTransferHandlers(server: RpcServer): void {
       throw new Error('Missing chunk data')
     }
 
+    // M-10: reject chunks that would push the accumulated payload past the
+    // declared total (defense in depth against oversized/duplicated chunks).
+    // Decoded byte count is used so legitimately base64-encoded payloads near
+    // the cap are not falsely rejected (base64 expands ~4/3x vs raw bytes).
+    const chunkBytes = Buffer.from(opts.data, 'base64').length
+    if (transfer.receivedBytes + chunkBytes > transfer.totalBytes) {
+      throw new CodedError(
+        'TRANSFER_TOO_LARGE',
+        `Chunk ${opts.index} would exceed declared total of ${transfer.totalBytes} bytes`,
+      )
+    }
+
     const chunkPath = join(transfer.dir, `chunk-${String(opts.index).padStart(6, '0')}`)
     await writeFile(chunkPath, opts.data, 'utf-8')
     transfer.received.add(opts.index)
+    transfer.receivedBytes += chunkBytes
     rescheduleTransferCleanup(transfer)
 
     if ((opts.index + 1) % 10 === 0 || opts.index === transfer.chunkCount - 1) {

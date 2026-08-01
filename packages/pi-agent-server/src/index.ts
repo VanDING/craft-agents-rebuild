@@ -15,6 +15,7 @@
  */
 
 import http from 'node:http';
+import { randomBytes } from 'node:crypto';
 import { createInterface } from 'node:readline';
 import { join } from 'node:path';
 import { mkdirSync, readdirSync, statSync, existsSync } from 'node:fs';
@@ -79,6 +80,12 @@ import { resolveSearchProvider } from './tools/search/resolve-provider.ts';
 import { createSearchTool } from './tools/search/create-search-tool.ts';
 import { allowCraftMetadataProperties, stripCraftMetadata } from './craft-metadata-schema.ts';
 import { applySystemPromptOverride } from './system-prompt-override.ts';
+import { guardCallbackToken } from './callback-auth.ts';
+import {
+  hasSupportedBaseUrlScheme,
+  isLocalhostUrl,
+  resolveCustomEndpointApiKeyFor,
+} from './custom-endpoint-auth.ts';
 
 // ============================================================
 // Types — JSONL Protocol
@@ -171,7 +178,7 @@ type EnrichedToolExecutionStartEvent = Extract<AgentSessionEvent, { type: 'tool_
 type OutboundAgentEvent = AgentSessionEvent | EnrichedToolExecutionStartEvent;
 
 /** Messages to main process (stdout) */
-interface OutboundReady { type: 'ready'; sessionId: string | null; callbackPort: number }
+interface OutboundReady { type: 'ready'; sessionId: string | null; callbackPort: number; callbackToken: string }
 interface OutboundEvent { type: 'event'; event: OutboundAgentEvent }
 interface OutboundPreToolUseReq {
   type: 'pre_tool_use_request';
@@ -279,6 +286,12 @@ let toolsChanged = false;
 let callbackServer: http.Server | null = null;
 let callbackPort = 0;
 
+// Per-process secret for the local callback server (audit M-2). Generated at
+// startup so no other process can invoke call_llm/spawn-session without it —
+// the server only listens on loopback, but any local process could otherwise
+// burn the user's LLM quota.
+const callbackToken = randomBytes(32).toString('hex');
+
 // ============================================================
 // JSONL I/O
 // ============================================================
@@ -316,6 +329,11 @@ async function startCallbackServer(): Promise<void> {
   if (callbackServer) return;
 
   const server = http.createServer(async (req, res) => {
+    // Audit M-2: every route on this server (call_llm, spawn-session) requires
+    // the per-process callback token. The server is loopback-only, but any
+    // local process could otherwise POST to it and burn the user's LLM quota.
+    if (!guardCallbackToken(req, res, callbackToken)) return;
+
     if (req.method !== 'POST' || req.url !== '/call-llm') {
       res.writeHead(404);
       res.end();
@@ -398,34 +416,16 @@ function setInterceptorApiHints(model: { api?: string; provider?: string; baseUr
 
 /**
  * Resolve the API key for custom endpoint auth.
- * Returns empty string for local endpoints (Ollama etc.) that don't need auth.
+ * Loopback/link-local endpoints (Ollama, LM Studio) always get the
+ * 'not-needed' placeholder — the real key must never be sent to a local
+ * endpoint, even when a credential exists (audit M-4).
  */
 function resolveCustomEndpointApiKey(): string {
-  if (initConfig?.piAuth?.credential?.type === 'api_key') {
-    return initConfig.piAuth.credential.key;
-  }
-  const key = initConfig?.apiKey || '';
+  const key = resolveCustomEndpointApiKeyFor(initConfig);
   if (!key && initConfig?.baseUrl) {
-    if (isLocalhostUrl(initConfig.baseUrl)) {
-      // Local endpoints (Ollama, LM Studio) don't need auth.
-      // Pi SDK requires a truthy apiKey to register models, so use a placeholder.
-      return 'not-needed';
-    }
     debugLog('[custom-endpoint] Warning: no API key found for non-localhost endpoint — requests will likely fail');
   }
   return key;
-}
-
-function isLocalhostUrl(url: string): boolean {
-  try {
-    const hostname = new URL(url).hostname;
-    const normalizedHostname = hostname.startsWith('[') && hostname.endsWith(']')
-      ? hostname.slice(1, -1)
-      : hostname;
-    return normalizedHostname === 'localhost' || normalizedHostname === '127.0.0.1' || normalizedHostname === '::1';
-  } catch {
-    return false;
-  }
 }
 
 /** Model IDs currently registered under the custom-endpoint provider */
@@ -444,6 +444,15 @@ function registerCustomEndpointModels(
   baseUrl: string,
   models: CustomEndpointModelEntry[],
 ): void {
+  // Audit M-4: only http/https custom endpoint base URLs are supported.
+  // Reject anything else with a clear error instead of letting the Pi SDK
+  // attempt requests against an unsupported scheme (or worse, a file:/data:
+  // URL with the user's real key attached).
+  if (!hasSupportedBaseUrlScheme(baseUrl)) {
+    throw new Error(
+      `Custom endpoint baseUrl "${baseUrl}" uses an unsupported scheme — only http:// and https:// URLs are allowed.`,
+    );
+  }
   for (const m of models) {
     customEndpointModelIds.add(m.id);
     if (m.contextWindow || m.supportsImages !== undefined) {
@@ -1257,11 +1266,23 @@ async function handleInit(msg: Extract<InboundMessage, { type: 'init' }>): Promi
 
   initConfig = msg;
 
+  // Audit M-4: custom endpoint base URLs must use http/https. Reject other
+  // schemes early and neutralize the config so the invalid URL is never
+  // registered (and never receives a real API key). The parent is also told
+  // via an error message; registerCustomEndpointModels() re-checks as a
+  // second line of defense.
+  if (initConfig.baseUrl && !hasSupportedBaseUrlScheme(initConfig.baseUrl)) {
+    const errorMsg = `Custom endpoint baseUrl "${initConfig.baseUrl}" uses an unsupported scheme — only http:// and https:// URLs are allowed.`;
+    debugLog(`[init] ${errorMsg}`);
+    send({ type: 'error', message: errorMsg, code: 'invalid_base_url' });
+    initConfig.baseUrl = undefined;
+  }
+
   // Azure OpenAI requires a tenant-specific endpoint URL.
   // The Pi SDK (via Vercel AI SDK) reads AZURE_OPENAI_BASE_URL from env.
-  if (msg.piAuth?.provider === 'azure-openai-responses' && msg.baseUrl) {
-    process.env.AZURE_OPENAI_BASE_URL = msg.baseUrl;
-    debugLog(`Set AZURE_OPENAI_BASE_URL=${msg.baseUrl}`);
+  if (initConfig.piAuth?.provider === 'azure-openai-responses' && initConfig.baseUrl) {
+    process.env.AZURE_OPENAI_BASE_URL = initConfig.baseUrl;
+    debugLog(`Set AZURE_OPENAI_BASE_URL=${initConfig.baseUrl}`);
   }
 
   // Start callback server for call_llm (idempotent — skips if already running)
@@ -1271,6 +1292,7 @@ async function handleInit(msg: Extract<InboundMessage, { type: 'init' }>): Promi
     type: 'ready',
     sessionId: null,
     callbackPort,
+    callbackToken,
   });
 }
 

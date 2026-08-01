@@ -15,6 +15,7 @@ import {
   mkdirSync,
   existsSync,
   copyFileSync,
+  renameSync,
 } from 'node:fs'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -249,6 +250,14 @@ export class BindingStore {
         const parsed = JSON.parse(raw)
         if (Array.isArray(parsed)) {
           this.bindings = parsed.map(normalizeBinding)
+        } else {
+          // Valid JSON but not the expected array shape (e.g. a hand-edited
+          // or foreign file) — don't fail silently, reset to empty with a warn.
+          this.log.warn('bindings store has unexpected shape; resetting to empty', {
+            event: 'bindings_load_shape_failed',
+            filePath: this.filePath,
+          })
+          this.bindings = []
         }
       }
     } catch (err) {
@@ -266,7 +275,12 @@ export class BindingStore {
       if (!existsSync(this.dirPath)) {
         mkdirSync(this.dirPath, { recursive: true })
       }
-      writeFileSync(this.filePath, JSON.stringify(this.bindings, null, 2), 'utf-8')
+      // Atomic write: serialize to a temp file in the same directory, then
+      // rename over the target. POSIX rename is atomic, so a crash mid-write
+      // can never leave a truncated/corrupt bindings.json behind.
+      const tmpPath = `${this.filePath}.tmp.${process.pid}`
+      writeFileSync(tmpPath, JSON.stringify(this.bindings, null, 2), 'utf-8')
+      renameSync(tmpPath, this.filePath)
       // Fire the listener only after the write succeeds — otherwise the UI
       // shows a "binding added" event for state that will disappear on
       // restart.

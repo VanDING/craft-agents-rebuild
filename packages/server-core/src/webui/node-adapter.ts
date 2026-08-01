@@ -9,6 +9,8 @@
 
 import type { IncomingMessage, ServerResponse } from 'node:http'
 
+import { setRequestClientIp } from './http-server'
+
 type WebHandler = (req: Request) => Promise<Response> | Response
 
 /**
@@ -61,6 +63,9 @@ async function handleRequest(
     headers,
     body,
   })
+
+  // Stamp the real socket address so the handler can key its rate limiter per client.
+  setRequestClientIp(request, nodeReq.socket.remoteAddress ?? '')
 
   const response = await handler(request)
 

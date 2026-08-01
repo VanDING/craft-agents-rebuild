@@ -1,14 +1,16 @@
 import { readFile, writeFile, stat } from 'fs/promises'
 import { join } from 'path'
 import { RPC_CHANNELS, type FileAttachment, type SendMessageOptions, type SessionEvent } from '@craft-agent/shared/protocol'
+import { validateSessionId } from '@craft-agent/shared/sessions'
 import type { StoredAttachment } from '@craft-agent/core/types'
 import { getWorkspaceByNameOrId } from '@craft-agent/shared/config'
 import { perf } from '@craft-agent/shared/utils'
 import { isValidThinkingLevel, THINKING_LEVEL_IDS } from '@craft-agent/shared/agent/thinking-levels'
 
 const VALID_THINKING_LEVELS_LIST = THINKING_LEVEL_IDS.map(id => `'${id}'`).join(', ')
-import { pushTyped, type RpcServer } from '@craft-agent/server-core/transport'
+import { pushTyped, type RequestContext, type RpcServer } from '@craft-agent/server-core/transport'
 import type { HandlerDeps } from '../handler-deps'
+import type { ISessionManager } from '../session-manager-interface'
 import { setTransferableHandler } from './transfer'
 
 interface ClientSessionWatchState {
@@ -129,6 +131,47 @@ export const HANDLED_CHANNELS = [
   RPC_CHANNELS.sessions.IMPORT_REMOTE_TRANSFER,
 ] as const
 
+/**
+ * Resolve the workspace a session belongs to.
+ *
+ * Lightweight: scans session metadata only (getSessions() never loads
+ * messages from disk), so it is safe on the hot RPC path. Returns null when
+ * the session is unknown to the session manager.
+ */
+function resolveSessionWorkspaceId(sessionManager: ISessionManager, sessionId: string): string | null {
+  const sessions = sessionManager.getSessions()
+  for (let i = 0; i < sessions.length; i++) {
+    if (sessions[i]!.id === sessionId) return sessions[i]!.workspaceId
+  }
+  return null
+}
+
+/**
+ * M-1: enforce session→workspace ownership at the RPC layer.
+ *
+ * When the calling client has a claimed workspace (ctx.workspaceId — set at
+ * handshake and kept current by SWITCH_WORKSPACE via updateClientWorkspace),
+ * reject access to sessions that belong to a different workspace. Clients
+ * without a claimed workspace (null — e.g. legacy single-user desktop flows)
+ * fall back to the previous behavior so they are never broken.
+ *
+ * Also validates the sessionId format (path-traversal defense) before use.
+ */
+function assertSessionWorkspaceOwnership(
+  sessionManager: ISessionManager,
+  ctx: RequestContext,
+  sessionId: string,
+): void {
+  validateSessionId(sessionId)
+  const claimedWorkspace = ctx.workspaceId
+  if (!claimedWorkspace) return
+
+  const sessionWorkspaceId = resolveSessionWorkspaceId(sessionManager, sessionId)
+  if (sessionWorkspaceId !== null && sessionWorkspaceId !== claimedWorkspace) {
+    throw new Error(`Session ${sessionId} does not belong to workspace ${claimedWorkspace}`)
+  }
+}
+
 export function registerSessionsHandlers(server: RpcServer, deps: HandlerDeps): void {
   const { sessionManager, platform } = deps
   const log = platform.logger
@@ -177,7 +220,8 @@ export function registerSessionsHandlers(server: RpcServer, deps: HandlerDeps): 
   })
 
   // Get a single session with messages (for lazy loading)
-  server.handle(RPC_CHANNELS.sessions.GET_MESSAGES, async (_ctx, sessionId: string) => {
+  server.handle(RPC_CHANNELS.sessions.GET_MESSAGES, async (ctx, sessionId: string) => {
+    assertSessionWorkspaceOwnership(sessionManager, ctx, sessionId)
     const end = perf.start('rpc.getSessionMessages')
     const session = await sessionManager.getSession(sessionId)
     end()
@@ -195,7 +239,8 @@ export function registerSessionsHandlers(server: RpcServer, deps: HandlerDeps): 
   })
 
   // Delete a session
-  server.handle(RPC_CHANNELS.sessions.DELETE, async (_ctx, sessionId: string) => {
+  server.handle(RPC_CHANNELS.sessions.DELETE, async (ctx, sessionId: string) => {
+    assertSessionWorkspaceOwnership(sessionManager, ctx, sessionId)
     return sessionManager.deleteSession(sessionId)
   })
 
@@ -213,6 +258,7 @@ export function registerSessionsHandlers(server: RpcServer, deps: HandlerDeps): 
   //     event stream as today.
   // attachments: FileAttachment[] for Claude (has content), storedAttachments: StoredAttachment[] for persistence (has thumbnailBase64)
   server.handle(RPC_CHANNELS.sessions.SEND_MESSAGE, async (ctx, sessionId: string, message: string, attachments?: FileAttachment[], storedAttachments?: StoredAttachment[], options?: SendMessageOptions) => {
+    assertSessionWorkspaceOwnership(sessionManager, ctx, sessionId)
     // Capture the caller's clientId for error routing
     const callerClientId = ctx.clientId
 
@@ -259,12 +305,14 @@ export function registerSessionsHandlers(server: RpcServer, deps: HandlerDeps): 
   })
 
   // Cancel processing
-  server.handle(RPC_CHANNELS.sessions.CANCEL, async (_ctx, sessionId: string, silent?: boolean) => {
+  server.handle(RPC_CHANNELS.sessions.CANCEL, async (ctx, sessionId: string, silent?: boolean) => {
+    assertSessionWorkspaceOwnership(sessionManager, ctx, sessionId)
     return sessionManager.cancelProcessing(sessionId, silent)
   })
 
   // Kill background shell
-  server.handle(RPC_CHANNELS.sessions.KILL_SHELL, async (_ctx, sessionId: string, shellId: string) => {
+  server.handle(RPC_CHANNELS.sessions.KILL_SHELL, async (ctx, sessionId: string, shellId: string) => {
+    assertSessionWorkspaceOwnership(sessionManager, ctx, sessionId)
     return sessionManager.killShell(sessionId, shellId)
   })
 
@@ -281,13 +329,15 @@ export function registerSessionsHandlers(server: RpcServer, deps: HandlerDeps): 
 
   // Respond to a permission request (bash command approval)
   // Returns true if the response was delivered, false if agent/session is gone
-  server.handle(RPC_CHANNELS.sessions.RESPOND_TO_PERMISSION, async (_ctx, sessionId: string, requestId: string, allowed: boolean, alwaysAllow: boolean) => {
+  server.handle(RPC_CHANNELS.sessions.RESPOND_TO_PERMISSION, async (ctx, sessionId: string, requestId: string, allowed: boolean, alwaysAllow: boolean) => {
+    assertSessionWorkspaceOwnership(sessionManager, ctx, sessionId)
     return sessionManager.respondToPermission(sessionId, requestId, allowed, alwaysAllow)
   })
 
   // Respond to a credential request (secure auth input)
   // Returns true if the response was delivered, false if agent/session is gone
-  server.handle(RPC_CHANNELS.sessions.RESPOND_TO_CREDENTIAL, async (_ctx, sessionId: string, requestId: string, response: import('@craft-agent/shared/protocol').CredentialResponse) => {
+  server.handle(RPC_CHANNELS.sessions.RESPOND_TO_CREDENTIAL, async (ctx, sessionId: string, requestId: string, response: import('@craft-agent/shared/protocol').CredentialResponse) => {
+    assertSessionWorkspaceOwnership(sessionManager, ctx, sessionId)
     return sessionManager.respondToCredential(sessionId, requestId, response)
   })
 
@@ -297,10 +347,11 @@ export function registerSessionsHandlers(server: RpcServer, deps: HandlerDeps): 
 
   // Session commands - consolidated handler for session operations
   server.handle(RPC_CHANNELS.sessions.COMMAND, async (
-    _ctx,
+    ctx,
     sessionId: string,
     command: import('@craft-agent/shared/protocol').SessionCommand
   ) => {
+    assertSessionWorkspaceOwnership(sessionManager, ctx, sessionId)
     switch (command.type) {
       case 'flag':
         return sessionManager.flagSession(sessionId)
@@ -388,17 +439,19 @@ export function registerSessionsHandlers(server: RpcServer, deps: HandlerDeps): 
 
   // Get pending plan execution state (for reload recovery)
   server.handle(RPC_CHANNELS.sessions.GET_PENDING_PLAN_EXECUTION, async (
-    _ctx,
+    ctx,
     sessionId: string
   ) => {
+    assertSessionWorkspaceOwnership(sessionManager, ctx, sessionId)
     return sessionManager.getPendingPlanExecution(sessionId)
   })
 
   // Get authoritative permission mode diagnostics for renderer reconciliation
   server.handle(RPC_CHANNELS.sessions.GET_PERMISSION_MODE_STATE, async (
-    _ctx,
+    ctx,
     sessionId: string
   ) => {
+    assertSessionWorkspaceOwnership(sessionManager, ctx, sessionId)
     return sessionManager.getSessionPermissionModeState(sessionId)
   })
 
@@ -446,7 +499,8 @@ export function registerSessionsHandlers(server: RpcServer, deps: HandlerDeps): 
   // ============================================================
 
   // Get files in session directory (recursive tree structure)
-  server.handle(RPC_CHANNELS.sessions.GET_FILES, async (_ctx, sessionId: string) => {
+  server.handle(RPC_CHANNELS.sessions.GET_FILES, async (ctx, sessionId: string) => {
+    assertSessionWorkspaceOwnership(sessionManager, ctx, sessionId)
     const sessionPath = sessionManager.getSessionPath(sessionId)
     if (!sessionPath) return []
 
@@ -460,6 +514,7 @@ export function registerSessionsHandlers(server: RpcServer, deps: HandlerDeps): 
 
   // Start watching a session directory for file changes (per client)
   server.handle(RPC_CHANNELS.sessions.WATCH_FILES, async (ctx, sessionId: string) => {
+    assertSessionWorkspaceOwnership(sessionManager, ctx, sessionId)
     const clientId = ctx.clientId
     cleanupSessionFileWatchForClient(clientId)
 
@@ -503,7 +558,8 @@ export function registerSessionsHandlers(server: RpcServer, deps: HandlerDeps): 
   })
 
   // Get session notes (reads notes.md from session directory)
-  server.handle(RPC_CHANNELS.sessions.GET_NOTES, async (_ctx, sessionId: string) => {
+  server.handle(RPC_CHANNELS.sessions.GET_NOTES, async (ctx, sessionId: string) => {
+    assertSessionWorkspaceOwnership(sessionManager, ctx, sessionId)
     const sessionPath = sessionManager.getSessionPath(sessionId)
     if (!sessionPath) return ''
 
@@ -518,7 +574,8 @@ export function registerSessionsHandlers(server: RpcServer, deps: HandlerDeps): 
   })
 
   // Set session notes (writes to notes.md in session directory)
-  server.handle(RPC_CHANNELS.sessions.SET_NOTES, async (_ctx, sessionId: string, content: string) => {
+  server.handle(RPC_CHANNELS.sessions.SET_NOTES, async (ctx, sessionId: string, content: string) => {
+    assertSessionWorkspaceOwnership(sessionManager, ctx, sessionId)
     const sessionPath = sessionManager.getSessionPath(sessionId)
     if (!sessionPath) {
       throw new Error(`Session not found: ${sessionId}`)
@@ -539,6 +596,7 @@ export function registerSessionsHandlers(server: RpcServer, deps: HandlerDeps): 
 
   // Export a session as a portable bundle
   server.handle(RPC_CHANNELS.sessions.EXPORT, async (ctx, sessionId: string) => {
+    assertSessionWorkspaceOwnership(sessionManager, ctx, sessionId)
     await sessionManager.waitForInit()
     const workspaceId = ctx.workspaceId ?? deps.windowManager?.getWorkspaceForWindow(ctx.webContentsId!)
     if (!workspaceId) throw new Error('No workspace context')
@@ -564,6 +622,7 @@ export function registerSessionsHandlers(server: RpcServer, deps: HandlerDeps): 
 
   // Export a session as a summarized remote-transfer payload.
   server.handle(RPC_CHANNELS.sessions.EXPORT_REMOTE_TRANSFER, async (ctx, sessionId: string) => {
+    assertSessionWorkspaceOwnership(sessionManager, ctx, sessionId)
     await sessionManager.waitForInit()
     const workspaceId = ctx.workspaceId ?? deps.windowManager?.getWorkspaceForWindow(ctx.webContentsId!)
     if (!workspaceId) throw new Error('No workspace context')

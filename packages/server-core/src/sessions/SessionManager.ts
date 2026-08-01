@@ -86,7 +86,7 @@ import { getCredentialManager } from '@craft-agent/shared/credentials'
 import { CraftMcpClient, McpClientPool, McpPoolServer } from '@craft-agent/shared/mcp'
 import { type Session, type SessionEvent, type FileAttachment, type SendMessageOptions, type UnreadSummary, type RemoteSessionTransferPayload, type ImportRemoteSessionTransferResult, RPC_CHANNELS, generateMessageId } from '@craft-agent/shared/protocol'
 import { messageToStored, storedToMessage, type AgentEvent, type Message, type StoredAttachment, type ToolDisplayMeta, type TokenUsage } from '@craft-agent/core/types'
-import { formatPathsToRelative, formatToolInputPaths, perf, encodeIconToDataUrlAsync, getEmojiIcon, resetSummarizationClient, resolveToolIcon, readFileAttachment, selectSpreadMessages, normalizePath } from '@craft-agent/shared/utils'
+import { formatPathsToRelative, formatToolInputPaths, perf, encodeIconToDataUrlAsync, getEmojiIcon, resolveToolIcon, readFileAttachment, selectSpreadMessages, normalizePath } from '@craft-agent/shared/utils'
 import { loadAllSkills, loadSkillBySlug, invalidateSkillsCache, type LoadedSkill } from '@craft-agent/shared/skills'
 import { invalidateContextFileCache } from '@craft-agent/shared/prompts/system'
 import { getToolIconsDir, getMiniModel } from '@craft-agent/shared/config'
@@ -1814,7 +1814,6 @@ export class SessionManager implements ISessionManager {
 
       if (!connection) {
         sessionLog.error(`No LLM connection found for slug: ${slug}`)
-        resetSummarizationClient()
         return
       }
 
@@ -1833,8 +1832,8 @@ export class SessionManager implements ISessionManager {
         sessionLog.info(`Auth env vars set for connection: ${slug}`)
       }
 
-      // Reset cached summarization client so it picks up new credentials/base URL
-      resetSummarizationClient()
+      // (deprecated no-op summarization-client reset removed — summarization
+      // now runs through agent-bound runMiniCompletion)
     } catch (error) {
       sessionLog.error('Failed to reinitialize auth:', error)
       throw error
@@ -6358,11 +6357,8 @@ export class SessionManager implements ISessionManager {
 
     setImmediate(async () => {
       try {
-        // 1. Reset summarization client so it picks up fresh credentials
-        sessionLog.info(`[auth-retry] Resetting summarization client for session ${sessionId}`)
-        resetSummarizationClient()
-
-        // 2. Destroy the agent — the new agent's postInit() will refresh auth
+        // (deprecated summarization-client reset removed — runMiniCompletion owns it)
+        // Destroy the agent — the new agent's postInit() will refresh auth
         sessionLog.info(`[auth-retry] Destroying agent for session ${sessionId}`)
         managed.agent = null
 
@@ -6677,20 +6673,23 @@ export class SessionManager implements ISessionManager {
       try {
         // Use pkill to find and kill processes matching the command
         // The -f flag matches against the full command line
-        const { exec } = await import('child_process')
-        const { promisify } = await import('util')
-        const execAsync = promisify(exec)
-
-        // Escape the command for use in pkill pattern
-        // We search for the unique command string in process args
-        const escapedCommand = command.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+        // Audit L-6: spawn with an argv array (no shell) — regex-escaping the
+        // command for shell interpolation was not shell-escaping (a `"` or
+        // backtick in a stored command could break out of the quotes).
+        const { spawn } = await import('child_process')
 
         sessionLog.info(`Attempting to kill process with command: ${command.slice(0, 100)}...`)
 
         // Use pgrep first to find the PID, then kill it
         // This is safer than pkill -f which can match too broadly
         try {
-          const { stdout } = await execAsync(`pgrep -f "${escapedCommand}"`)
+          const pgrep = spawn('pgrep', ['-f', command], { stdio: ['ignore', 'pipe', 'ignore'] })
+          const stdout = await new Promise<string>((resolve, reject) => {
+            let out = ''
+            pgrep.stdout.on('data', (chunk: Buffer) => { out += chunk.toString() })
+            pgrep.on('error', reject)
+            pgrep.on('close', (code) => (code === 0 || out.length > 0 ? resolve(out) : resolve('')))
+          })
           const pids = stdout.trim().split('\n').filter(Boolean)
 
           if (pids.length > 0) {
@@ -6698,7 +6697,11 @@ export class SessionManager implements ISessionManager {
             // Kill each process
             for (const pid of pids) {
               try {
-                await execAsync(`kill -TERM ${pid}`)
+                await new Promise<void>((resolve, reject) => {
+                  const kill = spawn('kill', ['-TERM', pid], { stdio: 'ignore' })
+                  kill.on('error', reject)
+                  kill.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`kill exited ${code}`))))
+                })
                 sessionLog.info(`Sent SIGTERM to process ${pid}`)
               } catch (killErr) {
                 // Process may have already exited

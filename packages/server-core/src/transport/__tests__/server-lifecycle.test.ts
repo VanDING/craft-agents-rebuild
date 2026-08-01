@@ -195,6 +195,32 @@ describe('WsRpcServer lifecycle', () => {
     // This test validates the handler is registered; full timeout is covered by the 60s static value
   })
 
+  // -- maxPayload test --
+
+  it('closes connections that exceed maxPayload (4MiB)', async () => {
+    server = createServer()
+    await server.listen()
+    const url = `ws://127.0.0.1:${server.port}`
+
+    const { ws } = await handshake(url, TEST_TOKEN)
+    openSockets.push(ws)
+
+    // Wire message larger than the server's 4MiB maxPayload (the JSON
+    // envelope adds overhead on top of the 4MiB+1 blob).
+    ws.send(JSON.stringify({
+      id: crypto.randomUUID(),
+      type: 'request',
+      channel: 'test:noop',
+      args: [{ blob: 'x'.repeat(4 * 1024 * 1024 + 1) }],
+    }))
+
+    // ws closes with 1009 (message too big) instead of buffering it.
+    const closeCode = await new Promise<number>((resolve) => {
+      ws.on('close', (code) => resolve(code))
+    })
+    expect(closeCode).toBe(1009)
+  })
+
   // -- Protocol version tests --
 
   it('rejects wrong protocol major version', async () => {

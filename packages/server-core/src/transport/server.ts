@@ -115,6 +115,16 @@ export interface WsRpcServerOptions {
 
 const transportLog = createLogger('ws-rpc-server')
 
+/**
+ * M-9: maximum accepted WebSocket message size (4 MiB).
+ *
+ * In ws 8.x the WebSocketServer option propagates to every connection it
+ * accepts — it is applied at `ws.setSocket()` (handshake time), so no
+ * per-connection knob is needed. Oversized messages close the connection
+ * with close code 1009 instead of being buffered in memory.
+ */
+const MAX_MESSAGE_PAYLOAD_BYTES = 4 * 1024 * 1024
+
 // ---------------------------------------------------------------------------
 // WsRpcServer
 // ---------------------------------------------------------------------------
@@ -278,7 +288,7 @@ export class WsRpcServer implements RpcServer {
           this.httpHandler,
         )
 
-        this.wss = new WebSocketServer({ server: this.httpsServer })
+        this.wss = new WebSocketServer({ server: this.httpsServer, maxPayload: MAX_MESSAGE_PAYLOAD_BYTES })
 
         this.httpsServer.on('error', (err) => reject(err))
 
@@ -294,7 +304,7 @@ export class WsRpcServer implements RpcServer {
         // Plain WS + HTTP handler: create an HTTP server for both.
         this._protocol = 'ws'
         this.httpServer = createHttpServer(this.httpHandler)
-        this.wss = new WebSocketServer({ server: this.httpServer })
+        this.wss = new WebSocketServer({ server: this.httpServer, maxPayload: MAX_MESSAGE_PAYLOAD_BYTES })
 
         this.httpServer.on('error', (err) => reject(err))
 
@@ -312,6 +322,7 @@ export class WsRpcServer implements RpcServer {
         this.wss = new WebSocketServer({
           host: this.host,
           port: this.requestedPort,
+          maxPayload: MAX_MESSAGE_PAYLOAD_BYTES,
         })
 
         this.wss.on('listening', () => {
@@ -390,6 +401,22 @@ export class WsRpcServer implements RpcServer {
     }, 5_000)
 
     ws.on('message', async (raw) => {
+      // M-9: hard message-size cap, enforced here in addition to the
+      // WebSocketServer `maxPayload` option because Bun's `ws` compat shim
+      // ignores the server option (it delivers oversized messages to this
+      // handler instead of closing). Under the real `ws` package this guard
+      // is dead code — the receiver closes the connection with 1009 before
+      // the message is ever emitted.
+      const messageSize = typeof raw === 'string'
+        ? Buffer.byteLength(raw)
+        : Array.isArray(raw)
+          ? raw.reduce((sum, part) => sum + part.length, 0)
+          : raw.byteLength
+      if (messageSize > MAX_MESSAGE_PAYLOAD_BYTES) {
+        ws.close(1009, 'Message too large')
+        return
+      }
+
       let envelope: MessageEnvelope
       try {
         envelope = deserializeEnvelope(raw.toString())
@@ -659,13 +686,23 @@ export class WsRpcServer implements RpcServer {
       webContentsId: client.webContentsId,
     }
 
+    // M-9: the timeout timer handle is kept so it can be cleared once the
+    // handler settles — otherwise a 60s timer lingers for every fast request.
+    // Note: handlers do NOT accept a cancellation signal (HandlerFn has no
+    // signal param), so a timed-out handler keeps running in the background
+    // until it settles on its own; only the client-visible response is
+    // abandoned. If a handler ever gains signal support, pass an
+    // AbortController here so it can stop work on timeout.
+    let handlerTimer: ReturnType<typeof setTimeout> | null = null
     try {
       const result = await Promise.race([
         handler(ctx, ...(args ?? [])),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error(`Handler timeout: ${channel} (${WsRpcServer.HANDLER_TIMEOUT_MS}ms)`)),
-            WsRpcServer.HANDLER_TIMEOUT_MS),
-        ),
+        new Promise<never>((_, reject) => {
+          handlerTimer = setTimeout(
+            () => reject(new Error(`Handler timeout: ${channel} (${WsRpcServer.HANDLER_TIMEOUT_MS}ms)`)),
+            WsRpcServer.HANDLER_TIMEOUT_MS,
+          )
+        }),
       ])
       const response: MessageEnvelope = {
         id,
@@ -679,6 +716,8 @@ export class WsRpcServer implements RpcServer {
       const rawCode = (err as { code?: unknown } | null)?.code
       const code: ErrorCode = isErrorCode(rawCode) ? rawCode : 'HANDLER_ERROR'
       this.sendResponseError(client.ws, id, channel, code, message)
+    } finally {
+      if (handlerTimer) clearTimeout(handlerTimer)
     }
   }
 

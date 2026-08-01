@@ -8,6 +8,7 @@
  */
 
 import { SignJWT, jwtVerify } from 'jose'
+import { randomUUID } from 'node:crypto'
 
 // ---------------------------------------------------------------------------
 // JWT helpers (via jose library)
@@ -19,25 +20,53 @@ export interface JwtPayload {
   sub: string
   iat: number
   exp: number
+  /** Unique token id — lets logout revoke this specific session server-side. */
+  jti?: string
+}
+
+// ---------------------------------------------------------------------------
+// JWT revocation (in-memory, server-side)
+// ---------------------------------------------------------------------------
+
+/** Revoked session token ids (jti → revocation timestamp ms). Pruned lazily. */
+const revokedJtis = new Map<string, number>()
+/** Retain revoked ids for at most one token lifetime — after that the token has expired anyway. */
+const REVOCATION_RETENTION_MS = JWT_EXPIRY_SECONDS * 1000
+
+function pruneRevoked(): void {
+  const cutoff = Date.now() - REVOCATION_RETENTION_MS
+  for (const [jti, revokedAt] of revokedJtis) {
+    if (revokedAt < cutoff) revokedJtis.delete(jti)
+  }
+}
+
+/** Revoke a session token id so every verifyJwt of that token fails until it expires. */
+export function revokeJwt(jti: string): void {
+  pruneRevoked()
+  revokedJtis.set(jti, Date.now())
 }
 
 export async function signJwt(payload: JwtPayload, secret: string): Promise<string> {
   const key = new TextEncoder().encode(secret)
-  return new SignJWT({ sub: payload.sub } as Record<string, unknown>)
+  const builder = new SignJWT({ sub: payload.sub } as Record<string, unknown>)
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt(payload.iat)
     .setExpirationTime(payload.exp)
-    .sign(key)
+  if (payload.jti) builder.setJti(payload.jti)
+  return builder.sign(key)
 }
 
 export async function verifyJwt(token: string, secret: string): Promise<JwtPayload | null> {
   try {
     const key = new TextEncoder().encode(secret)
     const { payload } = await jwtVerify(token, key, { algorithms: ['HS256'] })
+    // A logged-out session must be rejected even if the cookie is replayed.
+    if (typeof payload.jti === 'string' && revokedJtis.has(payload.jti)) return null
     return {
       sub: payload.sub as string,
       iat: payload.iat as number,
       exp: payload.exp as number,
+      ...(typeof payload.jti === 'string' ? { jti: payload.jti } : {}),
     }
   } catch {
     return null
@@ -46,7 +75,7 @@ export async function verifyJwt(token: string, secret: string): Promise<JwtPaylo
 
 export async function createSessionToken(secret: string): Promise<string> {
   const now = Math.floor(Date.now() / 1000)
-  return signJwt({ sub: 'webui', iat: now, exp: now + JWT_EXPIRY_SECONDS }, secret)
+  return signJwt({ sub: 'webui', iat: now, exp: now + JWT_EXPIRY_SECONDS, jti: randomUUID() }, secret)
 }
 
 // ---------------------------------------------------------------------------

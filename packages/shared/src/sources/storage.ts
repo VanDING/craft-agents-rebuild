@@ -52,7 +52,8 @@ export function getSourcePath(workspaceRootPath: string, sourceSlug: string): st
 export function ensureSourcesDir(workspaceRootPath: string): void {
   const dir = getWorkspaceSourcesPath(workspaceRootPath);
   if (!existsSync(dir)) {
-    mkdirSync(dir, { recursive: true });
+    // M-23: source configs may embed auth state — owner rwx only.
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
   }
 }
 
@@ -127,7 +128,8 @@ export function saveSourceConfig(
 
   const dir = getSourcePath(workspaceRootPath, config.slug);
   if (!existsSync(dir)) {
-    mkdirSync(dir, { recursive: true });
+    // M-23: per-source config dir is private (config.json may hold auth state).
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
   }
 
   // Convert local source paths to portable form
@@ -139,7 +141,8 @@ export function saveSourceConfig(
     };
   }
 
-  writeFileSync(join(dir, 'config.json'), JSON.stringify(storageConfig, null, 2));
+  // M-23: config.json may embed credentials/auth state — owner read/write only.
+  writeFileSync(join(dir, 'config.json'), JSON.stringify(storageConfig, null, 2), { mode: 0o600 });
 
   // Orphan-credential cleanup: when an API source is set to authType:'none',
   // any credential previously stored for this slug (e.g. from authType:'header')
@@ -280,7 +283,7 @@ export function saveSourceGuide(
 ): void {
   const dir = getSourcePath(workspaceRootPath, sourceSlug);
   if (!existsSync(dir)) {
-    mkdirSync(dir, { recursive: true });
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
   }
 
   writeFileSync(join(dir, 'guide.md'), guide.raw);

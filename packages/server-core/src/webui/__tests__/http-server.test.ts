@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'bun:test'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { startWebuiHttpServer } from '../http-server'
+import { startWebuiHttpServer, createWebuiHandler, setRequestClientIp } from '../http-server'
 
 const SECRET = 'test-server-secret'
 const PASSWORD = 'test-password'
@@ -55,6 +55,12 @@ function extractSessionCookie(res: Response): string {
   const setCookie = res.headers.get('set-cookie')
   expect(setCookie).toBeTruthy()
   return setCookie!.split(';')[0]!
+}
+
+function decodeJwtPayload(cookie: string): Record<string, unknown> {
+  const jwt = cookie.replace('craft_session=', '')
+  const [, payloadB64] = jwt.split('.')
+  return JSON.parse(Buffer.from(payloadB64!, 'base64url').toString('utf-8'))
 }
 
 afterEach(() => {
@@ -187,5 +193,81 @@ describe('startWebuiHttpServer', () => {
     expect(await configRes.json()).toEqual({
       wsUrl: 'wss://craft.example.com/ws',
     })
+  })
+
+  it('issues each session token with a unique jti claim', async () => {
+    const { baseUrl } = await createServer()
+
+    const first = await fetch(`${baseUrl}/api/auth`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: PASSWORD }),
+    })
+    const second = await fetch(`${baseUrl}/api/auth`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: PASSWORD }),
+    })
+
+    const firstPayload = decodeJwtPayload(extractSessionCookie(first))
+    const secondPayload = decodeJwtPayload(extractSessionCookie(second))
+    expect(firstPayload.jti).toBeTruthy()
+    expect(secondPayload.jti).toBeTruthy()
+    expect(secondPayload.jti).not.toBe(firstPayload.jti)
+  })
+
+  it('revokes the session on logout so a replayed cookie is rejected', async () => {
+    const { baseUrl } = await createServer()
+
+    const authRes = await fetch(`${baseUrl}/api/auth`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: PASSWORD }),
+    })
+    const cookie = extractSessionCookie(authRes)
+
+    // Cookie authenticates before logout.
+    const before = await fetch(`${baseUrl}/api/config`, { headers: { cookie } })
+    expect(before.status).toBe(200)
+
+    const logoutRes = await fetch(`${baseUrl}/api/auth/logout`, {
+      method: 'POST',
+      headers: { cookie },
+    })
+    expect(logoutRes.status).toBe(204)
+
+    // The same (replayed) cookie is now rejected server-side.
+    const after = await fetch(`${baseUrl}/api/config`, { headers: { cookie } })
+    expect(after.status).toBe(401)
+  })
+
+  it('rate limits per client IP when no trusted proxies are configured', async () => {
+    const handler = createWebuiHandler({
+      webuiDir: createTestWebuiDir(),
+      secret: SECRET,
+      password: PASSWORD,
+      wsProtocol: 'ws',
+      wsPort: 9100,
+      getHealthCheck: () => ({ status: 'ok' }),
+      logger,
+    })
+
+    const attempt = (ip: string) => {
+      const req = new Request('http://localhost/api/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: 'wrong-password' }),
+      })
+      setRequestClientIp(req, ip)
+      return handler.fetch(req)
+    }
+
+    for (let i = 0; i < 5; i++) {
+      expect((await attempt('203.0.113.10')).status).toBe(401)
+    }
+    // 6th attempt from the same socket address is rate-limited…
+    expect((await attempt('203.0.113.10')).status).toBe(429)
+    // …but a different client is unaffected (per-IP keying, not a global lockout).
+    expect((await attempt('203.0.113.99')).status).toBe(401)
   })
 })

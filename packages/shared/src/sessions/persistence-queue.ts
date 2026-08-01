@@ -86,13 +86,32 @@ class SessionPersistenceQueue {
   /**
    * Write a session to disk immediately in JSONL format.
    * Uses atomic write (write-to-temp-then-rename) to prevent corruption on crash.
+   *
+   * M-17: The returned promise is registered in writeInProgress so flush()/
+   * flushAll() can await writes already started by the debounce timer — not just
+   * writes that are still pending in the queue. Writes are serialized per-session
+   * by chaining on any prior in-flight write (shared .tmp file safety).
    */
-  private async write(sessionId: string): Promise<void> {
+  private write(sessionId: string): Promise<void> {
     const entry = this.pending.get(sessionId)
-    if (!entry) return
+    if (!entry) return Promise.resolve()
 
     this.pending.delete(sessionId)
 
+    const prev = this.writeInProgress.get(sessionId) ?? Promise.resolve()
+    const writePromise = prev.then(() => this.performWrite(sessionId, entry))
+    this.writeInProgress.set(sessionId, writePromise)
+    void writePromise.finally(() => {
+      // Only clear the slot if this is still the latest write for the session —
+      // flush() may have started a newer write while this one was in flight.
+      if (this.writeInProgress.get(sessionId) === writePromise) {
+        this.writeInProgress.delete(sessionId)
+      }
+    })
+    return writePromise
+  }
+
+  private async performWrite(sessionId: string, entry: PendingWrite): Promise<void> {
     try {
       const { data } = entry
       ensureSessionsDir(data.workspaceRootPath)
@@ -155,7 +174,8 @@ class SessionPersistenceQueue {
       this.lastWrittenHeaderSignature.set(sessionId, finalSignature)
 
       const tmpFile = filePath + '.tmp'
-      await writeFile(tmpFile, lines.join('\n') + '\n', 'utf-8')
+      // M-23: session transcripts are private — owner read/write only.
+      await writeFile(tmpFile, lines.join('\n') + '\n', { encoding: 'utf-8', mode: 0o600 })
       // On Windows, rename fails if target exists. Delete first for cross-platform compatibility.
       try { await unlink(filePath) } catch { /* ignore if doesn't exist */ }
       await rename(tmpFile, filePath)
@@ -167,29 +187,25 @@ class SessionPersistenceQueue {
 
   /**
    * Immediately flush a specific session if pending.
-   * Waits for any in-progress write to complete before starting a new one
-   * to prevent race conditions on the shared .tmp file.
+   * M-17: always awaits any in-flight write for the session — including writes
+   * already started by the debounce timer — so flushAll() on quit does not drop
+   * writes that have begun but are not yet in the pending queue.
    */
   async flush(sessionId: string): Promise<void> {
     const entry = this.pending.get(sessionId)
     if (entry) {
       clearTimeout(entry.timer)
+    }
 
-      // Wait for any in-progress write to complete first
-      const inProgress = this.writeInProgress.get(sessionId)
-      if (inProgress) {
-        await inProgress
-      }
+    // Wait for any in-progress write to complete first
+    const inProgress = this.writeInProgress.get(sessionId)
+    if (inProgress) {
+      await inProgress
+    }
 
-      // Start new write and track it
-      const writePromise = this.write(sessionId)
-      this.writeInProgress.set(sessionId, writePromise)
-
-      try {
-        await writePromise
-      } finally {
-        this.writeInProgress.delete(sessionId)
-      }
+    // If something was pending, start the write now (write() tracks itself).
+    if (this.pending.has(sessionId)) {
+      await this.write(sessionId)
     }
   }
 
@@ -208,10 +224,14 @@ class SessionPersistenceQueue {
 
   /**
    * Flush all pending sessions. Call this on app quit.
+   * M-17: also awaits in-flight (already-started) writes so quit never drops data.
    */
   async flushAll(): Promise<void> {
-    const sessionIds = [...this.pending.keys()]
-    await Promise.all(sessionIds.map(id => this.flush(id)))
+    const sessionIds = new Set<string>([
+      ...this.pending.keys(),
+      ...this.writeInProgress.keys(),
+    ])
+    await Promise.all([...sessionIds].map(id => this.flush(id)))
   }
 
   /**

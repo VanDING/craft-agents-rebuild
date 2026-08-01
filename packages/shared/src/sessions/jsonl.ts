@@ -157,7 +157,8 @@ export function writeSessionJsonl(sessionFile: string, session: StoredSession): 
   ];
 
   const tmpFile = sessionFile + '.tmp';
-  writeFileSync(tmpFile, lines.join('\n') + '\n');
+  // M-23: session transcripts are private — owner read/write only.
+  writeFileSync(tmpFile, lines.join('\n') + '\n', { mode: 0o600 });
   // On Windows, rename fails if target exists. Delete first for cross-platform compatibility.
   try { unlinkSync(sessionFile); } catch { /* ignore if doesn't exist */ }
   renameSync(tmpFile, sessionFile);

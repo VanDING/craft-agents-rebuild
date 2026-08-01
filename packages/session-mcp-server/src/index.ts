@@ -58,9 +58,28 @@ interface SessionConfig {
   workspaceRootPath: string;
   plansFolderPath: string;
   callbackPort?: string;
+  /** Per-process callback token (audit M-2) — required by the agent's callback server. */
+  callbackToken?: string;
 }
 
 const CALLBACK_TOOL_TIMEOUT_MS = 120000;
+
+// Audit M-2: HTTP header carrying the per-process callback token required by
+// the pi-agent-server callback server (see packages/pi-agent-server).
+const CALLBACK_TOKEN_HEADER = 'x-craft-callback-token';
+
+/**
+ * Build the headers for a callback-server request. The token is only attached
+ * when configured — without it the server rejects with 401 (fail loudly
+ * rather than silently succeeding without the token).
+ */
+function buildCallbackHeaders(config: SessionConfig): Record<string, string> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (config.callbackToken) {
+    headers[CALLBACK_TOKEN_HEADER] = config.callbackToken;
+  }
+  return headers;
+}
 
 // ============================================================
 // Callback Communication
@@ -355,7 +374,7 @@ async function handleCallLlm(
     try {
       const resp = await fetch(`http://127.0.0.1:${config.callbackPort}/call-llm`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: buildCallbackHeaders(config),
         body: JSON.stringify(args),
         signal: AbortSignal.timeout(CALLBACK_TOOL_TIMEOUT_MS),
       });
@@ -392,7 +411,7 @@ async function handleSpawnSession(
     try {
       const resp = await fetch(`http://127.0.0.1:${config.callbackPort}/spawn-session`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: buildCallbackHeaders(config),
         body: JSON.stringify(args),
         signal: AbortSignal.timeout(CALLBACK_TOOL_TIMEOUT_MS),
       });
@@ -440,6 +459,7 @@ async function main() {
   let workspaceRootPath: string | undefined;
   let plansFolderPath: string | undefined;
   let callbackPort: string | undefined;
+  let callbackToken: string | undefined;
 
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--session-id' && args[i + 1]) {
@@ -453,6 +473,9 @@ async function main() {
       i++;
     } else if (args[i] === '--callback-port' && args[i + 1]) {
       callbackPort = args[i + 1];
+      i++;
+    } else if (args[i] === '--callback-token' && args[i + 1]) {
+      callbackToken = args[i + 1];
       i++;
     }
   }
@@ -468,7 +491,20 @@ async function main() {
     plansFolderPath,
     // CLI arg takes priority, env var as fallback (Copilot CLI may not forward env to subprocesses)
     callbackPort: callbackPort || process.env.CRAFT_LLM_CALLBACK_PORT,
+    // Audit M-2: per-process callback token, CLI arg or env var.
+    callbackToken: callbackToken || process.env.CRAFT_LLM_CALLBACK_TOKEN,
   };
+
+  // Audit M-2: without the token the agent's callback server rejects with 401.
+  // Log a warning so a misconfigured spawn fails loudly instead of silently
+  // degrading (no header is sent — the server-side rejection surfaces the
+  // misconfiguration as a call_llm/spawn_session error).
+  if (!config.callbackToken) {
+    console.error(
+      'Warning: CRAFT_LLM_CALLBACK_TOKEN not provided (--callback-token arg or env var). ' +
+      'Callback requests will be rejected with 401 by the agent server.',
+    );
+  }
 
   // Create the Codex context
   const ctx = createCodexContext(config);

@@ -19,6 +19,9 @@ import {
   validateSession,
   buildSessionCookie,
   buildLogoutCookie,
+  extractSessionCookie,
+  revokeJwt,
+  verifyJwt,
 } from './auth'
 import { generateCallbackPage } from '@craft-agent/shared/auth'
 import type { PlatformServices } from '../runtime/platform'
@@ -141,8 +144,8 @@ export interface WebuiHandlerOptions {
   oauthCallbackDeps?: OAuthCallbackDeps
   /**
    * Trusted proxy IPs/CIDRs. When set, proxy headers (x-forwarded-for, x-forwarded-proto)
-   * are only trusted from these sources. When empty/unset, proxy headers are ignored
-   * and 'direct' is used as the rate-limit key.
+   * are only trusted from these sources. When empty/unset, proxy headers are ignored and the
+   * transport socket address (see setRequestClientIp) is used as the rate-limit key.
    */
   trustedProxies?: string[]
 }
@@ -158,6 +161,18 @@ export interface WebuiHandler {
   dispose: () => void
   /** Inject OAuth callback deps after bootstrap (lazy wiring). */
   setOAuthCallbackDeps: (deps: OAuthCallbackDeps) => void
+}
+
+/**
+ * Real transport socket address of a request, stamped by the HTTP adapter
+ * (nodeHttpAdapter) or the standalone Bun.serve wrapper. Used as the rate-limit
+ * key when no trusted proxies are configured, so brute-force attempts are
+ * bucketed per actual client rather than collapsing into one global 'direct' key.
+ */
+const clientIpByRequest = new WeakMap<Request, string>()
+
+export function setRequestClientIp(req: Request, ip: string): void {
+  if (ip) clientIpByRequest.set(req, ip)
 }
 
 /**
@@ -196,7 +211,7 @@ export function createWebuiHandler(options: WebuiHandlerOptions): WebuiHandler {
         ?? req.headers.get('x-real-ip')
         ?? 'direct'
     }
-    return 'direct'
+    return clientIpByRequest.get(req) ?? 'direct'
   }
 
   async function fetch(req: Request): Promise<Response> {
@@ -276,6 +291,13 @@ export function createWebuiHandler(options: WebuiHandlerOptions): WebuiHandler {
 
     // ── Logout endpoint ──
     if (path === '/api/auth/logout' && req.method === 'POST') {
+      // Revoke the session server-side so a replayed cookie cannot authenticate again
+      // (the HttpOnly cookie clear alone would leave the JWT valid until expiry).
+      const token = extractSessionCookie(req.headers.get('cookie'))
+      if (token) {
+        const payload = await verifyJwt(token, secret)
+        if (payload?.jti) revokeJwt(payload.jti)
+      }
       return new Response(null, {
         status: 204,
         headers: {
@@ -428,7 +450,13 @@ export async function startWebuiHttpServer(
 
   const server = Bun.serve({
     port,
-    fetch: handler.fetch,
+    fetch: (req, srv) => {
+      // Stamp the real socket address so getClientIp can key the rate limiter per client
+      // even when no proxy headers are trusted.
+      const ip = srv.requestIP(req)
+      if (ip) setRequestClientIp(req, ip.address)
+      return handler.fetch(req)
+    },
   })
 
   const boundPort = server.port ?? port

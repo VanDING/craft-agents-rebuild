@@ -19,7 +19,7 @@
  * the registry making a policy decision).
  */
 
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs'
+import { readFileSync, writeFileSync, mkdirSync, existsSync, renameSync } from 'node:fs'
 import { join } from 'node:path'
 import type { MessagingLogger } from './types'
 
@@ -194,7 +194,12 @@ export class TopicRegistry {
         version: 1,
         entries: Array.from(this.byName.values()),
       }
-      writeFileSync(this.filePath, JSON.stringify(payload, null, 2), 'utf8')
+      // Atomic write: serialize to a temp file in the same directory, then
+      // rename over the target. POSIX rename is atomic, so a crash mid-write
+      // can never leave a truncated/corrupt topic-registry.json behind.
+      const tmpPath = `${this.filePath}.tmp.${process.pid}`
+      writeFileSync(tmpPath, JSON.stringify(payload, null, 2), 'utf8')
+      renameSync(tmpPath, this.filePath)
     } catch (err) {
       this.log.error('failed to save topic registry', {
         event: 'topic_registry_save_failed',

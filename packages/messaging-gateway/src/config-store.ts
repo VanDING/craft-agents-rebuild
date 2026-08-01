@@ -11,6 +11,7 @@ import {
   mkdirSync,
   existsSync,
   copyFileSync,
+  renameSync,
 } from 'node:fs'
 import { join } from 'node:path'
 import { DEFAULT_MESSAGING_CONFIG, type MessagingConfig, type MessagingLogger } from './types'
@@ -99,7 +100,12 @@ export class ConfigStore {
   private save(): void {
     try {
       if (!existsSync(this.dirPath)) mkdirSync(this.dirPath, { recursive: true })
-      writeFileSync(this.filePath, JSON.stringify(this.config, null, 2), 'utf-8')
+      // Atomic write: serialize to a temp file in the same directory, then
+      // rename over the target. POSIX rename is atomic, so a crash mid-write
+      // can never leave a truncated/corrupt config.json behind.
+      const tmpPath = `${this.filePath}.tmp.${process.pid}`
+      writeFileSync(tmpPath, JSON.stringify(this.config, null, 2), 'utf-8')
+      renameSync(tmpPath, this.filePath)
     } catch (err) {
       this.log.error('failed to save messaging config', {
         event: 'config_save_failed',

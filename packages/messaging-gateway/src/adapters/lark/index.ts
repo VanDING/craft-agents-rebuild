@@ -209,6 +209,21 @@ export class LarkAdapter implements PlatformAdapter {
   private messageHandler: ((msg: IncomingMessage) => Promise<void>) | null = null
   private buttonHandler: ((press: ButtonPress) => Promise<void>) | null = null
   private connected = false
+  /**
+   * Set by `destroy()`. While true the adapter drops inbound events even if
+   * the SDK fires a late callback from an in-flight socket, so a torn-down
+   * adapter can never route a message to the gateway.
+   */
+  private destroyed = false
+  /**
+   * Every WSClient this instance has started. The SDK's WSClient exposes
+   * `close()` (not `stop()`); destroy() closes each one so its socket and
+   * reconnect timers are torn down instead of left for GC. Instance-scoped
+   * (not module-level) because one process can run several Lark adapters
+   * (one per workspace) — closing a sibling's socket would kill a live
+   * connection.
+   */
+  private startedWsClients = new Set<lark.WSClient>()
   private log: MessagingLogger = NOOP_LOGGER
   /**
    * Track each outbound message's wire `msg_type` so `editMessage` can dispatch
@@ -236,6 +251,7 @@ export class LarkAdapter implements PlatformAdapter {
 
   async initialize(config: PlatformConfig): Promise<void> {
     this.log = config.logger ?? NOOP_LOGGER
+    this.destroyed = false
     const creds = parseLarkCredentials(config.token)
     const sdkDomain = resolveLarkDomain(creds.domain)
 
@@ -274,6 +290,7 @@ export class LarkAdapter implements PlatformAdapter {
         this.log.info('[lark] ws reconnected', { event: 'lark_ws_reconnected' })
       },
     } as unknown as ConstructorParameters<typeof lark.WSClient>[0])
+    this.startedWsClients.add(this.wsClient)
 
     // The SDK's `register` typing is a wide-open union over hundreds of event
     // names. Cast the handler block once via `unknown` to keep the adapter
@@ -300,9 +317,25 @@ export class LarkAdapter implements PlatformAdapter {
   }
 
   async destroy(): Promise<void> {
-    // The SDK's WSClient doesn't currently expose a `.stop()` method in its
-    // public types — it tears down on process exit. We null out our refs so
-    // re-init works; the underlying socket gets garbage-collected.
+    // Stop routing immediately — a destroyed adapter must not deliver events
+    // even if the SDK fires a late callback from an in-flight socket.
+    this.destroyed = true
+    // The SDK's WSClient exposes `close()` (not `stop()`). Closing tears down
+    // the socket and invalidates its reconnect loops; without it the client
+    // would keep auto-reconnecting and holding event-loop handles after
+    // teardown. Close every client this instance started so an orphaned ref
+    // (e.g. double-destroy after `wsClient` was nulled) can't survive.
+    for (const client of this.startedWsClients) {
+      try {
+        client.close()
+      } catch (err) {
+        this.log.error('[lark] ws close failed', {
+          event: 'lark_ws_close_failed',
+          error: err instanceof Error ? err.message : String(err),
+        })
+      }
+    }
+    this.startedWsClients.clear()
     this.wsClient = null
     this.client = null
     this.connected = false
@@ -595,6 +628,7 @@ export class LarkAdapter implements PlatformAdapter {
   // -------------------------------------------------------------------------
 
   private async handleIncomingMessage(data: LarkMessageEvent): Promise<void> {
+    if (this.destroyed) return
     if (!this.messageHandler) return
     const { sender, message } = data
 
@@ -771,6 +805,7 @@ export class LarkAdapter implements PlatformAdapter {
   }
 
   private async handleCardAction(data: LarkCardActionEvent): Promise<void> {
+    if (this.destroyed) return
     // Visibility log: if this never fires when the user presses a button,
     // the missing piece is on the Lark Open Platform side — schema-2.0
     // cards only emit `card.action.trigger` events when the app has the

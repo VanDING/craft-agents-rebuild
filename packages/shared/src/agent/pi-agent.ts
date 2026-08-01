@@ -79,6 +79,8 @@ import {
   unregisterSessionScopedToolCallbacks,
   setLastPlanFilePath,
   getSessionScopedToolCallbacks,
+  cleanupSessionScopedTools,
+  clearPlanFileState,
 } from './session-scoped-tools.ts';
 import { attachSessionSelfManagementBindings } from './session-self-management-bindings.ts';
 
@@ -92,7 +94,7 @@ import {
   type ToolResult as SessionToolResult,
 } from '@craft-agent/session-tools-core';
 import { createSessionContext, type SessionToolContext } from './session-context.ts';
-import { getPermissionModeDiagnostics } from './mode-manager.ts';
+import { getPermissionModeDiagnostics, cleanupModeState } from './mode-manager.ts';
 
 // call_llm pre-execution pipeline
 
@@ -191,6 +193,9 @@ export class PiAgent extends BaseAgent {
 
   // Callback server port (managed by subprocess)
   private callbackPort: number = 0;
+
+  // Callback server auth token (managed by subprocess, audit M-2)
+  private callbackToken: string = '';
 
   // State
   private _isProcessing: boolean = false;
@@ -949,6 +954,10 @@ export class PiAgent extends BaseAgent {
       case 'ready':
         // Subprocess initialized, callback server listening
         this.callbackPort = (msg.callbackPort as number) || 0;
+        // Audit M-2: token required to call the local call_llm/spawn-session
+        // HTTP endpoints; forward to any session-mcp-server spawn via
+        // CRAFT_LLM_CALLBACK_TOKEN.
+        this.callbackToken = (msg.callbackToken as string) || '';
         if (msg.sessionId) {
           this.piSessionId = msg.sessionId as string;
           this.config.onSdkSessionIdUpdate?.(this.piSessionId!);
@@ -1823,6 +1832,14 @@ export class PiAgent extends BaseAgent {
     }
     this.pendingToolExecutions.clear();
 
+    // M-15: Reject all pending permission prompts (ask-mode) with `false` so
+    // awaiting tool calls resolve instead of hanging forever when the
+    // subprocess dies mid-prompt (handlePreToolUseRequest awaits these).
+    for (const [, pending] of this.pendingPermissions) {
+      pending.resolve(false);
+    }
+    this.pendingPermissions.clear();
+
     // Drop any cached pre-tool metadata for the dead subprocess.
     this.preToolMetadataByCallId.clear();
   }
@@ -2417,6 +2434,12 @@ export class PiAgent extends BaseAgent {
     // Unregister session-scoped tool callbacks
     if (this.config.session?.id) {
       unregisterSessionScopedToolCallbacks(this.config.session.id);
+      // M-14: release all per-session state on teardown so a closed session does
+      // not leak modeManager entries (states/callbacks/subscribers), the
+      // session-scoped tool cache, or the last-submitted plan file path.
+      cleanupModeState(this.config.session.id);
+      cleanupSessionScopedTools(this.config.session.id);
+      clearPlanFileState(this.config.session.id);
     }
 
     this._sessionToolContext = null;

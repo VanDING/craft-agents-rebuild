@@ -290,33 +290,50 @@ function readMetadataFile(): Record<string, ToolMetadata> {
   return readMetadataFileFromDir(_sessionDir);
 }
 
-/** Write the entire metadata object to the session file (atomic via temp+rename) */
-function writeMetadataFile(allMetadata: Record<string, ToolMetadata>): void {
-  const filePath = getMetadataFilePath();
-  if (!filePath) return;
+/** Cheap fingerprint (mtime+size) of a file, or null when the file is absent. */
+function fingerprintFile(filePath: string): string | null {
   try {
-    const tmpPath = filePath + '.tmp';
-    writeFileSync(tmpPath, JSON.stringify(allMetadata));
-    renameSync(tmpPath, filePath);
-  } catch (error) {
-    // Keep non-throwing behavior, but log for diagnostics.
-    debugLog(`[toolMetadataStore.write] Failed for file=${filePath}: ${error instanceof Error ? error.message : String(error)}`);
+    const stat = statSync(filePath);
+    return `${stat.mtimeMs}:${stat.size}`;
+  } catch {
+    return null;
   }
 }
 
 /**
  * Merge an updater into the latest on-disk metadata and write atomically.
- * Retries once to reduce lost updates under concurrent writers.
+ * M-19: retries when another writer modified the file between our read and
+ * our rename (detected via a cheap mtime+size fingerprint), in addition to
+ * retrying on thrown errors — so concurrent writers don't silently lose each
+ * other's updates. Best-effort: the window between the final fingerprint check
+ * and the rename cannot be closed without file locking.
  */
 function mergeAndWriteMetadata(
   updater: (all: Record<string, ToolMetadata>) => void,
   retries: number = 1,
 ): void {
+  const filePath = getMetadataFilePath();
+  if (!filePath) return;
+
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
+      // Fingerprint of the on-disk state we are merging into (before we change it).
+      const before = fingerprintFile(filePath);
       const all = readMetadataFile();
       updater(all);
-      writeMetadataFile(all);
+
+      const tmpPath = filePath + '.tmp';
+      writeFileSync(tmpPath, JSON.stringify(all));
+
+      // If the original file changed while we were computing/merging, another
+      // writer is in flight — renaming now would clobber its update. Retry.
+      const after = fingerprintFile(filePath);
+      if (after !== before) {
+        debugLog(`[toolMetadataStore.merge] Attempt ${attempt + 1}/${retries + 1} detected concurrent modification; retrying`);
+        continue;
+      }
+
+      renameSync(tmpPath, filePath);
       return;
     } catch (error) {
       debugLog(`[toolMetadataStore.merge] Attempt ${attempt + 1}/${retries + 1} failed: ${error instanceof Error ? error.message : String(error)}`);

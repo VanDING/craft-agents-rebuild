@@ -48,7 +48,16 @@ export function registerAuthHandlers(server: RpcServer, deps: HandlerDeps): void
   })
 
   // Logout - clear all credentials and config
-  server.handle(RPC_CHANNELS.auth.LOGOUT, async () => {
+  //
+  // M-8: requires an explicit `confirm: true` flag in the payload so a stray or
+  // malicious invocation cannot wipe every stored credential and the config
+  // file without the user's consent. The renderer already shows a native
+  // confirmation dialog before invoking this (see executeReset in App.tsx), so
+  // this is a wire-level guard: the caller must pass `{ confirm: true }`.
+  server.handle(RPC_CHANNELS.auth.LOGOUT, async (_ctx, payload?: { confirm?: boolean }) => {
+    if (!payload || payload.confirm !== true) {
+      return { success: false, error: 'Confirmation required' }
+    }
     try {
       const manager = getCredentialManager()
 

@@ -474,7 +474,13 @@ export class WhatsAppAdapter implements PlatformAdapter {
             timestamp: ev.timestamp,
             raw: ev,
           }
-          void this.messageHandler(msg)
+          void this.messageHandler(msg).catch((err) => {
+            this.log.error('WhatsApp inbound message handling failed', {
+              event: 'whatsapp_inbound_failed',
+              messageId: ev.messageId,
+              error: err,
+            })
+          })
         }
         return
       case 'send_result': {

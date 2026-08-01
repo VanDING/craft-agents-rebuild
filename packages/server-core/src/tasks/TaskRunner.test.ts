@@ -842,4 +842,65 @@ describe('TaskRunner (Conductor)', () => {
 
     expect(host.nodeCounts).toContainEqual({ sessionId: 'orch', count: 3 });
   });
+
+  it('fails a run that exceeds the wall-clock timeout and cancels in-flight children', async () => {
+    // M-20: without a wall-clock deadline a run whose children never complete (or whose orchestrator
+    // never verifies) hangs forever. The timeout must fail the run and cancel in-flight children.
+    // The test drives the real platform clock at a short budget and awaits the settlement signal the
+    // run exposes — the exact promise that used to hang.
+    process.env.CRAFT_TASK_RUN_TIMEOUT_MS = '40';
+    try {
+      saveTaskSpec(
+        root,
+        specOf({
+          id: 'to',
+          title: 'To',
+          goal: 'g',
+          nodes: [
+            { id: 'a', prompt: 'a' },
+            { id: 'b', depends_on: ['a'], prompt: 'b' },
+          ],
+        }),
+      );
+      const runner = makeRunner();
+      runner.run('to', { runId: 'r1', orchestratorSessionId: 'orch' });
+      await tick();
+      expect(host.dispatchedNames()).toEqual(['a']); // b waits on a's output
+
+      // No completion ever arrives → waitUntilSettled resolves (deadline breach) instead of hanging.
+      const settled = await runner.waitUntilSettled('to', 'r1');
+      expect(settled.status).toBe('failed');
+      expect(settled.nodes.find((n) => n.id === 'a')!.state).toBe('cancelled');
+      expect(settled.nodes.find((n) => n.id === 'b')!.state).toBe('pending');
+      expect(host.cancelled).toContain('sess-a');
+      expect(readRunLog(root, 'to', 'r1').some((e) => e.kind === 'run-failed')).toBe(true);
+    } finally {
+      delete process.env.CRAFT_TASK_RUN_TIMEOUT_MS;
+    }
+  });
+
+  it('fails a run stuck in verifying (orchestrator never returns a verdict)', async () => {
+    process.env.CRAFT_TASK_RUN_TIMEOUT_MS = '40';
+    try {
+      saveTaskSpec(root, specOf({ id: 'vto', title: 'Vto', goal: 'g', nodes: [{ id: 'a', prompt: 'a' }] }));
+      const runner = makeRunner();
+      runner.run('vto', { runId: 'r1', orchestratorSessionId: 'orch' });
+      await tick();
+
+      host.complete('a', { finalText: 'A' });
+      await tick();
+      expect(runner.getRunState('vto', 'r1')!.status).toBe('verifying');
+
+      // The orchestrator never replies → the deadline fires and settles the run as failed.
+      const settled = await runner.waitUntilSettled('vto', 'r1');
+      expect(settled.status).toBe('failed');
+
+      // A late verdict must not resurrect the failed run.
+      host.completeSession('orch', { finalText: 'VERDICT: PASS' });
+      await tick();
+      expect(runner.getRunState('vto', 'r1')!.status).toBe('failed');
+    } finally {
+      delete process.env.CRAFT_TASK_RUN_TIMEOUT_MS;
+    }
+  });
 });

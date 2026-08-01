@@ -232,14 +232,9 @@ export async function monitorWeixinProvider(
       // Success
       // -------------------------------------------------------------------
 
-      // Persist the updated buffer so the next poll starts where we left off.
-      if (resp.get_updates_buf) {
-        buf = resp.get_updates_buf;
-        saveGetUpdatesBuf(bufFilePath, buf);
-      }
-
       // Dispatch each message to the consumer.
       const msgs = resp.msgs ?? [];
+      let allDispatched = true;
       if (msgs.length > 0) {
         info(
           `received ${msgs.length} message(s) for account "${accountId}"`,
@@ -248,11 +243,23 @@ export async function monitorWeixinProvider(
           try {
             await onMessage(msg);
           } catch (cause) {
+            allDispatched = false;
             err(
               `error processing message ${msg.message_id} for account "${accountId}": ${cause instanceof Error ? cause.message : String(cause)}`,
             );
           }
         }
+      }
+
+      // Advance the cursor only after the whole batch dispatched cleanly
+      // (ack-based cursor). Persisting before dispatch could commit the new
+      // offset while messages are still in flight, silently dropping them if
+      // the process dies mid-batch. On any dispatch failure the buffer is
+      // left unchanged so the next poll redelivers the failed batch —
+      // duplicates are tolerated upstream via message ids.
+      if (resp.get_updates_buf && allDispatched) {
+        buf = resp.get_updates_buf;
+        saveGetUpdatesBuf(bufFilePath, buf);
       }
     } catch (cause) {
       // Network errors or unexpected failures from getUpdates.

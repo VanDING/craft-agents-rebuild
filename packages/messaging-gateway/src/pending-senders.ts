@@ -13,7 +13,7 @@
  *    rejected attempt repopulates it.
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync } from 'node:fs'
 import { join } from 'node:path'
 import type {
   MessagingLogger,
@@ -225,7 +225,12 @@ export class PendingSendersStore {
       if (!existsSync(this.dirPath)) {
         mkdirSync(this.dirPath, { recursive: true })
       }
-      writeFileSync(this.filePath, JSON.stringify(this.entries, null, 2), 'utf-8')
+      // Atomic write: serialize to a temp file in the same directory, then
+      // rename over the target. POSIX rename is atomic, so a crash mid-write
+      // can never leave a truncated/corrupt pending.json behind.
+      const tmpPath = `${this.filePath}.tmp.${process.pid}`
+      writeFileSync(tmpPath, JSON.stringify(this.entries, null, 2), 'utf-8')
+      renameSync(tmpPath, this.filePath)
       this.changeListener?.()
     } catch (err) {
       this.log.error('failed to save pending senders', {

@@ -32,17 +32,17 @@ import {
   createHash,
 } from 'crypto';
 import { execSync } from 'child_process';
-import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync } from 'fs';
 import { hostname, userInfo, homedir } from 'os';
 import { join, dirname } from 'path';
 
 import type { CredentialBackend } from './types.ts';
 import type { CredentialId, StoredCredential } from '../types.ts';
 import { credentialIdToAccount, accountToCredentialId } from '../types.ts';
+import { createLogger } from '../../utils/debug.ts';
 
 // File location
-const CREDENTIALS_DIR = join(homedir(), '.craft-agent');
-const CREDENTIALS_FILE = join(CREDENTIALS_DIR, 'credentials.enc');
+const CREDENTIALS_FILE = join(homedir(), '.craft-agent', 'credentials.enc');
 
 // File format constants
 const MAGIC_BYTES = Buffer.from('CRAFT01\0');
@@ -56,6 +56,9 @@ const KEY_SIZE = 32;
 
 // PBKDF2 iterations (balance security vs startup time)
 const PBKDF2_ITERATIONS = 100000;
+
+// Scoped diagnostic logger (only emits when debug logging is enabled)
+const logger = createLogger('secure-storage');
 
 /**
  * Get stable machine identifier using OS-native hardware UUID.
@@ -115,6 +118,12 @@ export class SecureStorageBackend implements CredentialBackend {
   private cachedStore: CredentialStore | null = null;
   private encryptionKey: Buffer | null = null;
   private salt: Buffer | null = null;
+  // Injectable for tests; production callers use the default ~/.craft-agent path.
+  private readonly credentialsFile: string;
+
+  constructor(credentialsFile: string = CREDENTIALS_FILE) {
+    this.credentialsFile = credentialsFile;
+  }
 
   async isAvailable(): Promise<boolean> {
     // File backend is always available - we can always write to filesystem
@@ -199,11 +208,11 @@ export class SecureStorageBackend implements CredentialBackend {
     // Return cached store if available
     if (this.cachedStore) return this.cachedStore;
 
-    if (!existsSync(CREDENTIALS_FILE)) return null;
+    if (!existsSync(this.credentialsFile)) return null;
 
     let fileData: Buffer;
     try {
-      fileData = readFileSync(CREDENTIALS_FILE);
+      fileData = readFileSync(this.credentialsFile);
     } catch {
       return null;
     }
@@ -280,8 +289,9 @@ export class SecureStorageBackend implements CredentialBackend {
 
   private saveStoreSync(store: CredentialStore): void {
     // Ensure directory exists
-    if (!existsSync(CREDENTIALS_DIR)) {
-      mkdirSync(CREDENTIALS_DIR, { recursive: true, mode: 0o700 });
+    const credentialsDir = dirname(this.credentialsFile);
+    if (!existsSync(credentialsDir)) {
+      mkdirSync(credentialsDir, { recursive: true, mode: 0o700 });
     }
 
     // Use existing salt or generate new one
@@ -312,7 +322,7 @@ export class SecureStorageBackend implements CredentialBackend {
     const fileData = Buffer.concat([header, iv, authTag, ciphertext]);
 
     // Write with restrictive permissions (owner read/write only)
-    writeFileSync(CREDENTIALS_FILE, fileData, { mode: 0o600 });
+    writeFileSync(this.credentialsFile, fileData, { mode: 0o600 });
     this.cachedStore = store;
   }
 
@@ -348,13 +358,21 @@ export class SecureStorageBackend implements CredentialBackend {
   }
 
   private handleCorruptedFile(): void {
-    // Delete corrupted file - user will need to re-enter credentials
+    // M-16: Preserve the corrupted file as a diagnostic backup instead of
+    // deleting it — credentials are user data and the encrypted bytes may be
+    // recoverable (or useful for debugging). A fresh store is written on next
+    // save; the backup is named credentials.enc.corrupt-<timestamp>.
     try {
-      if (existsSync(CREDENTIALS_FILE)) {
-        unlinkSync(CREDENTIALS_FILE);
+      if (existsSync(this.credentialsFile)) {
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const backupPath = `${this.credentialsFile}.corrupt-${timestamp}`;
+        renameSync(this.credentialsFile, backupPath);
+        logger.warn(
+          `Credential store corrupted; preserved as ${backupPath} (user will need to re-enter credentials)`
+        );
       }
     } catch {
-      // Ignore deletion errors
+      // Ignore rename errors (e.g. read-only filesystem) — leave the file in place.
     }
     this.cachedStore = null;
     this.encryptionKey = null;

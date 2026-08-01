@@ -56,7 +56,8 @@ export type { SessionConfig } from './types.ts';
 export function ensureSessionsDir(workspaceRootPath: string): string {
   const dir = getWorkspaceSessionsPath(workspaceRootPath);
   if (!existsSync(dir)) {
-    mkdirSync(dir, { recursive: true });
+    // M-23: session storage dir is private app state — owner rwx only.
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
   }
   return dir;
 }
@@ -86,30 +87,31 @@ export function getSessionFilePath(workspaceRootPath: string, sessionId: string)
 export function ensureSessionDir(workspaceRootPath: string, sessionId: string): string {
   const sessionDir = getSessionPath(workspaceRootPath, sessionId);
   if (!existsSync(sessionDir)) {
-    mkdirSync(sessionDir, { recursive: true });
+    // M-23: session dirs contain transcripts/attachments — owner rwx only.
+    mkdirSync(sessionDir, { recursive: true, mode: 0o700 });
   }
   // Also create plans, attachments, long_responses, and downloads directories
   const plansDir = join(sessionDir, 'plans');
   if (!existsSync(plansDir)) {
-    mkdirSync(plansDir, { recursive: true });
+    mkdirSync(plansDir, { recursive: true, mode: 0o700 });
   }
   const attachmentsDir = join(sessionDir, 'attachments');
   if (!existsSync(attachmentsDir)) {
-    mkdirSync(attachmentsDir, { recursive: true });
+    mkdirSync(attachmentsDir, { recursive: true, mode: 0o700 });
   }
   const longResponsesDir = join(sessionDir, 'long_responses');
   if (!existsSync(longResponsesDir)) {
-    mkdirSync(longResponsesDir, { recursive: true });
+    mkdirSync(longResponsesDir, { recursive: true, mode: 0o700 });
   }
   // Data directory for transform_data tool output (JSON files for datatable/spreadsheet)
   const dataDir = join(sessionDir, 'data');
   if (!existsSync(dataDir)) {
-    mkdirSync(dataDir, { recursive: true });
+    mkdirSync(dataDir, { recursive: true, mode: 0o700 });
   }
   // Downloads directory for binary files from API responses (PDFs, images, etc.)
   const downloadsDir = join(sessionDir, 'downloads');
   if (!existsSync(downloadsDir)) {
-    mkdirSync(downloadsDir, { recursive: true });
+    mkdirSync(downloadsDir, { recursive: true, mode: 0o700 });
   }
   return sessionDir;
 }
@@ -883,7 +885,8 @@ function generatePlanFileName(plan: Plan, plansDir: string): string {
 function ensurePlansDir(workspaceRootPath: string, sessionId: string): string {
   const plansDir = getSessionPlansPath(workspaceRootPath, sessionId);
   if (!existsSync(plansDir)) {
-    mkdirSync(plansDir, { recursive: true });
+    // M-23: plans dir holds session-private plan files.
+    mkdirSync(plansDir, { recursive: true, mode: 0o700 });
   }
   return plansDir;
 }
@@ -1011,7 +1014,7 @@ export function savePlanToFile(
   const filePath = join(plansDir, `${name}.md`);
   const content = formatPlanAsMarkdown(plan);
 
-  writeFileSync(filePath, content, 'utf-8');
+  writeFileSync(filePath, content, { encoding: 'utf-8', mode: 0o600 });
   return filePath;
 }
 
@@ -1124,7 +1127,8 @@ export function getMostRecentPlanFile(
 export function ensureAttachmentsDir(workspaceRootPath: string, sessionId: string): string {
   const dir = getSessionAttachmentsPath(workspaceRootPath, sessionId);
   if (!existsSync(dir)) {
-    mkdirSync(dir, { recursive: true });
+    // M-23: session attachments are private — owner rwx only.
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
   }
   return dir;
 }

@@ -160,6 +160,85 @@ describe('chunked transfer handlers', () => {
     await expect(commit(ctx('client-1'), { transferId })).rejects.toThrow('Missing 1 chunk(s)')
   })
 
+  // -- M-10 caps --
+
+  it('rejects transfer:start above the totalBytes cap', async () => {
+    const { start } = createHarness()
+    setTransferableHandler('test:echo', async (_ctx, _placeholder, body) => body)
+
+    await expect(start(ctx('client-1'), {
+      totalBytes: 512 * 1024 * 1024 + 1,
+      chunkCount: 1,
+      channel: 'test:echo',
+      args: [null, null],
+      largeArgIndex: 1,
+    })).rejects.toThrow(/Transfer too large: .* byte limit/)
+  })
+
+  it('rejects transfer:start above the chunkCount cap', async () => {
+    const { start } = createHarness()
+    setTransferableHandler('test:echo', async (_ctx, _placeholder, body) => body)
+
+    await expect(start(ctx('client-1'), {
+      totalBytes: 1024,
+      chunkCount: 2001,
+      channel: 'test:echo',
+      args: [null, null],
+      largeArgIndex: 1,
+    })).rejects.toThrow(/Too many chunks: .* chunk limit/)
+  })
+
+  it('rejects non-integer totalBytes and chunkCount', async () => {
+    const { start } = createHarness()
+    setTransferableHandler('test:echo', async (_ctx, _placeholder, body) => body)
+
+    await expect(start(ctx('client-1'), {
+      totalBytes: 10.5,
+      chunkCount: 1,
+      channel: 'test:echo',
+      args: [null, null],
+      largeArgIndex: 1,
+    })).rejects.toThrow('Invalid totalBytes')
+
+    await expect(start(ctx('client-1'), {
+      totalBytes: 10,
+      chunkCount: 1.5,
+      channel: 'test:echo',
+      args: [null, null],
+      largeArgIndex: 1,
+    })).rejects.toThrow('Invalid chunkCount')
+  })
+
+  it('rejects chunks that would exceed the declared total', async () => {
+    const { start, chunk } = createHarness()
+    const payload = encodeParts({ hello: 'world' }, 5)
+
+    setTransferableHandler('test:echo', async (_ctx, _placeholder, body) => body)
+
+    // Declare a total one byte short of the real payload: the first chunk
+    // (5 decoded bytes) fits, the second (12 decoded bytes) would overflow.
+    const { transferId } = await start(ctx('client-1'), {
+      totalBytes: payload.bytes.length - 1,
+      chunkCount: 2,
+      channel: 'test:echo',
+      args: [null, null],
+      largeArgIndex: 1,
+      checksum: payload.checksum,
+    }) as { transferId: string }
+
+    await chunk(ctx('client-1'), {
+      transferId,
+      index: 0,
+      data: payload.chunks[0],
+    })
+
+    await expect(chunk(ctx('client-1'), {
+      transferId,
+      index: 1,
+      data: payload.chunks[1],
+    })).rejects.toThrow(/would exceed declared total/)
+  })
+
   it('refreshes TTL as chunks arrive so slow healthy uploads survive', async () => {
     process.env.CRAFT_TRANSFER_TTL_MS = '40'
 

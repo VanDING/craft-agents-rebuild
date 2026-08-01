@@ -108,6 +108,19 @@ export interface RunSnapshot {
 // ---------------------------------------------------------------------------
 
 const DEFAULT_MAX_PARALLEL = 4;
+// A run must reach a terminal state within this wall-clock budget or it is failed and its in-flight
+// children are cancelled. Guards against hangs (e.g. an orchestrator that never returns a verdict).
+// Overridable per-process via CRAFT_TASK_RUN_TIMEOUT_MS (milliseconds).
+const DEFAULT_RUN_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+
+function resolveRunTimeoutMs(): number {
+  const raw = process.env.CRAFT_TASK_RUN_TIMEOUT_MS;
+  if (raw) {
+    const n = Number(raw);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return DEFAULT_RUN_TIMEOUT_MS;
+}
 // Explicit, unattended-safe default for a subtask's permission mode when neither the node nor the task
 // defaults set one. Conductor children run with no human to answer an `ask` prompt, so we must NOT fall
 // through to the workspace default (which may be `ask` → the child hangs, or read-only `safe` → it
@@ -167,6 +180,8 @@ class ActiveRun {
   private dependents?: Map<string, Set<string>>;
   private settled = false;
   private settleResolvers: ((s: RunSnapshot) => void)[] = [];
+  /** Wall-clock deadline timer for this run (see DEFAULT_RUN_TIMEOUT_MS). */
+  private timeoutTimer?: NodeJS.Timeout;
 
   constructor(
     private readonly spec: TaskSpec,
@@ -204,6 +219,7 @@ class ActiveRun {
       // rather than growing as children are spawned lazily at dispatch.
       void this.deps.host.setTaskNodeCount(this.opts.orchestratorSessionId, this.spec.nodes.length);
     }
+    this.armTimeout();
     this.scheduleReady();
   }
 
@@ -269,6 +285,8 @@ class ActiveRun {
     this.runStatus = 'running';
     this.unsubscribe = this.deps.host.onSessionComplete((evt) => this.onSessionComplete(evt));
     this.log({ kind: 'run-resumed' });
+    // A restarted process gets a fresh wall-clock budget for the resumed run.
+    this.armTimeout();
     this.scheduleReady();
   }
 
@@ -287,6 +305,47 @@ class ActiveRun {
       }
     }
     this.inFlight = 0;
+    this.finalize();
+  }
+
+  /** (Re)arm the wall-clock deadline. Reads the timeout at arm time so tests/env can override per run. */
+  private armTimeout(): void {
+    this.clearTimeout();
+    const ms = resolveRunTimeoutMs();
+    const timer = setTimeout(() => this.failOnTimeout(), ms);
+    timer.unref?.();
+    this.timeoutTimer = timer;
+  }
+
+  private clearTimeout(): void {
+    if (this.timeoutTimer) {
+      clearTimeout(this.timeoutTimer);
+      this.timeoutTimer = undefined;
+    }
+  }
+
+  /**
+   * Wall-clock deadline breached: fail the run (timeout) and cancel in-flight children,
+   * mirroring stop()'s cancellation of running nodes. Guards against runs that never settle.
+   */
+  private failOnTimeout(): void {
+    if (this.isTerminal()) return;
+    this.runStatus = 'failed';
+    for (const [nodeId, st] of this.state) {
+      if (st.state === 'running') {
+        st.state = 'cancelled';
+        this.log({ kind: 'node-finished', nodeId, sessionId: st.sessionId ?? '', state: 'cancelled', reason: 'timed out' });
+        if (st.sessionId) {
+          void this.deps.host.cancelProcessing(st.sessionId, true);
+          void this.deps.host.setKanbanColumn(st.sessionId, 'todo');
+        }
+      }
+    }
+    this.inFlight = 0;
+    this.log({ kind: 'run-failed' });
+    // Settle the orchestrator tile like any other failed run.
+    const orchestrator = this.opts.orchestratorSessionId;
+    if (orchestrator) void this.deps.host.setSessionStatus(orchestrator, FAILED_STATUS);
     this.finalize();
   }
 
@@ -546,6 +605,7 @@ class ActiveRun {
   }
 
   private finalize(): void {
+    this.clearTimeout();
     this.unsubscribe?.();
     this.unsubscribe = undefined;
     this.verdictOff?.();
