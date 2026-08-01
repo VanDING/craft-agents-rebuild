@@ -123,7 +123,7 @@
 - M-3 [OPEN] WebUI 登录限流全局共享 (`webui/http-server.ts:183`,`getClientIp` 默认返回常量 `'direct'`) → 20 次尝试锁死所有 IP;logout 不撤销 JWT (24h,无 jti)。
 - M-4 [OPEN] custom-endpoint `baseUrl` 零校验且携带真实 API key (`pi-agent-server/index.ts:403-417,457-467`)。
 - M-5 [ACCEPTED 用户决策, fork-caused] QR 登录 redirect_url 完全信任 (`login-qr.ts:390-425`) — 服务器下发 baseUrl 成为全部请求目标,`Authorization: Bearer` 发往该主机。
-- M-6 [OPEN, fork-caused] iLink 状态非 workspace 隔离 (`state-dir.ts:25-31`);QR 登录把兄弟工作区 token 发给 iLink 服务器。
+- M-6 [FIXED dd6c6af0, fork-caused] iLink 状态非 workspace 隔离 (`state-dir.ts:25-31`);QR 登录把兄弟工作区 token 发给 iLink 服务器。
 - M-7 [OPEN] SVG 图标 regex 净化可绕过 (`renderer/lib/icon-cache.ts:705-717`) — 未引号属性/`JAVASCRIPT:`/HTML 实体编码绕过。
 - M-8 [OPEN] `auth:logout` 无服务端防护销毁全部凭据 + config.json (`handlers/rpc/auth.ts:38-56`)。
 - M-9 [OPEN] WS server 无 `maxPayload` (`transport/server.ts:281`) + handler 超时竞态 (超时后 handler 继续跑,setTimeout 不清理)。
