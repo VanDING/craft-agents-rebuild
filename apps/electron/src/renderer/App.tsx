@@ -1745,7 +1745,9 @@ export default function App() {
   // Execute reset after user confirms in dialog
   const executeReset = useCallback(async () => {
     try {
-      await window.electronAPI.logout()
+      // confirm: true is required server-side (M-8) — the dialog above is the
+      // user-facing confirmation; this flag authorizes the wire-level wipe.
+      await window.electronAPI.logout({ confirm: true })
       // Reset all state
       // Clear session atoms - initialize with empty array clears all per-session atoms
       initializeSessions([])

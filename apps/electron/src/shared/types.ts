@@ -409,7 +409,7 @@ export interface ElectronAPI {
   // Auth
   showLogoutConfirmation(): Promise<boolean>
   showDeleteSessionConfirmation(name: string): Promise<boolean>
-  logout(): Promise<void>
+  logout(options?: { confirm?: boolean }): Promise<void>
 
   // Credential health check (startup validation)
   getCredentialHealth(): Promise<CredentialHealthStatus>

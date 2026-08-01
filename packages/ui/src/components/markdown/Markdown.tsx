@@ -664,21 +664,25 @@ export function Markdown({
 export const MemoizedMarkdown = React.memo(
   Markdown,
   (prevProps, nextProps) => {
-    // If id is provided, use it for memoization
-    if (prevProps.id && nextProps.id) {
-      return (
-        prevProps.id === nextProps.id &&
-        prevProps.children === nextProps.children &&
-        prevProps.mode === nextProps.mode &&
-        prevProps.disablePreviewBlocks === nextProps.disablePreviewBlocks
-      )
-    }
-    // Otherwise compare content and mode
-    return (
+    // Audit L-14: callback props (onUrlClick/onFileClick) and collapsible/
+    // hideFirstMermaidExpand were dropped from the equality check, so a memo
+    // hit could keep stale closures (e.g. after a workspace switch). Include
+    // them; identity-stable callbacks make this cheap.
+    const baseEqual =
       prevProps.children === nextProps.children &&
       prevProps.mode === nextProps.mode &&
-      prevProps.disablePreviewBlocks === nextProps.disablePreviewBlocks
-    )
+      prevProps.disablePreviewBlocks === nextProps.disablePreviewBlocks &&
+      prevProps.onUrlClick === nextProps.onUrlClick &&
+      prevProps.onFileClick === nextProps.onFileClick &&
+      prevProps.collapsible === nextProps.collapsible &&
+      prevProps.hideFirstMermaidExpand === nextProps.hideFirstMermaidExpand
+
+    // If id is provided, use it for memoization
+    if (prevProps.id && nextProps.id) {
+      return prevProps.id === nextProps.id && baseEqual
+    }
+    // Otherwise compare content and mode
+    return baseEqual
   }
 )
 MemoizedMarkdown.displayName = 'MemoizedMarkdown'

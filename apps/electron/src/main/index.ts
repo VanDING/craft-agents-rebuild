@@ -811,7 +811,11 @@ app.whenReady().then(async () => {
       // IPC handlers — preload uses sendSync to get WS connection details
 
       // Remove workspace from config (cleanup stale entries)
-      ipcMain.handle('workspace:remove', async (_event, workspaceId: string) => {
+      ipcMain.handle('workspace:remove', async (event, workspaceId: string) => {
+        // Audit L-8: only the app UI's main frame may remove workspaces.
+        if (!isTrustedWindowSender(event)) {
+          throw new Error('workspace:remove rejected: untrusted sender')
+        }
         const { removeWorkspace: remove } = await import('@craft-agent/shared/config')
         return remove(workspaceId)
       })
@@ -998,7 +1002,11 @@ app.whenReady().then(async () => {
       })
 
       // App relaunch (for server config changes — NOT an update install)
-      ipcMain.handle('app:relaunch', () => {
+      ipcMain.handle('app:relaunch', (event) => {
+        // Audit L-8: only the app UI's main frame may relaunch the app.
+        if (!isTrustedWindowSender(event)) {
+          throw new Error('app:relaunch rejected: untrusted sender')
+        }
         app.relaunch()
         app.exit(0)
       })
@@ -1030,9 +1038,12 @@ app.whenReady().then(async () => {
       })
 
       ipcMain.on('__get-ws-port', (e) => {
+        // Audit L-8: these return the embedded-server credentials.
+        if (!isTrustedWindowSender(e)) { e.returnValue = null; return }
         e.returnValue = instance.port
       })
       ipcMain.on('__get-ws-token', (e) => {
+        if (!isTrustedWindowSender(e)) { e.returnValue = null; return }
         e.returnValue = instance.token
       })
       ipcMain.on('__get-workspace-remote-config', (e) => {

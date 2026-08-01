@@ -416,6 +416,8 @@ export interface StoredMessage {
   authWorkspace?: string;
   // Queued: user message that is waiting to be processed (persisted for recovery)
   isQueued?: boolean;
+  /** Hidden messages are filtered from turn grouping; persisted so reloads keep them hidden (audit L-1). */
+  hidden?: boolean;
 }
 
 /**
@@ -588,5 +590,11 @@ export type AgentEvent =
  * Generate a unique message ID
  */
 export function generateMessageId(): string {
-  return `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  // Audit L-2: crypto random (was Math.random — collision-prone under burst).
+  const cryptoObj: { randomUUID?: () => string } | undefined = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
+  const rand =
+    cryptoObj?.randomUUID
+      ? cryptoObj.randomUUID().replaceAll('-', '').slice(0, 12)
+      : Math.random().toString(36).slice(2, 8);
+  return `msg-${Date.now()}-${rand}`;
 }

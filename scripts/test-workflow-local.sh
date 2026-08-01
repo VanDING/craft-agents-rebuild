@@ -3,10 +3,10 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
-# Load API key from file
-API_KEY=$(cat /Users/ghalmos/Workspace/anthropic_api_key)
+# Load API key from env (audit L-13: was a hardcoded personal path)
+API_KEY="${ANTHROPIC_API_KEY:-${LLM_API_KEY:-}}"
 if [ -z "$API_KEY" ]; then
-  echo "Error: Empty API key"
+  echo "Error: ANTHROPIC_API_KEY/LLM_API_KEY not set"
   exit 1
 fi
 

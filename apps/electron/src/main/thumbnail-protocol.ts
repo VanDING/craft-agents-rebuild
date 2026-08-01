@@ -20,8 +20,28 @@
 
 import { protocol, nativeImage } from 'electron'
 import { stat } from 'fs/promises'
-import { isAbsolute } from 'path'
+import { isAbsolute, resolve, relative } from 'path'
 import { mainLog } from './logger'
+import { getWorkspaceAllowedDirs } from '@craft-agent/server-core/handlers'
+import { getWorkspaces } from '@craft-agent/shared/config'
+
+/**
+ * Audit L-7: the thumbnail protocol must only serve files inside a
+ * configured workspace's allowed directories (was: any absolute path).
+ */
+async function isPathInsideAnyWorkspace(filePath: string): Promise<boolean> {
+  const resolved = resolve(filePath)
+  for (const workspace of getWorkspaces()) {
+    for (const allowed of getWorkspaceAllowedDirs(workspace.id)) {
+      const allowedResolved = resolve(allowed)
+      const rel = relative(allowedResolved, resolved)
+      if (rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))) {
+        return true
+      }
+    }
+  }
+  return false
+}
 
 /** Thumbnail output size in pixels (width and height) */
 const THUMBNAIL_SIZE = 64
@@ -143,6 +163,13 @@ export function registerThumbnailHandler(): void {
       // Basic validation: must be an absolute path (works on all platforms)
       if (!filePath || !isAbsolute(filePath)) {
         return new Response(null, { status: 400 })
+      }
+
+      // Audit L-7: only serve thumbnails of files inside a configured
+      // workspace's allowed directories (was: any absolute path — a local-file
+      // disclosure primitive via thumbnail:// with corsEnabled).
+      if (!(await isPathInsideAnyWorkspace(filePath))) {
+        return new Response(null, { status: 404 })
       }
 
       // Check file extension is previewable

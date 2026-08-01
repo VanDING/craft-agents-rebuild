@@ -302,7 +302,10 @@ if (webuiHandler) {
 }
 
 // Start HTTP health endpoint if CRAFT_HEALTH_PORT is set
-const healthPort = parseInt(process.env.CRAFT_HEALTH_PORT ?? '0', 10)
+// Audit L-15: parseInt('abc') → NaN bypasses <= 0 guards; require a finite
+// positive port (or 0 = disabled).
+const healthPortRaw = parseInt(process.env.CRAFT_HEALTH_PORT ?? '0', 10)
+const healthPort = Number.isFinite(healthPortRaw) && healthPortRaw > 0 ? healthPortRaw : 0
 const healthServer = await startHealthHttpServer({
   port: healthPort,
   deps: { sessionManager: instance.sessionManager },
