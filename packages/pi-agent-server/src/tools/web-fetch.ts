@@ -355,17 +355,41 @@ export function createWebFetchTool(
         );
       }
 
-      let response: Response;
+      let response: Response | null = null;
+      // Audit H-10: follow redirects manually and re-validate EVERY hop — a
+      // public URL can 302 to 127.0.0.1 / cloud metadata (SSRF via redirect).
+      let currentUrl = url;
+      const MAX_REDIRECTS = 5;
       try {
-        response = await fetch(url, {
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (compatible; CraftAgent/1.0)',
-            Accept:
-              'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-          },
-          redirect: 'follow',
-          signal: AbortSignal.timeout(30_000),
-        });
+        let response_: Response | null = null;
+        for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+          await validateUrl(currentUrl);
+          response_ = await fetch(currentUrl, {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (compatible; CraftAgent/1.0)',
+              Accept:
+                'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            },
+            redirect: 'manual',
+            signal: AbortSignal.timeout(30_000),
+          });
+          const location = response_.headers.get('location');
+          if (
+            response_.status >= 300 &&
+            response_.status < 400 &&
+            location
+          ) {
+            // Free the redirect body before following.
+            await response_.body?.cancel().catch(() => {});
+            currentUrl = new URL(location, currentUrl).toString();
+            continue;
+          }
+          response = response_;
+          break;
+        }
+        if (!response) {
+          return result(`Failed to fetch ${url}: too many redirects`, true);
+        }
       } catch (err) {
         return result(
           `Failed to fetch ${url}: ${err instanceof Error ? err.message : String(err)}`,
@@ -380,8 +404,8 @@ export function createWebFetchTool(
         );
       }
 
-      // Use the final URL after redirects for all output messages
-      const finalUrl = response.url || url;
+      // Final URL after the manually validated redirect chain.
+      const finalUrl = currentUrl || url;
 
       const contentType = (response.headers.get('content-type') || '')
         .toLowerCase()

@@ -344,27 +344,12 @@ async function handleCallLlm(
   args: Record<string, unknown>,
   config: SessionConfig,
 ): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
-  // Primary path: PreToolUse intercept injects _precomputedResult (works on Codex).
-  const precomputed = args?._precomputedResult as string | undefined;
+  // Audit H-14: the _precomputedResult trust path is removed — nothing in this
+  // repo injects it, so it was purely model-forgeable. Only the HTTP callback
+  // path is honored; unknown keys (including any forged _precomputedResult)
+  // were already stripped by the caller's zod validation.
 
-  if (precomputed) {
-    try {
-      const parsed = JSON.parse(precomputed);
-      if (parsed.error) {
-        return errorResponse(`call_llm failed: ${parsed.error}`);
-      }
-      if (parsed.text !== undefined) {
-        return {
-          content: [{ type: 'text' as const, text: parsed.text || '(Model returned empty response)' }],
-        };
-      }
-      return errorResponse('call_llm: _precomputedResult has unexpected format (missing text field).');
-    } catch {
-      return errorResponse(`call_llm: Failed to parse _precomputedResult: ${precomputed.slice(0, 200)}`);
-    }
-  }
-
-  // Fallback path: HTTP callback to agent (for Copilot where PreToolUse doesn't fire for MCP tools).
+  // HTTP callback to agent (for Copilot where PreToolUse doesn't fire for MCP tools).
   // Uses callbackPort from CLI arg (--callback-port) or env var (CRAFT_LLM_CALLBACK_PORT).
   if (config.callbackPort) {
     try {
@@ -387,8 +372,7 @@ async function handleCallLlm(
   }
 
   return errorResponse(
-    'call_llm requires either PreToolUse intercept (_precomputedResult) or ' +
-    'HTTP callback (CRAFT_LLM_CALLBACK_PORT). Neither is available.'
+    'call_llm requires an HTTP callback (CRAFT_LLM_CALLBACK_PORT).'
   );
 }
 
@@ -400,25 +384,10 @@ async function handleSpawnSession(
   args: Record<string, unknown>,
   config: SessionConfig,
 ): Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }> {
-  // Primary path: PreToolUse intercept injects _precomputedResult (works on Codex).
-  const precomputed = args?._precomputedResult as string | undefined;
+  // Audit H-14: _precomputedResult trust path removed (model-forgeable, no
+  // legitimate producer in this repo). Only the HTTP callback path is honored.
 
-  if (precomputed) {
-    try {
-      const parsed = JSON.parse(precomputed);
-      if (parsed.error) {
-        return errorResponse(`spawn_session failed: ${parsed.error}`);
-      }
-      // Return the full result (could be help info or spawn result)
-      return {
-        content: [{ type: 'text' as const, text: JSON.stringify(parsed, null, 2) }],
-      };
-    } catch {
-      return errorResponse(`spawn_session: Failed to parse _precomputedResult: ${precomputed.slice(0, 200)}`);
-    }
-  }
-
-  // Fallback path: HTTP callback to agent (for Copilot where PreToolUse doesn't fire for MCP tools).
+  // HTTP callback to agent (for Copilot where PreToolUse doesn't fire for MCP tools).
   if (config.callbackPort) {
     try {
       const resp = await fetch(`http://127.0.0.1:${config.callbackPort}/spawn-session`, {
@@ -440,8 +409,7 @@ async function handleSpawnSession(
   }
 
   return errorResponse(
-    'spawn_session requires either PreToolUse intercept (_precomputedResult) or ' +
-    'HTTP callback (CRAFT_LLM_CALLBACK_PORT). Neither is available.'
+    'spawn_session requires an HTTP callback (CRAFT_LLM_CALLBACK_PORT).'
   );
 }
 
@@ -534,31 +502,46 @@ async function main() {
     const { name, arguments: toolArgs } = request.params;
 
     try {
-      // call_llm has backend-specific execution (precomputed result / HTTP callback)
-      if (name === 'call_llm') {
-        return await handleCallLlm(toolArgs as Record<string, unknown>, config);
+      // Audit H-14: validate tool args against the advertised zod schemas.
+      // Rejects malformed input; zod strips unknown keys (e.g. a forged
+      // _precomputedResult) from the data passed to handlers.
+      const def = sessionToolRegistry.get(name);
+      let validatedArgs: unknown = toolArgs;
+      if (def?.inputSchema) {
+        const parsed = def.inputSchema.safeParse(toolArgs);
+        if (!parsed.success) {
+          const issues = parsed.error.issues
+            .map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`)
+            .join('; ');
+          return errorResponse(`Invalid arguments for ${name}: ${issues}`);
+        }
+        validatedArgs = parsed.data;
       }
 
-      // spawn_session has backend-specific execution (precomputed result / HTTP callback)
+      // call_llm has backend-specific execution (HTTP callback)
+      if (name === 'call_llm') {
+        return await handleCallLlm(validatedArgs as Record<string, unknown>, config);
+      }
+
+      // spawn_session has backend-specific execution (HTTP callback)
       if (name === 'spawn_session') {
-        return await handleSpawnSession(toolArgs as Record<string, unknown>, config);
+        return await handleSpawnSession(validatedArgs as Record<string, unknown>, config);
       }
 
       // Check canonical session tool registry first (feature-filtered)
-      const def = sessionToolRegistry.get(name);
       if (def?.handler) {
-        return await def.handler(ctx, toolArgs);
+        return await def.handler(ctx, validatedArgs as Record<string, unknown>);
       }
 
       // Route to docs upstream if it's a docs tool
       if (isDocsUpstreamTool(name)) {
-        return await callDocsUpstream(name, toolArgs as Record<string, unknown>);
+        return await callDocsUpstream(name, validatedArgs as Record<string, unknown>);
       }
 
       return errorResponse(`Unknown tool: ${name}`);
     } catch (error) {
       return errorResponse(
-        `Tool '${name}' failed: ${error instanceof Error ? error.message : String(error)}`
+        error instanceof Error ? error.message : String(error)
       );
     }
   });
