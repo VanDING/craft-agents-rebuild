@@ -50,7 +50,7 @@
 - **权限注记**: 本机 `/Users/van` 0750 缓解"任意本地用户",但默认 macOS 布局 (home 0755) 下成立。
 - **修复**: 两者改 `safeMode: 'block'` 或接入 Bash 同款权限门;`transform_data` 复用 sandbox 隔离;读权限收敛到 session 树;凭据缓存加密或移出。
 
-### C-3 [PARTIAL 74f4453d: 34→22 vulns; 残留为 markitdown-js/baileys 传递依赖, fork-caused] 依赖供应链: 34 个已知漏洞 (2 critical + 19 high),含直接依赖
+### C-3 [PARTIAL 74f4453d;残留 2 critical 已评估无修复版本,用户决策接受并记录: 34→22 vulns; 残留为 markitdown-js/baileys 传递依赖, fork-caused;xmldom/node-tesseract-ocr 均无 patched 版本可升] 依赖供应链: 34 个已知漏洞 (2 critical + 19 high),含直接依赖
 - **证据** (`bun audit` 实测,升级 Pi 0.83.0 后复测仍 34): critical — `xmldom` + `node-tesseract-ocr` 命令注入 (markitdown-js,CLI 文档工具处理不可信文件);high — `undici 8.0.0` (apps/electron/package.json:77 直接 pin,TLS 校验绕过 GHSA-vmh5-mc38-953g 等,`main/network-proxy.ts:10` 直接用)、`marked 18.0.0` (OOM DoS)、`js-yaml 5.0.0` (指数解析 DoS)、`sharp 0.34.5` (electron 侧,与根 0.35.3 双版本)、`music-metadata` (baileys/whatsapp)。
 - **归属**: **全部 fork-caused** — 上游 pin 为 `typescript ^5.0.0`/`undici ^7.22.0`/`marked ^17.0.1`/`js-yaml ^4.1.1`,fork 升级到 `7`/`8.0.0`/`18.0.0`/`5.0.0` 时未做漏洞检查 (TS7 → 201 个 tsc 错;undici 8.0.0 → TLS 绕过;其余同上)。
 - **修复**: undici ≥8.5.0、marked >18.0.1、js-yaml ≥5.1.1、tar >7.5.20、统一 sharp 0.35.x;评估 markitdown-js 对不可信文件的暴露。
@@ -122,7 +122,7 @@
 - M-2 [OPEN, 论证修正] `pi-agent-server` 本地 `call_llm` HTTP 端点无鉴权/无 body 上限 (`index.ts:318-350`) → 配额燃烧。**对抗性修正**: "恶意网站 DNS rebinding" 路径不成立 (端口为 `listen(0)` 随机端口,浏览器无法预知);真实攻击者 = 同机进程。
 - M-3 [OPEN] WebUI 登录限流全局共享 (`webui/http-server.ts:183`,`getClientIp` 默认返回常量 `'direct'`) → 20 次尝试锁死所有 IP;logout 不撤销 JWT (24h,无 jti)。
 - M-4 [OPEN] custom-endpoint `baseUrl` 零校验且携带真实 API key (`pi-agent-server/index.ts:403-417,457-467`)。
-- M-5 [OPEN, fork-caused] QR 登录 redirect_url 完全信任 (`login-qr.ts:390-425`) — 服务器下发 baseUrl 成为全部请求目标,`Authorization: Bearer` 发往该主机。
+- M-5 [ACCEPTED 用户决策, fork-caused] QR 登录 redirect_url 完全信任 (`login-qr.ts:390-425`) — 服务器下发 baseUrl 成为全部请求目标,`Authorization: Bearer` 发往该主机。
 - M-6 [OPEN, fork-caused] iLink 状态非 workspace 隔离 (`state-dir.ts:25-31`);QR 登录把兄弟工作区 token 发给 iLink 服务器。
 - M-7 [OPEN] SVG 图标 regex 净化可绕过 (`renderer/lib/icon-cache.ts:705-717`) — 未引号属性/`JAVASCRIPT:`/HTML 实体编码绕过。
 - M-8 [OPEN] `auth:logout` 无服务端防护销毁全部凭据 + config.json (`handlers/rpc/auth.ts:38-56`)。
@@ -137,7 +137,7 @@
 - M-15 [OPEN] `pendingPermissions` 崩溃时不 reject → 挂起 + Map 泄漏 (`pi-agent.ts:1356-1380` vs `handleSubprocessExit:1742-1789` 缺此项)。
 - M-16 [OPEN] `handleCorruptedFile` 任何解密失败即删整个凭据库 (`secure-storage.ts:341-357`) — Linux machine-id 变更 = 全部凭据丢失。
 - M-17 [OPEN] `persistence-queue.flush()` 不等在途写 (`persistence-queue.ts:186-204`) → 退出时数据丢失。
-- M-18 [OPEN] 工具元数据每次调用全量同步重写 O(n²) + `_metadataMap` 无界 (`interceptor-common.ts:293-340`);`_sessionDir` 跨 session 写错文件。
+- M-18 [FIXED 05afe4b9] 工具元数据每次调用全量同步重写 O(n²) + `_metadataMap` 无界 (`interceptor-common.ts:293-340`);`_sessionDir` 跨 session 写错文件。
 - M-19 [OPEN] interceptor-common mergeAndWriteMetadata TOCTOU (`:320-340`)。
 - M-20 [OPEN] TaskRunner 无墙钟超时,`verifying` 可永久挂起 (`tasks/TaskRunner.ts:530-537`)。
 - M-21 [OPEN, 未核实上游] Lark adapter `destroy()` 不停止 WSClient → 每次重连双 socket 重复投递 (`adapters/lark/index.ts:302-312`)。
@@ -147,9 +147,9 @@
 **构建/配置:**
 - M-24 [FIXED b4fd6ecc, 混合] 打包产物 EOL Electron 39.2.7,dev 用 43.1.1 (`electron-builder.yml:7` 改 43.1.1;pin 本身 inherited,不一致是 fork 升级 dev 未同步)。
 - M-25 [OPEN, fork-caused] OAuth define 双构建路径不一致,`build:main` 会把 `GOOGLE_OAUTH_CLIENT_SECRET` 烘焙进 bundle (`apps/electron/package.json:18` vs `electron-build-main.ts:30-47` 注释声称不烘焙)。
-- M-26 [OPEN] GitHub Actions 未 pin SHA、无 `permissions:`;bun 版本三处不一致。
+- M-26 [PARTIAL 05afe4b9: permissions + bun 版本已对齐;SHA pin 未做] GitHub Actions 未 pin SHA、无 `permissions:`;bun 版本三处不一致。
 - M-27 [OPEN] `.env.example` 过期 (记录已删除的 ANTHROPIC_API_KEY,`CRAFT_SERVER_TOKEN` 等 ~30 个未记录)。
-- M-28 [OPEN, inherited] bunfig preload 全局 fetch 拦截器注入所有 bun 进程 (`unified-network-interceptor.ts:2266-2270`),无 host 过滤。
+- M-28 [ACCEPTED 用户决策, inherited] bunfig preload 全局 fetch 拦截器注入所有 bun 进程 (`unified-network-interceptor.ts:2266-2270`),无 host 过滤。
 
 ---
 
@@ -158,18 +158,18 @@
 - L-1 [FIXED bdc8147c] `StoredMessage` 仍缺 `hidden` 字段;`message-mapper.ts` 单断言掩盖 (`core/src/types/message.ts:236,300-390`)。
 - L-2 [FIXED bdc8147c] `generateMessageId` 仍用 `Math.random()` (`message.ts:590-592`);`source-helpers.ts:182` 同。
 - L-3 [FIXED bdc8147c] `summarize.ts` 空存根仍被 SessionManager 3 处"带注释地"调用 (注释虚构) (`shared/src/utils/summarize.ts`)。
-- L-4 [FIXED bdc8147c] 死代码: `AnthropicModelFetcher` + `BedrockVertexModelFetcher` 未注册;`shared/src/validation/url-validator.ts:8` 仍 import 已删除的 `@anthropic-ai/claude-agent-sdk`;`ilink/cdn/cdn-upload.ts` 零调用。
+- L-4 [FIXED bdc8147c + 05afe4b9] 死代码: url-validator(幻影 SDK import)/factory.ts.bak 已删 (bdc8147c);AnthropicModelFetcher/BedrockVertexModelFetcher/cdn-upload.ts 已删 (05afe4b9)。
 - L-5 [FIXED bdc8147c] 迁移残留 `packages/shared/src/agent/backend/factory.ts.bak` 已提交。
 - L-6 [FIXED bdc8147c] `killShell` 正则转义当 shell 转义 (`SessionManager.ts:6680-6701`);privileged 审计日志明文存完整命令 (`privileged-execution-broker.ts:178-184`)。
 - L-7 [FIXED bdc8147c] `thumbnail://` 协议可对任意绝对路径出缩略图 (`thumbnail-protocol.ts:130-163`)。
 - L-8 [FIXED bdc8147c] 应用级 IPC 无 sender 校验: `workspace:remove`/`app:relaunch`/`__get-ws-token` (`main/index.ts:494-498,769-772,909-911,943`)。
-- L-9 [OPEN] 主窗口 + toolbar BrowserView 仍 `sandbox: false` (`window-manager.ts:257-261`、`browser-pane-manager.ts:402-408`)。
-- L-10 [OPEN] preload 仍 6 个 `sendSync` (`bootstrap.ts:56,81,99-101,113`);`(api as any)` 7 处。
+- L-9 [ACCEPTED 用户决策] 主窗口 + toolbar BrowserView 仍 `sandbox: false` (`window-manager.ts:257-261`、`browser-pane-manager.ts:402-408`)。
+- L-10 [ACCEPTED 用户决策] preload 仍 6 个 `sendSync` (`bootstrap.ts:56,81,99-101,113`);`(api as any)` 7 处。
 - L-11 [FIXED bdc8147c] `install-server.sh:52-81` 明文打印 server token;`main/index.ts:1051` headless 打印 `CRAFT_SERVER_TOKEN`;CLI `--api-key` 进 ps。
-- L-12 [OPEN] deep-link 查询参数仍原样透传 (`deep-link.ts:181-188`) + 100ms 时序假设;`craftagents://` 协议注册使任意网页可触发 `delete-session` action。
+- L-12 [FIXED 05afe4b9] deep-link 查询参数仍原样透传 (`deep-link.ts:181-188`) + 100ms 时序假设;`craftagents://` 协议注册使任意网页可触发 `delete-session` action。
 - L-13 [FIXED bdc8147c] husky 零钩子;`test-workflow-local.sh:5` 硬编码个人路径。
-- L-14 [PARTIAL bdc8147c] renderer: MemoizedMarkdown 比较器已修;菜单闭包/render 期读取/Mermaid ref 仍 OPEN。
-- L-15 [FIXED bdc8147c] `CRAFT_HEALTH_PORT` NaN 绕过端口守卫 (`server/src/index.ts:293`);server token `===` 非恒时比较。
+- L-14 [PARTIAL bdc8147c + 05afe4b9] renderer: MemoizedMarkdown 比较器 + 菜单闭包已修;render 期 clientHeight 读取 + Mermaid ref 写入仍 OPEN(性能类)。
+- L-15 [FIXED bdc8147c + 05afe4b9] `CRAFT_HEALTH_PORT` NaN 绕过端口守卫 (`server/src/index.ts:293`);server token `===` 非恒时比较。
 
 ---
 
