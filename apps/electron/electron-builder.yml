@@ -70,9 +70,15 @@ extraResources:
   # ripgrep (used by search service)
   - from: node_modules/@vscode/ripgrep
     to: app/node_modules/@vscode/ripgrep
-  # WhatsApp worker subprocess (self-contained; Baileys bundled in)
-  - from: packages/messaging-whatsapp-worker/dist
-    to: app/packages/messaging-whatsapp-worker/dist
+  # WhatsApp worker subprocess (self-contained; Baileys bundled in).
+  # Runtime resolves it at <resourcesPath>/messaging-whatsapp-worker/worker.cjs
+  # (apps/electron/src/main/index.ts), so stage it flat under Resources — the
+  # old `to: app/packages/...` placement never matched that path and every
+  # packaged WhatsApp connect died with MODULE_NOT_FOUND.
+  # NB: extraResources `from` is relative to the project dir (apps/electron),
+  # so the worker package at the repo root needs the ../.. prefix.
+  - from: ../../packages/messaging-whatsapp-worker/dist
+    to: messaging-whatsapp-worker
     filter:
       - "**/*"
   # Bun runtime
