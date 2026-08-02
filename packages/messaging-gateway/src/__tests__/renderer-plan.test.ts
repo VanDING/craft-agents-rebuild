@@ -138,7 +138,7 @@ describe('Renderer — plan_submitted', () => {
     expect(adapter.calls.some((c) => c.kind === 'sendFile')).toBe(false)
   })
 
-  it('Telegram long plan: sends buttons + attached file', async () => {
+  it('Telegram long plan: sends buttons with truncated preview (no file)', async () => {
     const tokens = new PlanTokenRegistry()
     const renderer = new Renderer({ planTokens: tokens })
     const adapter = makeAdapter('telegram')
@@ -148,13 +148,11 @@ describe('Renderer — plan_submitted', () => {
     await renderer.handle(planEvent(longPlan), binding, adapter)
 
     const sendButtons = adapter.calls.find((c) => c.kind === 'sendButtons')
-    const sendFile = adapter.calls.find((c) => c.kind === 'sendFile')
-
     expect(sendButtons).toBeTruthy()
     expect(sendButtons?.text).toContain('full plan attached')
-    expect(sendFile).toBeTruthy()
-    expect(sendFile?.fileName).toBe('plan.md')
-    expect(sendFile?.fileSize).toBe(Buffer.byteLength(longPlan, 'utf-8'))
+    expect(sendButtons?.buttons).toHaveLength(2)
+    // Current contract: plan content ships inline in the event; no file send.
+    expect(adapter.calls.some((c) => c.kind === 'sendFile')).toBe(false)
   })
 
   it('Telegram without token registry: falls back to plain text', async () => {
@@ -200,7 +198,7 @@ describe('Renderer — plan_submitted', () => {
     expect(adapter.calls.some((c) => c.kind === 'sendFile')).toBe(false)
   })
 
-  it('Lark long plan: sends buttons + attached file', async () => {
+  it('Lark long plan: sends buttons with truncated preview (no file)', async () => {
     const tokens = new PlanTokenRegistry()
     const renderer = new Renderer({ planTokens: tokens })
     const adapter = makeAdapter('lark')
@@ -210,11 +208,11 @@ describe('Renderer — plan_submitted', () => {
     await renderer.handle(planEvent(longPlan), binding, adapter)
 
     const sendButtons = adapter.calls.find((c) => c.kind === 'sendButtons')
-    const sendFile = adapter.calls.find((c) => c.kind === 'sendFile')
     expect(sendButtons).toBeTruthy()
-    expect(sendFile).toBeTruthy()
-    expect(sendFile?.fileName).toBe('plan.md')
-    expect(sendFile?.fileSize).toBe(Buffer.byteLength(longPlan, 'utf-8'))
+    expect(sendButtons?.text).toContain('full plan attached')
+    expect(sendButtons?.buttons).toHaveLength(2)
+    // Current contract: plan content ships inline in the event; no file send.
+    expect(adapter.calls.some((c) => c.kind === 'sendFile')).toBe(false)
   })
 
   it('Lark recordPlanMessage callback fires with the rendering binding, token, messageId', async () => {

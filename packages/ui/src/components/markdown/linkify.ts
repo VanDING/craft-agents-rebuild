@@ -18,6 +18,15 @@ const FILE_PATH_REGEX_SOURCE = `(?:^|[\\s([\\{<])((?:/|~/|\\./|\\.\\./|[A-Za-z0-
 const FILE_PATH_REGEX = new RegExp(FILE_PATH_REGEX_SOURCE, 'gi')
 const FILE_PATH_PRETEST_REGEX = new RegExp(FILE_PATH_REGEX_SOURCE, 'i')
 
+// Bare-domain detection (linkify-it v6 dropped bare/`www.` domains — a
+// regression from the v5→v6 upgrade; restore the behavior with a bounded
+// pattern). Matches `example.com`, `www.example.com`, `sub.domain.co.uk/path`
+// but NOT already-schemed URLs (boundary guard) or file paths.
+const BARE_DOMAIN_REGEX_SOURCE =
+  `(?:^|[\\s(\[{<])((?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\\.)+[a-z]{2,}(?::\\d{1,5})?(?:/[\\w\-./~%!$&'()*+,;=:@?]*)?)`
+const BARE_DOMAIN_REGEX = new RegExp(BARE_DOMAIN_REGEX_SOURCE, 'gi')
+const BARE_DOMAIN_PRETEST_REGEX = new RegExp(BARE_DOMAIN_REGEX_SOURCE, 'i')
+
 // File-path regex for markdown anchor targets (entire href/text value)
 // Used by Markdown.tsx click handler to route file links to onFileClick.
 const FILE_PATH_TARGET_REGEX = new RegExp(
@@ -151,7 +160,30 @@ export function detectLinks(text: string): DetectedLink[] {
     })
   }
 
-  // 2. Detect file paths with custom regex
+  // 2. Detect bare domains (linkify-it v6 no longer detects scheme-less
+  // domains — restored with BARE_DOMAIN_REGEX). Skips matches that overlap
+  // linkify's own findings (already-schemed URLs) and file paths.
+  BARE_DOMAIN_REGEX.lastIndex = 0
+  let bareMatch
+  while ((bareMatch = BARE_DOMAIN_REGEX.exec(text)) !== null) {
+    const domain = bareMatch[1]
+    if (!domain) continue
+    const start = bareMatch.index + bareMatch[0].indexOf(domain)
+    const end = start + domain.length
+
+    // Skip if this bare domain is inside a linkify-detected URL
+    if (links.some((l) => start < l.end && end > l.start)) continue
+
+    links.push({
+      type: 'url',
+      text: domain,
+      url: `http://${domain}`,
+      start,
+      end,
+    })
+  }
+
+  // 3. Detect file paths with custom regex
   // Reset regex state
   FILE_PATH_REGEX.lastIndex = 0
   let fileMatch
@@ -231,7 +263,7 @@ export function preprocessLinks(text: string): string {
   text = stripPlaceholderLinks(text)
 
   // Quick check - if no potential links, return early
-  if (!linkify.test(text) && !FILE_PATH_PRETEST_REGEX.test(text)) {
+  if (!linkify.test(text) && !BARE_DOMAIN_PRETEST_REGEX.test(text) && !FILE_PATH_PRETEST_REGEX.test(text)) {
     return text
   }
 

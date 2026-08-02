@@ -2114,9 +2114,20 @@ export class BrowserPaneManager implements IBrowserPaneManager {
     }
 
     this.destroyingIds.delete(instance.id)
-    this.closePopupsForParent(instance.id, 'parent_destroy')
-    this.applyAgentControlLock(instance, false)
-    this.updateNativeOverlayState(instance)
+    // Each cleanup step is guarded — a throwing cleanup must never abort
+    // finalization (the instance would stay in the map forever).
+    const steps: Array<[string, () => void]> = [
+      ['closePopupsForParent', () => this.closePopupsForParent(instance.id, 'parent_destroy')],
+      ['applyAgentControlLock', () => this.applyAgentControlLock(instance, false)],
+      ['updateNativeOverlayState', () => this.updateNativeOverlayState(instance)],
+    ]
+    for (const [label, action] of steps) {
+      try {
+        action()
+      } catch (error) {
+        mainLog.warn(`[browser-pane] finalize cleanup failed id=${instance.id} step=${label} error=${error instanceof Error ? error.message : String(error)}`)
+      }
+    }
     instance.cdp.detach()
     this.instances.delete(instance.id)
     this.removedCallback?.(instance.id)

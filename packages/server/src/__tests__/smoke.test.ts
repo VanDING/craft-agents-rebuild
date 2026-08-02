@@ -10,6 +10,7 @@
 
 import { describe, it, expect, afterEach } from 'bun:test'
 import { join } from 'node:path'
+import { tmpdir } from 'node:os'
 import type { Subprocess } from 'bun'
 import WebSocket from 'ws'
 
@@ -34,6 +35,7 @@ async function spawnTestServer(extraEnv?: Record<string, string>): Promise<Spawn
       ...parentEnv,
       ...extraEnv,
       CRAFT_SERVER_TOKEN: token,
+      CRAFT_CONFIG_DIR: join(tmpdir(), 'craft-smoke-' + Math.random().toString(36).slice(2, 8)),
       CRAFT_RPC_PORT: '0',
       CRAFT_RPC_HOST: '127.0.0.1',
       CRAFT_HEALTH_PORT: '0', // random port

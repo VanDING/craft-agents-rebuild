@@ -11,6 +11,11 @@ import { describe, it, expect, mock, beforeAll } from 'bun:test';
 // Vite's ?url suffix isn't supported by bun — mock before dynamic import.
 mock.module('pdfjs-dist/build/pdf.worker.min.mjs?url', () => ({ default: '' }));
 mock.module('pdfjs-dist', () => ({ GlobalWorkerOptions: { workerSrc: '' }, getDocument: () => ({}) }));
+// react-pdf pulls pdfjs-dist's build entry through its exports map; the real
+// module crashes at eval in Node (DOMMatrix is not defined) — stub it too.
+// react-pdf bundles its own nested copy, so both specifiers are covered.
+mock.module('pdfjs-dist/build/pdf.mjs', () => ({ GlobalWorkerOptions: { workerSrc: '' }, getDocument: () => ({}) }));
+mock.module('react-pdf/node_modules/pdfjs-dist/build/pdf.mjs', () => ({ GlobalWorkerOptions: { workerSrc: '' }, getDocument: () => ({}) }));
 
 let isValidMentionTrigger: (text: string, position: number) => boolean;
 

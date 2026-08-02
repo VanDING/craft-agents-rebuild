@@ -1,8 +1,9 @@
-import { afterEach, describe, expect, it } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { startWebuiHttpServer, createWebuiHandler, setRequestClientIp } from '../http-server'
+import { initPasswordHash } from '../auth'
 
 const SECRET = 'test-server-secret'
 const PASSWORD = 'test-password'
@@ -72,6 +73,20 @@ afterEach(() => {
     const dir = TEMP_DIRS.pop()
     if (dir) rmSync(dir, { recursive: true, force: true })
   }
+})
+
+// Worker processes are reused across test files; a leaked global fetch mock
+// from another file turns every request here into a 404. Restore the real
+// fetch before each test so this suite is deterministic.
+const realFetch = globalThis.fetch
+beforeEach(async () => {
+  // 1. Worker reuse: a leaked global fetch mock from another test file turns
+  // every request here into a 404. Restore the real fetch each time.
+  if (globalThis.fetch !== realFetch) globalThis.fetch = realFetch
+  // 2. initPasswordHash is module-level: a sibling test file that hashes a
+  // DIFFERENT password in the same worker overwrites it, breaking login.
+  // Re-hash our password so this suite is deterministic.
+  await initPasswordHash(PASSWORD)
 })
 
 describe('startWebuiHttpServer', () => {

@@ -608,7 +608,10 @@ Approve in the desktop app to continue.`,
       : planContent.length === 0
         ? `${header}\n\nOpen the desktop app to see the plan, or use the buttons below to accept.`
         : `${header}\n\n${firstLines(planContent, 15)}\n\n…full plan attached below.`
-    await adapter.sendButtons(binding.channelId, bodyText, buttons, bindingOpts(binding))
+    const sent = await adapter.sendButtons(binding.channelId, bodyText, buttons, bindingOpts(binding))
+    // Record the posted message so the gateway can later edit/clear it
+    // (mirrors recordPermissionMessage).
+    this.recordPlanMessage?.(binding, token, sent.messageId)
   }
 
   private async handleError(
