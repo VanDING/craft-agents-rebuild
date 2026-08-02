@@ -56,6 +56,22 @@ describe('wechat workspace state isolation (M-6)', () => {
     expect(statSync(dir).mode & 0o777).toBe(0o700)
   })
 
+  it('creates the missing parent state root 0700 first (fresh-machine ENOENT regression)', () => {
+    // Simulate a machine where ~/.craft-agent/wechat has never been created:
+    // the parent of the workspace dir is absent entirely.
+    const missingRoot = join(tmpdir(), `wechat-missing-${Math.random().toString(36).slice(2)}`)
+    setStateDir(missingRoot)
+    try {
+      const dir = ensureStateDirForWorkspace(WS_A)
+      expect(existsSync(dir)).toBe(true)
+      expect(statSync(dir).mode & 0o777).toBe(0o700)
+      expect(statSync(missingRoot).mode & 0o777).toBe(0o700)
+    } finally {
+      setStateDir(stateDir)
+      rmSync(missingRoot, { recursive: true, force: true })
+    }
+  })
+
   it('produces distinct sync-buf paths per workspace for the same account', () => {
     const rootA = resolveStateDirForWorkspace(WS_A)
     const rootB = resolveStateDirForWorkspace(WS_B)

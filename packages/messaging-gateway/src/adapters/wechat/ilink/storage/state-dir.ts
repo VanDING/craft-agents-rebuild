@@ -3,7 +3,7 @@
 
 import { existsSync, mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
 
 let _stateDirOverride: string | undefined;
 
@@ -78,6 +78,10 @@ export function resolveStateDirForWorkspace(workspaceId: string): string {
  */
 export function ensureStateDirForWorkspace(workspaceId: string): string {
   const dir = resolveStateDirForWorkspace(workspaceId);
+  // The parent (state root) may not exist yet on a fresh machine; create it
+  // 0700 first — the child mkdir below is intentionally non-recursive so the
+  // mode is never widened by the umask.
+  ensureStateDir();
   if (!existsSync(dir)) {
     mkdirSync(dir, { mode: 0o700 });
   }
@@ -93,6 +97,12 @@ export function ensureStateDirForWorkspace(workspaceId: string): string {
  * hold a `stateRoot` path rather than the originating workspace ID.
  */
 export function ensureStateRootDir(stateRoot: string): string {
+  // stateRoot is normally `<state-dir>/<workspaceId>`; create the parent 0700
+  // first so a fresh state dir never ENOENTs the non-recursive mkdir below.
+  const parent = dirname(stateRoot);
+  if (parent !== stateRoot && !existsSync(parent)) {
+    mkdirSync(parent, { mode: 0o700 });
+  }
   if (!existsSync(stateRoot)) {
     mkdirSync(stateRoot, { mode: 0o700 });
   }
