@@ -31,7 +31,7 @@
 | `typecheck:all` 跨平台 | 双平台皆断 | 链中含 `powershell -ExecutionPolicy Bypass -File ../../scripts/dedupe.ps1`(macOS/Linux 无 `powershell` → 中断;上游链无此步);`scripts/dedupe.ps1:2` 硬编码 `$projectRoot = "E:\craft-agents"` |
 | `lint:i18n:coverage` | FAIL | 引用 `scripts/check-i18n-coverage.ts`,文件不存在(**上游同样引用、同样缺失**)。根 package.json 共 **12 个 script 引用不存在的文件** |
 | `bun run test:shared:all` | FAIL (3 fail) | `storage-startup-migration.test.ts` 期望 Opus 4.8,实现产出 4.7 |
-| **全量 `bun test`** | **FAIL (48-51 fail + 1 error / 4591 tests)** | 首版审计只报了 3,对抗性审查补测修正。分布: i18n parity 14、BrowserPaneManager 8(疑似 dev Electron 39→43 升级未同步 mock)、startWebuiHttpServer 6、plan_submitted 4、Opus migration 3、headless smoke 3、createBuiltInConnection 2、routing/wire-format 4、preprocessLinks/detectLinks/OAuth 发现 3 |
+| **全量 `bun test`** | **4665 pass / ~8-10 fail(全为 webui 根级 flakiness,已定位为 worker 环境问题)** | 修复历程: P0 修 i18n/Opus/createBuiltIn/safe-mode;05063e70 修 BrowserPaneManager 8、plan_submitted 4、routing/wire-format 4、linkify 2、headless smoke 3、mention-menu DOMMatrix、webui 确定性污染(fetch mock 泄漏 + hashedPassword 覆盖) |
 | `.github/workflows/validate.yml` | 每 PR + push main 跑 `validate:ci` | 当前必然全红;action 未 pin SHA、无 `permissions:` |
 
 ---
