@@ -1,6 +1,6 @@
 <div align="center">
 
-# Craft Agents
+# Craft Agents （RE）
 
 **An agent-native workspace for working with AI agents — across every service, API, and document.**
 
