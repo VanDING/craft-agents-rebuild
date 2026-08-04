@@ -70,8 +70,6 @@ Start-Sleep -Seconds 2
 # 1. Clean previous build artifacts (with retry for locked files)
 Write-Host "Cleaning previous builds..."
 $foldersToClean = @(
-    "$ElectronDir\vendor",
-    "$ElectronDir\node_modules\@anthropic-ai",
     "$ElectronDir\packages",
     "$ElectronDir\release"
 )
@@ -91,129 +89,102 @@ foreach ($folder in $foldersToClean) {
     }
 }
 
-# 2. Install dependencies
-Write-Host "Installing dependencies..."
+# 2. Install dependencies (offline + frozen: node_modules must already be in
+#    sync with bun.lock. Online resolution is unreliable on some networks and
+#    can hang for minutes; if this step fails, run `bun install` manually once.)
+Write-Host "Installing dependencies (offline, frozen lockfile)..."
 Push-Location $RootDir
 try {
-    bun install
+    bun install --frozen-lockfile --offline
 } finally {
     Pop-Location
 }
 
-# 3. Download Bun binary for Windows
-# Use baseline build - works on all x64 CPUs (no AVX2 requirement)
-Write-Host "Downloading Bun $BunVersion for Windows x64 (baseline)..."
-New-Item -ItemType Directory -Force -Path "$ElectronDir\vendor\bun" | Out-Null
-
+# 3. Bun binary for Windows — reuse cached copy when present, else download.
+# Use baseline build - works on all x64 CPUs (no AVX2 requirement).
+# github.com is unreachable from some networks (e.g. CN); download falls back
+# to the npmmirror binary mirror, which also carries SHASUMS256.txt.
+$BunExePath = "$ElectronDir\vendor\bun\bun.exe"
 $BunDownload = "bun-windows-x64-baseline"
-$TempDir = Join-Path $env:TEMP "bun-download-$(Get-Random)"
-New-Item -ItemType Directory -Force -Path $TempDir | Out-Null
 
-try {
-    # Download binary and checksums
-    $ZipUrl = "https://github.com/oven-sh/bun/releases/download/$BunVersion/$BunDownload.zip"
-    $ChecksumUrl = "https://github.com/oven-sh/bun/releases/download/$BunVersion/SHASUMS256.txt"
-
-    Write-Host "Downloading from $ZipUrl..."
-    Invoke-WebRequest -Uri $ZipUrl -OutFile "$TempDir\$BunDownload.zip"
-    Invoke-WebRequest -Uri $ChecksumUrl -OutFile "$TempDir\SHASUMS256.txt"
-
-    # Verify checksum
-    Write-Host "Verifying checksum..."
-    $ExpectedHash = (Get-Content "$TempDir\SHASUMS256.txt" | Select-String "$BunDownload.zip").ToString().Split(" ")[0]
-    $sha256 = [System.Security.Cryptography.SHA256]::Create()
-    $ActualHash = [System.BitConverter]::ToString($sha256.ComputeHash([System.IO.File]::ReadAllBytes("$TempDir\$BunDownload.zip"))).Replace("-","").ToLower()
-
-    if ($ActualHash -ne $ExpectedHash) {
-        throw "Checksum verification failed! Expected: $ExpectedHash, Got: $ActualHash"
+$needBunDownload = $true
+if (Test-Path $BunExePath) {
+    $existingSize = (Get-Item $BunExePath).Length
+    if ($existingSize -gt 30000000) {
+        Write-Host "Reusing cached Bun binary: $BunExePath ($([math]::Round($existingSize / 1MB, 1)) MB)" -ForegroundColor Green
+        $needBunDownload = $false
+    } else {
+        Write-Host "Cached bun.exe looks truncated ($existingSize bytes), re-downloading..." -ForegroundColor Yellow
     }
-    Write-Host "Checksum verified successfully" -ForegroundColor Green
-
-    # Extract and install using robocopy for better file handle management
-    Write-Host "Extracting Bun..."
-    Expand-Archive -Path "$TempDir\$BunDownload.zip" -DestinationPath $TempDir -Force
-
-    # Unblock in temp first (before copy)
-    Unblock-File -Path "$TempDir\$BunDownload\bun.exe" -ErrorAction SilentlyContinue
-
-    # Use robocopy with retries - handles transient file locks better than Copy-Item
-    # /R:5 = 5 retries, /W:3 = 3 second wait between retries, /NP = no progress, /NFL /NDL = quiet
-    Write-Host "Copying bun.exe with robocopy..."
-    robocopy "$TempDir\$BunDownload" "$ElectronDir\vendor\bun" bun.exe /R:5 /W:3 /NP /NFL /NDL
-    # Robocopy exit codes: 0-7 are success, 8+ are errors
-    if ($LASTEXITCODE -ge 8) {
-        throw "robocopy failed with exit code $LASTEXITCODE"
-    }
-
-    $BunExePath = "$ElectronDir\vendor\bun\bun.exe"
-    Write-Host "Bun extracted to: $BunExePath" -ForegroundColor Green
-
-    # Give Windows time to release any file handles from the copy
-    Write-Host "Waiting for file handles to release..."
-    Start-Sleep -Seconds 3
-} finally {
-    Remove-Item -Recurse -Force $TempDir -ErrorAction SilentlyContinue
 }
 
-# 4. Copy SDK from root node_modules (monorepo hoisting).
-# Since SDK 0.2.113: thin core + per-platform binary package.
-# See apps/electron/scripts/build-dmg.sh for the full rationale.
-$SdkSource = "$RootDir\node_modules\@anthropic-ai\claude-agent-sdk"
-if (-not (Test-Path $SdkSource)) {
-    Write-Host "ERROR: SDK core not found at $SdkSource" -ForegroundColor Red
-    Write-Host "Run 'bun install' from the repository root first."
-    exit 1
-}
-Write-Host "Copying SDK core..."
-New-Item -ItemType Directory -Force -Path "$ElectronDir\node_modules\@anthropic-ai" | Out-Null
-Remove-Item -Recurse -Force "$ElectronDir\node_modules\@anthropic-ai\claude-agent-sdk" -ErrorAction SilentlyContinue
-Copy-Item -Recurse -Force $SdkSource "$ElectronDir\node_modules\@anthropic-ai\"
+if ($needBunDownload) {
+    Write-Host "Downloading Bun $BunVersion for Windows x64 (baseline)..."
+    New-Item -ItemType Directory -Force -Path "$ElectronDir\vendor\bun" | Out-Null
 
-# 4a. Resolve the target arch's binary package (cross-fetch from npm if absent).
-# Target arch is hard-coded x64 — Windows arm64 is not currently shipped.
-$SdkBinPkg = "claude-agent-sdk-win32-x64"
-$SdkBinSource = "$RootDir\node_modules\@anthropic-ai\$SdkBinPkg"
-if (-not (Test-Path $SdkBinSource)) {
-    Write-Host "Cross-arch build: $SdkBinPkg not in node_modules — fetching from npm..."
-    $SdkVersion = (node -p "require('$RootDir/package.json'.replace(/\\/g, '/')).dependencies['@anthropic-ai/claude-agent-sdk']").Trim('"')
-    $PkgTmp = New-Item -ItemType Directory -Path ([System.IO.Path]::Combine($env:TEMP, [System.Guid]::NewGuid().ToString()))
+    $TempDir = Join-Path $env:TEMP "bun-download-$(Get-Random)"
+    New-Item -ItemType Directory -Force -Path $TempDir | Out-Null
+
+    function Download-FirstAvailable($urls, $outFile) {
+        foreach ($url in $urls) {
+            try {
+                Write-Host "  Downloading from $url..."
+                Invoke-WebRequest -Uri $url -OutFile $outFile -UseBasicParsing
+                if ((Get-Item $outFile).Length -gt 0) { return }
+            } catch {
+                Write-Host "  Failed ($($_.Exception.Message))" -ForegroundColor Yellow
+            }
+        }
+        throw "All download sources failed for $outFile"
+    }
+
     try {
-        Push-Location $PkgTmp
-        npm pack "@anthropic-ai/$SdkBinPkg@$SdkVersion" | Out-Null
-        $Tarball = Get-ChildItem -Filter "anthropic-ai-*.tgz" | Select-Object -First 1
-        tar -xzf $Tarball.Name
-        Pop-Location
-        New-Item -ItemType Directory -Force -Path $SdkBinSource | Out-Null
-        Copy-Item -Recurse -Force "$PkgTmp\package\*" $SdkBinSource
+        $MirrorBase = "https://registry.npmmirror.com/-/binary/bun/$BunVersion"
+        $GithubBase = "https://github.com/oven-sh/bun/releases/download/$BunVersion"
+
+        # Download binary and checksums (mirror first, GitHub fallback)
+        Download-FirstAvailable @("$MirrorBase/$BunDownload.zip", "$GithubBase/$BunDownload.zip") "$TempDir\$BunDownload.zip"
+        Download-FirstAvailable @("$MirrorBase/SHASUMS256.txt", "$GithubBase/SHASUMS256.txt") "$TempDir\SHASUMS256.txt"
+
+        # Verify checksum
+        Write-Host "Verifying checksum..."
+        $ExpectedHash = (Get-Content "$TempDir\SHASUMS256.txt" | Select-String "$BunDownload.zip").ToString().Split(" ")[0]
+        $sha256 = [System.Security.Cryptography.SHA256]::Create()
+        $ActualHash = [System.BitConverter]::ToString($sha256.ComputeHash([System.IO.File]::ReadAllBytes("$TempDir\$BunDownload.zip"))).Replace("-","").ToLower()
+
+        if ($ActualHash -ne $ExpectedHash) {
+            throw "Checksum verification failed! Expected: $ExpectedHash, Got: $ActualHash"
+        }
+        Write-Host "Checksum verified successfully" -ForegroundColor Green
+
+        # Extract and install using robocopy for better file handle management
+        Write-Host "Extracting Bun..."
+        Expand-Archive -Path "$TempDir\$BunDownload.zip" -DestinationPath $TempDir -Force
+
+        # Unblock in temp first (before copy)
+        Unblock-File -Path "$TempDir\$BunDownload\bun.exe" -ErrorAction SilentlyContinue
+
+        # Use robocopy with retries - handles transient file locks better than Copy-Item
+        # /R:5 = 5 retries, /W:3 = 3 second wait between retries, /NP = no progress, /NFL /NDL = quiet
+        Write-Host "Copying bun.exe with robocopy..."
+        robocopy "$TempDir\$BunDownload" "$ElectronDir\vendor\bun" bun.exe /R:5 /W:3 /NP /NFL /NDL
+        # Robocopy exit codes: 0-7 are success, 8+ are errors
+        if ($LASTEXITCODE -ge 8) {
+            throw "robocopy failed with exit code $LASTEXITCODE"
+        }
+
+        Write-Host "Bun extracted to: $BunExePath" -ForegroundColor Green
+
+        # Give Windows time to release any file handles from the copy
+        Write-Host "Waiting for file handles to release..."
+        Start-Sleep -Seconds 3
     } finally {
-        Remove-Item -Recurse -Force $PkgTmp -ErrorAction SilentlyContinue
+        Remove-Item -Recurse -Force $TempDir -ErrorAction SilentlyContinue
     }
 }
 
-if (-not (Test-Path $SdkBinSource)) {
-    Write-Host "ERROR: SDK native binary package ($SdkBinPkg) not found at $SdkBinSource" -ForegroundColor Red
-    exit 1
-}
-
-Write-Host "Staging SDK native binary as claude-agent-sdk-binary alias..."
-$AliasDest = "$ElectronDir\node_modules\@anthropic-ai\claude-agent-sdk-binary"
-Remove-Item -Recurse -Force $AliasDest -ErrorAction SilentlyContinue
-New-Item -ItemType Directory -Force -Path $AliasDest | Out-Null
-Copy-Item -Recurse -Force "$SdkBinSource\*" $AliasDest
-
-$BinPath = "$AliasDest\claude.exe"
-if (-not (Test-Path $BinPath)) {
-    Write-Host "ERROR: Native binary not found at $BinPath" -ForegroundColor Red
-    exit 1
-}
-$BinSize = (Get-Item $BinPath).Length
-if ($BinSize -lt 50000000) {
-    Write-Host "ERROR: claude.exe is only $BinSize bytes (expected ~210 MB)" -ForegroundColor Red
-    exit 1
-}
-Write-Host "  Native binary: $([math]::Round($BinSize / 1MB)) MB"
-
-# 5. Copy ripgrep (sourced from @vscode/ripgrep since 0.2.113).
+# 4. Copy ripgrep (sourced from @vscode/ripgrep; the JS wrapper resolves the
+#    binary from the platform-specific optional dependency @vscode/ripgrep-win32-x64).
 #    The JS wrapper @vscode/ripgrep resolves the binary from the platform-specific
 #    optional dependency (e.g. @vscode/ripgrep-win32-x64). Both must be staged.
 $RgWrapper = "$RootDir\node_modules\@vscode\ripgrep"
@@ -282,13 +253,7 @@ $MainArgs = @(
     "--platform=node",
     "--format=cjs",
     "--outfile=apps/electron/dist/main.cjs",
-    "--external:electron",
-    # SDK 0.3.x is pure ESM and calls createRequire(import.meta.url) at module init.
-    # esbuild's CJS bundling leaves import.meta.url undefined for inlined ESM, crashing
-    # the app on load (ERR_INVALID_ARG_VALUE). Externalize it so Node loads it natively
-    # as ESM — the SDK core is staged into the app's node_modules above (step 4).
-    # Must stay in sync with package.json build:main and scripts/electron-dev.ts.
-    "--external:@anthropic-ai/claude-agent-sdk"
+    "--external:electron"
 )
 # Add OAuth defines if env vars are set
 if ($env:GOOGLE_OAUTH_CLIENT_ID) {
