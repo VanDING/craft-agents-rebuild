@@ -57,6 +57,16 @@ import { setBedrockProviderModule } from '@earendil-works/pi-ai/api/bedrock-conv
 import { bedrockProviderModule } from '@earendil-works/pi-ai/bedrock-provider';
 setBedrockProviderModule(bedrockProviderModule);
 
+// Register streamSimple as the default streamFn. pi-coding-agent's sdk.js
+// does this at its own module top-level, but bun's bundler drops that
+// side-effect call when bundling (the ./compat export resolves lazily), so
+// Agent construction would throw "No default stream function configured"
+// in the bundled output. Same pattern as setBedrockProviderModule above;
+// the call is idempotent.
+import { setDefaultStreamFn } from '@earendil-works/pi-agent-core';
+import { streamSimple } from '@earendil-works/pi-ai/compat';
+setDefaultStreamFn(streamSimple);
+
 // Model resolution (extracted for testability + custom-endpoint precedence)
 import { resolvePiModel, isDeniedMiniModelId, isModelNotFoundError } from './model-resolution.ts';
 import { pickProviderAppropriateMiniModel } from './pick-mini-model.ts';
