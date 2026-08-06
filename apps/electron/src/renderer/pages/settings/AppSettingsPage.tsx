@@ -19,7 +19,8 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Button } from '@/components/ui/button'
 import { HeaderMenu } from '@/components/ui/HeaderMenu'
 import { routes } from '@/lib/navigate'
-import { Spinner } from '@craft-agent/ui'
+import * as storage from '@/lib/local-storage'
+import { DocumentFormattedMarkdownOverlay, Spinner } from '@craft-agent/ui'
 import type { DetailsPageMeta } from '@/lib/navigation-registry'
 import type { NetworkProxySettings } from '../../../shared/types'
 
@@ -123,6 +124,32 @@ export default function AppSettingsPage() {
       setIsCheckingForUpdates(false)
     }
   }, [updateChecker])
+
+  // What's New overlay (release notes)
+  const [showWhatsNew, setShowWhatsNew] = useState(false)
+  const [releaseNotesContent, setReleaseNotesContent] = useState('')
+  const [hasUnseenReleaseNotes, setHasUnseenReleaseNotes] = useState(false)
+
+  // Check for unseen release notes on mount
+  useEffect(() => {
+    window.electronAPI.getLatestReleaseVersion().then((latestVersion) => {
+      if (!latestVersion) return
+      const lastSeen = storage.get(storage.KEYS.whatsNewLastSeenVersion, '')
+      setHasUnseenReleaseNotes(lastSeen !== latestVersion)
+    })
+  }, [])
+
+  const handleWhatsNewClick = useCallback(async () => {
+    const content = await window.electronAPI.getReleaseNotes()
+    setReleaseNotesContent(content)
+    setShowWhatsNew(true)
+    setHasUnseenReleaseNotes(false)
+    // Update last seen version
+    const latestVersion = await window.electronAPI.getLatestReleaseVersion()
+    if (latestVersion) {
+      storage.set(storage.KEYS.whatsNewLastSeenVersion, latestVersion)
+    }
+  }, [])
 
   // Load settings on mount
   const loadSettings = useCallback(async () => {
@@ -324,6 +351,19 @@ export default function AppSettingsPage() {
                       )}
                     </div>
                   </SettingsRow>
+                  <SettingsRow label={t("settings.about.whatsNew")}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="relative"
+                      onClick={handleWhatsNewClick}
+                    >
+                      {hasUnseenReleaseNotes && (
+                        <span className="absolute -top-0.5 -right-0.5 h-1.5 w-1.5 rounded-full bg-accent" />
+                      )}
+                      {t("common.open")}
+                    </Button>
+                  </SettingsRow>
                   {isElectron && (
                     <SettingsRow label={t("settings.about.checkForUpdates")}>
                       <Button
@@ -359,6 +399,14 @@ export default function AppSettingsPage() {
           </div>
         </ScrollArea>
       </div>
+
+      {/* What's New overlay */}
+      <DocumentFormattedMarkdownOverlay
+        isOpen={showWhatsNew}
+        onClose={() => setShowWhatsNew(false)}
+        content={releaseNotesContent}
+        onOpenUrl={(url) => window.electronAPI.openUrl(url)}
+      />
     </div>
   )
 }
