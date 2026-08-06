@@ -102,6 +102,12 @@ async function main(): Promise<void> {
       "--external:link-preview-js",
       "--external:qrcode-terminal",
       "--external:jimp",
+      // sharp is a runtime-optional peer of Baileys (guarded by try/catch).
+      // Its native .node binaries cannot be bundled by esbuild; resolve it
+      // from the server's production node_modules (copied by build-server.ts)
+      // at runtime instead.
+      "--external:sharp",
+      "--external:@img/*",
     ],
     cwd: ROOT_DIR,
     stdout: "inherit",

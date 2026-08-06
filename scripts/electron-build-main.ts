@@ -4,7 +4,7 @@
  */
 
 import { spawn } from "bun";
-import { existsSync, readFileSync, statSync, mkdirSync, copyFileSync } from "fs";
+import { existsSync, readFileSync, statSync, mkdirSync, copyFileSync, rmSync } from "fs";
 import { join } from "path";
 
 const ROOT_DIR = join(import.meta.dir, "..");
@@ -265,6 +265,17 @@ async function buildPiAgentServer(): Promise<void> {
   // Copy to Electron resources so it gets picked up by electron:build:resources
   const resourcesDest = join(ROOT_DIR, "apps", "electron", "resources", "pi-agent-server");
   mkdirSync(resourcesDest, { recursive: true });
+
+  // Remove stale legacy artifacts from earlier build layouts so they don't
+  // ship inside the asar (resources/pi-agent-server/**/* in electron-builder.yml).
+  for (const stale of ["index.js.fork"]) {
+    const stalePath = join(resourcesDest, stale);
+    if (existsSync(stalePath)) {
+      rmSync(stalePath);
+      console.log(`  Removed stale artifact: resources/pi-agent-server/${stale}`);
+    }
+  }
+
   copyFileSync(PI_AGENT_SERVER_OUTPUT, join(resourcesDest, "index.js"));
   console.log("  → Copied to resources/pi-agent-server/index.js");
 }
