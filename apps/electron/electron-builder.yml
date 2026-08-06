@@ -70,6 +70,11 @@ extraResources:
   # ripgrep (used by search service)
   - from: node_modules/@vscode/ripgrep
     to: app/node_modules/@vscode/ripgrep
+  # ripgrep platform package: @vscode/ripgrep >= 1.15 resolves the binary via
+  # its optionalDependency @vscode/ripgrep-<platform>-<arch> (lib/index.js), so
+  # the platform package must ship next to it.
+  - from: node_modules/@vscode/ripgrep-darwin-${arch}
+    to: app/node_modules/@vscode/ripgrep-darwin-${arch}
   # WhatsApp worker subprocess (self-contained; Baileys bundled in).
   # Runtime resolves it at <resourcesPath>/messaging-whatsapp-worker/worker.cjs
   # (apps/electron/src/main/index.ts), so stage it flat under Resources — the

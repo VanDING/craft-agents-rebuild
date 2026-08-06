@@ -79,6 +79,9 @@ done
 
 # Configuration
 BUN_VERSION="bun-v1.3.9"  # Pinned version for reproducible builds
+# Download base for Bun. Override with a mirror when GitHub is slow or
+# unreachable, e.g. BUN_DOWNLOAD_BASE=https://registry.npmmirror.com/-/binary/bun
+BUN_DOWNLOAD_BASE="${BUN_DOWNLOAD_BASE:-https://github.com/oven-sh/bun/releases/download}"
 
 echo "=== Building Craft Agents DMG (${ARCH}) using electron-builder ==="
 if [ "$UPLOAD" = true ]; then
@@ -107,8 +110,8 @@ TEMP_DIR=$(mktemp -d)
 trap "rm -rf $TEMP_DIR" EXIT
 
 # Download binary and checksums
-curl -fSL "https://github.com/oven-sh/bun/releases/download/${BUN_VERSION}/${BUN_DOWNLOAD}.zip" -o "$TEMP_DIR/${BUN_DOWNLOAD}.zip"
-curl -fSL "https://github.com/oven-sh/bun/releases/download/${BUN_VERSION}/SHASUMS256.txt" -o "$TEMP_DIR/SHASUMS256.txt"
+curl -fSL "${BUN_DOWNLOAD_BASE}/${BUN_VERSION}/${BUN_DOWNLOAD}.zip" -o "$TEMP_DIR/${BUN_DOWNLOAD}.zip"
+curl -fSL "${BUN_DOWNLOAD_BASE}/${BUN_VERSION}/SHASUMS256.txt" -o "$TEMP_DIR/SHASUMS256.txt"
 
 # Verify checksum
 echo "Verifying checksum..."
@@ -146,7 +149,7 @@ SDK_BIN_PKG="claude-agent-sdk-darwin-${ARCH}"
 SDK_BIN_SOURCE="$ROOT_DIR/node_modules/@anthropic-ai/${SDK_BIN_PKG}"
 if [ ! -d "$SDK_BIN_SOURCE" ]; then
     echo "Cross-arch build: ${SDK_BIN_PKG} not in node_modules — fetching from npm..."
-    SDK_VERSION=$(node -p "require('$ROOT_DIR/package.json').dependencies['@anthropic-ai/claude-agent-sdk']" | tr -d '"')
+    SDK_VERSION=$(node -p "require('$SDK_SOURCE/package.json').version")
     PKG_TMP=$(mktemp -d)
     trap "rm -rf $PKG_TMP" RETURN
     (
@@ -180,13 +183,45 @@ echo "  Native binary: $((BIN_SIZE / 1024 / 1024)) MB"
 
 # 5. Copy ripgrep (was previously bundled inside the SDK at vendor/ripgrep/;
 #    moved out in 0.2.113. Search service still needs the binary directly.)
+#    @vscode/ripgrep >= 1.15 ships the binary in a platform package
+#    (@vscode/ripgrep-darwin-<arch>), declared as an optionalDependency of the
+#    main package and resolved by lib/index.js at runtime; older versions
+#    carried it at @vscode/ripgrep/bin/rg.
 RG_SOURCE="$ROOT_DIR/node_modules/@vscode/ripgrep"
 require_path "$RG_SOURCE" "@vscode/ripgrep" "Run 'bun install' and 'bun pm trust @vscode/ripgrep' first."
-require_path "$RG_SOURCE/bin/rg" "ripgrep binary" "@vscode/ripgrep postinstall did not run."
-echo "Copying @vscode/ripgrep..."
+RG_PLATFORM_PKG="@vscode/ripgrep-darwin-${ARCH}"
+RG_PLATFORM_SOURCE="$ROOT_DIR/node_modules/${RG_PLATFORM_PKG}"
+if [ ! -d "$RG_PLATFORM_SOURCE" ]; then
+    echo "Cross-arch build: ${RG_PLATFORM_PKG} not in node_modules — fetching from npm..."
+    RG_VERSION=$(node -p "require('$RG_SOURCE/package.json').version")
+    RG_PKG_TMP=$(mktemp -d)
+    trap "rm -rf $RG_PKG_TMP" RETURN
+    (
+        cd "$RG_PKG_TMP"
+        npm pack "${RG_PLATFORM_PKG}@${RG_VERSION}" >/dev/null
+        TARBALL=$(ls vscode-ripgrep-*.tgz | head -1)
+        tar -xzf "$TARBALL"
+    )
+    mkdir -p "$RG_PLATFORM_SOURCE"
+    cp -r "$RG_PKG_TMP/package/." "$RG_PLATFORM_SOURCE/"
+fi
+RG_BIN="$RG_SOURCE/bin/rg"
+if [ ! -f "$RG_BIN" ] && [ -d "$RG_PLATFORM_SOURCE" ]; then
+    RG_BIN="$RG_PLATFORM_SOURCE/bin/rg"
+fi
+if [ ! -f "$RG_BIN" ]; then
+    echo "ERROR: ripgrep binary not found at $RG_SOURCE/bin/rg or $RG_PLATFORM_SOURCE/bin/rg"
+    echo "Run 'bun install' first (platform package provides the binary)."
+    exit 1
+fi
+echo "Copying @vscode/ripgrep (binary: $RG_BIN)..."
 mkdir -p "$ELECTRON_DIR/node_modules/@vscode"
 rm -rf "$ELECTRON_DIR/node_modules/@vscode/ripgrep"
 cp -r "$RG_SOURCE" "$ELECTRON_DIR/node_modules/@vscode/"
+if [ -d "$RG_PLATFORM_SOURCE" ]; then
+    rm -rf "$ELECTRON_DIR/node_modules/@vscode/${RG_PLATFORM_PKG}"
+    cp -r "$RG_PLATFORM_SOURCE" "$ELECTRON_DIR/node_modules/@vscode/"
+fi
 
 # 6. Copy network interceptor sources.
 #    NOTE (Phase 1 of SDK uplift): the Claude native binary doesn't accept
@@ -216,6 +251,11 @@ cd "$ELECTRON_DIR"
 
 # Set up environment for electron-builder
 export CSC_IDENTITY_AUTO_DISCOVERY=true
+
+# Propagate mirror overrides for electron-builder downloads (electron dist,
+# dmg-builder, winCodeSign) when GitHub is slow or unreachable.
+[ -n "$ELECTRON_MIRROR" ] && export ELECTRON_MIRROR
+[ -n "$ELECTRON_BUILDER_BINARIES_MIRROR" ] && export ELECTRON_BUILDER_BINARIES_MIRROR
 
 # Build electron-builder arguments
 BUILDER_ARGS="--mac --${ARCH}"
