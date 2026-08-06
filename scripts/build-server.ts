@@ -395,19 +395,12 @@ function copyProductionDeps(config: ServerBuildConfig): void {
   // -------------------------------------------------------------------------
   // 2. Platform-specific native binaries (optionalDependencies, not in dep trees)
   // -------------------------------------------------------------------------
-  // NOTE on `@anthropic-ai/claude-agent-sdk-<platform>-<arch>`: since SDK
-  // 0.2.113 the SDK ships only sdk.mjs in the main package; the native
-  // `claude` binary lives in this per-platform optional dep. The server runs
-  // on its host platform/arch so we ship only the matching one.
-  const sdkPlatformPkg = platform === 'win32'
-    ? `@anthropic-ai/claude-agent-sdk-win32-${arch}`
-    : `@anthropic-ai/claude-agent-sdk-${platform}-${arch}`;
-
+  // Note: the @anthropic-ai/claude-agent-sdk-* native packages were removed
+  // with the single-Pi-backend migration — nothing references them anymore.
   const PLATFORM_DEPS = [
     `@img/sharp-${platform === 'darwin' ? 'darwin' : 'linux'}-${arch}`,
     `@img/sharp-libvips-${platform === 'darwin' ? 'darwin' : 'linux'}-${arch}`,
     '@img/colour',
-    sdkPlatformPkg,
     '@vscode/ripgrep',
   ];
 

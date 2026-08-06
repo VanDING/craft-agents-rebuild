@@ -267,12 +267,18 @@ async function buildPiAgentServer(): Promise<void> {
   mkdirSync(resourcesDest, { recursive: true });
 
   // Remove stale legacy artifacts from earlier build layouts so they don't
-  // ship inside the asar (resources/pi-agent-server/**/* in electron-builder.yml).
-  for (const stale of ["index.js.fork"]) {
-    const stalePath = join(resourcesDest, stale);
-    if (existsSync(stalePath)) {
-      rmSync(stalePath);
-      console.log(`  Removed stale artifact: resources/pi-agent-server/${stale}`);
+  // ship inside the asar/extraResources. electron-builder packages the
+  // extraResources entry from dist/resources/pi-agent-server (populated by
+  // copy-assets.ts, which merges without cleaning), so BOTH the source and
+  // the staged dist copy must be purged.
+  const staleArtifacts = ["index.js.fork"];
+  for (const root of [resourcesDest, join(ROOT_DIR, "apps", "electron", "dist", "resources", "pi-agent-server")]) {
+    for (const stale of staleArtifacts) {
+      const stalePath = join(root, stale);
+      if (existsSync(stalePath)) {
+        rmSync(stalePath);
+        console.log(`  Removed stale artifact: ${stalePath.replace(`${ROOT_DIR}/`, "")}`);
+      }
     }
   }
 
