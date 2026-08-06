@@ -1018,6 +1018,10 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
           const promptKey = `${ctx.clientId}:${connectionSlug}`
           try {
             const credential = await oauth.login({
+              // 0.84.0: ProviderAuthInteraction requires a concrete signal.
+              // This RPC flow has no request-level cancellation, so pass a
+              // never-aborted signal.
+              signal: new AbortController().signal,
               notify: (event) => {
                 if (event.type === 'auth_url') {
                   pushTyped(server, RPC_CHANNELS.copilot.DEVICE_CODE, { to: 'client', clientId: ctx.clientId }, {

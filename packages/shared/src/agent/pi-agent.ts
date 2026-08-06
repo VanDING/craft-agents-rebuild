@@ -842,12 +842,15 @@ export class PiAgent extends BaseAgent {
             this.onBackendAuthRequired?.(`Unsupported OAuth provider '${piAuthProvider}' — please sign in again`);
             return;
           }
+          // 0.84.0: SDK OAuth refresh requires a concrete abort signal. This
+          // manual refresh flow has no cancellation semantics, so pass a
+          // never-aborted signal — refresh proceeds exactly as in 0.83.0.
           const refreshed = await refresh({
             type: 'oauth',
             access: stored.accessToken,
             refresh: stored.refreshToken,
             expires: stored.expiresAt ?? Date.now(),
-          });
+          }, new AbortController().signal);
           await credentialManager.setLlmOAuth(slug, {
             accessToken: refreshed.access,
             refreshToken: refreshed.refresh,
