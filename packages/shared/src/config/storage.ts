@@ -1961,6 +1961,87 @@ function migrateLegacyOpusToDefaultOpus(config: StoredConfig): boolean {
 }
 
 /**
+ * Restore claude-opus-4-6 to direct Anthropic connections that were previously
+ * force-migrated to 4.8 and no longer list 4.6. Runs once per user (tracked via
+ * config.migrationsApplied). Never touches `defaultModel` — users keep whatever
+ * default they had, and can switch models themselves.
+ *
+ * The marker is versioned ("-2") because the pre-4.8 restore already consumed
+ * 'opus-4-6-restored' in long-time users' configs; this restore must fire
+ * again after the 4.8-era removal.
+ *
+ * TODO(opus-4.6-sunset): drop this call and the function when 4.6 is deprecated.
+ */
+function restoreOpus46ToAnthropicConnections(config: StoredConfig): boolean {
+  const OPUS_46_ID = 'claude-opus-4-6';
+  const MARKER = 'opus-4-6-restored-2';
+  const alreadyRan = config.migrationsApplied?.includes(MARKER) ?? false;
+
+  // Anthropic connection.models entries are stored as full ModelDefinition
+  // objects (via backfillAllConnectionModels). The model picker reads
+  // model.name and falls back to the raw ID for bare strings, so we must
+  // push the object form to render as "Opus 4.6".
+  const opus46Model = getModelById(OPUS_46_ID);
+  if (!opus46Model) {
+    // Defensive — 4.6 is registered in this same PR, should never happen.
+    if (!alreadyRan) {
+      config.migrationsApplied = [...(config.migrationsApplied ?? []), MARKER];
+      return true;
+    }
+    return false;
+  }
+
+  let changed = false;
+
+  for (const connection of config.llmConnections ?? []) {
+    // Fork: single-Pi-backend — direct Anthropic connections are 'pi' provider
+    // with piAuthProvider === 'anthropic'. Upstream's 'anthropic' providerType
+    // does not exist here.
+    if (connection.providerType !== 'pi') continue;
+    if (connection.piAuthProvider !== 'anthropic') continue;
+    if (!Array.isArray(connection.models) || connection.models.length === 0) continue;
+
+    // Fork model IDs carry the 'pi/' provider prefix (e.g. 'pi/claude-opus-4-6').
+    const stripPiPrefix = (id: string): string => id.startsWith('pi/') ? id.slice(3) : id;
+
+    // Idempotent shape repair: normalize any bare-string 'claude-opus-4-6'
+    // entry to the ModelDefinition object form. Runs regardless of the
+    // one-shot marker because it's a display-shape fix, not a new entry.
+    // Prefixed strings ('pi/claude-opus-4-6') are already in the canonical
+    // fork shape and stay untouched.
+    for (let i = 0; i < connection.models.length; i++) {
+      const m = connection.models[i];
+      if (typeof m === 'string' && m === OPUS_46_ID) {
+        connection.models[i] = { ...opus46Model, id: `pi/${OPUS_46_ID}` };
+        changed = true;
+      }
+    }
+
+    // One-shot restore: only append 4.6 on the first run for a given user.
+    // A deliberate removal after the marker is set should stick.
+    if (alreadyRan) continue;
+
+    const ids = connection.models.map(m => typeof m === 'string' ? m : m.id);
+    const hasDefaultOpus = ids.some(id => {
+      const bare = stripPiPrefix(id);
+      return bare === OPUS_DEFAULT_ID || bare === OPUS_FALLBACK_ID;
+    });
+    if (hasDefaultOpus && !ids.some(id => stripPiPrefix(id) === OPUS_46_ID)) {
+      connection.models.push({ ...opus46Model, id: `pi/${OPUS_46_ID}` });
+      changed = true;
+    }
+  }
+
+  // Mark the migration as seen on the first run — even when no connection
+  // was eligible — so subsequent runs don't keep re-checking.
+  if (!alreadyRan) {
+    config.migrationsApplied = [...(config.migrationsApplied ?? []), MARKER];
+    return true;
+  }
+  return changed;
+}
+
+/**
  * Migrate Sonnet 4.5 to Sonnet 4.6 for direct Anthropic connections.
  * Updates stored model IDs and names for direct Anthropic connections.
  */
@@ -2119,6 +2200,9 @@ function migrateLegacyProviderTypes(config: StoredConfig): boolean {
     // --- anthropic → pi ---
     if (providerStr === 'anthropic') {
       (connection as { providerType: LlmProviderType }).providerType = 'pi';
+      // Direct Anthropic connections map to the Pi 'anthropic' auth provider so
+      // model catalogs, defaults, and the Opus 4.6 restore apply to them.
+      connection.piAuthProvider = connection.piAuthProvider || 'anthropic';
       changed = true;
       continue;
     }
@@ -2337,6 +2421,12 @@ export function migrateLegacyLlmConnectionsConfig(): void {
     // Important for old Bedrock connections: they become Pi+Bedrock first, then can
     // fall back from Opus 4.8 to 4.7 while Pi's catalog lacks 4.8.
     if (migrateLegacyOpusToDefaultOpus(config)) {
+      needsSave = true;
+    }
+    // Phase 1m: Restore Opus 4.6 to direct Anthropic connections that were
+    // previously force-migrated away from it (one-shot, guarded by marker).
+    // TODO(opus-4.6-sunset): drop this call and the function when 4.6 is deprecated.
+    if (restoreOpus46ToAnthropicConnections(config)) {
       needsSave = true;
     }
 
