@@ -611,11 +611,11 @@ function AppShellContent({
 
   const sessionFilter = sessionsContext?.filter ?? null
 
-  // Board/gantt/calendar views replace the session-list navigator with a
+  // Board/calendar views replace the session-list navigator with a
   // full-width panel, so the navigator (and its resize handle) collapse to
   // zero width while one of them is active.
-  const isFullWidthView = isSessionsNavigation(navState) && (navState.viewMode === 'board' || navState.viewMode === 'gantt' || navState.viewMode === 'calendar')
-  const currentView: 'list' | 'board' | 'gantt' | 'calendar' = isSessionsNavigation(navState) && navState.viewMode
+  const isFullWidthView = isSessionsNavigation(navState) && (navState.viewMode === 'board' || navState.viewMode === 'calendar')
+  const currentView: 'list' | 'board' | 'calendar' = isSessionsNavigation(navState) && navState.viewMode
     ? navState.viewMode
     : 'list'
 
@@ -2339,7 +2339,6 @@ function AppShellContent({
           currentView={currentView}
           onNavigateToView={(view) => {
             if (view === 'board') navigate(routes.view.board())
-            else if (view === 'gantt') navigate(routes.view.gantt())
             else if (view === 'calendar') navigate(routes.view.calendar())
             else navigate(routes.view.allSessions())
           }}

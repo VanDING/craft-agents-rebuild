@@ -861,11 +861,10 @@ export interface SessionsNavigationState {
   rightSidebar?: RightSidebarPanel
   /**
    * Presentation mode for the sessions navigator. `'board'` renders the Kanban
-   * board, `'gantt'` / `'calendar'` render the schedule views (all sessions,
-   * timeline / month grid) in the content area instead of the list + chat.
-   * Absent/`'list'` is the default.
+   * board, `'calendar'` renders the schedule month grid (all sessions) in the
+   * content area instead of the list + chat. Absent/`'list'` is the default.
    */
-  viewMode?: 'list' | 'board' | 'gantt' | 'calendar'
+  viewMode?: 'list' | 'board' | 'calendar'
 }
 
 /**

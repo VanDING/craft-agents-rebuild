@@ -1,9 +1,9 @@
 /**
- * Playground entries for the Gantt and Calendar schedule views.
+ * Playground entry for the Calendar schedule view.
  *
- * Renders the full containers (atom-driven) against a seeded session meta
- * map — scheduled + unscheduled tasks, subtask lanes, multiple statuses and
- * projects — using the same provider stack the mobile-webui demos use.
+ * Renders the full container (atom-driven) against a seeded session meta
+ * map — scheduled + unscheduled tasks, multiple statuses and projects —
+ * using the same provider stack the mobile-webui demos use.
  */
 
 import * as React from 'react'
@@ -19,7 +19,6 @@ import { sessionMetaMapAtom, type SessionMeta } from '@/atoms/sessions'
 import { projectsAtom } from '@/atoms/projects'
 import { ensureMockElectronAPI } from '../mock-utils'
 import type { ComponentEntry } from './types'
-import { GanttView } from '@/components/app-shell/kanban/GanttView'
 import { CalendarView } from '@/components/app-shell/kanban/CalendarView'
 
 ensureMockElectronAPI()
@@ -148,7 +147,7 @@ function ScheduleAppShell({ children }: { children: React.ReactNode }) {
   return <AppShellProvider value={value as never}>{children}</AppShellProvider>
 }
 
-function ScheduleViewPreview({ view }: { view: 'gantt' | 'calendar' }) {
+function CalendarViewPreview() {
   const store = React.useMemo(() => createStore(), [])
   return (
     <JotaiProvider store={store}>
@@ -167,7 +166,7 @@ function ScheduleViewPreview({ view }: { view: 'gantt' | 'calendar' }) {
                   >
                     <ScheduleAppShell>
                       <div className="h-full w-full bg-background">
-                        {view === 'gantt' ? <GanttView /> : <CalendarView />}
+                        <CalendarView />
                       </div>
                     </ScheduleAppShell>
                   </NavigationProvider>
@@ -184,19 +183,10 @@ function ScheduleViewPreview({ view }: { view: 'gantt' | 'calendar' }) {
 export const scheduleViewComponents: ComponentEntry[] = [
   {
     category: 'Kanban',
-    id: 'gantt-view',
-    name: 'Gantt View',
-    description: 'Full Gantt container: zoom scales, lanes, dependency arrows, today line, schedule editor.',
-    component: () => <ScheduleViewPreview view="gantt" />,
-    props: [],
-    variants: [{ name: 'Gantt', props: {} }],
-  },
-  {
-    category: 'Kanban',
     id: 'calendar-view',
     name: 'Calendar View',
     description: 'Full calendar container: all sessions by due-or-created date, status colors.',
-    component: () => <ScheduleViewPreview view="calendar" />,
+    component: () => <CalendarViewPreview />,
     props: [],
     variants: [{ name: 'Calendar', props: {} }],
   },

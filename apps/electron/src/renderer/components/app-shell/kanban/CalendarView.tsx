@@ -33,8 +33,11 @@ import { resolveTaskScopeLabelId } from '@craft-agent/shared/labels'
 import { getStateColor } from '@/config/session-status-config'
 import { DEFAULT_MODEL } from '@config/models'
 import { cn } from '@/lib/utils'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { TaskEditor } from './TaskEditor'
 import { buildModelCatalog } from './model-catalog'
+import { ScheduleDatePopover } from './ScheduleDatePopover'
 import {
   deriveScheduledTaskRows,
   formatDateOnly,
@@ -44,7 +47,8 @@ import {
   type ScheduledTaskRow,
 } from './schedule'
 
-const WEEKDAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']
+// Header order matches the grid's weekStartsOn: 1 (Monday-first).
+const WEEKDAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
 const MAX_TASKS_PER_CELL = 3
 
 export function CalendarView() {
@@ -56,6 +60,7 @@ export function CalendarView() {
   const { navigateToSession } = useNavigation()
   const [editorTarget, setEditorTarget] = useAtom(kanbanEditorTargetAtom)
   const [cursor, setCursor] = React.useState(() => startOfMonth(new Date()))
+  const [selectedDay, setSelectedDay] = React.useState<Date | null>(null)
   const { labels: labelConfigs, flatLabels, isLoading: labelsLoading } = useLabels(activeWorkspaceId ?? null)
 
   // Auto-provision the reserved schedule labels on first use. Matched by
@@ -245,49 +250,121 @@ export function CalendarView() {
                 )}
               >
                 <div className="flex items-center justify-between px-0.5">
-                  <span
-                    className={cn(
-                      'inline-flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-medium',
-                      isToday ? 'bg-primary text-primary-foreground' : inMonth ? 'text-foreground/80' : 'text-foreground/30'
-                    )}
+                  <Popover
+                    open={selectedDay !== null && isSameDay(selectedDay, day)}
+                    onOpenChange={(open) => setSelectedDay(open ? day : null)}
                   >
-                    {format(day, 'd')}
-                  </span>
+                    <PopoverTrigger asChild>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedDay(day)}
+                        className={cn(
+                          'inline-flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-medium transition-colors hover:bg-foreground/[0.08]',
+                          isToday ? 'bg-primary text-primary-foreground' : inMonth ? 'text-foreground/80' : 'text-foreground/30'
+                        )}
+                      >
+                        {format(day, 'd')}
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-72 p-0" align="start">
+                      <div className="border-b border-border/60 px-3 py-2 text-xs font-semibold text-foreground">
+                        {format(day, 'yyyy-MM-dd')}
+                        {dayTasks.length > 0 && (
+                          <span className="ml-1.5 text-[11px] font-medium text-foreground/45">
+                            · {dayTasks.length} {t('schedule.taskCount', { count: dayTasks.length })}
+                          </span>
+                        )}
+                      </div>
+                      {dayTasks.length === 0 ? (
+                        <div className="px-3 py-4 text-center text-xs text-foreground/45">{t('schedule.noTasks')}</div>
+                      ) : (
+                        <ScrollArea className="max-h-64">
+                          <div className="flex flex-col gap-0.5 p-1.5">
+                            {dayTasks.map((task) => {
+                              const statusColor = getStateColor(task.statusId, sessionStatuses ?? [])
+                              const project = task.projectId ? projectsById.get(task.projectId) : undefined
+                              const overdue = isOverdue(task.schedule, task.statusId)
+                              return (
+                                <button
+                                  key={task.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedDay(null)
+                                    openSessionScoped(task.id, project?.id)
+                                  }}
+                                  className={cn(
+                                    'flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors hover:bg-foreground/[0.06]',
+                                    overdue ? 'text-red-500' : 'text-foreground/85'
+                                  )}
+                                >
+                                  <span
+                                    className={cn(
+                                      'h-2 w-2 shrink-0 rounded-full',
+                                      statusColor || project?.color ? '' : 'bg-foreground/30'
+                                    )}
+                                    style={
+                                      statusColor || project?.color
+                                        ? { backgroundColor: statusColor ?? project!.color }
+                                        : undefined
+                                    }
+                                  />
+                                  <span className="min-w-0 flex-1 truncate">{task.title}</span>
+                                  {task.schedule.due && (
+                                    <span className="shrink-0 text-[10px] text-foreground/40">
+                                      due {formatDateOnly(task.schedule.due)}
+                                    </span>
+                                  )}
+                                </button>
+                              )
+                            })}
+                          </div>
+                        </ScrollArea>
+                      )}
+                    </PopoverContent>
+                  </Popover>
                 </div>
                 {visible.map((task) => {
                   const statusColor = getStateColor(task.statusId, sessionStatuses ?? [])
                   const project = task.projectId ? projectsById.get(task.projectId) : undefined
                   const overdue = isOverdue(task.schedule, task.statusId)
                   return (
-                    <button
-                      key={task.id}
-                      type="button"
-                      onClick={() => openSessionScoped(task.id, project?.id)}
-                      onDoubleClick={() => handleEditTask(task.id)}
-                      title={`${task.title}${task.schedule.due ? ` · due ${formatDateOnly(task.schedule.due)}` : ''}`}
-                      className={cn(
-                        'flex min-w-0 items-center gap-1 rounded px-1 py-0.5 text-left text-[11px] transition-colors hover:bg-foreground/[0.06]',
-                        overdue ? 'text-red-500' : 'text-foreground/85'
-                      )}
-                    >
-                      <span
+                    <div key={task.id} className="group relative flex min-w-0 items-center">
+                      <button
+                        type="button"
+                        onClick={() => openSessionScoped(task.id, project?.id)}
+                        onDoubleClick={() => handleEditTask(task.id)}
+                        title={`${task.title}${task.schedule.due ? ` · due ${formatDateOnly(task.schedule.due)}` : ''}`}
                         className={cn(
-                          'h-1.5 w-1.5 shrink-0 rounded-full',
-                          statusColor || project?.color ? '' : 'bg-foreground/30'
+                          'flex min-w-0 flex-1 items-center gap-1 rounded px-1 py-0.5 text-left text-[11px] transition-colors hover:bg-foreground/[0.06]',
+                          overdue ? 'text-red-500' : 'text-foreground/85'
                         )}
-                        style={
-                          statusColor || project?.color
-                            ? { backgroundColor: statusColor ?? project!.color }
-                            : undefined
-                        }
-                      />
-                      <span className="truncate">{task.title}</span>
-                      {task.schedule.due && (
-                        <span className="shrink-0 text-[9px] font-medium text-foreground/35">
-                          {formatDateOnly(task.schedule.due).slice(5)}
-                        </span>
-                      )}
-                    </button>
+                      >
+                        <span
+                          className={cn(
+                            'h-1.5 w-1.5 shrink-0 rounded-full',
+                            statusColor || project?.color ? '' : 'bg-foreground/30'
+                          )}
+                          style={
+                            statusColor || project?.color
+                              ? { backgroundColor: statusColor ?? project!.color }
+                              : undefined
+                          }
+                        />
+                        <span className="truncate">{task.title}</span>
+                        {task.schedule.due && (
+                          <span className="shrink-0 text-[9px] font-medium text-foreground/35">
+                            {formatDateOnly(task.schedule.due).slice(5)}
+                          </span>
+                        )}
+                      </button>
+                      <div className="absolute right-0 top-1/2 hidden -translate-y-1/2 rounded bg-background group-hover:block">
+                        <ScheduleDatePopover
+                          title={task.title}
+                          labels={metaMap.get(task.id)?.labels}
+                          onApply={(nextLabels) => handleScheduleChange(task.id, nextLabels)}
+                        />
+                      </div>
+                    </div>
                   )
                 })}
                 {overflow > 0 && (

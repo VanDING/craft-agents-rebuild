@@ -46,8 +46,8 @@ export interface ParsedCompoundRoute {
   sourceFilter?: SourceFilter
   /** Automation filter (only for automations navigator) */
   automationFilter?: AutomationFilter
-  /** Sessions presentation mode (only for sessions navigator). 'board' = Kanban view, 'gantt'/'calendar' = schedule views. */
-  viewMode?: 'list' | 'board' | 'gantt' | 'calendar'
+  /** Sessions presentation mode (only for sessions navigator). 'board' = Kanban view, 'calendar' = schedule view. */
+  viewMode?: 'list' | 'board' | 'calendar'
   /** Details page info (null for empty state) */
   details: {
     type: string
@@ -63,7 +63,7 @@ export interface ParsedCompoundRoute {
  * Known prefixes that indicate a compound route
  */
 const COMPOUND_ROUTE_PREFIXES = [
-  'allSessions', 'flagged', 'archived', 'state', 'label', 'view', 'board', 'gantt', 'calendar', 'sources', 'skills', 'automations', 'projects', 'settings'
+  'allSessions', 'flagged', 'archived', 'state', 'label', 'view', 'board', 'calendar', 'sources', 'skills', 'automations', 'projects', 'settings'
 ]
 
 /**
@@ -107,17 +107,6 @@ export function parseCompoundRoute(route: string): ParsedCompoundRoute | null {
       navigator: 'sessions',
       sessionFilter: { kind: 'allSessions' },
       viewMode: 'board',
-      details: null,
-    }
-  }
-
-  // Gantt chart — standalone schedule view of all sessions (same prefix
-  // convention as `board`).
-  if (first === 'gantt') {
-    return {
-      navigator: 'sessions',
-      sessionFilter: { kind: 'allSessions' },
-      viewMode: 'gantt',
       details: null,
     }
   }
@@ -347,9 +336,8 @@ export function buildCompoundRoute(parsed: ParsedCompoundRoute): string {
   }
 
   // Sessions navigator
-  // Board/gantt/calendar are standalone views of all sessions; emit their own prefix.
+  // Board/calendar are standalone views of all sessions; emit their own prefix.
   if (parsed.viewMode === 'board') return 'board'
-  if (parsed.viewMode === 'gantt') return 'gantt'
   if (parsed.viewMode === 'calendar') return 'calendar'
 
   let base: string

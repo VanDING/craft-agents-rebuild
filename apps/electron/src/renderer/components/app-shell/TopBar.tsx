@@ -59,10 +59,10 @@ interface TopBarProps {
   onAddBrowserPanel: () => void
   /** When true, hides controls that don't apply in compact/mobile layout */
   isCompact?: boolean
-  /** Current active view: 'list' (sessions), 'board' (kanban), 'gantt', or 'calendar' */
-  currentView?: 'list' | 'board' | 'gantt' | 'calendar'
-  /** Navigate to a view when the user clicks a list/board/gantt/calendar button */
-  onNavigateToView?: (view: 'list' | 'board' | 'gantt' | 'calendar') => void
+  /** Current active view: 'list' (sessions), 'board' (kanban), or 'calendar' */
+  currentView?: 'list' | 'board' | 'calendar'
+  /** Navigate to a view when the user clicks a list/board/calendar button */
+  onNavigateToView?: (view: 'list' | 'board' | 'calendar') => void
 }
 
 export function TopBar({
@@ -250,14 +250,6 @@ export function TopBar({
               className="h-[22px] w-[22px] rounded-md"
             >
               <Icons.LayoutGrid className="h-3.5 w-3.5" strokeWidth={2} />
-            </TopBarButton>
-            <TopBarButton
-              aria-label={t('kanban.gantt')}
-              isActive={currentView === 'gantt'}
-              onClick={() => onNavigateToView('gantt')}
-              className="h-[22px] w-[22px] rounded-md"
-            >
-              <Icons.GanttChartSquare className="h-3.5 w-3.5" strokeWidth={2} />
             </TopBarButton>
             <TopBarButton
               aria-label={t('kanban.calendar')}
