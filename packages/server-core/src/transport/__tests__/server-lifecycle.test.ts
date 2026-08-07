@@ -8,7 +8,7 @@
 import { describe, it, expect, afterEach } from 'bun:test'
 import WebSocket from 'ws'
 import { WsRpcServer } from '../server'
-import { PROTOCOL_VERSION } from '@craft-agent/shared/protocol'
+import { PROTOCOL_VERSION, MAX_MESSAGE_PAYLOAD_BYTES } from '@craft-agent/shared/protocol'
 
 const TEST_TOKEN = 'test-token-with-enough-entropy-to-pass'
 
@@ -197,7 +197,7 @@ describe('WsRpcServer lifecycle', () => {
 
   // -- maxPayload test --
 
-  it('closes connections that exceed maxPayload (4MiB)', async () => {
+  it(`closes connections that exceed maxPayload (${(MAX_MESSAGE_PAYLOAD_BYTES / 1024 / 1024).toFixed(0)}MiB)`, async () => {
     server = createServer()
     await server.listen()
     const url = `ws://127.0.0.1:${server.port}`
@@ -205,20 +205,23 @@ describe('WsRpcServer lifecycle', () => {
     const { ws } = await handshake(url, TEST_TOKEN)
     openSockets.push(ws)
 
-    // Wire message larger than the server's 4MiB maxPayload (the JSON
-    // envelope adds overhead on top of the 4MiB+1 blob).
+    // Wire message larger than the server's maxPayload (the JSON
+    // envelope adds overhead on top of the maxPayload+1 blob).
     ws.send(JSON.stringify({
       id: crypto.randomUUID(),
       type: 'request',
       channel: 'test:noop',
-      args: [{ blob: 'x'.repeat(4 * 1024 * 1024 + 1) }],
+      args: [{ blob: 'x'.repeat(MAX_MESSAGE_PAYLOAD_BYTES + 1) }],
     }))
 
-    // ws closes with 1009 (message too big) instead of buffering it.
+    // The connection closes: 1009 (message too big) under the real `ws`
+    // package / the M-9 guard, or 1006 (abnormal close, no frame) when the
+    // Bun runtime's native 16MiB message limit kills the socket before the
+    // JS handler ever sees the message.
     const closeCode = await new Promise<number>((resolve) => {
       ws.on('close', (code) => resolve(code))
     })
-    expect(closeCode).toBe(1009)
+    expect([1009, 1006]).toContain(closeCode)
   })
 
   // -- Protocol version tests --

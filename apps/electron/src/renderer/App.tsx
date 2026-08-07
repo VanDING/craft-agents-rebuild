@@ -4,10 +4,10 @@ import { useTheme } from '@/hooks/useTheme'
 import type { ThemeOverrides } from '@config/theme'
 import { useSetAtom, useStore, useAtomValue, useAtom } from 'jotai'
 import type { Session, Workspace, SessionEvent, Message, FileAttachment, StoredAttachment, PermissionRequest, CredentialRequest, CredentialResponse, SetupNeeds, SessionStatus, NewChatActionParams, ContentBadge, LlmConnectionWithStatus, PermissionModeState } from '../shared/types'
+import { generateMessageId, MAX_MESSAGE_PAYLOAD_BYTES, MAX_MESSAGE_PAYLOAD_MARGIN_BYTES } from '../shared/types'
 import type { SessionDraft, DraftAttachmentRef } from '@craft-agent/shared/config'
 import type { SessionOptions, SessionOptionUpdates } from './hooks/useSessionOptions'
 import { defaultSessionOptions, mergeSessionOptions } from './hooks/useSessionOptions'
-import { generateMessageId } from '../shared/types'
 import { useEventProcessor } from './event-processor'
 import type { AgentEvent, Effect } from './event-processor'
 import { AppShell } from '@/components/app-shell/AppShell'
@@ -97,6 +97,21 @@ type SessionListRefreshOptions = {
 }
 
 const SESSION_REFRESH_LOG_ID_LIMIT = 25
+
+/**
+ * UTF-8 byte size of the serialized RPC args (the wire payload minus the
+ * fixed envelope overhead). Used to pre-flight attachment sends: oversized
+ * envelopes make the server close the connection (1009), which otherwise
+ * surfaces as a misleading "Not connected" on the follow-up sendMessage.
+ */
+function wireBytesOf(values: unknown[]): number {
+  let total = 0
+  for (const value of values) {
+    const json = JSON.stringify(value)
+    if (json) total += new TextEncoder().encode(json).length
+  }
+  return total
+}
 
 function summarizeIds(ids: Iterable<string>, limit = SESSION_REFRESH_LOG_ID_LIMIT) {
   const all = Array.from(ids)
@@ -1277,6 +1292,22 @@ export default function App() {
       // returns status 'accepted', not 'queued').
       const sendingMidStream = store.get(sessionAtomFamily(sessionId))?.isProcessing === true
 
+      // Step 0: Pre-flight attachment sizes against the transport limit.
+      // The server closes the connection (1009) for oversized envelopes,
+      // which would make the follow-up sendMessage fail with a misleading
+      // "Not connected". Check the per-attachment store payloads and the
+      // combined sendMessage payload before any RPC is issued.
+      if (attachments?.length) {
+        const maxBytes = MAX_MESSAGE_PAYLOAD_BYTES - MAX_MESSAGE_PAYLOAD_MARGIN_BYTES
+        const storePayloadBytes = (a: FileAttachment) => wireBytesOf(['file:storeAttachment', sessionId, a])
+        const oversizedStore = attachments.find((a) => storePayloadBytes(a) > maxBytes)
+        if (oversizedStore) {
+          throw new Error(
+            `Attachment "${oversizedStore.name}" is too large to send (${(oversizedStore.size / 1024 / 1024).toFixed(1)} MB). Maximum message size is ${Math.floor(maxBytes / 1024 / 1024)} MB.`,
+          )
+        }
+      }
+
       // Step 1: Store attachments and get persistent metadata
       let storedAttachments: StoredAttachment[] | undefined
       let processedAttachments: FileAttachment[] | undefined
@@ -1414,6 +1445,16 @@ export default function App() {
       }))
 
       // Step 6: Send to Claude with processed attachments + stored attachments for persistence
+      // Pre-flight the combined envelope: all attachments travel in one request here.
+      if (processedAttachments?.length || storedAttachments?.length) {
+        const maxBytes = MAX_MESSAGE_PAYLOAD_BYTES - MAX_MESSAGE_PAYLOAD_MARGIN_BYTES
+        const sendBytes = wireBytesOf(['sessions:sendMessage', sessionId, message, processedAttachments, storedAttachments, {}])
+        if (sendBytes > maxBytes) {
+          throw new Error(
+            `Message with attachments is too large to send (${Math.ceil(sendBytes / 1024 / 1024)} MB). Maximum message size is ${Math.floor(maxBytes / 1024 / 1024)} MB — attach fewer or smaller files.`,
+          )
+        }
+      }
       await window.electronAPI.sendMessage(sessionId, message, processedAttachments, storedAttachments, {
         skillSlugs,
         badges: badges.length > 0 ? badges : undefined,

@@ -18,6 +18,7 @@ import {
   EVENT_BUFFER_MAX_SIZE,
   EVENT_BUFFER_TTL_MS,
   DISCONNECTED_CLIENT_TTL_MS,
+  MAX_MESSAGE_PAYLOAD_BYTES,
   isErrorCode,
   type MessageEnvelope,
   type PushTarget,
@@ -114,16 +115,6 @@ export interface WsRpcServerOptions {
 }
 
 const transportLog = createLogger('ws-rpc-server')
-
-/**
- * M-9: maximum accepted WebSocket message size (4 MiB).
- *
- * In ws 8.x the WebSocketServer option propagates to every connection it
- * accepts — it is applied at `ws.setSocket()` (handshake time), so no
- * per-connection knob is needed. Oversized messages close the connection
- * with close code 1009 instead of being buffered in memory.
- */
-const MAX_MESSAGE_PAYLOAD_BYTES = 4 * 1024 * 1024
 
 // ---------------------------------------------------------------------------
 // WsRpcServer
@@ -402,11 +393,13 @@ export class WsRpcServer implements RpcServer {
 
     ws.on('message', async (raw) => {
       // M-9: hard message-size cap, enforced here in addition to the
-      // WebSocketServer `maxPayload` option because Bun's `ws` compat shim
-      // ignores the server option (it delivers oversized messages to this
-      // handler instead of closing). Under the real `ws` package this guard
-      // is dead code — the receiver closes the connection with 1009 before
-      // the message is ever emitted.
+      // WebSocketServer `maxPayload` option. Under the real `ws` package the
+      // receiver closes the connection with 1009 before the message is ever
+      // emitted, making this guard dead code. The Bun runtime's `ws` compat
+      // shim ignores the server option: messages up to its native 16MiB
+      // limit reach this handler (guarded here), anything larger kills the
+      // socket with an abnormal close (1006) before delivery — the client's
+      // pre-flight check keeps our own requests under that limit.
       const messageSize = typeof raw === 'string'
         ? Buffer.byteLength(raw)
         : Array.isArray(raw)

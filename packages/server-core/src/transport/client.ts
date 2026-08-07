@@ -13,6 +13,8 @@ import {
   PROTOCOL_VERSION,
   REQUEST_TIMEOUT_MS,
   SEQUENCE_ACK_INTERVAL_MS,
+  MAX_MESSAGE_PAYLOAD_BYTES,
+  MAX_MESSAGE_PAYLOAD_MARGIN_BYTES,
   isErrorCode,
   type ErrorCode,
   type MessageEnvelope,
@@ -198,7 +200,30 @@ export class WsRpcClient implements RpcClient {
         args,
       }
 
-      if (!this.trySendEnvelope(this.ws, envelope)) {
+      // Serialize once and pre-flight the size: the server closes the
+      // connection with 1009 for oversized messages (see M-9), which would
+      // surface as a confusing "Not connected" on the NEXT call. Fail here
+      // with a clear error instead.
+      let wire: string
+      try {
+        wire = serializeEnvelope(envelope)
+      } catch (err) {
+        this.pending.delete(id)
+        clearTimeout(timeout)
+        reject(err instanceof Error ? err : new Error('Failed to serialize request'))
+        return
+      }
+      const wireBytes = new TextEncoder().encode(wire).length
+      if (wireBytes > MAX_MESSAGE_PAYLOAD_BYTES) {
+        this.pending.delete(id)
+        clearTimeout(timeout)
+        reject(new Error(
+          `Request payload too large (${wireBytes} bytes; transport limit is ${MAX_MESSAGE_PAYLOAD_BYTES} bytes, channel: ${channel})`,
+        ))
+        return
+      }
+
+      if (!this.trySendEnvelope(this.ws, envelope, wire)) {
         this.pending.delete(id)
         clearTimeout(timeout)
         reject(new Error(`Not connected (channel: ${channel})`))
@@ -809,12 +834,16 @@ export class WsRpcClient implements RpcClient {
     }, 10_000)
   }
 
-  /** Best-effort send that skips closing/closed sockets and swallows send races. */
-  private trySendEnvelope(ws: WebSocket | null, envelope: MessageEnvelope): boolean {
+  /**
+   * Best-effort send that skips closing/closed sockets and swallows send races.
+   * `wire` is the pre-serialized envelope (avoids serializing twice); when
+   * omitted the envelope is serialized here (handshake/ack paths).
+   */
+  private trySendEnvelope(ws: WebSocket | null, envelope: MessageEnvelope, wire?: string): boolean {
     if (!ws || ws.readyState !== ws.OPEN) return false
 
     try {
-      ws.send(serializeEnvelope(envelope))
+      ws.send(wire ?? serializeEnvelope(envelope))
       return true
     } catch {
       return false
@@ -855,6 +884,14 @@ export class WsRpcClient implements RpcClient {
     this.readyPromise = null
   }
 
+  /**
+   * Reconnect backoffs at or below this delay are treated as transient
+   * blips: calls wait for the attempt instead of failing with
+   * "Not connected". Longer backoffs mean the server is likely down —
+   * fail fast so the UI can react.
+   */
+  private static readonly FAST_RECONNECT_WINDOW_MS = 5_000
+
   private async ensureConnected(channel: string): Promise<void> {
     if (this.destroyed) {
       throw new Error(`Client destroyed (channel: ${channel})`)
@@ -866,20 +903,53 @@ export class WsRpcClient implements RpcClient {
     // canceling the backoff timer and forcing a new attempt. This prevents
     // concurrent RPC calls from resetting the exponential backoff.
     if (this.readyPromise || this.reconnectTimer) {
-      const ready = this.readyPromise
-      if (!ready) {
-        // Reconnect timer is pending but no readyPromise yet — wait for the
-        // timer to fire and produce one. Throw so caller can retry.
+      if (this.readyPromise) {
+        const ready = this.readyPromise
+        try {
+          await ready
+        } catch (error) {
+          throw error instanceof Error ? error : new Error(`Not connected (channel: ${channel})`)
+        }
+        if (!this.connected || !this.ws) {
+          throw new Error(`Not connected (channel: ${channel})`)
+        }
+        return
+      }
+
+      // Reconnect timer pending but no readyPromise yet. A short backoff is a
+      // transient blip — wait for the attempt to run instead of failing the
+      // call. A long backoff means the server is likely down: fail fast.
+      const state = this.getConnectionState()
+      if ((state.nextRetryInMs ?? 0) > WsRpcClient.FAST_RECONNECT_WINDOW_MS) {
         throw this.connectError ?? new Error(`Not connected (channel: ${channel})`)
       }
-      try {
-        await ready
-      } catch (error) {
-        throw error instanceof Error ? error : new Error(`Not connected (channel: ${channel})`)
-      }
-      if (!this.connected || !this.ws) {
-        throw new Error(`Not connected (channel: ${channel})`)
-      }
+
+      const { promise, resolve, reject } = Promise.withResolvers<void>()
+      let off: () => void = () => {}
+      const timer = setTimeout(() => {
+        off()
+        reject(this.connectError ?? new Error(`Not connected (channel: ${channel})`))
+      }, this.requestTimeout)
+      off = this.onConnectionStateChanged((next) => {
+        if (this.connected && this.ws) {
+          clearTimeout(timer)
+          off()
+          resolve()
+          return
+        }
+        if (this.destroyed) {
+          clearTimeout(timer)
+          off()
+          reject(new Error('Client destroyed'))
+          return
+        }
+        if (next.status === 'reconnecting' && (next.nextRetryInMs ?? 0) > WsRpcClient.FAST_RECONNECT_WINDOW_MS) {
+          clearTimeout(timer)
+          off()
+          reject(this.connectError ?? new Error(`Not connected (channel: ${channel})`))
+        }
+      })
+      await promise
       return
     }
 

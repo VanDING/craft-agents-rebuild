@@ -8,7 +8,7 @@
 import { describe, test, expect, afterEach } from 'bun:test'
 import { randomUUID } from 'node:crypto'
 import { WebSocket } from 'ws'
-import { EVENT_BUFFER_MAX_SIZE, type MessageEnvelope } from '@craft-agent/shared/protocol'
+import { EVENT_BUFFER_MAX_SIZE, MAX_MESSAGE_PAYLOAD_BYTES, type MessageEnvelope } from '@craft-agent/shared/protocol'
 import { WsRpcServer } from '../transport/server'
 import { WsRpcClient } from '../transport/client'
 import { serializeEnvelope } from '../transport/codec'
@@ -864,5 +864,21 @@ describe('invokeClient', () => {
 
     const result = await server.invokeClient(clientId, 'client:async', 20)
     expect(result).toBe('done')
+  })
+})
+
+describe('request payload pre-flight', () => {
+  test('invoke with an oversized payload rejects with a clear error instead of killing the connection', async () => {
+    const { server, client } = await createPair()
+    server.handle('echo:noop', async () => 'ok')
+
+    // Payload that would exceed MAX_MESSAGE_PAYLOAD_BYTES once serialized.
+    const oversized = 'x'.repeat(MAX_MESSAGE_PAYLOAD_BYTES)
+
+    await expect(client.invoke('echo:noop', oversized)).rejects.toThrow(/Request payload too large/)
+
+    // The connection must survive so follow-up calls keep working.
+    const followUp = await client.invoke('echo:noop', 'still connected')
+    expect(followUp).toBe('ok')
   })
 })

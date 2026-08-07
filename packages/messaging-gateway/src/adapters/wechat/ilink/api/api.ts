@@ -154,6 +154,19 @@ export function buildBaseInfo(): BaseInfo {
 // ── Low-level fetch helpers ────────────────────────────────────────────────
 
 /**
+ * Join a gateway base URL and an API path with exactly one slash.
+ *
+ * The stored base URL has no trailing slash (`https://ilinkai.weixin.qq.com`)
+ * while endpoint paths have no leading slash (`ilink/bot/getupdates`);
+ * naive string concatenation produced an invalid host
+ * (`https://ilinkai.weixin.qq.comilink/...`) whose DNS lookup fails, surfacing
+ * as undici's `fetch failed`. Normalizing both sides makes either form safe.
+ */
+export function joinApiUrl(baseUrl: string, endpoint: string): string {
+  return `${baseUrl.replace(/\/+$/, '')}/${endpoint.replace(/^\/+/, '')}`
+}
+
+/**
  * Assemble the common iLink HTTP headers used by every request.
  *
  * Headers set:
@@ -200,7 +213,7 @@ export async function apiGetFetch(params: {
   timeoutMs?: number;
   label?: string;
 }): Promise<string> {
-  const url = `${params.baseUrl}${params.endpoint}`;
+  const url = joinApiUrl(params.baseUrl, params.endpoint);
   const routeTag = loadConfigRouteTag();
   const headers = buildCommonHeaders(undefined, routeTag);
   const label = params.label ?? `GET ${params.endpoint}`;
@@ -245,7 +258,7 @@ export async function apiPostFetch(params: {
   label?: string;
   abortSignal?: AbortSignal;
 }): Promise<string> {
-  const url = `${params.baseUrl}${params.endpoint}`;
+  const url = joinApiUrl(params.baseUrl, params.endpoint);
   const routeTag = loadConfigRouteTag();
   const headers = buildCommonHeaders(params.token, routeTag);
   const label = params.label ?? `POST ${params.endpoint}`;
