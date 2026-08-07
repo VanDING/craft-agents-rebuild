@@ -292,6 +292,13 @@ export const RPC_CHANNELS = {
     DELETE: 'labels:delete',
     CHANGED: 'labels:changed',
   },
+  calendar: {
+    LIST: 'calendar:list',
+    CREATE: 'calendar:create',
+    UPDATE: 'calendar:update',
+    DELETE: 'calendar:delete',
+    CHANGED: 'calendar:changed',
+  },
   views: {
     LIST: 'views:list',
     SAVE: 'views:save',

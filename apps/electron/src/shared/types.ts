@@ -539,6 +539,13 @@ export interface ElectronAPI {
   deleteLabel(workspaceId: string, labelId: string): Promise<{ stripped: number }>
   onLabelsChanged(callback: (workspaceId: string) => void): () => void
 
+  // Calendar (workspace-scoped standalone schedule entries)
+  listCalendarEntries(workspaceId: string): Promise<import('@craft-agent/shared/protocol').CalendarEntry[]>
+  createCalendarEntry(workspaceId: string, input: import('@craft-agent/shared/protocol').CalendarEntryInput): Promise<import('@craft-agent/shared/protocol').CalendarEntry>
+  updateCalendarEntry(workspaceId: string, entryId: string, input: import('@craft-agent/shared/protocol').CalendarEntryInput): Promise<import('@craft-agent/shared/protocol').CalendarEntry>
+  deleteCalendarEntry(workspaceId: string, entryId: string): Promise<void>
+  onCalendarEntriesChanged(callback: (workspaceId: string) => void): () => void
+
   // LLM connections change listener
   onLlmConnectionsChanged(callback: () => void): () => void
 

@@ -833,3 +833,35 @@ export interface DeepLinkNavigation {
   action?: string
   actionParams?: Record<string, string>
 }
+
+// ---------------------------------------------------------------------------
+// Calendar entries (standalone schedule items, not linked to sessions)
+// ---------------------------------------------------------------------------
+
+/**
+ * A standalone calendar entry (schedule / note). Lives in the workspace's
+ * `calendar/entries.json` and is independent of any session — clicking
+ * "create conversation" spawns a session from it on demand.
+ */
+export interface CalendarEntry {
+  id: string
+  /** Entry title (also used as the initial prompt when creating a conversation). */
+  title: string
+  /** Local calendar day (YYYY-MM-DD). */
+  date: string
+  /** Optional start time (HH:MM). Absent = all-day entry. */
+  time?: string
+  /** Optional note body. */
+  note?: string
+  createdAt: number
+  updatedAt: number
+}
+
+/** Payload for creating/updating a calendar entry. */
+export interface CalendarEntryInput {
+  title: string
+  /** Local calendar day (YYYY-MM-DD). */
+  date: string
+  time?: string
+  note?: string
+}

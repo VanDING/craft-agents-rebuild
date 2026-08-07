@@ -287,6 +287,33 @@ export const mockElectronAPI = {
     console.log('[Playground] sessionCommand called:', sessionId, command)
   },
 
+  // Calendar entries (standalone schedule items)
+  listCalendarEntries: async (workspaceId: string) => {
+    console.log('[Playground] listCalendarEntries called:', workspaceId)
+    return [
+      { id: 'n1', title: '团队周会', date: '2026-08-06', time: '10:00', note: '同步本周进展与阻塞项。', createdAt: 1, updatedAt: 1 },
+      { id: 'n2', title: '发布前检查清单', date: '2026-08-14', time: '', note: '冒烟测试 / 更新版本号 / 写 release notes', createdAt: 1, updatedAt: 1 },
+      { id: 'n3', title: '与设计团队过稿', date: '2026-08-05', time: '14:30', note: '新看板视觉稿评审。', createdAt: 1, updatedAt: 1 },
+      { id: 'n0', title: '发布日部署窗口', date: '2026-08-05', time: '', note: '17:00 前完成发布；保留回滚通道。', createdAt: 1, updatedAt: 1 },
+    ]
+  },
+  createCalendarEntry: async (workspaceId: string, input: unknown) => {
+    console.log('[Playground] createCalendarEntry called:', workspaceId, input)
+    return { ...(input as object), id: 'mock-' + Date.now(), createdAt: Date.now(), updatedAt: Date.now() }
+  },
+  updateCalendarEntry: async (workspaceId: string, entryId: string, input: unknown) => {
+    console.log('[Playground] updateCalendarEntry called:', workspaceId, entryId, input)
+    return { ...(input as object), id: entryId, createdAt: Date.now(), updatedAt: Date.now() }
+  },
+  deleteCalendarEntry: async (workspaceId: string, entryId: string) => {
+    console.log('[Playground] deleteCalendarEntry called:', workspaceId, entryId)
+  },
+  onCalendarEntriesChanged: (callback: (workspaceId: string) => void) => {
+    console.log('[Playground] onCalendarEntriesChanged subscribed')
+    void callback
+    return () => {}
+  },
+
   browserPane: {
     focus: async (instanceId: string) => {
       console.log('[Playground] browserPane.focus called:', instanceId)

@@ -259,6 +259,13 @@ export const CHANNEL_MAP = {
   deleteLabel: invoke(RPC_CHANNELS.labels.DELETE),
   onLabelsChanged: listener(RPC_CHANNELS.labels.CHANGED),
 
+  // Calendar (standalone schedule entries)
+  listCalendarEntries: invoke(RPC_CHANNELS.calendar.LIST),
+  createCalendarEntry: invoke(RPC_CHANNELS.calendar.CREATE),
+  updateCalendarEntry: invoke(RPC_CHANNELS.calendar.UPDATE),
+  deleteCalendarEntry: invoke(RPC_CHANNELS.calendar.DELETE),
+  onCalendarEntriesChanged: listener(RPC_CHANNELS.calendar.CHANGED),
+
   // LLM connections change listener
   onLlmConnectionsChanged: listener(RPC_CHANNELS.llmConnections.CHANGED),
 

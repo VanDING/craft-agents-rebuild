@@ -395,6 +395,13 @@ export const REMOTE_ELIGIBLE_CHANNELS = new Set<string>([
   RPC_CHANNELS.labels.DELETE,
   RPC_CHANNELS.labels.CHANGED,
 
+  // calendar — workspace schedule entries
+  RPC_CHANNELS.calendar.LIST,
+  RPC_CHANNELS.calendar.CREATE,
+  RPC_CHANNELS.calendar.UPDATE,
+  RPC_CHANNELS.calendar.DELETE,
+  RPC_CHANNELS.calendar.CHANGED,
+
   // views — workspace UI views
   RPC_CHANNELS.views.LIST,
   RPC_CHANNELS.views.SAVE,

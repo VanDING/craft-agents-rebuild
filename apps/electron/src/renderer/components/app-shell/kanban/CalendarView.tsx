@@ -1,16 +1,20 @@
 /**
- * CalendarView — read-only month grid of all scheduled sessions.
+ * CalendarView — schedule view over standalone calendar entries.
  *
- * Each day cell lists the tasks whose `due` label falls on that date (project
- * color dot, overdue highlight). Clicking a task opens the session (same
- * scoped navigation as the board); the inline schedule editor shares the
- * label merge layer with the Gantt view. The Task editor overlay is shared
- * via the global kanbanEditorTargetAtom.
+ * Three view modes (Day / Week / Month) over workspace-level calendar
+ * entries (title / date / optional time / optional note), which are
+ * independent of sessions. Conversations live in the list/board — the
+ * calendar shows schedule items only; each entry card offers "create
+ * conversation" to spawn a session from it on demand.
+ *
+ * Day/Week render entries inline (full info, no preview popup); Month uses
+ * compact chips with an anchored day-list popover. The create/edit dialog is
+ * centered. Visual language follows the app: white cards, 1px hairline
+ * borders, brand-purple accent, translucent accent color blocks.
  */
 
 import * as React from 'react'
 import { Plus } from 'lucide-react'
-import { useAtom, useAtomValue, useSetAtom } from 'jotai'
 import { useTranslation } from 'react-i18next'
 import {
   addDays,
@@ -23,360 +27,672 @@ import {
   subMonths,
 } from 'date-fns'
 import { useAppShellContext } from '@/context/AppShellContext'
-import { sessionMetaMapAtom, updateSessionMetaAtom } from '@/atoms/sessions'
-import { projectsAtom } from '@/atoms/projects'
-import { kanbanEditorTargetAtom } from '@/atoms/kanban'
 import { useNavigation } from '@/contexts/NavigationContext'
-import { useLabels } from '@/hooks/useLabels'
-import { getSessionTitle } from '@/utils/session'
-import { resolveTaskScopeLabelId } from '@craft-agent/shared/labels'
-import { getStateColor } from '@/config/session-status-config'
-import { DEFAULT_MODEL } from '@config/models'
+import { useCalendarEntries } from '@/hooks/useCalendarEntries'
 import { cn } from '@/lib/utils'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogClose,
+} from '@/components/ui/dialog'
+import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { TaskEditor } from './TaskEditor'
-import { buildModelCatalog } from './model-catalog'
-import { ScheduleDatePopover } from './ScheduleDatePopover'
-import {
-  deriveScheduledTaskRows,
-  formatDateOnly,
-  isOverdue,
-  missingScheduleLabels,
-  startOfDay,
-  type ScheduledTaskRow,
-} from './schedule'
+import type { CalendarEntry, CalendarEntryInput } from '@craft-agent/shared/protocol'
 
-// Header order matches the grid's weekStartsOn: 1 (Monday-first).
+type ViewMode = 'day' | 'week' | 'month'
+
 const WEEKDAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
 const MAX_TASKS_PER_CELL = 3
 
+const HOUR_START = 8
+const HOUR_END = 20
+const HOUR_PX_DAY = 56
+const HOUR_PX_WEEK = 32
+
+function dayKey(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+function parseEntryDate(date: string): Date {
+  const [y, m, d] = date.split('-').map(Number)
+  return new Date(y, (m ?? 1) - 1, d ?? 1)
+}
+
+/** Translucent accent block for entries (calendar shows schedules only). */
+function entryBlock(alpha: number): string {
+  return `color-mix(in srgb, var(--accent) ${Math.round(alpha * 100)}%, transparent)`
+}
+
+function isTodayEntryDay(entry: CalendarEntry, today: Date): boolean {
+  return entry.date === dayKey(today)
+}
+
+function nowMinutes(): number {
+  const n = new Date()
+  return n.getHours() * 60 + n.getMinutes()
+}
+
+interface EntryFormState {
+  id?: string
+  title: string
+  date: string
+  time: string
+  note: string
+}
+
 export function CalendarView() {
-  const { activeWorkspaceId, llmConnections, onJumpToTaskSessions, sessionStatuses } = useAppShellContext()
+  const { activeWorkspaceId, onCreateSession } = useAppShellContext()
   const { t } = useTranslation()
-  const metaMap = useAtomValue(sessionMetaMapAtom)
-  const projects = useAtomValue(projectsAtom)
-  const updateSessionMeta = useSetAtom(updateSessionMetaAtom)
   const { navigateToSession } = useNavigation()
-  const [editorTarget, setEditorTarget] = useAtom(kanbanEditorTargetAtom)
+  const { entries, create, update, remove } = useCalendarEntries(activeWorkspaceId ?? null)
+  const [view, setView] = React.useState<ViewMode>('month')
   const [cursor, setCursor] = React.useState(() => startOfMonth(new Date()))
   const [selectedDay, setSelectedDay] = React.useState<Date | null>(null)
-  const { labels: labelConfigs, flatLabels, isLoading: labelsLoading } = useLabels(activeWorkspaceId ?? null)
+  const [formOpen, setFormOpen] = React.useState(false)
+  const [form, setForm] = React.useState<EntryFormState>({ title: '', date: '', time: '', note: '' })
 
-  // Auto-provision the reserved schedule labels on first use. Matched by
-  // display name (not id) and attempted exactly once per mount after labels
-  // finish loading, so pre-existing labels are respected and no duplicate
-  // slugs are ever minted.
-  const provisionedRef = React.useRef(false)
-  React.useEffect(() => {
-    if (!activeWorkspaceId || labelsLoading || provisionedRef.current) return
-    provisionedRef.current = true
-    for (const def of missingScheduleLabels(flatLabels)) {
-      void window.electronAPI.createLabel(activeWorkspaceId, { name: def.name, valueType: 'date' })
+  const today = new Date()
+
+  // -------------------------------------------------------------------------
+  // Entry helpers
+  // -------------------------------------------------------------------------
+
+  const entriesFor = React.useCallback(
+    (day: Date): CalendarEntry[] => {
+      const key = dayKey(day)
+      return entries.filter((e) => e.date === key)
+    },
+    [entries],
+  )
+
+  const openCreate = React.useCallback((date: Date) => {
+    setForm({ title: '', date: dayKey(date), time: '', note: '' })
+    setFormOpen(true)
+  }, [])
+
+  const openEdit = React.useCallback((entry: CalendarEntry) => {
+    setForm({ id: entry.id, title: entry.title, date: entry.date, time: entry.time ?? '', note: entry.note ?? '' })
+    setFormOpen(true)
+  }, [])
+
+  const submitForm = React.useCallback(async () => {
+    const title = form.title.trim()
+    if (!title || !form.date) return
+    const input: CalendarEntryInput = {
+      title,
+      date: form.date,
+      time: form.time.trim() || undefined,
+      note: form.note.trim() || undefined,
     }
-  }, [activeWorkspaceId, flatLabels, labelsLoading])
+    if (form.id) await update(form.id, input)
+    else await create(input)
+    setFormOpen(false)
+  }, [form, create, update])
 
-  const projectsById = React.useMemo(() => {
-    const map = new Map<string, { id: string; name: string; color: string }>()
-    for (const project of projects) {
-      const color = project.config.color
-      if (!color) continue
-      map.set(project.config.id, { id: project.config.id, name: project.config.name, color })
-    }
-    return map
-  }, [projects])
+  const handleDelete = React.useCallback(
+    (entryId: string) => {
+      void remove(entryId)
+    },
+    [remove],
+  )
 
-  const rows = React.useMemo(() => deriveScheduledTaskRows(metaMap.values()), [metaMap])
-
-  // Every session appears in the grid: scheduled ones land on their due date,
-  // unscheduled ones on their creation date — so the calendar is the full
-  // picture of conversations, colored by workflow status (like the board).
-  const tasksByDay = React.useMemo(() => {
-    const map = new Map<string, ScheduledTaskRow[]>()
-    for (const row of rows) {
-      const anchor = row.schedule.due ?? (row.createdAt ? new Date(row.createdAt) : new Date())
-      const key = formatDateOnly(startOfDay(anchor))
-      const bucket = map.get(key)
-      if (bucket) bucket.push(row)
-      else map.set(key, [row])
-    }
-    return map
-  }, [rows])
-
-  const openSessionScoped = React.useCallback(
-    (sessionId: string, projectFallbackId?: string) => {
-      const meta = metaMap.get(sessionId)
-      const scopeLabelId = resolveTaskScopeLabelId(meta?.labels, labelConfigs)
-      if (scopeLabelId && onJumpToTaskSessions) {
-        onJumpToTaskSessions(sessionId, {
-          labelId: scopeLabelId,
-          projectId: meta?.projectId ?? projectFallbackId,
+  const createConversation = React.useCallback(
+    async (entry: CalendarEntry) => {
+      if (!activeWorkspaceId) return
+      try {
+        const session = await onCreateSession(activeWorkspaceId, {
+          name: entry.title,
+          ...(entry.note ? {} : {}),
         })
-        return
+        if (session?.id) navigateToSession(session.id)
+      } catch (err) {
+        console.error('[CalendarView] Failed to create conversation:', err)
       }
-      navigateToSession(sessionId)
     },
-    [metaMap, labelConfigs, onJumpToTaskSessions, navigateToSession]
+    [activeWorkspaceId, onCreateSession, navigateToSession],
   )
 
-  const handleEditTask = React.useCallback(
-    (taskId: string) => {
-      const meta = metaMap.get(taskId)
-      setEditorTarget({
-        mode: 'edit',
-        sessionId: taskId,
-        taskSlug: meta?.taskSlug,
-        initialTitle: meta ? getSessionTitle(meta) : undefined,
-      })
-    },
-    [metaMap, setEditorTarget]
+  // -------------------------------------------------------------------------
+  // Navigation
+  // -------------------------------------------------------------------------
+
+  const goPrev = React.useCallback(() => {
+    setCursor((prev) => {
+      if (view === 'day') return new Date(prev.getFullYear(), prev.getMonth(), prev.getDate() - 1)
+      if (view === 'week') return new Date(prev.getTime() - 7 * 86_400_000)
+      return new Date(prev.getFullYear(), prev.getMonth() - 1, 1)
+    })
+  }, [view])
+
+  const goNext = React.useCallback(() => {
+    setCursor((prev) => {
+      if (view === 'day') return new Date(prev.getFullYear(), prev.getMonth(), prev.getDate() + 1)
+      if (view === 'week') return new Date(prev.getTime() + 7 * 86_400_000)
+      return new Date(prev.getFullYear(), prev.getMonth() + 1, 1)
+    })
+  }, [view])
+
+  const goToday = React.useCallback(() => {
+    setCursor(new Date())
+  }, [])
+
+  const switchView = React.useCallback((next: ViewMode) => {
+    setView(next)
+    // Day/week views open on today so the current schedule is in view.
+    if (next !== 'month') setCursor(new Date())
+  }, [])
+
+  const title = React.useMemo(() => {
+    if (view === 'day') return format(cursor, 'yyyy年M月d日')
+    if (view === 'week') return format(cursor, 'yyyy年M月')
+    return format(cursor, 'yyyy年M月')
+  }, [view, cursor])
+
+  // -------------------------------------------------------------------------
+  // Shared card chrome
+  // -------------------------------------------------------------------------
+
+  const entryActions = (entry: CalendarEntry, compact?: boolean) => (
+    <div className={cn('flex flex-none items-center gap-1', compact && 'flex-col gap-1')}>
+      <Button
+        size="sm"
+        variant="outline"
+        className="h-6 px-2 text-[11px] font-semibold"
+        onClick={(e) => {
+          e.stopPropagation()
+          void createConversation(entry)
+        }}
+      >
+        {t('schedule.createChat')}
+      </Button>
+      <Button
+        size="sm"
+        variant="outline"
+        className="h-6 px-2 text-[11px] font-semibold text-destructive hover:text-destructive"
+        onClick={(e) => {
+          e.stopPropagation()
+          handleDelete(entry.id)
+        }}
+      >
+        {t('schedule.delete')}
+      </Button>
+    </div>
   )
 
-  const handleScheduleChange = React.useCallback(
-    (taskId: string, nextLabels: string[]) => {
-      updateSessionMeta(taskId, { labels: nextLabels })
-      void window.electronAPI.sessionCommand(taskId, { type: 'setLabels', labels: nextLabels })
-    },
-    [updateSessionMeta]
-  )
+  const entryBlockStyle = (alpha: number): React.CSSProperties => ({ backgroundColor: entryBlock(alpha) })
 
-  const { groups: subtaskModelGroups, modelToConnection } = React.useMemo(
-    () => buildModelCatalog(llmConnections),
-    [llmConnections]
-  )
-  const defaultSubtaskModel = modelToConnection.has(DEFAULT_MODEL) ? DEFAULT_MODEL : undefined
+  // -------------------------------------------------------------------------
+  // Day view
+  // -------------------------------------------------------------------------
 
-  if (editorTarget && activeWorkspaceId) {
+  const renderDay = () => {
+    const day = cursor
+    const key = dayKey(day)
+    const timed = entries.filter((e) => e.date === key && e.time)
+    const allDay = entries.filter((e) => e.date === key && !e.time)
+    const now = nowMinutes()
+
     return (
-      <TaskEditor
-        workspaceId={activeWorkspaceId}
-        target={editorTarget}
-        onClose={() => setEditorTarget(null)}
-        onOpenSession={
-          editorTarget.mode === 'edit'
-            ? () => {
-                setEditorTarget(null)
-                navigateToSession(editorTarget.sessionId)
-              }
-            : undefined
-        }
-        onOpenChildSession={(sessionId) => {
-          setEditorTarget(null)
-          navigateToSession(sessionId)
-        }}
-        onCreated={({ sessionId, taskLabelId }) => {
-          setEditorTarget(null)
-          if (taskLabelId && onJumpToTaskSessions) {
-            onJumpToTaskSessions(sessionId, { labelId: taskLabelId })
-          } else {
-            navigateToSession(sessionId)
-          }
-        }}
-        modelGroups={subtaskModelGroups}
-        modelToConnection={modelToConnection}
-        defaultModel={defaultSubtaskModel ?? DEFAULT_MODEL}
-      />
+      <div className="flex h-full flex-col overflow-hidden">
+        <div className="px-4 pb-2">
+          <div className="text-[15px] font-semibold">{format(day, 'yyyy年M月d日')}</div>
+          <div className="text-xs text-foreground-dimmed">{t('schedule.weekdayFull', { day: format(day, 'EEEE') })}</div>
+        </div>
+
+        {/* All-day strip */}
+        <div className="flex flex-col gap-1.5 border-b border-border/60 px-4 pb-2">
+          <div className="text-[10.5px] font-bold uppercase tracking-wide text-foreground/45">
+            {t('schedule.allDay')}
+          </div>
+          {allDay.length === 0 && (
+            <div className="text-xs text-foreground/45">{t('schedule.noAllDay')}</div>
+          )}
+          {allDay.map((entry) => (
+            <div
+              key={entry.id}
+              className="flex items-center gap-2.5 rounded-lg px-2.5 py-2"
+              style={entryBlockStyle(0.16)}
+            >
+              <span className="w-[76px] flex-none text-[11px] font-bold tabular-nums opacity-80">
+                {t('schedule.allDay')}
+              </span>
+              <span className="min-w-0 flex-1 truncate text-[13px] font-semibold">{entry.title}</span>
+              {entry.note && (
+                <span className="min-w-0 flex-[1.2] truncate text-xs opacity-70">{entry.note}</span>
+              )}
+              {entryActions(entry)}
+            </div>
+          ))}
+        </div>
+
+        {/* Time grid */}
+        <div className="min-h-0 flex-1 overflow-auto">
+          <div className="flex min-h-full">
+            <div className="relative w-[52px] flex-none">
+              {Array.from({ length: HOUR_END - HOUR_START + 1 }, (_, i) => {
+                const h = HOUR_START + i
+                return (
+                  <div
+                    key={h}
+                    className="absolute right-2 -translate-y-1/2 text-[10.5px] tabular-nums text-foreground/45"
+                    style={{ top: (h === HOUR_START ? 14 : (h - HOUR_START) * HOUR_PX_DAY) }}
+                  >
+                    {String(h).padStart(2, '0')}:00
+                  </div>
+                )
+              })}
+            </div>
+            <div className="relative flex-1 border-l border-border/60">
+              {Array.from({ length: HOUR_END - HOUR_START + 1 }, (_, i) => {
+                const h = HOUR_START + i
+                return (
+                  <div
+                    key={h}
+                    className="absolute inset-x-0 border-t border-border/60"
+                    style={{ top: (h - HOUR_START) * HOUR_PX_DAY }}
+                  />
+                )
+              })}
+              {/* Now line */}
+              {now >= HOUR_START * 60 && now <= HOUR_END * 60 && (
+                <div
+                  className="absolute inset-x-0 z-[5] border-t-2 border-destructive"
+                  style={{ top: ((now - HOUR_START * 60) / 60) * HOUR_PX_DAY }}
+                />
+              )}
+              {timed.map((entry) => {
+                const [hh, mm] = entry.time!.split(':').map(Number)
+                const top = ((hh + mm / 60 - HOUR_START) * HOUR_PX_DAY)
+                const endH = String((hh + 1) % 24).padStart(2, '0')
+                return (
+                  <div
+                    key={entry.id}
+                    className="absolute left-1.5 right-2.5 flex items-center gap-2.5 rounded-lg px-2.5 py-1.5"
+                    style={{ top, height: 56, ...entryBlockStyle(0.22) }}
+                  >
+                    <span className="w-[76px] flex-none text-[11px] font-bold tabular-nums opacity-80">
+                      {entry.time}–{endH}:{String(mm).padStart(2, '0')}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[12.5px] font-semibold">{entry.title}</span>
+                      {entry.note && (
+                        <span className="block truncate text-[11px] opacity-70">{entry.note}</span>
+                      )}
+                    </span>
+                    {entryActions(entry)}
+                  </div>
+                )
+              })}
+              {timed.length === 0 && (
+                <div className="absolute left-2 top-2 text-xs text-foreground/45">
+                  {t('schedule.noTimed')}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
     )
   }
 
-  const gridStart = startOfWeek(cursor, { weekStartsOn: 1 })
-  const gridDays = Array.from({ length: 42 }, (_, i) => addDays(gridStart, i))
-  const today = startOfDay(new Date())
+  // -------------------------------------------------------------------------
+  // Week view
+  // -------------------------------------------------------------------------
 
-  return (
-    <div className="flex h-full flex-col bg-background">
-      <div className="flex items-center justify-between gap-2 border-b border-border/50 px-4 py-2.5">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="text-sm font-medium">{t('schedule.calendarTitle')}</span>
-          <span className="text-[13px] font-semibold text-foreground/85">{format(cursor, 'MMMM yyyy')}</span>
-          <div className="flex items-center gap-0.5">
-            <button
-              type="button"
-              onClick={() => setCursor((prev) => subMonths(prev, 1))}
-              aria-label={t('schedule.prevMonth')}
-              className="rounded-md px-1.5 py-0.5 text-foreground/50 transition-colors hover:bg-foreground/[0.05] hover:text-foreground"
-            >
-              ‹
-            </button>
-            <button
-              type="button"
-              onClick={() => setCursor(startOfMonth(new Date()))}
-              className="rounded-md px-1.5 py-0.5 text-[11px] font-medium text-foreground/50 transition-colors hover:bg-foreground/[0.05] hover:text-foreground"
-            >
-              {t('common.today')}
-            </button>
-            <button
-              type="button"
-              onClick={() => setCursor((prev) => addMonths(prev, 1))}
-              aria-label={t('schedule.nextMonth')}
-              className="rounded-md px-1.5 py-0.5 text-foreground/50 transition-colors hover:bg-foreground/[0.05] hover:text-foreground"
-            >
-              ›
-            </button>
-          </div>
-        </div>
-        <button
-          type="button"
-          onClick={() => setEditorTarget({ mode: 'create' })}
-          disabled={!activeWorkspaceId}
-          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 text-[12.5px] font-semibold text-foreground transition-colors hover:bg-foreground/[0.03] disabled:opacity-50"
-        >
-          <Plus className="h-3.5 w-3.5" strokeWidth={2.5} /> {t('kanban.newTask')}
-        </button>
-      </div>
-
-      <div className="min-h-0 flex-1 overflow-auto p-4">
-        <div className="grid h-full min-h-[560px] grid-cols-7 gap-px overflow-hidden rounded-lg border border-border/50 bg-border/40">
-          {/* Weekday header */}
-          {WEEKDAY_KEYS.map((key) => (
-            <div key={key} className="bg-background px-2 py-1.5 text-center text-[11px] font-semibold uppercase tracking-wide text-foreground/45">
-              {t(`schedule.weekday.${key}`)}
-            </div>
-          ))}
-          {/* Day cells */}
-          {gridDays.map((day) => {
-            const inMonth = isSameMonth(day, cursor)
-            const isToday = isSameDay(day, today)
-            const dayKey = formatDateOnly(day)
-            const dayTasks = tasksByDay.get(dayKey) ?? []
-            const visible = dayTasks.slice(0, MAX_TASKS_PER_CELL)
-            const overflow = dayTasks.length - visible.length
+  const renderWeek = () => {
+    const monday = startOfWeek(cursor, { weekStartsOn: 1 })
+    const now = nowMinutes()
+    return (
+      <div className="flex h-full min-h-0 flex-col">
+        {/* Header row */}
+        <div className="flex flex-none">
+          <div className="w-[52px] flex-none border-r border-border/60" />
+          {Array.from({ length: 7 }, (_, i) => {
+            const d = addDays(monday, i)
+            const isToday = isSameDay(d, today)
             return (
-              <div
-                key={dayKey}
-                className={cn(
-                  'flex min-h-[92px] flex-col gap-0.5 bg-background p-1',
-                  !inMonth && 'bg-background/60'
-                )}
-              >
-                <div className="flex items-center justify-between px-0.5">
-                  <Popover
-                    open={selectedDay !== null && isSameDay(selectedDay, day)}
-                    onOpenChange={(open) => setSelectedDay(open ? day : null)}
-                  >
-                    <PopoverTrigger asChild>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedDay(day)}
-                        className={cn(
-                          'inline-flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-medium transition-colors hover:bg-foreground/[0.08]',
-                          isToday ? 'bg-primary text-primary-foreground' : inMonth ? 'text-foreground/80' : 'text-foreground/30'
-                        )}
-                      >
-                        {format(day, 'd')}
-                      </button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-72 p-0" align="start">
-                      <div className="border-b border-border/60 px-3 py-2 text-xs font-semibold text-foreground">
-                        {format(day, 'yyyy-MM-dd')}
-                        {dayTasks.length > 0 && (
-                          <span className="ml-1.5 text-[11px] font-medium text-foreground/45">
-                            · {dayTasks.length} {t('schedule.taskCount', { count: dayTasks.length })}
-                          </span>
-                        )}
-                      </div>
-                      {dayTasks.length === 0 ? (
-                        <div className="px-3 py-4 text-center text-xs text-foreground/45">{t('schedule.noTasks')}</div>
-                      ) : (
-                        <ScrollArea className="max-h-64">
-                          <div className="flex flex-col gap-0.5 p-1.5">
-                            {dayTasks.map((task) => {
-                              const statusColor = getStateColor(task.statusId, sessionStatuses ?? [])
-                              const project = task.projectId ? projectsById.get(task.projectId) : undefined
-                              const overdue = isOverdue(task.schedule, task.statusId)
-                              return (
-                                <button
-                                  key={task.id}
-                                  type="button"
-                                  onClick={() => {
-                                    setSelectedDay(null)
-                                    openSessionScoped(task.id, project?.id)
-                                  }}
-                                  className={cn(
-                                    'flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors hover:bg-foreground/[0.06]',
-                                    overdue ? 'text-red-500' : 'text-foreground/85'
-                                  )}
-                                >
-                                  <span
-                                    className={cn(
-                                      'h-2 w-2 shrink-0 rounded-full',
-                                      statusColor || project?.color ? '' : 'bg-foreground/30'
-                                    )}
-                                    style={
-                                      statusColor || project?.color
-                                        ? { backgroundColor: statusColor ?? project!.color }
-                                        : undefined
-                                    }
-                                  />
-                                  <span className="min-w-0 flex-1 truncate">{task.title}</span>
-                                  {task.schedule.due && (
-                                    <span className="shrink-0 text-[10px] text-foreground/40">
-                                      due {formatDateOnly(task.schedule.due)}
-                                    </span>
-                                  )}
-                                </button>
-                              )
-                            })}
-                          </div>
-                        </ScrollArea>
-                      )}
-                    </PopoverContent>
-                  </Popover>
-                </div>
-                {visible.map((task) => {
-                  const statusColor = getStateColor(task.statusId, sessionStatuses ?? [])
-                  const project = task.projectId ? projectsById.get(task.projectId) : undefined
-                  const overdue = isOverdue(task.schedule, task.statusId)
-                  return (
-                    <div key={task.id} className="group relative flex min-w-0 items-center">
-                      <button
-                        type="button"
-                        onClick={() => openSessionScoped(task.id, project?.id)}
-                        onDoubleClick={() => handleEditTask(task.id)}
-                        title={`${task.title}${task.schedule.due ? ` · due ${formatDateOnly(task.schedule.due)}` : ''}`}
-                        className={cn(
-                          'flex min-w-0 flex-1 items-center gap-1 rounded px-1 py-0.5 text-left text-[11px] transition-colors hover:bg-foreground/[0.06]',
-                          overdue ? 'text-red-500' : 'text-foreground/85'
-                        )}
-                      >
-                        <span
-                          className={cn(
-                            'h-1.5 w-1.5 shrink-0 rounded-full',
-                            statusColor || project?.color ? '' : 'bg-foreground/30'
-                          )}
-                          style={
-                            statusColor || project?.color
-                              ? { backgroundColor: statusColor ?? project!.color }
-                              : undefined
-                          }
-                        />
-                        <span className="truncate">{task.title}</span>
-                        {task.schedule.due && (
-                          <span className="shrink-0 text-[9px] font-medium text-foreground/35">
-                            {formatDateOnly(task.schedule.due).slice(5)}
-                          </span>
-                        )}
-                      </button>
-                      <div className="absolute right-0 top-1/2 hidden -translate-y-1/2 rounded bg-background group-hover:block">
-                        <ScheduleDatePopover
-                          title={task.title}
-                          labels={metaMap.get(task.id)?.labels}
-                          onApply={(nextLabels) => handleScheduleChange(task.id, nextLabels)}
-                        />
-                      </div>
-                    </div>
-                  )
-                })}
-                {overflow > 0 && (
-                  <span className="px-1 text-[10px] font-medium text-foreground/40">
-                    +{overflow} {t('schedule.more')}
-                  </span>
-                )}
+              <div key={i} className="flex min-w-0 flex-1 items-baseline justify-center gap-1.5 border-r border-border/60 py-1.5 last:border-r-0">
+                <span className="text-[10.5px] font-bold text-foreground/55">{t(`schedule.weekday.${WEEKDAY_KEYS[i]}`)}</span>
+                <span
+                  className={cn(
+                    'text-sm font-semibold',
+                    isToday && 'inline-flex h-[25px] w-[25px] items-center justify-center rounded-full bg-accent text-accent-foreground',
+                  )}
+                >
+                  {d.getDate()}
+                </span>
               </div>
             )
           })}
         </div>
+        {/* All-day row */}
+        <div className="flex flex-none border-b border-border/60">
+          <div className="w-[52px] flex-none border-r border-border/60" />
+          {Array.from({ length: 7 }, (_, i) => {
+            const d = addDays(monday, i)
+            const allDay = entriesFor(d).filter((e) => !e.time)
+            return (
+              <div key={i} className="min-w-0 flex-1 border-r border-border/60 p-1 last:border-r-0">
+                {allDay.map((entry) => (
+                  <div
+                    key={entry.id}
+                    className="mb-1 flex items-center gap-1 overflow-hidden rounded-md px-1.5 py-1 text-[11.5px] font-medium"
+                    style={entryBlockStyle(0.2)}
+                    title={entry.title}
+                  >
+                    <span className="truncate">{entry.title}</span>
+                  </div>
+                ))}
+              </div>
+            )
+          })}
+        </div>
+        {/* Time grid with shared scroll */}
+        <div className="min-h-0 flex-1">
+          <div className="flex h-full">
+            <div className="relative w-[52px] flex-none border-r border-border/60">
+              {Array.from({ length: HOUR_END - HOUR_START + 1 }, (_, i) => {
+                const h = HOUR_START + i
+                return (
+                  <div
+                    key={h}
+                    className="absolute right-2 -translate-y-1/2 text-[10px] tabular-nums text-foreground/45"
+                    style={{ top: (h === HOUR_START ? 10 : (h - HOUR_START) * HOUR_PX_WEEK) }}
+                  >
+                    {String(h).padStart(2, '0')}:00
+                  </div>
+                )
+              })}
+            </div>
+            <div className="min-w-0 flex-1 overflow-y-auto">
+              <div className="flex" style={{ height: (HOUR_END - HOUR_START) * HOUR_PX_WEEK }}>
+                {Array.from({ length: 7 }, (_, i) => {
+                  const d = addDays(monday, i)
+                  return (
+                    <div key={i} className="relative min-w-0 flex-1 border-r border-border/60 last:border-r-0">
+                      {Array.from({ length: HOUR_END - HOUR_START + 1 }, (_, j) => {
+                        const h = HOUR_START + j
+                        return (
+                          <div
+                            key={h}
+                            className="absolute inset-x-0 border-t border-border/60"
+                            style={{ top: (h - HOUR_START) * HOUR_PX_WEEK }}
+                          />
+                        )
+                      })}
+                      {isSameDay(d, today) && now >= HOUR_START * 60 && now <= HOUR_END * 60 && (
+                        <div
+                          className="absolute inset-x-0 z-[5] border-t-2 border-destructive"
+                          style={{ top: ((now - HOUR_START * 60) / 60) * HOUR_PX_WEEK }}
+                        />
+                      )}
+                      {entriesFor(d)
+                        .filter((e) => e.time)
+                        .map((entry) => {
+                          const [hh, mm] = entry.time!.split(':').map(Number)
+                          return (
+                            <div
+                              key={entry.id}
+                              className="absolute left-1 right-1 overflow-hidden rounded-md px-1.5 py-0.5"
+                              style={{
+                                top: ((hh + mm / 60 - HOUR_START) * HOUR_PX_WEEK),
+                                height: HOUR_PX_WEEK - 2,
+                                ...entryBlockStyle(0.22),
+                              }}
+                              title={entry.title}
+                            >
+                              <span className="block truncate text-[11.5px] font-semibold">
+                                {entry.time} · {entry.title}
+                              </span>
+                            </div>
+                          )
+                        })}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
+    )
+  }
+
+  // -------------------------------------------------------------------------
+  // Month view
+  // -------------------------------------------------------------------------
+
+  const renderMonth = () => {
+    const gridStart = startOfWeek(new Date(cursor.getFullYear(), cursor.getMonth(), 1), { weekStartsOn: 1 })
+    return (
+      <div className="grid h-full min-h-0 flex-1 auto-rows-fr grid-cols-[repeat(7,minmax(0,1fr))] gap-px overflow-hidden rounded-lg border border-border/80 bg-border/60">
+        {WEEKDAY_KEYS.map((key) => (
+          <div key={key} className="bg-card px-2 py-1.5 text-center text-[11px] font-semibold uppercase tracking-wide text-foreground/45">
+            {t(`schedule.weekday.${key}`)}
+          </div>
+        ))}
+        {Array.from({ length: 42 }, (_, i) => {
+          const day = addDays(gridStart, i)
+          const inMonth = isSameMonth(day, cursor)
+          const isToday = isSameDay(day, today)
+          const dayEntries = entriesFor(day)
+          const visible = dayEntries.slice(0, MAX_TASKS_PER_CELL)
+          const overflow = dayEntries.length - visible.length
+          return (
+            <div
+              key={dayKey(day)}
+              className={cn(
+                'flex min-h-0 flex-col gap-1 overflow-hidden bg-card p-1.5',
+                !inMonth && 'bg-card/60',
+                isToday && 'bg-accent/10',
+              )}
+            >
+              <div className="flex items-center justify-between">
+                <Popover
+                  open={selectedDay !== null && isSameDay(selectedDay, day)}
+                  onOpenChange={(open) => setSelectedDay(open ? day : null)}
+                >
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedDay(day)}
+                      className={cn(
+                        'inline-flex h-6 w-6 items-center justify-center rounded-full text-[13.5px] font-semibold transition-colors hover:bg-foreground/[0.08]',
+                        isToday ? 'bg-accent text-accent-foreground' : inMonth ? 'text-foreground/85' : 'text-foreground/30',
+                      )}
+                    >
+                      {day.getDate()}
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-72 p-0" align="start">
+                    <div className="border-b border-border/60 px-3 py-2 text-xs font-semibold">
+                      {format(day, 'yyyy-MM-dd')}
+                      <span className="ml-1.5 text-[11px] font-medium text-foreground/45">
+                        · {dayEntries.length} {t('schedule.taskCount', { count: dayEntries.length })}
+                      </span>
+                    </div>
+                    {dayEntries.length === 0 ? (
+                      <div className="px-3 py-4 text-center text-xs text-foreground/45">{t('schedule.noTasks')}</div>
+                    ) : (
+                      <ScrollArea className="max-h-64">
+                        <div className="flex flex-col gap-0.5 p-1.5">
+                          {dayEntries.map((entry) => (
+                            <button
+                              key={entry.id}
+                              type="button"
+                              onClick={() => setSelectedDay(null)}
+                              className="flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs hover:bg-foreground/[0.06]"
+                              style={entryBlockStyle(0.14)}
+                            >
+                              <span className="min-w-0 flex-1 truncate font-medium">{entry.title}</span>
+                              {entry.time && (
+                                <span className="flex-none text-[10px] tabular-nums opacity-70">{entry.time}</span>
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                      </ScrollArea>
+                    )}
+                  </PopoverContent>
+                </Popover>
+                <button
+                  type="button"
+                  aria-label={t('schedule.newEntry')}
+                  onClick={() => openCreate(day)}
+                  className="hidden h-5 w-5 items-center justify-center rounded-md border border-border bg-card text-foreground/55 transition-colors hover:border-border-strong hover:text-foreground group-hover:inline-flex"
+                >
+                  <Plus className="h-3 w-3" />
+                </button>
+              </div>
+              {visible.map((entry) => (
+                <div
+                  key={entry.id}
+                  className="flex items-center gap-1 overflow-hidden rounded-md px-1.5 py-0.5 text-[12.5px] leading-[1.4]"
+                  style={entryBlockStyle(0.16)}
+                  title={entry.title}
+                  onClick={() => openEdit(entry)}
+                >
+                  <span className="min-w-0 flex-1 truncate font-medium">{entry.title}</span>
+                  {entry.time && <span className="flex-none text-[10px] font-semibold opacity-70">{entry.time}</span>}
+                </div>
+              ))}
+              {overflow > 0 && (
+                <span className="px-1 text-[11px] font-medium text-foreground/45">
+                  +{overflow} {t('schedule.more')}
+                </span>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    )
+  }
+
+  // -------------------------------------------------------------------------
+  // Shell
+  // -------------------------------------------------------------------------
+
+  return (
+    <div className="flex h-full flex-col bg-background">
+      <div className="flex flex-none items-center gap-2 border-b border-border/60 px-4 py-2.5">
+        <button
+          type="button"
+          onClick={goPrev}
+          aria-label={t('schedule.prevMonth')}
+          className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-border/80 text-foreground/55 transition-colors hover:text-foreground"
+        >
+          ‹
+        </button>
+        <span className="text-sm font-semibold">{title}</span>
+        <button
+          type="button"
+          onClick={goNext}
+          aria-label={t('schedule.nextMonth')}
+          className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-border/80 text-foreground/55 transition-colors hover:text-foreground"
+        >
+          ›
+        </button>
+        <button
+          type="button"
+          onClick={goToday}
+          className="rounded-md border border-border/80 px-2.5 py-1 text-xs font-medium text-foreground/70 transition-colors hover:text-foreground"
+        >
+          {t('common.today')}
+        </button>
+        <div className="flex-1" />
+        <div className="inline-flex items-center gap-0.5 rounded-lg border border-border/80 bg-foreground/[0.02] p-0.5">
+          {(['day', 'week', 'month'] as const).map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              onClick={() => switchView(mode)}
+              aria-pressed={view === mode}
+              className={cn(
+                'rounded-md px-2.5 py-1 text-xs font-medium transition-colors',
+                view === mode ? 'bg-card text-foreground shadow-sm' : 'text-foreground/50 hover:text-foreground/80',
+              )}
+            >
+              {t(`schedule.view.${mode}`)}
+            </button>
+          ))}
+        </div>
+        <Button
+          variant="outline"
+          className="h-8 gap-1.5 border-border/80 bg-card px-2.5 text-[12.5px] font-semibold"
+          onClick={() => openCreate(cursor)}
+        >
+          <Plus className="h-3.5 w-3.5" strokeWidth={2.5} />
+          {t('schedule.newEntry')}
+        </Button>
+      </div>
+
+      <div className="min-h-0 flex-1 p-4">
+        {view === 'day' && renderDay()}
+        {view === 'week' && renderWeek()}
+        {view === 'month' && renderMonth()}
+      </div>
+
+      {/* Centered create/edit dialog */}
+      <Dialog open={formOpen} onOpenChange={setFormOpen}>
+        <DialogContent className="w-[360px]">
+          <DialogHeader>
+            <DialogTitle>{form.id ? t('schedule.editEntry') : t('schedule.newEntry')}</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-3">
+            <div>
+              <label className="mb-1 block text-[11px] font-medium text-foreground/55">{t('schedule.entryTitle')}</label>
+              <input
+                value={form.title}
+                onChange={(e) => setForm((prev) => ({ ...prev, title: e.target.value }))}
+                placeholder={t('schedule.entryTitlePlaceholder')}
+                autoFocus
+                className="w-full rounded-md border border-border/80 bg-background px-2.5 py-1.5 text-[13px] outline-none focus:border-accent"
+              />
+            </div>
+            <div className="flex gap-3">
+              <div className="flex-1">
+                <label className="mb-1 block text-[11px] font-medium text-foreground/55">{t('schedule.entryDate')}</label>
+                <input
+                  type="date"
+                  value={form.date}
+                  onChange={(e) => setForm((prev) => ({ ...prev, date: e.target.value }))}
+                  className="w-full rounded-md border border-border/80 bg-background px-2.5 py-1.5 text-[13px] outline-none focus:border-accent"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-[11px] font-medium text-foreground/55">{t('schedule.entryTime')}</label>
+                <input
+                  type="time"
+                  value={form.time}
+                  onChange={(e) => setForm((prev) => ({ ...prev, time: e.target.value }))}
+                  className="rounded-md border border-border/80 bg-background px-2.5 py-1.5 text-[13px] outline-none focus:border-accent"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="mb-1 block text-[11px] font-medium text-foreground/55">{t('schedule.entryNote')}</label>
+              <textarea
+                value={form.note}
+                onChange={(e) => setForm((prev) => ({ ...prev, note: e.target.value }))}
+                rows={3}
+                className="w-full resize-y rounded-md border border-border/80 bg-background px-2.5 py-1.5 text-[13px] outline-none focus:border-accent"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="ghost" size="sm">{t('common.cancel')}</Button>
+            </DialogClose>
+            <Button size="sm" onClick={() => void submitForm()} disabled={!form.title.trim() || !form.date}>
+              {t('common.save')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
