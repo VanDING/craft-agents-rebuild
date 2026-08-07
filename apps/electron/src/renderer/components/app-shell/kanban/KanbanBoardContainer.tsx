@@ -16,6 +16,7 @@ import { DEFAULT_MODEL } from '@config/models'
 import type { SessionStatus } from '@/config/session-status-config'
 import type { KanbanColumnDef } from '@craft-agent/shared/projects/types'
 import { KanbanBoard } from './KanbanBoard'
+import { ViewTransition } from './ViewTransition'
 import { KANBAN_COLUMNS, statusToColumn } from './status-column'
 import { KanbanProjectFilter, type KanbanProjectFilterOption } from './KanbanProjectFilter'
 import { TaskEditor } from './TaskEditor'
@@ -520,7 +521,8 @@ export function KanbanBoardContainer() {
   }
 
   return (
-    <div className="flex h-full flex-col bg-background">
+    <ViewTransition>
+      <div className="flex h-full flex-col bg-background">
       <div className="flex items-center justify-between gap-2 border-b border-border/50 px-4 py-2.5">
         <div className="flex min-w-0 items-center gap-2.5">
           <span className="text-sm font-medium">{t('kanban.allTasks')}</span>
@@ -574,7 +576,8 @@ export function KanbanBoardContainer() {
               }
             : {})}
         />
+        </div>
       </div>
-    </div>
+    </ViewTransition>
   )
 }

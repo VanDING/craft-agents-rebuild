@@ -29,6 +29,7 @@ import {
 import { useAppShellContext } from '@/context/AppShellContext'
 import { useNavigation } from '@/contexts/NavigationContext'
 import { useCalendarEntries } from '@/hooks/useCalendarEntries'
+import { ViewTransition } from './ViewTransition'
 import { cn } from '@/lib/utils'
 import {
   Dialog,
@@ -577,7 +578,8 @@ export function CalendarView() {
   // -------------------------------------------------------------------------
 
   return (
-    <div className="flex h-full flex-col bg-background">
+    <ViewTransition>
+      <div className="flex h-full flex-col bg-background">
       <div className="flex flex-none items-center gap-2 border-b border-border/60 px-4 py-2.5">
         <button
           type="button"
@@ -693,6 +695,7 @@ export function CalendarView() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+      </div>
+    </ViewTransition>
   )
 }
