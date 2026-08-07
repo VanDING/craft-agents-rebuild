@@ -256,6 +256,37 @@ export const mockElectronAPI = {
     }
   },
 
+  // Labels + session commands used by the schedule views (Gantt/Calendar).
+  // Playground renders against pre-seeded atoms; these are no-ops that keep
+  // the provisioning/editor flows from crashing.
+  listLabels: async (workspaceId: string) => {
+    console.log('[Playground] listLabels called:', workspaceId)
+    return [
+      { id: 'start', name: 'Start', valueType: 'date' },
+      { id: 'due', name: 'Due', valueType: 'date' },
+    ]
+  },
+
+  createLabel: async (workspaceId: string, input: unknown) => {
+    console.log('[Playground] createLabel called:', workspaceId, input)
+    return { id: 'mock-label', name: 'Mock', valueType: 'date' }
+  },
+
+  deleteLabel: async () => {
+    console.log('[Playground] deleteLabel called')
+    return { stripped: 0 }
+  },
+
+  onLabelsChanged: (callback: (workspaceId: string) => void) => {
+    console.log('[Playground] onLabelsChanged subscribed')
+    void callback
+    return () => {}
+  },
+
+  sessionCommand: async (sessionId: string, command: unknown) => {
+    console.log('[Playground] sessionCommand called:', sessionId, command)
+  },
+
   browserPane: {
     focus: async (instanceId: string) => {
       console.log('[Playground] browserPane.focus called:', instanceId)

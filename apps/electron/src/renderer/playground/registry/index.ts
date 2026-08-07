@@ -25,6 +25,7 @@ import { messagingComponents } from './messaging'
 import { imageSupportComponents } from './image-support'
 import { mobileWebUIComponents } from './mobile-webui'
 import { kanbanComponents } from './kanban'
+import { scheduleViewComponents } from './schedule-views'
 import { taskEditorComponents } from './task-editor'
 
 export * from './types'
@@ -46,6 +47,7 @@ export const componentRegistry: ComponentEntry[] = [
   ...oauthComponents,
   ...sessionListComponents,
   ...kanbanComponents,
+  ...scheduleViewComponents,
   ...taskEditorComponents,
   ...projectColorsComponents,
   ...editPopoverComponents,

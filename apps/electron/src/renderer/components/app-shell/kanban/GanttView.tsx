@@ -31,17 +31,18 @@ import { useNavigation } from '@/contexts/NavigationContext'
 import { useLabels } from '@/hooks/useLabels'
 import { getSessionTitle } from '@/utils/session'
 import { resolveTaskScopeLabelId } from '@craft-agent/shared/labels'
+import { getStateColor } from '@/config/session-status-config'
 import { DEFAULT_MODEL } from '@config/models'
 import { cn } from '@/lib/utils'
 import { TaskEditor } from './TaskEditor'
 import { buildModelCatalog } from './model-catalog'
 import { ScheduleDatePopover } from './ScheduleDatePopover'
 import {
-  SCHEDULE_LABELS,
   deriveScheduledTaskRows,
   formatDateOnly,
   hasSchedule,
   isOverdue,
+  missingScheduleLabels,
   startOfDay,
   type ScheduledTaskRow,
 } from './schedule'
@@ -57,7 +58,7 @@ function isDone(statusId: string): boolean {
 }
 
 export function GanttView() {
-  const { activeWorkspaceId, llmConnections, onJumpToTaskSessions } = useAppShellContext()
+  const { activeWorkspaceId, llmConnections, onJumpToTaskSessions, sessionStatuses } = useAppShellContext()
   const { t } = useTranslation()
   const metaMap = useAtomValue(sessionMetaMapAtom)
   const projects = useAtomValue(projectsAtom)
@@ -65,19 +66,22 @@ export function GanttView() {
   const { navigateToSession } = useNavigation()
   const [editorTarget, setEditorTarget] = useAtom(kanbanEditorTargetAtom)
   const [zoom, setZoom] = React.useState<GanttZoom>('week')
-  const { labels: labelConfigs, flatLabels } = useLabels(activeWorkspaceId ?? null)
+  const scrollRef = React.useRef<HTMLDivElement>(null)
+  const scrolledToTodayRef = React.useRef(false)
+  const { labels: labelConfigs, flatLabels, isLoading: labelsLoading } = useLabels(activeWorkspaceId ?? null)
 
-  // Auto-provision the reserved schedule labels on first use (idempotent:
-  // labels:changed refreshes useLabels, so the effect stops firing).
+  // Auto-provision the reserved schedule labels on first use. Matched by
+  // display name (not id) and attempted exactly once per mount after labels
+  // finish loading, so pre-existing labels are respected and no duplicate
+  // slugs are ever minted.
+  const provisionedRef = React.useRef(false)
   React.useEffect(() => {
-    if (!activeWorkspaceId) return
-    for (const def of SCHEDULE_LABELS) {
-      if (!flatLabels.some((l) => l.id === def.id)) {
-        // The label id is derived from the name slug ('Start' → 'start').
-        void window.electronAPI.createLabel(activeWorkspaceId, { name: def.name, valueType: 'date' })
-      }
+    if (!activeWorkspaceId || labelsLoading || provisionedRef.current) return
+    provisionedRef.current = true
+    for (const def of missingScheduleLabels(flatLabels)) {
+      void window.electronAPI.createLabel(activeWorkspaceId, { name: def.name, valueType: 'date' })
     }
-  }, [activeWorkspaceId, flatLabels])
+  }, [activeWorkspaceId, flatLabels, labelsLoading])
 
   const projectsById = React.useMemo(() => {
     const map = new Map<string, { id: string; name: string; color: string }>()
@@ -125,6 +129,16 @@ export function GanttView() {
   const dayWidth = DAY_WIDTH_BY_ZOOM[zoom]
   const timelineWidth = range ? range.days * dayWidth : 0
   const todayX = range ? differenceInCalendarDays(startOfDay(new Date()), range.rangeStart) * dayWidth : -1
+
+  // The time range spans the earliest → latest scheduled task; on first mount
+  // jump the scroll position to today so the current schedule is visible
+  // instead of a mostly-empty strip at the oldest task.
+  React.useLayoutEffect(() => {
+    const el = scrollRef.current
+    if (!el || scrolledToTodayRef.current || todayX <= 0) return
+    scrolledToTodayRef.current = true
+    el.scrollLeft = Math.max(0, todayX - Math.max(0, el.clientWidth - 320) / 2)
+  }, [todayX])
 
   const openSessionScoped = React.useCallback(
     (sessionId: string, projectFallbackId?: string) => {
@@ -242,7 +256,7 @@ export function GanttView() {
           <p className="text-sm">{t('schedule.ganttEmpty')}</p>
         </div>
       ) : (
-        <div className="min-h-0 flex-1 overflow-auto">
+        <div className="min-h-0 flex-1 overflow-auto" ref={scrollRef}>
           <div className="relative" style={{ minWidth: LIST_WIDTH + timelineWidth }}>
             {/* Header: sticky list header + sticky time-scale header */}
             <div className="sticky top-0 z-30 flex border-b border-border/60 bg-background" style={{ height: HEADER_HEIGHT }}>
@@ -288,6 +302,7 @@ export function GanttView() {
 
             {/* Lanes */}
             {rows.map((row, index) => {
+              const statusColor = getStateColor(row.statusId, sessionStatuses ?? [])
               const project = row.projectId ? projectsById.get(row.projectId) : undefined
               const overdue = isOverdue(row.schedule, row.statusId)
               const parentIndex = row.parentSessionId ? rowIndexById.get(row.parentSessionId) : undefined
@@ -300,8 +315,8 @@ export function GanttView() {
                   >
                     {row.parentSessionId && <span className="text-foreground/25">└</span>}
                     <span
-                      className={`h-2 w-2 shrink-0 rounded-full ${project?.color ? '' : 'bg-foreground/30'}`}
-                      style={project?.color ? { backgroundColor: project.color } : undefined}
+                      className={`h-2 w-2 shrink-0 rounded-full ${statusColor || project?.color ? '' : 'bg-foreground/30'}`}
+                      style={statusColor || project?.color ? { backgroundColor: statusColor ?? project!.color } : undefined}
                     />
                     <button
                       type="button"
@@ -311,7 +326,15 @@ export function GanttView() {
                     >
                       {row.title}
                     </button>
-                    {hasSchedule(row.schedule) && row.schedule.due && overdue && (
+                    {hasSchedule(row.schedule) && (
+                      <span className="shrink-0 text-[10px] tabular-nums text-foreground/40">
+                        {formatDateOnly(row.schedule.start ?? row.schedule.due!).slice(5)}
+                        {row.schedule.start && row.schedule.due && row.schedule.due > row.schedule.start
+                          ? `–${formatDateOnly(row.schedule.due).slice(5)}`
+                          : ''}
+                      </span>
+                    )}
+                    {overdue && (
                       <span className="shrink-0 text-[10px] font-semibold text-red-500">{t('schedule.overdue')}</span>
                     )}
                     <ScheduleDatePopover
@@ -322,6 +345,21 @@ export function GanttView() {
                   </div>
                   {/* Lane cell */}
                   <div className="relative" style={{ width: timelineWidth }}>
+                    {/* Vertical date gridlines (weekly, plus faint daily in day zoom) */}
+                    <div
+                      className="pointer-events-none absolute inset-y-0 left-0 right-0"
+                      style={{
+                        backgroundImage: `repeating-linear-gradient(to right, transparent 0, transparent ${7 * dayWidth - 1}px, color-mix(in srgb, var(--border) 85%, white 15%) ${7 * dayWidth - 1}px, transparent ${7 * dayWidth}px)`,
+                      }}
+                    />
+                    {zoom === 'day' && (
+                      <div
+                        className="pointer-events-none absolute inset-y-0 left-0 right-0"
+                        style={{
+                          backgroundImage: `repeating-linear-gradient(to right, transparent 0, transparent ${dayWidth - 1}px, color-mix(in srgb, var(--border) 40%, transparent) ${dayWidth - 1}px, transparent ${dayWidth}px)`,
+                        }}
+                      />
+                    )}
                     {/* Today line */}
                     {todayX >= 0 && (
                       <div
@@ -352,7 +390,7 @@ export function GanttView() {
                       rangeStart={range.rangeStart}
                       dayWidth={dayWidth}
                       overdue={overdue}
-                      projectColor={project?.color}
+                      statusColor={statusColor}
                       onClick={() => openSessionScoped(row.id, project?.id)}
                       onEdit={() => handleEditTask(row.id)}
                     />
@@ -392,7 +430,7 @@ function TaskBar({
   rangeStart,
   dayWidth,
   overdue,
-  projectColor,
+  statusColor,
   onClick,
   onEdit,
 }: {
@@ -400,7 +438,7 @@ function TaskBar({
   rangeStart: Date
   dayWidth: number
   overdue: boolean
-  projectColor?: string
+  statusColor?: string
   onClick: () => void
   onEdit: () => void
 }) {
@@ -412,6 +450,7 @@ function TaskBar({
   const left = differenceInCalendarDays(startOfDay(barStart), rangeStart) * dayWidth
   const width = Math.max((differenceInCalendarDays(startOfDay(barEnd), startOfDay(barStart)) + 1) * dayWidth, dayWidth)
   const done = isDone(row.statusId)
+  const fill = statusColor ?? 'var(--muted-foreground)'
 
   return (
     <button
@@ -421,16 +460,20 @@ function TaskBar({
       title={`${row.title} · ${formatDateOnly(barStart)}${due ? ` → ${formatDateOnly(barEnd)}` : ''}`}
       className={cn(
         'absolute top-1/2 z-20 flex -translate-y-1/2 items-center overflow-hidden rounded-[4px] border px-1.5 text-left transition-shadow hover:shadow-md',
-        done ? 'bg-foreground/5' : projectColor ? '' : 'bg-foreground/10',
-        done ? 'border-foreground/15' : overdue ? 'border-red-500/60' : projectColor ? '' : 'border-foreground/20'
+        done ? 'opacity-45' : ''
       )}
       style={{
         left,
         width,
         height: 20,
-        ...(projectColor && !done
-          ? { backgroundColor: `${projectColor}26`, borderColor: overdue ? '#ef4444' : `${projectColor}66` }
-          : {}),
+        backgroundColor: done
+          ? 'color-mix(in srgb, var(--foreground) 12%, transparent)'
+          : `color-mix(in srgb, ${fill} 32%, var(--background))`,
+        borderColor: done
+          ? 'color-mix(in srgb, var(--foreground) 25%, transparent)'
+          : overdue
+            ? '#ef4444'
+            : `color-mix(in srgb, ${fill} 80%, transparent)`,
       }}
     >
       <span

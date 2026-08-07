@@ -16,11 +16,27 @@ import { getSessionTitle } from '@/utils/session'
 export const SCHEDULE_LABEL_START = 'start'
 export const SCHEDULE_LABEL_DUE = 'due'
 
-/** Reserved date labels the schedule views rely on (auto-created when missing). */
+/**
+ * Reserved date labels the schedule views rely on (auto-created when missing).
+ * The created label id derives from the name slug ('Start' → 'start'); when a
+ * slug collision occurs createLabel appends -N, so both the bare id and its
+ * suffixed duplicates are treated as schedule carriers (parsing is permissive;
+ * writing always targets the bare id via updateTaskSchedule).
+ */
 export const SCHEDULE_LABELS = [
   { id: SCHEDULE_LABEL_START, name: 'Start', valueType: 'date' as const },
   { id: SCHEDULE_LABEL_DUE, name: 'Due', valueType: 'date' as const },
 ]
+
+/** Matches `start`, `due`, and slug-collision duplicates like `start-2`. */
+const SCHEDULE_LABEL_ID_RE = /^(start|due)(?:-\d+)?$/
+
+/** Normalize any schedule label id (e.g. `start-2`) to its canonical id. */
+export function normalizeScheduleLabelId(id: string): string | undefined {
+  const match = SCHEDULE_LABEL_ID_RE.exec(id)
+  if (!match) return undefined
+  return match[1]
+}
 
 export interface TaskSchedule {
   /** Inclusive start date (local calendar day). */
@@ -61,8 +77,9 @@ export function getTaskSchedule(labels: string[] | undefined): TaskSchedule {
     }
     if (!(parsed.value instanceof Date)) continue
     if (Number.isNaN(parsed.value.getTime())) continue
-    if (parsed.id === SCHEDULE_LABEL_START) schedule.start = toLocalDay(parsed.value)
-    else if (parsed.id === SCHEDULE_LABEL_DUE) schedule.due = toLocalDay(parsed.value)
+    const canonical = normalizeScheduleLabelId(parsed.id)
+    if (canonical === SCHEDULE_LABEL_START) schedule.start = toLocalDay(parsed.value)
+    else if (canonical === SCHEDULE_LABEL_DUE) schedule.due = toLocalDay(parsed.value)
   }
   return schedule
 }
@@ -77,13 +94,27 @@ export function updateTaskSchedule(labels: string[] | undefined, patch: Schedule
   const old = getTaskSchedule(labels)
   const kept = (labels ?? []).filter((entry) => {
     const id = parseLabelEntry(entry).id
-    return id !== SCHEDULE_LABEL_START && id !== SCHEDULE_LABEL_DUE
+    return normalizeScheduleLabelId(id) === undefined
   })
   const start = patch.start !== undefined ? patch.start : old.start
   const due = patch.due !== undefined ? patch.due : old.due
   if (start) kept.push(`${SCHEDULE_LABEL_START}::${formatDateOnly(start)}`)
   if (due) kept.push(`${SCHEDULE_LABEL_DUE}::${formatDateOnly(due)}`)
   return kept
+}
+
+/**
+ * Which reserved schedule labels are missing from a workspace's label tree.
+ * A label only counts as present when both its display name AND its value
+ * type match — a pre-existing boolean 'Due' label must not block the date
+ * variant (which then lands on a suffixed slug and still parses).
+ */
+export function missingScheduleLabels(
+  flatLabels: ReadonlyArray<{ id: string; name?: string; valueType?: string }>,
+): typeof SCHEDULE_LABELS {
+  return SCHEDULE_LABELS.filter(
+    (def) => !flatLabels.some((l) => l.name === def.name && l.valueType === def.valueType),
+  )
 }
 
 /** Whether a task carries any scheduling data at all. */

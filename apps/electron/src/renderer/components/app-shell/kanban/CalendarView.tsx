@@ -30,15 +30,16 @@ import { useNavigation } from '@/contexts/NavigationContext'
 import { useLabels } from '@/hooks/useLabels'
 import { getSessionTitle } from '@/utils/session'
 import { resolveTaskScopeLabelId } from '@craft-agent/shared/labels'
+import { getStateColor } from '@/config/session-status-config'
 import { DEFAULT_MODEL } from '@config/models'
 import { cn } from '@/lib/utils'
 import { TaskEditor } from './TaskEditor'
 import { buildModelCatalog } from './model-catalog'
 import {
-  SCHEDULE_LABELS,
   deriveScheduledTaskRows,
   formatDateOnly,
   isOverdue,
+  missingScheduleLabels,
   startOfDay,
   type ScheduledTaskRow,
 } from './schedule'
@@ -47,7 +48,7 @@ const WEEKDAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']
 const MAX_TASKS_PER_CELL = 3
 
 export function CalendarView() {
-  const { activeWorkspaceId, llmConnections, onJumpToTaskSessions } = useAppShellContext()
+  const { activeWorkspaceId, llmConnections, onJumpToTaskSessions, sessionStatuses } = useAppShellContext()
   const { t } = useTranslation()
   const metaMap = useAtomValue(sessionMetaMapAtom)
   const projects = useAtomValue(projectsAtom)
@@ -55,18 +56,20 @@ export function CalendarView() {
   const { navigateToSession } = useNavigation()
   const [editorTarget, setEditorTarget] = useAtom(kanbanEditorTargetAtom)
   const [cursor, setCursor] = React.useState(() => startOfMonth(new Date()))
-  const { labels: labelConfigs, flatLabels } = useLabels(activeWorkspaceId ?? null)
+  const { labels: labelConfigs, flatLabels, isLoading: labelsLoading } = useLabels(activeWorkspaceId ?? null)
 
-  // Auto-provision the reserved schedule labels on first use (idempotent).
+  // Auto-provision the reserved schedule labels on first use. Matched by
+  // display name (not id) and attempted exactly once per mount after labels
+  // finish loading, so pre-existing labels are respected and no duplicate
+  // slugs are ever minted.
+  const provisionedRef = React.useRef(false)
   React.useEffect(() => {
-    if (!activeWorkspaceId) return
-    for (const def of SCHEDULE_LABELS) {
-      if (!flatLabels.some((l) => l.id === def.id)) {
-        // The label id is derived from the name slug ('Start' → 'start').
-        void window.electronAPI.createLabel(activeWorkspaceId, { name: def.name, valueType: 'date' })
-      }
+    if (!activeWorkspaceId || labelsLoading || provisionedRef.current) return
+    provisionedRef.current = true
+    for (const def of missingScheduleLabels(flatLabels)) {
+      void window.electronAPI.createLabel(activeWorkspaceId, { name: def.name, valueType: 'date' })
     }
-  }, [activeWorkspaceId, flatLabels])
+  }, [activeWorkspaceId, flatLabels, labelsLoading])
 
   const projectsById = React.useMemo(() => {
     const map = new Map<string, { id: string; name: string; color: string }>()
@@ -80,12 +83,14 @@ export function CalendarView() {
 
   const rows = React.useMemo(() => deriveScheduledTaskRows(metaMap.values()), [metaMap])
 
-  // Tasks with a due date, keyed by local calendar day.
+  // Every session appears in the grid: scheduled ones land on their due date,
+  // unscheduled ones on their creation date — so the calendar is the full
+  // picture of conversations, colored by workflow status (like the board).
   const tasksByDay = React.useMemo(() => {
     const map = new Map<string, ScheduledTaskRow[]>()
     for (const row of rows) {
-      if (!row.schedule.due) continue
-      const key = formatDateOnly(row.schedule.due)
+      const anchor = row.schedule.due ?? (row.createdAt ? new Date(row.createdAt) : new Date())
+      const key = formatDateOnly(startOfDay(anchor))
       const bucket = map.get(key)
       if (bucket) bucket.push(row)
       else map.set(key, [row])
@@ -250,6 +255,7 @@ export function CalendarView() {
                   </span>
                 </div>
                 {visible.map((task) => {
+                  const statusColor = getStateColor(task.statusId, sessionStatuses ?? [])
                   const project = task.projectId ? projectsById.get(task.projectId) : undefined
                   const overdue = isOverdue(task.schedule, task.statusId)
                   return (
@@ -258,17 +264,29 @@ export function CalendarView() {
                       type="button"
                       onClick={() => openSessionScoped(task.id, project?.id)}
                       onDoubleClick={() => handleEditTask(task.id)}
-                      title={task.title}
+                      title={`${task.title}${task.schedule.due ? ` · due ${formatDateOnly(task.schedule.due)}` : ''}`}
                       className={cn(
-                        'flex min-w-0 items-center gap-1 truncate rounded px-1 py-0.5 text-left text-[11px] transition-colors hover:bg-foreground/[0.06]',
+                        'flex min-w-0 items-center gap-1 rounded px-1 py-0.5 text-left text-[11px] transition-colors hover:bg-foreground/[0.06]',
                         overdue ? 'text-red-500' : 'text-foreground/85'
                       )}
                     >
                       <span
-                        className={cn('h-1.5 w-1.5 shrink-0 rounded-full', project?.color ? '' : 'bg-foreground/30')}
-                        style={project?.color ? { backgroundColor: project.color } : undefined}
+                        className={cn(
+                          'h-1.5 w-1.5 shrink-0 rounded-full',
+                          statusColor || project?.color ? '' : 'bg-foreground/30'
+                        )}
+                        style={
+                          statusColor || project?.color
+                            ? { backgroundColor: statusColor ?? project!.color }
+                            : undefined
+                        }
                       />
                       <span className="truncate">{task.title}</span>
+                      {task.schedule.due && (
+                        <span className="shrink-0 text-[9px] font-medium text-foreground/35">
+                          {formatDateOnly(task.schedule.due).slice(5)}
+                        </span>
+                      )}
                     </button>
                   )
                 })}
