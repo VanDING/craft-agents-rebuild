@@ -1,0 +1,814 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>日历视图 v4 — 完整应用界面演示</title>
+<style>
+  :root {
+    --bg: #f7f8fa; --panel: #ffffff; --fg: #17171a; --fg-dim: #6b7280; --fg-faint: #9ca3af;
+    --border: rgba(23,23,26,.08); --border-strong: rgba(23,23,26,.16);
+    --accent: #6f5ae0; --accent-fg: #fff; --accent-soft: rgba(111,90,224,.12);
+    --hover: rgba(23,23,26,.05); --danger: #dc2626;
+  }
+  html.dark {
+    --bg: #18181b; --panel: #1f1f23; --fg: #ececec; --fg-dim: #9ca3af; --fg-faint: #6b7280;
+    --border: rgba(236,236,236,.09); --border-strong: rgba(236,236,236,.20);
+    --accent: #8f7bff; --accent-fg: #0b0a14; --accent-soft: rgba(143,123,255,.16);
+    --hover: rgba(236,236,236,.07); --danger: #f87171;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    font-family: ui-sans-serif, system-ui, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: var(--bg); color: var(--fg); height: 100vh; overflow: hidden;
+    display: flex; flex-direction: column;
+    transition: background .15s, color .15s;
+  }
+
+  /* ===== TopBar ===== */
+  .topbar {
+    display: flex; align-items: center; gap: 10px; height: 46px; flex: none;
+    padding: 0 14px; border-bottom: 1px solid var(--border); background: var(--panel);
+  }
+  .topbar .brand { font-size: 13px; font-weight: 700; display: flex; align-items: center; gap: 6px; }
+  .topbar .brand .logo {
+    width: 20px; height: 20px; border-radius: 6px; background: var(--accent);
+    display: inline-flex; align-items: center; justify-content: center; color: var(--accent-fg); font-size: 11px;
+  }
+  .ws-switch {
+    display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border);
+    border-radius: 8px; padding: 4px 10px; font-size: 12px; font-weight: 500; cursor: pointer; background: var(--panel);
+  }
+  .ws-switch:hover { border-color: var(--border-strong); }
+  .search {
+    flex: 1; max-width: 420px; display: flex; align-items: center; gap: 7px;
+    border: 1px solid var(--border); border-radius: 8px; padding: 5px 10px; color: var(--fg-faint); font-size: 12.5px;
+    background: var(--bg);
+  }
+  .top-right { display: flex; align-items: center; gap: 4px; margin-left: auto; }
+  .view-btns {
+    display: inline-flex; padding: 2px; gap: 2px; border: 1px solid var(--border);
+    border-radius: 8px; background: var(--panel);
+  }
+  .view-btns button {
+    border: none; background: transparent; color: var(--fg-dim); width: 28px; height: 24px;
+    border-radius: 6px; cursor: pointer; font-size: 13px;
+  }
+  .view-btns button.active { background: var(--fg); color: var(--bg); }
+  .icon-btn {
+    border: 1px solid transparent; background: transparent; color: var(--fg-dim); width: 28px; height: 26px;
+    border-radius: 7px; cursor: pointer; font-size: 14px;
+  }
+  .icon-btn:hover { background: var(--hover); color: var(--fg); }
+  .theme-seg { display: inline-flex; padding: 2px; gap: 2px; border: 1px solid var(--border); border-radius: 8px; margin-left: 6px; }
+  .theme-seg button { border: none; background: transparent; color: var(--fg-dim); padding: 3px 8px; font-size: 11px; border-radius: 6px; cursor: pointer; }
+  .theme-seg button.active { background: var(--fg); color: var(--bg); }
+
+  /* ===== Shell ===== */
+  .shell { display: flex; flex: 1; min-height: 0; }
+  .sidebar {
+    width: 216px; flex: none; border-right: 1px solid var(--border); background: var(--bg);
+    padding: 10px 8px; display: flex; flex-direction: column; gap: 2px; overflow: auto;
+  }
+  .side-item {
+    display: flex; align-items: center; gap: 9px; padding: 7px 10px; border-radius: 7px;
+    font-size: 13px; color: var(--fg-dim); cursor: pointer; border: none; background: transparent; text-align: left;
+  }
+  .side-item:hover { background: var(--hover); color: var(--fg); }
+  .side-item.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .side-item .ic { width: 16px; text-align: center; font-size: 13px; opacity: .8; }
+  .side-sep { height: 1px; background: var(--border); margin: 6px 8px; }
+  .side-foot { margin-top: auto; display: flex; align-items: center; gap: 8px; padding: 8px 10px; font-size: 12px; color: var(--fg-dim); }
+  .avatar { width: 22px; height: 22px; border-radius: 999px; background: var(--accent); color: var(--accent-fg); font-size: 11px; display: flex; align-items: center; justify-content: center; }
+
+  .main { flex: 1; min-width: 0; padding: 16px 18px; display: flex; flex-direction: column; }
+
+  /* ===== Calendar panel ===== */
+  .view-wrap {
+    background: var(--panel); border: 1px solid var(--border-strong); border-radius: 12px;
+    overflow: hidden; display: flex; flex-direction: column; flex: 1; min-height: 0;
+  }
+  .cal-head {
+    display: flex; align-items: center; gap: 8px; padding: 10px 14px;
+    border-bottom: 1px solid var(--border); flex: none;
+  }
+  .cal-head .title { font-size: 14px; font-weight: 600; }
+  .nav-btn {
+    border: 1px solid var(--border); background: var(--panel); color: var(--fg-dim);
+    width: 26px; height: 26px; border-radius: 7px; cursor: pointer; font-size: 13px; line-height: 1;
+  }
+  .nav-btn:hover { color: var(--fg); border-color: var(--border-strong); }
+  .nav-btn.today { width: auto; padding: 0 10px; font-size: 12px; font-weight: 500; }
+  .cal-head .spacer { flex: 1; }
+  .cal-head .seg {
+    display: inline-flex; padding: 2px; gap: 2px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg);
+  }
+  .cal-head .seg button {
+    border: none; background: transparent; color: var(--fg-dim); padding: 4px 11px; font-size: 12px; font-weight: 500; border-radius: 6px; cursor: pointer;
+  }
+  .cal-head .seg button.active { background: var(--panel); color: var(--fg); box-shadow: 0 0 0 1px var(--border); }
+  .btn {
+    border: 1px solid var(--border); background: var(--panel); color: var(--fg);
+    padding: 5px 12px; border-radius: 8px; font-size: 12.5px; font-weight: 500; cursor: pointer;
+  }
+  .btn:hover { border-color: var(--border-strong); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+  .btn.primary:hover { opacity: .9; }
+  .new-task-btn {
+    display: inline-flex; align-items: center; gap: 6px; height: 30px;
+    border: 1px solid var(--border); background: var(--panel);
+    border-radius: 8px; padding: 0 11px; font-size: 12.5px; font-weight: 600; color: var(--fg); cursor: pointer;
+  }
+  .new-task-btn:hover { background: var(--hover); }
+
+  .cal-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+
+  /* ===== Month ===== */
+  .month { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 1px; background: var(--border); padding: 1px; flex: 1; }
+  .month .weekday {
+    background: var(--panel); padding: 8px 0; text-align: center;
+    font-size: 11px; font-weight: 600; letter-spacing: .06em; color: var(--fg-dim);
+  }
+  .day {
+    background: var(--panel); padding: 7px 7px 6px;
+    display: flex; flex-direction: column; gap: 3px; cursor: pointer; position: relative; min-height: 0;
+    overflow: hidden;
+  }
+  .day:hover { background: var(--hover); }
+  .day.out { background: color-mix(in srgb, var(--panel) 55%, var(--bg)); }
+  .day.today { background: var(--accent-soft); }
+  .day .date {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 24px; height: 24px; border-radius: 999px; font-size: 13.5px; font-weight: 600; line-height: 1;
+  }
+  .day.out .date { color: var(--fg-faint); }
+  .day.today .date { background: var(--accent); color: var(--accent-fg); }
+  .day .add-btn {
+    position: absolute; top: 6px; right: 6px; width: 20px; height: 20px; border-radius: 6px;
+    border: 1px solid var(--border); background: var(--panel); color: var(--fg-dim);
+    font-size: 13px; line-height: 1; cursor: pointer; display: none; align-items: center; justify-content: center;
+  }
+  .day:hover .add-btn { display: inline-flex; }
+  .day .add-btn:hover { color: var(--fg); border-color: var(--border-strong); }
+
+  /* Entries: full color blocks (project tint / purple for notes) */
+  .entry {
+    display: flex; align-items: center; gap: 6px; padding: 3px 7px; border-radius: 6px;
+    font-size: 13px; line-height: 1.4; cursor: pointer; max-width: 100%;
+  }
+  .entry:hover { filter: brightness(1.06); }
+  .entry .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
+  .entry .meta { font-size: 10.5px; flex: none; font-weight: 600; opacity: .75; }
+  .entry .tag {
+    flex: none; font-size: 9.5px; font-weight: 700; line-height: 1;
+    border-radius: 4px; padding: 2px 4px; letter-spacing: .02em;
+  }
+  .entry.overdue .title { color: var(--danger); }
+  .entry.expanded {
+    flex-direction: column; align-items: stretch; gap: 2px; padding: 6px 9px;
+  }
+  .entry.expanded .e-row1 { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .entry.expanded .e-time {
+    flex: none; font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; opacity: .8; min-width: 38px;
+  }
+  .entry.expanded .e-note {
+    font-size: 11.5px; opacity: .72; line-height: 1.45; padding-left: 44px;
+    overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  }
+  .more { font-size: 11.5px; color: var(--fg-dim); font-weight: 500; padding: 2px 6px; }
+
+  /* ===== Day view: all-day strip + 24h time grid ===== */
+  .dayview { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
+  .dayview .dv-head { font-size: 15px; font-weight: 600; padding: 12px 16px 4px; }
+  .dayview .dv-sub { font-size: 12px; color: var(--fg-dim); padding: 0 16px 10px; }
+  .allday-strip { padding: 0 16px 8px; display: flex; flex-direction: column; gap: 6px; border-bottom: 1px solid var(--border); }
+  .allday-label { font-size: 10.5px; font-weight: 700; letter-spacing: .06em; color: var(--fg-faint); text-transform: uppercase; padding: 2px 0; }
+  .allday-card {
+    display: flex; align-items: center; gap: 10px; padding: 9px 12px 9px 10px; border-radius: 9px;
+  }
+  .allday-card .tag-col { flex: none; display: flex; align-items: center; justify-content: flex-start; gap: 6px; width: 76px; }
+  .allday-card .allday-time { font-size: 11px; font-weight: 700; opacity: .8; font-variant-numeric: tabular-nums; }
+  .allday-card .title { font-size: 13px; font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .allday-card .note1 { font-size: 12px; opacity: .7; flex: 1.2; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .card-actions { flex: none; display: flex; gap: 4px; }
+  .card-actions button {
+    border: 1px solid var(--border); background: var(--panel); color: var(--fg-dim);
+    border-radius: 6px; padding: 3px 8px; font-size: 11px; font-weight: 600; cursor: pointer;
+  }
+  .card-actions button:hover { color: var(--fg); border-color: var(--border-strong); }
+  .card-actions button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+  .tg-event .e-actions button.primary, .card-actions button.primary { padding: 3px 8px; }
+  .card-actions button.primary:hover { opacity: .9; }
+  .card-actions button.danger:hover { color: var(--danger); border-color: var(--danger); }
+  .tag-pill { flex: none; font-size: 10px; font-weight: 700; border-radius: 5px; padding: 2px 6px; }
+
+  /* time grid */
+  .timegrid-wrap { flex: 1; min-height: 0; overflow: auto; }
+  .timegrid { display: flex; min-height: 100%; }
+  .tg-scale { flex: none; width: 52px; position: relative; }
+  .tg-scale .tg-label {
+    position: absolute; right: 8px; transform: translateY(-50%);
+    font-size: 10.5px; color: var(--fg-faint); font-variant-numeric: tabular-nums;
+  }
+  .tg-body { flex: 1; position: relative; border-left: 1px solid var(--border); }
+  .tg-body .tg-line { position: absolute; left: 0; right: 0; border-top: 1px solid var(--border); }
+  .tg-body .tg-line.major { border-top-color: var(--border-strong); }
+  .tg-now {
+    position: absolute; left: 0; right: 0; height: 0; border-top: 2px solid var(--danger); z-index: 5;
+  }
+  .tg-now::before {
+    content: ''; position: absolute; left: -4px; top: -4px; width: 8px; height: 8px;
+    border-radius: 999px; background: var(--danger);
+  }
+  .tg-event {
+    position: absolute; left: 6px; right: 10px; border-radius: 8px; padding: 6px 10px;
+    overflow: hidden; display: flex; align-items: center; gap: 10px;
+  }
+  .tg-event:hover { filter: brightness(1.06); }
+  .tg-event .e-time { flex: none; font-size: 11px; font-weight: 700; opacity: .8; font-variant-numeric: tabular-nums; width: 76px; }
+  .tg-event .e-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+  .tg-event .e-title { font-size: 12.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tg-event .e-note { font-size: 11px; opacity: .7; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tg-event .e-actions { flex: none; display: flex; gap: 4px; }
+  .tg-event .e-actions button {
+    border: 1px solid var(--border); background: var(--panel); color: var(--fg-dim);
+    border-radius: 5px; padding: 2px 7px; font-size: 10px; font-weight: 600; cursor: pointer;
+  }
+  .tg-event .e-actions button:hover { color: var(--fg); }
+  .tg-event .e-actions button.danger:hover { color: var(--danger); border-color: var(--danger); }
+ .tg-event .e-actions button.danger:hover { color: var(--danger); border-color: var(--danger); }
+
+  /* ===== Week view: header / all-day / scrolling time grid rows ===== */
+  .week { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+  .wk-row { display: flex; flex: none; }
+  .wk-row .wk-col { display: flex; align-items: center; justify-content: center; flex: 1; min-width: 0; border-right: 1px solid var(--border); }
+  .wk-row .wk-col:last-child { border-right: none; }
+  .wk-row .dhead { display: flex; align-items: baseline; gap: 5px; padding: 7px 0 6px; }
+  .wk-row .dhead .wd { font-size: 10.5px; font-weight: 700; color: var(--fg-dim); }
+  .wk-row .dhead .dn { font-size: 14px; font-weight: 600; }
+  .wk-row .wk-col.today .dn {
+    width: 25px; height: 25px; border-radius: 999px; background: var(--accent); color: var(--accent-fg);
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .wk-shead, .wk-sstrip { flex: none; width: 52px; border-right: 1px solid var(--border); }
+  .wk-row .wk-allday { flex: 1; min-width: 0; border-right: 1px solid var(--border); padding: 4px 5px; display: flex; flex-direction: column; gap: 3px; }
+  .wk-row .wk-allday:last-child { border-right: none; }
+  .wk-row .wk-allday.empty { padding: 0; }
+  .wk-allday-item {
+    display: flex; align-items: center; gap: 5px; padding: 3px 6px; border-radius: 6px;
+    font-size: 11.5px; font-weight: 500; overflow: hidden;
+  }
+  .wk-allday-item .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
+  .wk-row.wk-body { flex: 1; min-height: 0; }
+  .wk-scale { flex: none; width: 52px; position: relative; border-right: 1px solid var(--border); }
+  .wk-scale .wk-label {
+    position: absolute; right: 7px; transform: translateY(-50%);
+    font-size: 10px; color: var(--fg-faint); font-variant-numeric: tabular-nums;
+  }
+  .wk-scroll { flex: 1; min-width: 0; overflow-y: auto; }
+  .wk-cols { display: flex; min-width: 100%; }
+  .wk-grid { flex: 1; min-width: 0; position: relative; border-right: 1px solid var(--border); }
+  .wk-grid:last-child { border-right: none; }
+  .wk-event {
+    position: absolute; left: 4px; right: 4px; border-radius: 6px; padding: 3px 6px;
+    overflow: hidden; cursor: pointer;
+  }
+  .wk-event:hover { filter: brightness(1.06); }
+  .wk-event .t { font-size: 11.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* ===== Popover / dialog (anchored to click position) ===== */
+  .pop {
+    position: fixed; z-index: 80; width: 300px; max-width: calc(100vw - 24px);
+    background: var(--panel); border: 1px solid var(--border-strong); border-radius: 10px;
+    box-shadow: 0 12px 32px rgba(0,0,0,.18); overflow: hidden;
+  }
+  .pop .head { padding: 9px 12px; border-bottom: 1px solid var(--border); font-size: 12.5px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+  .pop .head .count { color: var(--fg-dim); font-weight: 500; font-size: 11.5px; }
+  .pop .head .spacer { flex: 1; }
+  .pop .body { max-height: 260px; overflow: auto; padding: 6px; display: flex; flex-direction: column; gap: 3px; }
+  .pop .row { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 7px; font-size: 13px; cursor: pointer; }
+  .pop .row:hover { filter: brightness(1.05); }
+  .pop .row .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pop .row .d { font-size: 11px; flex: none; opacity: .7; font-weight: 500; }
+  .pop .empty { padding: 18px; text-align: center; font-size: 12.5px; color: var(--fg-dim); }
+
+  .dlg {
+    position: fixed; z-index: 90; width: 340px; max-width: calc(100vw - 24px);
+    background: var(--panel); border: 1px solid var(--border-strong); border-radius: 12px;
+    box-shadow: 0 16px 40px rgba(0,0,0,.22); padding: 14px;
+  }
+  .dlg h3 { font-size: 13.5px; font-weight: 600; margin-bottom: 10px; }
+  .dlg label { display: block; font-size: 11px; color: var(--fg-dim); margin: 8px 0 4px; font-weight: 500; }
+  .dlg input, .dlg textarea {
+    width: 100%; background: var(--bg); color: var(--fg); border: 1px solid var(--border);
+    border-radius: 7px; padding: 7px 9px; font-size: 13px; font-family: inherit;
+  }
+  .dlg input:focus, .dlg textarea:focus { outline: none; border-color: var(--accent); }
+  .dlg textarea { resize: vertical; min-height: 56px; }
+  .dlg .btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+  .note-body { font-size: 12.5px; line-height: 1.6; white-space: pre-wrap; padding: 2px 0 6px; }
+  .note-meta { font-size: 11px; color: var(--fg-faint); margin-bottom: 8px; }
+  .toast {
+    position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
+    background: var(--fg); color: var(--bg); padding: 8px 16px; border-radius: 999px;
+    font-size: 12.5px; font-weight: 500; z-index: 100; opacity: 0; transition: opacity .2s;
+  }
+  .toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+  <!-- TopBar (matches app: workspace switch + search + view buttons + actions) -->
+  <div class="topbar">
+    <span class="brand"><span class="logo">C</span> Craft Agents</span>
+    <span class="ws-switch">Work ▾</span>
+    <div class="search">⌕  搜索会话、来源、技能…</div>
+    <div class="top-right">
+      <div class="view-btns" id="navViewBtns">
+        <button title="List">☰</button>
+        <button title="Board">▦</button>
+        <button title="Calendar" class="active">◫</button>
+      </div>
+      <button class="icon-btn" title="Browser">▣</button>
+      <button class="icon-btn" title="Add">＋</button>
+      <button class="icon-btn" title="Help">?</button>
+      <div class="theme-seg">
+        <button data-theme="light" class="active">Light</button>
+        <button data-theme="dark">Dark</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="shell">
+    <!-- Sidebar -->
+    <div class="sidebar">
+      <button class="side-item active"><span class="ic">◉</span>全部会话</button>
+      <button class="side-item"><span class="ic">★</span>收藏</button>
+      <button class="side-item"><span class="ic">◎</span>我的状态</button>
+      <button class="side-item"><span class="ic">#</span>标签</button>
+      <button class="side-item"><span class="ic">▤</span>项目</button>
+      <button class="side-item"><span class="ic">⚙</span>自动化</button>
+      <div class="side-sep"></div>
+      <button class="side-item"><span class="ic">✉</span>来源</button>
+      <button class="side-item"><span class="ic">⚡</span>技能</button>
+      <div class="side-sep"></div>
+      <button class="side-item"><span class="ic">⚙</span>设置</button>
+      <div class="side-foot"><span class="avatar">d</span> dotty · Work</div>
+    </div>
+
+    <!-- Main: calendar -->
+    <div class="main">
+      <div class="view-wrap">
+        <div class="cal-head">
+          <button class="nav-btn" id="prev">‹</button>
+          <span class="title" id="calTitle">2026年8月</span>
+          <button class="nav-btn" id="next">›</button>
+          <button class="nav-btn today" id="goToday">今天</button>
+          <span class="spacer"></span>
+          <div class="seg" id="viewSeg">
+            <button data-view="day">Day</button>
+            <button data-view="week">Week</button>
+            <button data-view="month" class="active">Month</button>
+          </div>
+          <button class="new-task-btn" id="newEntry">＋ 新建日程</button>
+        </div>
+        <div class="cal-body" id="calBody"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="pop" id="pop" hidden></div>
+  <div class="dlg" id="dlg" hidden></div>
+  <div class="toast" id="toast"></div>
+
+<script>
+const DAY = 86400000;
+const now = new Date(2026, 7, 5, 14, 20);
+const PROJECTS = { 'p-eng': { name:'Engineering', color:'#4f46e5' }, 'p-growth': { name:'Growth', color:'#10b981' }, 'p-research': { name:'Research', color:'#f59e0b' } };
+const SESSIONS = [
+  { id:'s1', title:'Migrate auth to new session model', proj:'p-eng', due:new Date(2026,7,5), status:'in-progress' },
+  { id:'s2', title:'Draft migration plan', proj:null, due:new Date(2026,7,5), status:'in-progress' },
+  { id:'s3', title:'Redesign onboarding flow', proj:'p-eng', due:new Date(2026,7,10), status:'in-progress' },
+  { id:'s4', title:'Synthesize user interviews', proj:'p-research', due:new Date(2026,7,8), status:'needs-review' },
+  { id:'s5', title:'Draft Q3 launch announcement', proj:'p-growth', due:new Date(2026,7,15), status:'todo' },
+  { id:'s6', title:'Ship v0.11 release notes', proj:'p-growth', due:new Date(2026,7,2), status:'done' },
+  { id:'s7', title:'Investigate flaky CI on Windows runners', proj:null, created:new Date(2026,7,4), status:'todo' },
+  { id:'s8', title:'Prepare investor update', proj:'p-research', created:new Date(2026,7,12), status:'todo' },
+];
+let NOTES = [
+  { id:'n0', title:'发布日部署窗口', date:new Date(2026,7,5), time:'', note:'17:00 前完成发布；保留回滚通道。' },
+  { id:'n1', title:'团队周会', date:new Date(2026,7,6), time:'10:00', note:'同步本周进展与阻塞项。' },
+  { id:'n2', title:'发布前检查清单', date:new Date(2026,7,14), time:'', note:'- 冒烟测试\n- 更新版本号\n- 写 release notes' },
+  { id:'n3', title:'与设计团队过稿', date:new Date(2026,7,5), time:'14:30', note:'新看板视觉稿评审。' },
+];
+let cursor = new Date(2026, 7, 1);
+let view = 'month';
+const $ = s => document.querySelector(s);
+const dayKey = d => d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+const startOfWeekMonday = d => { const x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); return new Date(x.getTime() - ((x.getDay()+6)%7)*DAY); };
+function projColor(p){ return p ? (PROJECTS[p]?.color || '#9ca3af') : null; }
+function overdue(s){ return s.due && s.due < now && s.status !== 'done'; }
+function entriesFor(day){
+  const k = dayKey(day);
+  // Calendar shows schedule entries only — conversations live in the list/board.
+  return NOTES.filter(n => dayKey(n.date) === k).map(n => ({ kind:'note', id:n.id, title:n.title, time:n.time, note:n.note, date:n.date }));
+}
+/* Full color block: translucent accent purple for all schedule entries */
+function blockColor(e, alpha){
+  return `color-mix(in srgb, var(--accent) ${alpha*100}%, transparent)`;
+}
+function entryChip(e, expanded){
+  const div = document.createElement('div');
+  div.className = 'entry ' + e.kind + (expanded ? ' expanded' : '') + (e.kind==='session' && overdue(e) ? ' overdue' : '');
+  div.style.background = blockColor(e, e.kind==='note' ? 0.16 : 0.22);
+  if (expanded) {
+    const row1 = document.createElement('div'); row1.className='e-row1';
+    const time = document.createElement('span'); time.className='e-time';
+    time.textContent = e.time || (e.kind==='note' ? '全天' : (e.due ? fmt5(e.due) : '对话'));
+    row1.appendChild(time);
+    if (e.kind === 'note') {
+      const tag = document.createElement('span'); tag.className='tag';
+      tag.style.background = 'var(--accent)'; tag.style.color = 'var(--accent-fg)'; tag.textContent='日程';
+      row1.appendChild(tag);
+    }
+    const title = document.createElement('span'); title.className='title'; title.textContent = e.title;
+    row1.appendChild(title);
+    div.appendChild(row1);
+    if (e.kind === 'note' && e.note) {
+      const note = document.createElement('div'); note.className='e-note'; note.textContent = e.note;
+      div.appendChild(note);
+    }
+  } else {
+    if (e.kind === 'note') {
+      const tag = document.createElement('span'); tag.className='tag';
+      tag.style.background = 'var(--accent)'; tag.style.color = 'var(--accent-fg)'; tag.textContent='日程';
+      div.appendChild(tag);
+    }
+    const title = document.createElement('span'); title.className='title'; title.textContent = e.title;
+    div.appendChild(title);
+    if (e.kind === 'session' && e.due) { const m=document.createElement('span'); m.className='meta'; m.textContent=fmt5(e.due); div.appendChild(m); }
+    if (e.kind === 'note' && e.time) { const m=document.createElement('span'); m.className='meta'; m.textContent=e.time; div.appendChild(m); }
+  }
+  div.addEventListener('click', (ev) => { ev.stopPropagation(); openEntry(e, div); });
+  return div;
+}
+const fmt5 = d => dayKey(d).slice(5);
+
+function render(){
+  $('#calTitle').textContent = cursor.getFullYear() + '年' + (cursor.getMonth()+1) + '月';
+  const body = $('#calBody'); body.innerHTML = '';
+  if (view === 'month') renderMonth(body);
+  else if (view === 'week') renderWeek(body);
+  else renderDay(body);
+}
+function renderMonth(body){
+  const grid = document.createElement('div'); grid.className='month';
+  ['一','二','三','四','五','六','日'].forEach(w => { const d=document.createElement('div'); d.className='weekday'; d.textContent=w; grid.appendChild(d); });
+  const gs = startOfWeekMonday(new Date(cursor.getFullYear(), cursor.getMonth(), 1));
+  for (let i=0;i<42;i++){
+    const d = new Date(gs.getTime()+i*DAY);
+    const cell = document.createElement('div');
+    cell.className = 'day' + (d.getMonth()===cursor.getMonth()?'':' out') + (dayKey(d)===dayKey(now)?' today':'');
+    const date = document.createElement('span'); date.className='date'; date.textContent=d.getDate(); cell.appendChild(date);
+    const add = document.createElement('button'); add.className='add-btn'; add.textContent='+';
+    add.addEventListener('click', ev=>{ ev.stopPropagation(); openCreate(d); }); cell.appendChild(add);
+    const es = entriesFor(d);
+    es.slice(0,3).forEach(e => cell.appendChild(entryChip(e)));
+    if (es.length>3){ const m=document.createElement('div'); m.className='more'; m.textContent='+'+(es.length-3)+' more'; cell.appendChild(m); }
+    cell.addEventListener('click', ()=>openDayList(d, cell));
+    grid.appendChild(cell);
+  }
+  body.appendChild(grid);
+}
+function renderWeek(body){
+  const HOUR_H = 32, START_H = 8, END_H = 20;
+  const GRID_H = (END_H - START_H) * HOUR_H;
+  const wk = startOfWeekMonday(cursor);
+  const wrap = document.createElement('div'); wrap.className='week';
+
+  // Row 1: scale spacer + day headers
+  const r1 = document.createElement('div'); r1.className='wk-row';
+  const s1 = document.createElement('div'); s1.className='wk-shead';
+  r1.appendChild(s1);
+  for (let i=0;i<7;i++){
+    const d = new Date(wk.getTime()+i*DAY);
+    const head = document.createElement('div'); head.className='wk-col ' + (dayKey(d)===dayKey(now)?'today':'');
+    const dh = document.createElement('div'); dh.className='dhead';
+    const wd = document.createElement('span'); wd.className='wd'; wd.textContent=['一','二','三','四','五','六','日'][i];
+    const dn = document.createElement('span'); dn.className='dn'; dn.textContent=d.getDate();
+    dh.appendChild(wd); dh.appendChild(dn); head.appendChild(dh);
+    r1.appendChild(head);
+  }
+  wrap.appendChild(r1);
+
+  // Row 2: scale spacer + all-day strips
+  const r2 = document.createElement('div'); r2.className='wk-row';
+  const s2 = document.createElement('div'); s2.className='wk-sstrip';
+  r2.appendChild(s2);
+  for (let i=0;i<7;i++){
+    const d = new Date(wk.getTime()+i*DAY);
+    const strip = document.createElement('div'); strip.className='wk-allday';
+    const allday = entriesFor(d).filter(e => !e.time);
+    if (allday.length===0){ strip.classList.add('empty'); }
+    allday.forEach(e => {
+      const item = document.createElement('div'); item.className='wk-allday-item';
+      item.style.background = blockColor(e, 0.2);
+      const t = document.createElement('span'); t.className='t';
+      t.textContent = '日程 · ' + e.title;
+      item.appendChild(t);
+      item.addEventListener('click', ()=>openEntry(e, item));
+      strip.appendChild(item);
+    });
+    r2.appendChild(strip);
+  }
+  wrap.appendChild(r2);
+
+  // Row 3: time scale + shared-scroll grid (all 7 columns scroll together)
+  const r3 = document.createElement('div'); r3.className='wk-row wk-body';
+  const scale = document.createElement('div'); scale.className='wk-scale';
+  for (let h=START_H; h<=END_H; h++){
+    const l = document.createElement('div'); l.className='wk-label';
+    l.style.top = (h===START_H ? 10 : (h-START_H)*HOUR_H) + 'px';
+    l.textContent = String(h).padStart(2,'0')+':00';
+    scale.appendChild(l);
+  }
+  r3.appendChild(scale);
+  const scroller = document.createElement('div'); scroller.className='wk-scroll';
+  const cols = document.createElement('div'); cols.className='wk-cols';
+  cols.style.height = GRID_H + 'px';
+  for (let i=0;i<7;i++){
+    const d = new Date(wk.getTime()+i*DAY);
+    const g = document.createElement('div'); g.className='wk-grid';
+    for (let h=START_H; h<=END_H; h++){
+      const line = document.createElement('div');
+      line.style.cssText='position:absolute;left:0;right:0;border-top:1px solid var(--border);top:'+(h-START_H)*HOUR_H+'px';
+      g.appendChild(line);
+    }
+    if (dayKey(d)===dayKey(now)){
+      const nt = now.getHours() + now.getMinutes()/60;
+      if (nt>=START_H && nt<=END_H){
+        const nowline=document.createElement('div');
+        nowline.style.cssText='position:absolute;left:0;right:0;border-top:2px solid var(--danger);z-index:5;top:'+(nt-START_H)*HOUR_H+'px';
+        g.appendChild(nowline);
+      }
+    }
+    entriesFor(d).filter(e => e.time).forEach(e => {
+      const [hh,mm] = e.time.split(':').map(Number);
+      const top = (hh + mm/60 - START_H) * HOUR_H;
+      const card = document.createElement('div'); card.className='wk-event';
+      card.style.cssText += ';top:'+top+'px;height:'+(HOUR_H-2)+'px;background:'+blockColor(e,0.22);
+      const t = document.createElement('span'); t.className='t';
+      t.textContent = e.time + ' · ' + e.title;
+      card.appendChild(t);
+      card.addEventListener('click', ()=>openEntry(e, card));
+      g.appendChild(card);
+    });
+    cols.appendChild(g);
+  }
+  scroller.appendChild(cols);
+  r3.appendChild(scroller);
+  wrap.appendChild(r3);
+  body.appendChild(wrap);
+}
+function renderDay(body){
+  const HOUR_H = 56, START_H = 8, END_H = 20;
+  const d = cursor;
+  const wrap = document.createElement('div'); wrap.className='dayview';
+  const head = document.createElement('div'); head.className='dv-head';
+  head.textContent = d.getFullYear()+'年'+(d.getMonth()+1)+'月'+d.getDate()+'日';
+  const sub = document.createElement('div'); sub.className='dv-sub';
+  sub.textContent = '周' + ['日','一','二','三','四','五','六'][d.getDay()];
+  wrap.appendChild(head); wrap.appendChild(sub);
+
+  const es = entriesFor(d);
+  const timed = es.filter(e => e.kind==='note' && e.time);
+  const allday = es.filter(e => !(e.kind==='note' && e.time));
+
+  // All-day strip: full info + inline actions (open / delete / create chat)
+  const strip = document.createElement('div'); strip.className='allday-strip';
+  const label = document.createElement('div'); label.className='allday-label';
+  label.textContent = '全天';
+  strip.appendChild(label);
+  if (allday.length === 0){
+    const empty = document.createElement('div');
+    empty.className='dv-sub'; empty.style.padding='0 0 2px'; empty.textContent='无全天内容';
+    strip.appendChild(empty);
+  }
+  allday.forEach(e => {
+    const card = document.createElement('div'); card.className='allday-card';
+    card.style.background = blockColor(e, e.kind==='note'?0.16:0.22);
+    const tagCol = document.createElement('div'); tagCol.className='tag-col';
+    const tag = document.createElement('span'); tag.className='allday-time';
+    tag.textContent = '全天';
+    tagCol.appendChild(tag);
+    const title = document.createElement('span'); title.className='title'; title.textContent = e.title;
+    const note1 = document.createElement('span'); note1.className='note1';
+    note1.textContent = e.kind==='note' ? (e.note || '') : (e.due ? 'due ' + dayKey(e.due) : '');
+    const actions = document.createElement('div'); actions.className='card-actions';
+    const chatBtn = document.createElement('button'); chatBtn.className='primary'; chatBtn.textContent = '新建对话';
+    chatBtn.addEventListener('click', (ev)=>{ ev.stopPropagation(); toast('已创建对话：「'+e.title+'」（演示）'); });
+    const delBtn = document.createElement('button'); delBtn.className='danger'; delBtn.textContent = '删除';
+    delBtn.addEventListener('click', (ev)=>{ ev.stopPropagation(); delEntry(e); });
+    actions.appendChild(chatBtn);
+    actions.appendChild(delBtn);
+    card.appendChild(tagCol); card.appendChild(title); card.appendChild(note1); card.appendChild(actions);
+    strip.appendChild(card);
+  });
+  wrap.appendChild(strip);
+
+  // Time grid: left scale + timed events positioned by start time
+  const gridWrap = document.createElement('div'); gridWrap.className='timegrid-wrap';
+  const grid = document.createElement('div'); grid.className='timegrid';
+  const scale = document.createElement('div'); scale.className='tg-scale';
+  for (let h=START_H; h<=END_H; h++){
+    const l = document.createElement('div'); l.className='tg-label';
+    l.style.top = (h-START_H)*HOUR_H + 'px';
+    l.textContent = String(h).padStart(2,'0')+':00';
+    scale.appendChild(l);
+  }
+  grid.appendChild(scale);
+  const tbody = document.createElement('div'); tbody.className='tg-body';
+  for (let h=START_H; h<=END_H; h++){
+    const line = document.createElement('div'); line.className='tg-line major';
+    line.style.top = (h-START_H)*HOUR_H + 'px';
+    tbody.appendChild(line);
+  }
+  // current time line
+  if (dayKey(d)===dayKey(now)){
+    const nt = now.getHours() + now.getMinutes()/60;
+    if (nt>=START_H && nt<=END_H){
+      const nl = document.createElement('div'); nl.className='tg-now';
+      nl.style.top = (nt-START_H)*HOUR_H + 'px';
+      tbody.appendChild(nl);
+    }
+  }
+  timed.forEach(e => {
+    const [hh,mm] = e.time.split(':').map(Number);
+    const top = (hh + mm/60 - START_H) * HOUR_H;
+    const card = document.createElement('div'); card.className='tg-event';
+    card.style.cssText += ';top:'+top+'px;height:56px;background:'+blockColor(e,0.22);
+    const et = document.createElement('div'); et.className='e-time';
+    et.textContent = e.time + '–' + (String((hh+1)%24).padStart(2,'0')+':'+String(mm).padStart(2,'0'));
+    card.appendChild(et);
+    const main = document.createElement('div'); main.className='e-main';
+    const t = document.createElement('div'); t.className='e-title'; t.textContent = e.title;
+    main.appendChild(t);
+    if (e.note){ const n=document.createElement('div'); n.className='e-note'; n.textContent=e.note; main.appendChild(n); }
+    card.appendChild(main);
+    const acts = document.createElement('div'); acts.className='e-actions';
+    const chat = document.createElement('button'); chat.textContent='新建对话';
+    chat.addEventListener('click', (ev)=>{ ev.stopPropagation(); toast('已创建对话：「'+e.title+'」（演示）'); });
+    const del = document.createElement('button'); del.className='danger'; del.textContent='删除';
+    del.addEventListener('click', (ev)=>{ ev.stopPropagation(); delEntry(e); });
+    acts.appendChild(chat); acts.appendChild(del); card.appendChild(acts);
+    tbody.appendChild(card);
+  });
+  if (timed.length===0){
+    const empty = document.createElement('div');
+    empty.style.cssText='position:absolute;top:8px;left:8px;font-size:12px;color:var(--fg-dim);';
+    empty.textContent='该时段没有日程';
+    tbody.appendChild(empty);
+  }
+  grid.appendChild(tbody);
+  gridWrap.appendChild(grid);
+  wrap.appendChild(gridWrap);
+  body.appendChild(wrap);
+}
+
+function delEntry(e){
+  if (e.kind==='note'){ NOTES = NOTES.filter(n=>n.id!==e.id); }
+  else { SESSIONS = SESSIONS.filter(s=>s.id!==e.id); }
+  render(); toast('已删除');
+}
+/* Anchored popovers/dialogs */
+const pop = $('#pop'), dlg = $('#dlg');
+function anchor(el, w, h){
+  const r = el.getBoundingClientRect();
+  let x = r.right + 8, y = r.top;
+  if (x + w > innerWidth - 10) x = r.left - w - 8;
+  if (x < 10) x = Math.min(10, r.left);
+  if (y + h > innerHeight - 10) y = Math.max(10, innerHeight - h - 10);
+  return { left: Math.max(10, x), top: Math.max(10, y) };
+}
+function openDayList(day, anchorEl){
+  const es = entriesFor(day);
+  pop.innerHTML='';
+  const head=document.createElement('div'); head.className='head';
+  head.textContent = dayKey(day);
+  const count=document.createElement('span'); count.className='count'; count.textContent='· '+es.length+' 项';
+  head.appendChild(count);
+  const sp=document.createElement('span'); sp.className='spacer'; head.appendChild(sp);
+  const add=document.createElement('button'); add.className='btn'; add.style.padding='2px 9px'; add.textContent='+ 日程';
+  add.addEventListener('click', ()=>{ pop.hidden=true; openCreate(day); }); head.appendChild(add);
+  pop.appendChild(head);
+  if (es.length===0){ const e=document.createElement('div'); e.className='empty'; e.textContent='这一天没有内容'; pop.appendChild(e); }
+  else {
+    const b=document.createElement('div'); b.className='body';
+    es.forEach(e=>{
+      const r=document.createElement('div'); r.className='row '+(e.kind==='note'?'note':'session');
+      r.style.background = blockColor(e, e.kind==='note'?0.14:0.2);
+      const t=document.createElement('span'); t.className='t'; t.textContent=(e.kind==='note'?'日程 · ':'')+e.title; r.appendChild(t);
+      const d=document.createElement('span'); d.className='d'; d.textContent=e.time||(e.due?fmt5(e.due):''); r.appendChild(d);
+      r.addEventListener('click',()=>{ pop.hidden=true; openEntry(e, r); });
+      b.appendChild(r);
+    });
+    pop.appendChild(b);
+  }
+  pop.hidden=false;
+  const pos = anchor(anchorEl, pop.offsetWidth, Math.min(pop.offsetHeight, 320));
+  pop.style.left=pos.left+'px'; pop.style.top=pos.top+'px';
+}
+document.addEventListener('click', e=>{ if(!pop.hidden && !pop.contains(e.target) && !dlg.contains(e.target)) pop.hidden=true; });
+
+function openCreate(day){
+  dlg.innerHTML='';
+  const h=document.createElement('h3'); h.textContent='新建日程 / 笔记 — '+dayKey(day); dlg.appendChild(h);
+  const l1=document.createElement('label'); l1.textContent='标题'; dlg.appendChild(l1);
+  const title=document.createElement('input'); title.placeholder='例如：团队周会'; dlg.appendChild(title);
+  const l2=document.createElement('label'); l2.textContent='时间（可选）'; dlg.appendChild(l2);
+  const time=document.createElement('input'); time.placeholder='14:30'; time.style.width='110px'; dlg.appendChild(time);
+  const l3=document.createElement('label'); l3.textContent='笔记内容（可选）'; dlg.appendChild(l3);
+  const note=document.createElement('textarea'); note.placeholder='记录要点…'; dlg.appendChild(note);
+  const btns=document.createElement('div'); btns.className='btns';
+  const cancel=document.createElement('button'); cancel.className='btn'; cancel.textContent='取消';
+  cancel.addEventListener('click', ()=>dlg.hidden=true);
+  const save=document.createElement('button'); save.className='btn primary'; save.textContent='保存';
+  save.addEventListener('click', ()=>{
+    if(!title.value.trim()){ toast('请输入标题'); return; }
+    NOTES.push({ id:'n'+Date.now(), title:title.value.trim(), date:new Date(day), time:time.value.trim()||'', note:note.value.trim() });
+    dlg.hidden=true; render(); toast('已添加日程：'+title.value.trim());
+  });
+  btns.appendChild(cancel); btns.appendChild(save); dlg.appendChild(btns);
+  dlg.hidden=false;
+  dlg.style.left = Math.max(12, (innerWidth - dlg.offsetWidth) / 2) + 'px';
+  dlg.style.top = Math.max(12, (innerHeight - dlg.offsetHeight) / 2) + 'px';
+  title.focus();
+}
+function dayEl(day){
+  // reuse the current view's anchor: fall back to the cal-head
+  const k = dayKey(day);
+  const cell = document.querySelector(`.day[data-k="${k}"]`) || document.querySelector('.cal-head');
+  return cell || document.body;
+}
+function openEntry(e, el){
+  dlg.innerHTML='';
+  if (e.kind==='note'){
+    const h=document.createElement('h3'); h.textContent='✦ '+e.title; dlg.appendChild(h);
+    const meta=document.createElement('div'); meta.className='note-meta';
+    meta.textContent=dayKey(e.date)+(e.time?' · '+e.time:'')+' · 日程（未关联对话）'; dlg.appendChild(meta);
+    if (e.note){ const nb=document.createElement('div'); nb.className='note-body'; nb.textContent=e.note; dlg.appendChild(nb); }
+    const btns=document.createElement('div'); btns.className='btns';
+    const del=document.createElement('button'); del.className='btn'; del.textContent='删除';
+    del.addEventListener('click', ()=>{ NOTES=NOTES.filter(n=>n.id!==e.id); dlg.hidden=true; render(); toast('已删除日程'); });
+    const chat=document.createElement('button'); chat.className='btn primary'; chat.textContent='创建对话 →';
+    chat.addEventListener('click', ()=>{ dlg.hidden=true; toast('已创建对话：「'+e.title+'」（演示）'); });
+    btns.appendChild(del); btns.appendChild(chat); dlg.appendChild(btns);
+  } else {
+    const h=document.createElement('h3'); h.textContent=e.title; dlg.appendChild(h);
+    const meta=document.createElement('div'); meta.className='note-meta';
+    meta.textContent='对话'+(e.due?' · due '+dayKey(e.due):''); dlg.appendChild(meta);
+    const btns=document.createElement('div'); btns.className='btns';
+    const open=document.createElement('button'); open.className='btn primary'; open.textContent='打开对话';
+    open.addEventListener('click', ()=>{ dlg.hidden=true; toast('打开对话：「'+e.title+'」（演示）'); });
+    btns.appendChild(open); dlg.appendChild(btns);
+  }
+  dlg.hidden=false;
+  const pos = anchor(el || dayEl(e.date), dlg.offsetWidth, dlg.offsetHeight);
+  dlg.style.left=pos.left+'px'; dlg.style.top=pos.top+'px';
+}
+
+let toastTimer;
+function toast(msg){
+  const t=$('#toast'); t.textContent=msg; t.classList.add('show');
+  clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.remove('show'),2200);
+}
+
+$('#prev').addEventListener('click', ()=>{
+  if (view==='day') cursor=new Date(cursor.getFullYear(),cursor.getMonth(),cursor.getDate()-1);
+  else if (view==='week') cursor=new Date(cursor.getTime()-7*DAY);
+  else cursor=new Date(cursor.getFullYear(),cursor.getMonth()-1,1);
+  render();
+});
+$('#next').addEventListener('click', ()=>{
+  if (view==='day') cursor=new Date(cursor.getFullYear(),cursor.getMonth(),cursor.getDate()+1);
+  else if (view==='week') cursor=new Date(cursor.getTime()+7*DAY);
+  else cursor=new Date(cursor.getFullYear(),cursor.getMonth()+1,1);
+  render();
+});
+$('#goToday').addEventListener('click', ()=>{ cursor=new Date(now); render(); });
+$('#newEntry').addEventListener('click', ()=>{ openCreate(new Date(cursor)); });
+$('#viewSeg').addEventListener('click', e=>{
+  const b=e.target.closest('button'); if(!b) return;
+  view=b.dataset.view;
+  document.querySelectorAll('#viewSeg button').forEach(x=>x.classList.toggle('active',x===b));
+  if (view==='week' || view==='day') cursor=new Date(now);
+  render();
+});
+document.querySelector('.theme-seg').addEventListener('click', e=>{
+  const b=e.target.closest('button'); if(!b) return;
+  document.documentElement.classList.toggle('dark', b.dataset.theme==='dark');
+  document.querySelectorAll('.theme-seg button').forEach(x=>x.classList.toggle('active',x===b));
+});
+
+render();
+</script>
+</body>
+</html>
