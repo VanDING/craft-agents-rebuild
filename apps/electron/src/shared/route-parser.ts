@@ -46,8 +46,8 @@ export interface ParsedCompoundRoute {
   sourceFilter?: SourceFilter
   /** Automation filter (only for automations navigator) */
   automationFilter?: AutomationFilter
-  /** Sessions presentation mode (only for sessions navigator). 'board' = Kanban view. */
-  viewMode?: 'list' | 'board'
+  /** Sessions presentation mode (only for sessions navigator). 'board' = Kanban view, 'gantt'/'calendar' = schedule views. */
+  viewMode?: 'list' | 'board' | 'gantt' | 'calendar'
   /** Details page info (null for empty state) */
   details: {
     type: string
@@ -107,6 +107,27 @@ export function parseCompoundRoute(route: string): ParsedCompoundRoute | null {
       navigator: 'sessions',
       sessionFilter: { kind: 'allSessions' },
       viewMode: 'board',
+      details: null,
+    }
+  }
+
+  // Gantt chart — standalone schedule view of all sessions (same prefix
+  // convention as `board`).
+  if (first === 'gantt') {
+    return {
+      navigator: 'sessions',
+      sessionFilter: { kind: 'allSessions' },
+      viewMode: 'gantt',
+      details: null,
+    }
+  }
+
+  // Calendar — standalone schedule view of all sessions (same convention).
+  if (first === 'calendar') {
+    return {
+      navigator: 'sessions',
+      sessionFilter: { kind: 'allSessions' },
+      viewMode: 'calendar',
       details: null,
     }
   }
@@ -326,8 +347,10 @@ export function buildCompoundRoute(parsed: ParsedCompoundRoute): string {
   }
 
   // Sessions navigator
-  // Board is a standalone view of all sessions; emit its own prefix.
+  // Board/gantt/calendar are standalone views of all sessions; emit their own prefix.
   if (parsed.viewMode === 'board') return 'board'
+  if (parsed.viewMode === 'gantt') return 'gantt'
+  if (parsed.viewMode === 'calendar') return 'calendar'
 
   let base: string
   const filter = parsed.sessionFilter

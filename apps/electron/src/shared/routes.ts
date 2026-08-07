@@ -192,6 +192,12 @@ export const routes = {
 
     /** Kanban board view (sessions navigator, board view mode, all sessions) */
     board: () => 'board' as const,
+
+    /** Gantt chart view (sessions navigator, timeline of all sessions) */
+    gantt: () => 'gantt' as const,
+
+    /** Calendar view (sessions navigator, month grid of all sessions) */
+    calendar: () => 'calendar' as const,
   },
 } as const
 

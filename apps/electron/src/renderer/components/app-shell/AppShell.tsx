@@ -611,10 +611,13 @@ function AppShellContent({
 
   const sessionFilter = sessionsContext?.filter ?? null
 
-  // Board view replaces the session-list navigator with the full-width Kanban panel,
-  // so the navigator (and its resize handle) collapse to zero width while it's active.
-  const isBoardView = isSessionsNavigation(navState) && navState.viewMode === 'board'
-  const currentView: 'list' | 'board' = isBoardView ? 'board' : 'list'
+  // Board/gantt/calendar views replace the session-list navigator with a
+  // full-width panel, so the navigator (and its resize handle) collapse to
+  // zero width while one of them is active.
+  const isFullWidthView = isSessionsNavigation(navState) && (navState.viewMode === 'board' || navState.viewMode === 'gantt' || navState.viewMode === 'calendar')
+  const currentView: 'list' | 'board' | 'gantt' | 'calendar' = isSessionsNavigation(navState) && navState.viewMode
+    ? navState.viewMode
+    : 'list'
 
   // Derive source filter from navigation state (only when in sources navigator)
   const sourceFilter: SourceFilter | null = isSourcesNavigation(navState) ? navState.filter ?? null : null
@@ -2336,6 +2339,8 @@ function AppShellContent({
           currentView={currentView}
           onNavigateToView={(view) => {
             if (view === 'board') navigate(routes.view.board())
+            else if (view === 'gantt') navigate(routes.view.gantt())
+            else if (view === 'calendar') navigate(routes.view.calendar())
             else navigate(routes.view.allSessions())
           }}
         />
@@ -3544,7 +3549,7 @@ function AppShellContent({
             )}
             </div>
           }
-          navigatorWidth={isAutoCompact ? sessionListWidth : (effectiveSidebarAndNavigatorHidden || isBoardView ? 0 : sessionListWidth)}
+          navigatorWidth={isAutoCompact ? sessionListWidth : (effectiveSidebarAndNavigatorHidden || isFullWidthView ? 0 : sessionListWidth)}
           isSidebarAndNavigatorHidden={effectiveSidebarAndNavigatorHidden}
           isRightSidebarVisible={false}
           isCompact={isAutoCompact}
@@ -3584,8 +3589,8 @@ function AppShellContent({
         </div>
         )}
 
-        {/* Session List Resize Handle (absolute, hidden in focused mode and board view) */}
-        {!effectiveSidebarAndNavigatorHidden && !isBoardView && (
+        {/* Session List Resize Handle (absolute, hidden in focused mode and board/gantt/calendar views) */}
+        {!effectiveSidebarAndNavigatorHidden && !isFullWidthView && (
         <div
           ref={sessionListHandleRef}
           onMouseDown={(e) => { e.preventDefault(); setIsResizing('session-list') }}

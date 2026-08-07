@@ -12,20 +12,19 @@ import { useProjectColorTreatment } from '@/hooks/useProjectColorTreatment'
 import { useLabels } from '@/hooks/useLabels'
 import { getSessionTitle } from '@/utils/session'
 import { resolveTaskScopeLabelId } from '@craft-agent/shared/labels'
-import { DEFAULT_MODEL, getModelShortName } from '@config/models'
-import { getDefaultModelsForConnection, type LlmConnectionWithStatus } from '@config/llm-connections'
+import { DEFAULT_MODEL } from '@config/models'
 import type { SessionStatus } from '@/config/session-status-config'
 import type { KanbanColumnDef } from '@craft-agent/shared/projects/types'
 import { KanbanBoard } from './KanbanBoard'
 import { KANBAN_COLUMNS, statusToColumn } from './status-column'
 import { KanbanProjectFilter, type KanbanProjectFilterOption } from './KanbanProjectFilter'
 import { TaskEditor } from './TaskEditor'
+import { buildModelCatalog } from './model-catalog'
 import { mergeSubtaskRows, type SpecNodeSummary, type SubtaskChildRow } from './subtask-merge'
 import type { SpecNode } from './task-spec-form'
 import type {
   KanbanColumnId,
   KanbanColumnMeta,
-  KanbanModelProviderGroup,
   KanbanProject,
   KanbanTask,
   SubtaskRunState,
@@ -48,40 +47,6 @@ function deriveRunState(child: SessionMeta, statusesById: Map<string, SessionSta
   if (child.isProcessing) return 'running'
   if ((child.messageCount ?? 0) > 0) return 'done'
   return 'pending'
-}
-
-/**
- * Build the subtask composer's provider→model catalog from the workspace's
- * authenticated LLM connections, plus a model-id → connection-slug map so a
- * spawned subtask routes to the connection that actually serves the model.
- * Model-id collisions across connections are last-wins (acceptable for v1).
- */
-function buildModelCatalog(connections: LlmConnectionWithStatus[]): {
-  groups: KanbanModelProviderGroup[]
-  modelToConnection: Map<string, string>
-} {
-  const groups: KanbanModelProviderGroup[] = []
-  const modelToConnection = new Map<string, string>()
-
-  for (const conn of connections) {
-    if (!conn.isAuthenticated) continue
-    const rawModels = conn.models?.length
-      ? conn.models
-      : getDefaultModelsForConnection(conn.providerType, conn.piAuthProvider)
-    const models = rawModels.map(m => {
-      const id = typeof m === 'string' ? m : m.id
-      const name = typeof m === 'string' ? getModelShortName(m) : m.name || getModelShortName(m.id)
-      return { id, name }
-    })
-    if (models.length === 0) continue
-    for (const m of models) modelToConnection.set(m.id, conn.slug)
-    // Provider key drives the brand icon: resolved via piAuthProvider first,
-    // falling back to providerType (see resolveProviderIcon in TaskTile).
-    const provider = conn.piAuthProvider || conn.providerType
-    groups.push({ provider, label: conn.name, models })
-  }
-
-  return { groups, modelToConnection }
 }
 
 /**

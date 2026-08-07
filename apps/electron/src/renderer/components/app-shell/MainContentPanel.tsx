@@ -43,6 +43,8 @@ import { getSettingsPageComponent } from '@/pages/settings/settings-pages'
 import { AutomationInfoPage } from '../automations/AutomationInfoPage'
 import ProjectInfoPage from '@/pages/ProjectInfoPage'
 import { KanbanBoardContainer } from './kanban/KanbanBoardContainer'
+import { GanttView } from './kanban/GanttView'
+import { CalendarView } from './kanban/CalendarView'
 import type { ExecutionEntry } from '../automations/types'
 import { automationsAtom } from '@/atoms/automations'
 import { SendResourceToWorkspaceDialog, type SendResourceType } from './SendResourceToWorkspaceDialog'
@@ -384,6 +386,24 @@ export function MainContentPanel({
       return wrapWithStoplight(
         <Panel variant="grow" className={className}>
           <KanbanBoardContainer />
+        </Panel>
+      )
+    }
+
+    // Gantt view: full-width timeline of all scheduled sessions
+    if (navState.viewMode === 'gantt') {
+      return wrapWithStoplight(
+        <Panel variant="grow" className={className}>
+          <GanttView />
+        </Panel>
+      )
+    }
+
+    // Calendar view: full-width month grid of all scheduled sessions
+    if (navState.viewMode === 'calendar') {
+      return wrapWithStoplight(
+        <Panel variant="grow" className={className}>
+          <CalendarView />
         </Panel>
       )
     }
