@@ -51,7 +51,7 @@ const MAX_TASKS_PER_CELL = 3
 const HOUR_START = 8
 const HOUR_END = 20
 const HOUR_PX_DAY = 56
-const HOUR_PX_WEEK = 32
+const HOUR_PX_WEEK = 56
 
 function dayKey(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
