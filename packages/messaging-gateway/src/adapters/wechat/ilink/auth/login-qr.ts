@@ -1,9 +1,24 @@
 // Vendored from @tencent-weixin/openclaw-weixin@2.4.4 (MIT, Copyright (C) 2026 Tencent).
 // See ../LICENSE and ../README.md (paths relative to ilink/) for license text and local adaptations.
+//
+// Local adaptations (vs. upstream):
+// - Workspace-scoped state root support (stateRoot) for account token pinning.
+// - Security: never re-submit historical account tokens; only the pinned
+//   account's token may be submitted for session reuse (via accountId).
+// - verifyCodeProvider callback (promise-based) instead of stdin prompts, so
+//   the Electron UI can collect the verification code.
+// - onStatus callback for UI state transitions; 'expired' carries the
+//   refreshed QR URL so the UI can re-render it.
+// - Field names follow the LIVE iLink API contract (verified 2026-08-08):
+//   get_bot_qrcode returns { qrcode, qrcode_img_content, ... } and
+//   get_qrcode_status is a GET long-poll keyed by `qrcode` (plus optional
+//   `verify_code`), returning ilink_bot_id / bot_token / baseurl /
+//   ilink_user_id on confirmation. Earlier adaptations read qrcode_url /
+//   session_key which the API never returns, breaking QR login entirely.
 
 import { randomUUID } from 'node:crypto';
 import * as readline from 'node:readline';
-import { apiPostFetch } from '../api/api';
+import { apiGetFetch, apiPostFetch } from '../api/api';
 import { loadWeixinAccount } from './accounts';
 import { logger } from '../util/logger';
 import { redactToken } from '../util/redact';
@@ -22,7 +37,7 @@ export const FIXED_BASE_URL = 'https://ilinkai.weixin.qq.com';
 const LOGIN_TTL_MS = 5 * 60 * 1000;
 
 /** Polling interval between QR code status checks. */
-const POLL_INTERVAL_MS = 2_000;
+const POLL_INTERVAL_MS = 1_000;
 
 /** Maximum number of QR code refresh attempts after expiry. */
 const MAX_REFRESH_ATTEMPTS = 3;
@@ -30,7 +45,7 @@ const MAX_REFRESH_ATTEMPTS = 3;
 /** Default timeout for the wait loop (2 minutes). */
 const DEFAULT_WAIT_TIMEOUT_MS = 120_000;
 
-/** Maximum per-poll timeout in milliseconds. */
+/** Maximum per-poll timeout in milliseconds (long-poll). */
 const MAX_POLL_TIMEOUT_MS = 30_000;
 
 // ---------------------------------------------------------------------------
@@ -53,29 +68,35 @@ export interface WeixinQrWaitResult {
   alreadyConnected?: boolean;
   /** The bot token returned on successful confirmation. */
   botToken?: string;
-  /** The WeChat account identifier. */
+  /** The WeChat account identifier (ilink_bot_id). */
   accountId?: string;
   /** Base URL for subsequent API calls (may differ from the original). */
   baseUrl?: string;
-  /** The WeChat user identifier. */
+  /** The WeChat user identifier (ilink_user_id). */
   userId?: string;
   /** Human-readable status message. */
   message: string;
 }
 
 /**
- * Raw response from the QR code status polling endpoint.
+ * Raw response shapes from the iLink QR endpoints.
+ *
+ * - `ilink/bot/get_bot_qrcode` returns `qrcode` (QR session id) and
+ *   `qrcode_img_content` (the scannable URL).
+ * - `ilink/bot/get_qrcode_status` is a GET long-poll keyed by the `qrcode`
+ *   query parameter; on confirmation it returns `ilink_bot_id`,
+ *   `bot_token`, `baseurl`, and `ilink_user_id`.
  */
 interface QrPollResponse {
-  status: string;
-  qrcode_url?: string;
-  session_key?: string;
+  ret?: number;
+  status?: string;
+  qrcode?: string;
+  qrcode_img_content?: string;
   bot_token?: string;
-  account_id?: string;
-  user_id?: string;
-  base_url?: string;
-  redirect_url?: string;
-  verify_code_token?: string;
+  ilink_bot_id?: string;
+  ilink_user_id?: string;
+  baseurl?: string;
+  redirect_host?: string;
   message?: string;
 }
 
@@ -84,9 +105,18 @@ interface QrPollResponse {
  */
 interface ActiveLogin {
   sessionKey: string;
+  /** QR session id returned by get_bot_qrcode — the key for status polls. */
+  qrcode: string;
+  /** Scannable QR image URL. */
+  qrcodeUrl: string;
   startedAt: number;
   expiresAt: number;
+  /** Number of QR refreshes performed (bounded by MAX_REFRESH_ATTEMPTS). */
   refreshCount: number;
+  /** Verification code collected from the user, sent with the next poll. */
+  pendingVerifyCode?: string;
+  /** Polling base URL; may be redirected (scaned_but_redirect). */
+  currentApiBaseUrl?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -116,12 +146,16 @@ function purgeExpiredLogins(): void {
  * Register a new active login session.
  *
  * @param sessionKey - The session key to track.
+ * @param qrcode     - QR session id from get_bot_qrcode.
+ * @param qrcodeUrl  - Scannable QR image URL.
  */
-function trackLogin(sessionKey: string): void {
+function trackLogin(sessionKey: string, qrcode: string, qrcodeUrl: string): void {
   purgeExpiredLogins();
   const now = Date.now();
   activeLogins.set(sessionKey, {
     sessionKey,
+    qrcode,
+    qrcodeUrl,
     startedAt: now,
     expiresAt: now + LOGIN_TTL_MS,
     refreshCount: 0,
@@ -174,22 +208,25 @@ export async function displayQRCode(qrcodeUrl: string): Promise<void> {
 // ---------------------------------------------------------------------------
 
 /**
- * Submit a verification code during the `need_verifycode` status phase.
+ * Fetch a fresh QR code (used for the initial login and expiry refresh).
  *
- * @param apiBaseUrl  - The iLink API base URL.
- * @param sessionKey  - The current login session key.
- * @param verifyCode  - The verification code provided by the user.
- * @returns The parsed response from the submission endpoint.
+ * @param apiBaseUrl - The iLink API base URL.
+ * @param botType    - The bot type identifier.
+ * @param localTokens - Optional account tokens for session reuse. Only the
+ *                      pinned account's token may be submitted; a fresh
+ *                      refresh submits none.
+ * @returns The parsed get_bot_qrcode response.
  */
-async function submitVerifyCode(
+async function fetchQrCode(
   apiBaseUrl: string,
-  sessionKey: string,
-  verifyCode: string,
+  botType: string,
+  localTokens: string[],
 ): Promise<QrPollResponse> {
   const raw = await apiPostFetch({
     baseUrl: apiBaseUrl,
-    endpoint: 'ilink/bot/submit_verify_code',
-    body: { session_key: sessionKey, verify_code: verifyCode },
+    endpoint: `ilink/bot/get_bot_qrcode?bot_type=${encodeURIComponent(botType)}`,
+    body: { local_token_list: localTokens },
+    label: 'fetchQRCode',
   });
   return JSON.parse(raw) as QrPollResponse;
 }
@@ -200,19 +237,23 @@ async function submitVerifyCode(
  * @param apiBaseUrl - The iLink API base URL.
  * @param sessionKey - The existing session key.
  * @param botType    - The bot type identifier.
- * @returns The parsed response containing a new QR code URL.
+ * @returns The parsed response containing a new QR code.
  */
 async function refreshQrCode(
   apiBaseUrl: string,
   sessionKey: string,
   botType: string,
 ): Promise<QrPollResponse> {
-  const raw = await apiPostFetch({
-    baseUrl: apiBaseUrl,
-    endpoint: `ilink/bot/get_bot_qrcode?bot_type=${botType}`,
-    body: { session_key: sessionKey },
-  });
-  return JSON.parse(raw) as QrPollResponse;
+  // Security: a refresh never re-submits stored account tokens (see the
+  // module header). The new QR binds a fresh session on scan.
+  const data = await fetchQrCode(apiBaseUrl, botType, []);
+  if (data.qrcode) {
+    logger.info('Refreshed QR code', {
+      sessionKey: redactToken(sessionKey),
+      hasQrcode: true,
+    });
+  }
+  return data;
 }
 
 // ---------------------------------------------------------------------------
@@ -298,19 +339,21 @@ export async function startWeixinLoginWithQr(
     });
   }
 
-  const raw = await apiPostFetch({
-    baseUrl,
-    endpoint: `ilink/bot/get_bot_qrcode?bot_type=${botType}`,
-    body: { local_token_list: localTokens },
-  });
+  const data = await fetchQrCode(baseUrl, botType, localTokens);
 
-  const data: QrPollResponse = JSON.parse(raw);
-  const sessionKey = data.session_key ?? randomUUID();
+  if (!data.qrcode || !data.qrcode_img_content) {
+    const message = data.message ?? 'Failed to fetch QR code from iLink API';
+    if (opts.verbose) {
+      logger.warn('QR code fetch failed', { message, ret: data.ret });
+    }
+    return { qrcodeUrl: undefined, message, sessionKey: randomUUID() };
+  }
 
-  trackLogin(sessionKey);
+  const sessionKey = opts.accountId ?? randomUUID();
+  trackLogin(sessionKey, data.qrcode, data.qrcode_img_content);
 
   const result: WeixinQrStartResult = {
-    qrcodeUrl: data.qrcode_url,
+    qrcodeUrl: data.qrcode_img_content,
     message: data.message ?? '',
     sessionKey,
   };
@@ -318,7 +361,7 @@ export async function startWeixinLoginWithQr(
   if (opts.verbose) {
     logger.info('QR code fetched', {
       sessionKey: redactToken(sessionKey),
-      hasUrl: !!data.qrcode_url,
+      hasUrl: !!data.qrcode_img_content,
     });
   }
 
@@ -350,27 +393,29 @@ export interface WaitForWeixinLoginOptions {
 
   /**
    * Async callback to obtain a verification code when the API
-   * reports `need_verifycode`.  Leave unset to skip verify-code
+   * reports `need_verifycode`. Leave unset to skip verify-code
    * submission (the poll will continue, likely cycling back to
-   * `need_verifycode`).
+   * `need_verifycode`). Resolving with an empty string cancels the flow.
    */
   verifyCodeProvider?: () => Promise<string>;
 
   /**
-   * Callback invoked on each status transition.
-   * Receives the raw status string (`"wait"`, `"scaned"`,
-   * `"need_verifycode"`, `"expired"`, `"confirmed"`, etc.).
+   * Callback invoked on each status transition. Receives the raw status
+   * string (`"wait"`, `"scaned"`, `"need_verifycode"`, `"expired"`,
+   * `"confirmed"`, etc.). For `"expired"` the second argument carries the
+   * refreshed QR image URL so the UI can re-render it.
    */
-  onStatus?: (status: string) => void;
+  onStatus?: (status: string, extra?: { qrcodeUrl?: string }) => void;
 }
 
 /**
  * Wait for a WeChat login to complete by polling the QR code status.
  *
- * Long-polls the `ilink/bot/get_qrcode_status` endpoint and handles
- * the full state machine: QR wait, scan detected, verification code
- * prompts, expired QR refresh (up to 3 attempts), redirects, and
- * confirmed login credentials.
+ * Long-polls the `ilink/bot/get_qrcode_status` endpoint (GET, keyed by the
+ * `qrcode` query parameter — NOT a POST with a session_key body) and handles
+ * the full state machine: QR wait, scan detected, verification code prompts,
+ * expired QR refresh (up to 3 attempts), redirects, and confirmed login
+ * credentials.
  *
  * @param opts - Wait options.
  * @returns The login result with credentials on success.
@@ -382,25 +427,28 @@ export async function waitForWeixinLogin(
   const botType = opts.botType ?? DEFAULT_ILINK_BOT_TYPE;
   const startTime = Date.now();
 
-  let apiBaseUrl = opts.apiBaseUrl;
-  let refreshCount = 0;
-
-  // Ensure this session is tracked
-  if (!activeLogins.has(opts.sessionKey)) {
-    trackLogin(opts.sessionKey);
+  const activeLogin = activeLogins.get(opts.sessionKey);
+  if (!activeLogin) {
+    logger.warn('waitForWeixinLogin: no active login session', {
+      sessionKey: redactToken(opts.sessionKey),
+    });
+    return { connected: false, message: 'No active login session — start the login first.' };
   }
+
+  let apiBaseUrl = opts.apiBaseUrl;
+  let refreshCount = activeLogin.refreshCount;
 
   /**
    * Log and emit a status update.
    */
-  const emitStatus = (status: string, extra?: Record<string, unknown>): void => {
+  const emitStatus = (status: string, extra?: { qrcodeUrl?: string }): void => {
     if (opts.verbose) {
       logger.info(`QR status: ${status}`, {
         sessionKey: redactToken(opts.sessionKey),
         ...extra,
       });
     }
-    opts.onStatus?.(status);
+    opts.onStatus?.(status, extra);
   };
 
   while (Date.now() - startTime < timeoutMs) {
@@ -408,14 +456,29 @@ export async function waitForWeixinLogin(
     const remaining = timeoutMs - elapsed;
 
     try {
-      const raw = await apiPostFetch({
+      // Long-poll the status endpoint, keyed by the QR id (not a session key).
+      // A client-side timeout is the normal long-poll outcome — treat it as
+      // "wait" and poll again.
+      let endpoint = `ilink/bot/get_qrcode_status?qrcode=${encodeURIComponent(activeLogin.qrcode)}`;
+      if (activeLogin.pendingVerifyCode) {
+        endpoint += `&verify_code=${encodeURIComponent(activeLogin.pendingVerifyCode)}`;
+      }
+      const raw = await apiGetFetch({
         baseUrl: apiBaseUrl,
-        endpoint: 'ilink/bot/get_qrcode_status',
-        body: { session_key: opts.sessionKey },
+        endpoint,
         timeoutMs: Math.min(MAX_POLL_TIMEOUT_MS, Math.max(5_000, remaining)),
+        label: 'pollQRStatus',
       });
 
-      const data: QrPollResponse = JSON.parse(raw);
+      let data: QrPollResponse;
+      try {
+        data = JSON.parse(raw);
+      } catch {
+        // Non-JSON body — treat as transient and keep polling.
+        emitStatus('wait');
+        await sleep(Math.min(POLL_INTERVAL_MS, Math.max(1_000, remaining)));
+        continue;
+      }
       const status = data.status;
 
       switch (status) {
@@ -427,6 +490,8 @@ export async function waitForWeixinLogin(
         }
 
         case 'scaned': {
+          // A submitted verify code that got this far was accepted.
+          activeLogin.pendingVerifyCode = undefined;
           emitStatus('scaned');
           await sleep(Math.min(POLL_INTERVAL_MS, Math.max(1_000, remaining)));
           continue;
@@ -438,8 +503,13 @@ export async function waitForWeixinLogin(
           if (opts.verifyCodeProvider) {
             const code = await opts.verifyCodeProvider();
             if (code) {
-              await submitVerifyCode(apiBaseUrl, opts.sessionKey, code);
+              activeLogin.pendingVerifyCode = code;
+              // Poll again immediately with the code attached.
+              continue;
             }
+            // Empty code — the flow was cancelled by the caller.
+            activeLogins.delete(opts.sessionKey);
+            return { connected: false, message: 'Login cancelled' };
           }
           await sleep(Math.min(POLL_INTERVAL_MS, Math.max(1_000, remaining)));
           continue;
@@ -449,16 +519,22 @@ export async function waitForWeixinLogin(
         case 'expired': {
           refreshCount++;
           if (refreshCount > MAX_REFRESH_ATTEMPTS) {
-            emitStatus('expired', { refreshCount });
+            emitStatus('expired');
+            activeLogins.delete(opts.sessionKey);
             return {
               connected: false,
               message: `QR code expired after ${MAX_REFRESH_ATTEMPTS} refresh attempts`,
             };
           }
-          emitStatus('expired', { refreshCount });
           const refreshed = await refreshQrCode(apiBaseUrl, opts.sessionKey, botType);
-          if (refreshed.qrcode_url) {
-            await displayQRCode(refreshed.qrcode_url);
+          if (refreshed.qrcode && refreshed.qrcode_img_content) {
+            activeLogin.qrcode = refreshed.qrcode;
+            activeLogin.qrcodeUrl = refreshed.qrcode_img_content;
+            activeLogin.refreshCount = refreshCount;
+            await displayQRCode(refreshed.qrcode_img_content);
+            emitStatus('expired', { qrcodeUrl: refreshed.qrcode_img_content });
+          } else {
+            emitStatus('expired');
           }
           continue;
         }
@@ -466,22 +542,37 @@ export async function waitForWeixinLogin(
         // ----- Too many wrong verify-code attempts -----
         case 'verify_code_blocked': {
           emitStatus('verify_code_blocked');
-          return {
-            connected: false,
-            message: data.message ?? 'Verification code attempt blocked',
-          };
+          activeLogin.pendingVerifyCode = undefined;
+          refreshCount++;
+          if (refreshCount > MAX_REFRESH_ATTEMPTS) {
+            activeLogins.delete(opts.sessionKey);
+            return {
+              connected: false,
+              message: data.message ?? 'Verification code attempt blocked',
+            };
+          }
+          const refreshed = await refreshQrCode(apiBaseUrl, opts.sessionKey, botType);
+          if (refreshed.qrcode && refreshed.qrcode_img_content) {
+            activeLogin.qrcode = refreshed.qrcode;
+            activeLogin.qrcodeUrl = refreshed.qrcode_img_content;
+            activeLogin.refreshCount = refreshCount;
+            await displayQRCode(refreshed.qrcode_img_content);
+            emitStatus('expired', { qrcodeUrl: refreshed.qrcode_img_content });
+          }
+          continue;
         }
 
         // ----- Already bound to another session -----
         case 'binded_redirect': {
           emitStatus('binded_redirect');
+          activeLogins.delete(opts.sessionKey);
           return {
             connected: true,
             alreadyConnected: true,
             botToken: data.bot_token,
-            accountId: data.account_id,
-            baseUrl: data.base_url,
-            userId: data.user_id,
+            accountId: data.ilink_bot_id,
+            baseUrl: data.baseurl,
+            userId: data.ilink_user_id,
             message: data.message ?? 'Already connected',
           };
         }
@@ -489,8 +580,9 @@ export async function waitForWeixinLogin(
         // ----- Scanned on phone — redirect polling to new host -----
         case 'scaned_but_redirect': {
           emitStatus('scaned_but_redirect');
-          if (data.redirect_url) {
-            apiBaseUrl = data.redirect_url;
+          if (data.redirect_host) {
+            apiBaseUrl = `https://${data.redirect_host}`;
+            activeLogin.currentApiBaseUrl = apiBaseUrl;
             if (opts.verbose) {
               logger.info('Redirected polling to new host', {
                 newBaseUrl: apiBaseUrl,
@@ -503,13 +595,18 @@ export async function waitForWeixinLogin(
 
         // ----- Login confirmed — return credentials -----
         case 'confirmed': {
+          if (!data.ilink_bot_id) {
+            activeLogins.delete(opts.sessionKey);
+            return { connected: false, message: 'Login confirmed but ilink_bot_id missing' };
+          }
           emitStatus('confirmed');
+          activeLogins.delete(opts.sessionKey);
           return {
             connected: true,
             botToken: data.bot_token,
-            accountId: data.account_id,
-            baseUrl: data.base_url ?? apiBaseUrl,
-            userId: data.user_id,
+            accountId: data.ilink_bot_id,
+            baseUrl: data.baseurl ?? apiBaseUrl,
+            userId: data.ilink_user_id,
             message: data.message ?? 'Login confirmed',
           };
         }
@@ -526,12 +623,13 @@ export async function waitForWeixinLogin(
       if (opts.verbose) {
         logger.warn('QR poll error', { error: message });
       }
-      // Brief backoff before retrying after an error
+      // Brief backoff before retrying after an error (network blips, 5xx).
       await sleep(Math.min(3_000, Math.max(1_000, remaining)));
     }
   }
 
   // Timeout reached without confirmation
+  activeLogins.delete(opts.sessionKey);
   return {
     connected: false,
     message: `Login timed out after ${timeoutMs}ms`,

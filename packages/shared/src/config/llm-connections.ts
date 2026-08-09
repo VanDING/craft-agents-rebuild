@@ -300,11 +300,18 @@ function findSmallModel(
 
   const keywords: string[] = ['mini', 'flash', 'haiku'];
 
+  // Word-boundary matching: "mini" must be a standalone token, not a prefix
+  // of a brand name (e.g. minimax-m3, MiniMax-2.5) — otherwise the first
+  // "mini"-ish model in the list gets picked as the utility model and its
+  // verbose output fails title validation.
+  const matchesKeyword = (searchStr: string, keyword: string): boolean =>
+    new RegExp(`(^|[^a-z0-9])${keyword}($|[^a-z0-9])`, 'i').test(searchStr);
+
   if (keywords.length > 0) {
     const match = connection.models.find(m => {
       if (!isAllowedModel(m)) return false;
       const searchStr = toSearchStr(m);
-      return keywords.some(k => searchStr.includes(k));
+      return keywords.some(k => matchesKeyword(searchStr, k));
     });
     if (match) {
       return toId(match);

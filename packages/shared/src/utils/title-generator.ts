@@ -193,6 +193,11 @@ export function validateTitle(title: string | null | undefined): string | null {
 
   let cleaned = title.trim();
 
+  // Strip reasoning blocks models may emit (e.g. <think>…</think> from
+  // reasoning models). The reasoning is preamble, never title content —
+  // leaving it in inflates the word count and rejects otherwise valid titles.
+  cleaned = cleaned.replace(/<think>[\s\S]*?<\/think>/gi, ' ').trim();
+
   // Iterative preamble stripping: handles chained preambles like "Sure: Title: Foo"
   let prev = '';
   while (cleaned !== prev) {

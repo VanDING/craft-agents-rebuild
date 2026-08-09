@@ -89,6 +89,23 @@ describe('getMiniModel()', () => {
     expect(getMiniModel(conn)).toBe('pi/o4-mini');
   });
 
+  it('does not match minimax brand names for the "mini" keyword', () => {
+    // Regression: minimax-m3 contains "mini" as a brand prefix, not as a
+    // model-tier marker. The old substring match picked it as the mini model,
+    // and its reasoning-style output (with <think> blocks) failed title
+    // validation, so titles never generated for these connections.
+    const conn = makeConnection('pi_compat', [
+      'gpt-5.6-luna',
+      'grok-4.5',
+      'glm-5.2',
+      'minimax-m3',
+      'kimi-k3',
+      'deepseek-v4-flash',
+      'deepseek-v4-pro',
+    ]);
+    expect(getMiniModel(conn)).toBe('deepseek-v4-flash');
+  });
+
   it('falls back to last model when Pi list has no mini/flash model', () => {
     const conn = makeConnection('pi', [
       'pi/gpt-5',

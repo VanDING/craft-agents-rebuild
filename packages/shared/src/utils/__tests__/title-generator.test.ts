@@ -215,6 +215,22 @@ describe('validateTitle', () => {
     expect(validateTitle('  Dark Mode  ')).toBe('Dark Mode');
   });
 
+  // --- Reasoning-block stripping ---
+
+  test('strips <think> reasoning blocks (reasoning models)', () => {
+    expect(
+      validateTitle('<think>\nThe user wants a 2-5 word title for "hello world".\n</think>\nSimple Greeting Classic'),
+    ).toBe('Simple Greeting Classic');
+  });
+
+  test('strips <think> blocks even when interleaved with content', () => {
+    expect(validateTitle('Title: <think>unused</think> Dark Mode')).toBe('Dark Mode');
+  });
+
+  test('rejects a title that is only a think block', () => {
+    expect(validateTitle('<think>reasoning only</think>')).toBeNull();
+  });
+
   // --- Preamble stripping ---
 
   test('strips "Title: ..." preamble', () => {

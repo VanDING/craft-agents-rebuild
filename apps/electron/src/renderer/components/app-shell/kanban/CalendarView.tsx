@@ -50,8 +50,17 @@ const MAX_TASKS_PER_CELL = 3
 
 const HOUR_START = 8
 const HOUR_END = 20
-const HOUR_PX_DAY = 56
-const HOUR_PX_WEEK = 56
+/** Minimum hour-row height in px — the time grid stretches beyond this to fill the panel. */
+const HOUR_PX_MIN = 56
+const TIME_GRID_MIN_HEIGHT = (HOUR_END - HOUR_START) * HOUR_PX_MIN
+
+/**
+ * Vertical position of an hour offset (relative to HOUR_START) as a
+ * percentage of the time grid, so the grid stretches with the panel.
+ */
+function hourTop(hours: number): string {
+  return `${(hours / (HOUR_END - HOUR_START)) * 100}%`
+}
 
 function dayKey(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
@@ -239,8 +248,7 @@ export function CalendarView() {
     return (
       <div className="flex h-full flex-col overflow-hidden">
         <div className="px-4 pb-2">
-          <div className="text-[15px] font-semibold">{format(day, 'yyyy年M月d日')}</div>
-          <div className="text-xs text-foreground-dimmed">{t('schedule.weekdayFull', { day: format(day, 'EEEE') })}</div>
+          <div className="text-[15px] font-semibold">{format(day, 'EEEE')}</div>
         </div>
 
         {/* All-day strip */}
@@ -271,7 +279,7 @@ export function CalendarView() {
 
         {/* Time grid */}
         <div className="min-h-0 flex-1 overflow-auto">
-          <div className="flex min-h-full">
+          <div className="flex" style={{ minHeight: `max(100%, ${TIME_GRID_MIN_HEIGHT}px)` }}>
             <div className="relative w-[52px] flex-none">
               {Array.from({ length: HOUR_END - HOUR_START + 1 }, (_, i) => {
                 const h = HOUR_START + i
@@ -279,7 +287,7 @@ export function CalendarView() {
                   <div
                     key={h}
                     className="absolute right-2 -translate-y-1/2 text-[10.5px] tabular-nums text-foreground/45"
-                    style={{ top: (h === HOUR_START ? 14 : (h - HOUR_START) * HOUR_PX_DAY) }}
+                    style={{ top: h === HOUR_START ? 14 : hourTop(h - HOUR_START) }}
                   >
                     {String(h).padStart(2, '0')}:00
                   </div>
@@ -293,7 +301,7 @@ export function CalendarView() {
                   <div
                     key={h}
                     className="absolute inset-x-0 border-t border-border/60"
-                    style={{ top: (h - HOUR_START) * HOUR_PX_DAY }}
+                    style={{ top: hourTop(h - HOUR_START) }}
                   />
                 )
               })}
@@ -301,18 +309,18 @@ export function CalendarView() {
               {now >= HOUR_START * 60 && now <= HOUR_END * 60 && (
                 <div
                   className="absolute inset-x-0 z-[5] border-t-2 border-destructive"
-                  style={{ top: ((now - HOUR_START * 60) / 60) * HOUR_PX_DAY }}
+                  style={{ top: hourTop((now - HOUR_START * 60) / 60) }}
                 />
               )}
               {timed.map((entry) => {
                 const [hh, mm] = entry.time!.split(':').map(Number)
-                const top = ((hh + mm / 60 - HOUR_START) * HOUR_PX_DAY)
+                const top = hourTop(hh + mm / 60 - HOUR_START)
                 const endH = String((hh + 1) % 24).padStart(2, '0')
                 return (
                   <div
                     key={entry.id}
                     className="absolute left-1.5 right-2.5 flex items-center gap-2.5 rounded-lg px-2.5 py-1.5"
-                    style={{ top, height: 56, ...entryBlockStyle(0.22) }}
+                    style={{ top, height: `calc(100% / ${HOUR_END - HOUR_START})`, ...entryBlockStyle(0.22) }}
                   >
                     <span className="w-[76px] flex-none text-[11px] font-bold tabular-nums opacity-80">
                       {entry.time}–{endH}:{String(mm).padStart(2, '0')}
@@ -391,9 +399,9 @@ export function CalendarView() {
             )
           })}
         </div>
-        {/* Time grid with shared scroll */}
-        <div className="min-h-0 flex-1">
-          <div className="flex h-full">
+        {/* Time grid with shared scroll (scale column scrolls with the grid) */}
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="flex" style={{ minHeight: `max(100%, ${TIME_GRID_MIN_HEIGHT}px)` }}>
             <div className="relative w-[52px] flex-none border-r border-border/60">
               {Array.from({ length: HOUR_END - HOUR_START + 1 }, (_, i) => {
                 const h = HOUR_START + i
@@ -401,61 +409,57 @@ export function CalendarView() {
                   <div
                     key={h}
                     className="absolute right-2 -translate-y-1/2 text-[10px] tabular-nums text-foreground/45"
-                    style={{ top: (h === HOUR_START ? 10 : (h - HOUR_START) * HOUR_PX_WEEK) }}
+                    style={{ top: h === HOUR_START ? 10 : hourTop(h - HOUR_START) }}
                   >
                     {String(h).padStart(2, '0')}:00
                   </div>
                 )
               })}
             </div>
-            <div className="min-w-0 flex-1 overflow-y-auto">
-              <div className="flex" style={{ height: (HOUR_END - HOUR_START) * HOUR_PX_WEEK }}>
-                {Array.from({ length: 7 }, (_, i) => {
-                  const d = addDays(monday, i)
-                  return (
-                    <div key={i} className="relative min-w-0 flex-1 border-r border-border/60 last:border-r-0">
-                      {Array.from({ length: HOUR_END - HOUR_START + 1 }, (_, j) => {
-                        const h = HOUR_START + j
-                        return (
-                          <div
-                            key={h}
-                            className="absolute inset-x-0 border-t border-border/60"
-                            style={{ top: (h - HOUR_START) * HOUR_PX_WEEK }}
-                          />
-                        )
-                      })}
-                      {isSameDay(d, today) && now >= HOUR_START * 60 && now <= HOUR_END * 60 && (
+            {Array.from({ length: 7 }, (_, i) => {
+              const d = addDays(monday, i)
+              return (
+                <div key={i} className="relative min-w-0 flex-1 border-r border-border/60 last:border-r-0">
+                  {Array.from({ length: HOUR_END - HOUR_START + 1 }, (_, j) => {
+                    const h = HOUR_START + j
+                    return (
+                      <div
+                        key={h}
+                        className="absolute inset-x-0 border-t border-border/60"
+                        style={{ top: hourTop(h - HOUR_START) }}
+                      />
+                    )
+                  })}
+                  {isSameDay(d, today) && now >= HOUR_START * 60 && now <= HOUR_END * 60 && (
+                    <div
+                      className="absolute inset-x-0 z-[5] border-t-2 border-destructive"
+                      style={{ top: hourTop((now - HOUR_START * 60) / 60) }}
+                    />
+                  )}
+                  {entriesFor(d)
+                    .filter((e) => e.time)
+                    .map((entry) => {
+                      const [hh, mm] = entry.time!.split(':').map(Number)
+                      return (
                         <div
-                          className="absolute inset-x-0 z-[5] border-t-2 border-destructive"
-                          style={{ top: ((now - HOUR_START * 60) / 60) * HOUR_PX_WEEK }}
-                        />
-                      )}
-                      {entriesFor(d)
-                        .filter((e) => e.time)
-                        .map((entry) => {
-                          const [hh, mm] = entry.time!.split(':').map(Number)
-                          return (
-                            <div
-                              key={entry.id}
-                              className="absolute left-1 right-1 overflow-hidden rounded-md px-1.5 py-0.5"
-                              style={{
-                                top: ((hh + mm / 60 - HOUR_START) * HOUR_PX_WEEK),
-                                height: HOUR_PX_WEEK - 2,
-                                ...entryBlockStyle(0.22),
-                              }}
-                              title={entry.title}
-                            >
-                              <span className="block truncate text-[11.5px] font-semibold">
-                                {entry.time} · {entry.title}
-                              </span>
-                            </div>
-                          )
-                        })}
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
+                          key={entry.id}
+                          className="absolute left-1 right-1 overflow-hidden rounded-md px-1.5 py-0.5"
+                          style={{
+                            top: hourTop(hh + mm / 60 - HOUR_START),
+                            height: `calc(100% / ${HOUR_END - HOUR_START})`,
+                            ...entryBlockStyle(0.22),
+                          }}
+                          title={entry.title}
+                        >
+                          <span className="block truncate text-[11.5px] font-semibold">
+                            {entry.time} · {entry.title}
+                          </span>
+                        </div>
+                      )
+                    })}
+                </div>
+              )
+            })}
           </div>
         </div>
       </div>
@@ -469,7 +473,7 @@ export function CalendarView() {
   const renderMonth = () => {
     const gridStart = startOfWeek(new Date(cursor.getFullYear(), cursor.getMonth(), 1), { weekStartsOn: 1 })
     return (
-      <div className="grid h-full min-h-0 flex-1 auto-rows-fr grid-cols-[repeat(7,minmax(0,1fr))] gap-px overflow-hidden rounded-lg border border-border/80 bg-border/60">
+      <div className="grid h-full min-h-0 flex-1 grid-cols-[repeat(7,minmax(0,1fr))] grid-rows-[auto_repeat(6,minmax(0,1fr))] gap-px overflow-hidden rounded-lg border border-border/80 bg-border/60">
         {WEEKDAY_KEYS.map((key) => (
           <div key={key} className="bg-card px-2 py-1.5 text-center text-[11px] font-semibold uppercase tracking-wide text-foreground/45">
             {t(`schedule.weekday.${key}`)}

@@ -192,9 +192,12 @@ export async function startWeChatQrLogin(opts: {
     apiBaseUrl: DEFAULT_BASE_URL,
     timeoutMs: opts.timeoutMs,
     verifyCodeProvider: opts.verifyCodeProvider,
-    onStatus: (status) => {
+    onStatus: (status, extra) => {
       if (status === 'need_verifycode') opts.onEvent({ type: 'need_verifycode' })
       else if (status === 'scaned') opts.onEvent({ type: 'scanned' })
+      // Expired QR was refreshed — hand the new URL to the UI so the dialog
+      // re-renders instead of going stale.
+      else if (status === 'expired' && extra?.qrcodeUrl) opts.onEvent({ type: 'qr', qr: extra.qrcodeUrl })
     },
   })
 
