@@ -942,6 +942,29 @@ export interface ProjectsNavigationState {
 }
 
 /**
+ * Bound content-workbench panel types.
+ *
+ * These panels (Review-Diff, Files tree, Context, Preview) follow the active
+ * session and carry no session id in their route — the route is a single
+ * segment constant (`diff`/`files`/`context`/`preview`), same convention as
+ * the standalone `board`/`calendar` prefixes.
+ */
+export type BoundPanelType = 'diff' | 'files' | 'context' | 'preview'
+
+/**
+ * Content-workbench panel navigation state.
+ *
+ * Represents a bound panel that follows the active session. `panel` carries
+ * the specific bound panel kind so routes round-trip through
+ * `buildRouteFromNavigationState` without loss.
+ */
+export interface OtherNavigationState {
+  navigator: 'other'
+  panel: BoundPanelType
+  rightSidebar?: RightSidebarPanel
+}
+
+/**
  * Unified navigation state
  */
 export type NavigationState =
@@ -951,6 +974,7 @@ export type NavigationState =
   | SkillsNavigationState
   | AutomationsNavigationState
   | ProjectsNavigationState
+  | OtherNavigationState
 
 export const isSessionsNavigation = (
   state: NavigationState
@@ -975,6 +999,10 @@ export const isAutomationsNavigation = (
 export const isProjectsNavigation = (
   state: NavigationState
 ): state is ProjectsNavigationState => state.navigator === 'projects'
+
+export const isOtherNavigation = (
+  state: NavigationState
+): state is OtherNavigationState => state.navigator === 'other'
 
 export const DEFAULT_NAVIGATION_STATE: NavigationState = {
   navigator: 'sessions',
@@ -1010,6 +1038,9 @@ export const getNavigationStateKey = (state: NavigationState): string => {
   if (state.navigator === 'settings') {
     if (state.subpage === null) return 'settings'
     return `settings:${state.subpage}`
+  }
+  if (state.navigator === 'other') {
+    return `other:${state.panel}`
   }
   // Chats
   const f = state.filter

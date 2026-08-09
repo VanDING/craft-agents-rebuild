@@ -195,6 +195,26 @@ export const routes = {
 
     /** Calendar view (sessions navigator, month grid of all sessions) */
     calendar: () => 'calendar' as const,
+
+    // ─────────────────────────────────────────────
+    // Bound content-workbench panels
+    //
+    // These routes are single-segment constants that carry NO session id —
+    // the panel content follows the active session. Same standalone-prefix
+    // convention as board/calendar (encodes as its own first segment).
+    // ─────────────────────────────────────────────
+
+    /** Review-Diff panel (bound to the active session) */
+    diff: () => 'diff' as const,
+
+    /** Files tree panel (bound to the active session) */
+    files: () => 'files' as const,
+
+    /** Context panel (workspace sources/skills + active session metadata) */
+    context: () => 'context' as const,
+
+    /** Preview panel (opened files + document pop-outs, bound to the active session) */
+    preview: () => 'preview' as const,
   },
 } as const
 

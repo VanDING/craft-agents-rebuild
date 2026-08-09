@@ -23,6 +23,7 @@ import { closePanelAtom, focusedPanelIdAtom, type PanelStackEntry } from '@/atom
 import { useAppShellContext, AppShellProvider } from '@/context/AppShellContext'
 import { PanelHeaderCenterButton } from '@/components/ui/PanelHeaderCenterButton'
 import { MainContentPanel } from './MainContentPanel'
+import { BoundPanelContent, isBoundPanelType } from '@/components/content-panels/bound-panel-content'
 import { PANEL_MIN_WIDTH, RADIUS_EDGE, RADIUS_INNER } from './panel-constants'
 
 interface PanelSlotProps {
@@ -140,10 +141,17 @@ export function PanelSlot({
       >
         <div className="h-full flex flex-col">
           <AppShellProvider value={contextOverride}>
-            <MainContentPanel
-              navStateOverride={navState}
-              isSidebarAndNavigatorHidden={isSidebarAndNavigatorHidden}
-            />
+            {isBoundPanelType(entry.panelType) ? (
+              /* Bound workbench panels are dispatched by panelType (never by the
+                 parsed nav state) so a stale/unparseable route can neither render
+                 the wrong content nor fall through to the global navigation. */
+              <BoundPanelContent entry={entry} />
+            ) : (
+              <MainContentPanel
+                navStateOverride={navState}
+                isSidebarAndNavigatorHidden={isSidebarAndNavigatorHidden}
+              />
+            )}
           </AppShellProvider>
         </div>
       </div>

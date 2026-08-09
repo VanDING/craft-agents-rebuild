@@ -32,5 +32,8 @@ export function isDetailNavState(navState: NavigationState | null): boolean {
     case 'automations':
     case 'projects':
       return navState.details !== null
+    case 'other':
+      // Bound workbench panels are standalone — never "detail" mode.
+      return false
   }
 }

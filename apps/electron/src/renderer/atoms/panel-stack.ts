@@ -14,6 +14,7 @@ function generatePanelId(): string {
 }
 
 export type PanelType = 'session' | 'source' | 'settings' | 'skills' | 'other'
+  | 'diff' | 'files' | 'context' | 'preview'
 export type PanelLaneId = 'main'
 export type OpenIntent = 'implicit' | 'explicit'
 
@@ -29,7 +30,7 @@ export const PANEL_LANE_POLICIES: Record<PanelLaneId, PanelLanePolicy> = {
   main: {
     id: 'main',
     order: 0,
-    allowedTypes: ['session', 'source', 'settings', 'skills', 'other'],
+    allowedTypes: ['session', 'source', 'settings', 'skills', 'other', 'diff', 'files', 'context', 'preview'],
     locked: false,
     singleton: false,
   },
@@ -75,6 +76,9 @@ export function getPanelTypeFromRoute(route: ViewRoute): PanelType {
       return 'settings'
     case 'skills':
       return 'skills'
+    case 'other':
+      // Bound workbench panel — BoundPanelType maps 1:1 onto PanelType.
+      return navState.panel
     default:
       return 'other'
   }

@@ -15,6 +15,7 @@ import type {
   SourceFilter,
   AutomationFilter,
   RightSidebarPanel,
+  BoundPanelType,
 } from './types'
 import { isValidSettingsSubpage, type SettingsSubpage } from './settings-registry'
 
@@ -35,7 +36,7 @@ export interface ParsedRoute {
 // Compound Route Types (new format)
 // =============================================================================
 
-export type NavigatorType = 'sessions' | 'sources' | 'skills' | 'automations' | 'projects' | 'settings'
+export type NavigatorType = 'sessions' | 'sources' | 'skills' | 'automations' | 'projects' | 'settings' | 'other'
 
 export interface ParsedCompoundRoute {
   /** The navigator type */
@@ -48,6 +49,8 @@ export interface ParsedCompoundRoute {
   automationFilter?: AutomationFilter
   /** Sessions presentation mode (only for sessions navigator). 'board' = Kanban view, 'calendar' = schedule view. */
   viewMode?: 'list' | 'board' | 'calendar'
+  /** Bound workbench panel kind (only for 'other' navigator) */
+  panel?: BoundPanelType
   /** Details page info (null for empty state) */
   details: {
     type: string
@@ -63,7 +66,7 @@ export interface ParsedCompoundRoute {
  * Known prefixes that indicate a compound route
  */
 const COMPOUND_ROUTE_PREFIXES = [
-  'allSessions', 'flagged', 'archived', 'state', 'label', 'view', 'board', 'calendar', 'sources', 'skills', 'automations', 'projects', 'settings'
+  'allSessions', 'flagged', 'archived', 'state', 'label', 'view', 'board', 'calendar', 'sources', 'skills', 'automations', 'projects', 'settings', 'diff', 'files', 'context', 'preview'
 ]
 
 /**
@@ -117,6 +120,17 @@ export function parseCompoundRoute(route: string): ParsedCompoundRoute | null {
       navigator: 'sessions',
       sessionFilter: { kind: 'allSessions' },
       viewMode: 'calendar',
+      details: null,
+    }
+  }
+
+  // Bound content-workbench panels — standalone single-segment routes that
+  // carry no session id (content follows the active session). Same prefix
+  // convention as board/calendar.
+  if (first === 'diff' || first === 'files' || first === 'context' || first === 'preview') {
+    return {
+      navigator: 'other',
+      panel: first as BoundPanelType,
       details: null,
     }
   }
@@ -300,6 +314,10 @@ export function parseCompoundRoute(route: string): ParsedCompoundRoute | null {
  * Build a compound route string from parsed state
  */
 export function buildCompoundRoute(parsed: ParsedCompoundRoute): string {
+  if (parsed.navigator === 'other') {
+    return parsed.panel ?? 'diff'
+  }
+
   if (parsed.navigator === 'settings') {
     if (!parsed.details) return 'settings'
     return `settings/${parsed.details.type}`
@@ -429,6 +447,11 @@ export function parseRoute(route: string): ParsedRoute | null {
  * Convert a parsed compound route to ParsedRoute format (type: 'view')
  */
 function convertCompoundToViewRoute(compound: ParsedCompoundRoute): ParsedRoute {
+  // Bound workbench panels — parsed as compound routes with 'other' navigator.
+  if (compound.navigator === 'other') {
+    return { type: 'view', name: compound.panel ?? 'diff', params: {} }
+  }
+
   // Settings
   if (compound.navigator === 'settings') {
     const subpage = compound.details?.type || 'app'
@@ -554,6 +577,11 @@ export function parseRouteToNavigationState(
  * Convert a ParsedCompoundRoute to NavigationState
  */
 function convertCompoundToNavigationState(compound: ParsedCompoundRoute): NavigationState {
+  // Bound workbench panels
+  if (compound.navigator === 'other') {
+    return { navigator: 'other', panel: compound.panel ?? 'diff' }
+  }
+
   // Settings
   if (compound.navigator === 'settings') {
     if (!compound.details) {
@@ -779,6 +807,10 @@ function convertParsedRouteToNavigationState(parsed: ParsedRoute): NavigationSta
  * Convert NavigationState to ParsedCompoundRoute
  */
 function navigationStateToCompoundRoute(state: NavigationState): ParsedCompoundRoute {
+  if (state.navigator === 'other') {
+    return { navigator: 'other', panel: state.panel, details: null }
+  }
+
   if (state.navigator === 'settings') {
     if (state.subpage === null) {
       return { navigator: 'settings', details: null }
