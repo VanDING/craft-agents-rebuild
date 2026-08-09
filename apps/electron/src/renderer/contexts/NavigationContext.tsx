@@ -83,9 +83,11 @@ import {
   focusedPanelIdAtom,
   focusedPanelRouteAtom,
   focusedPanelIndexAtom,
+  focusedSessionIdAtom,
   updateFocusedPanelRouteAtom,
   parseSessionIdFromRoute,
 } from '@/atoms/panel-stack'
+import { lastActiveSessionIdAtom } from '@/atoms/active-session'
 
 // Re-export routes for convenience
 export { routes }
@@ -202,6 +204,16 @@ export function NavigationProvider({
       : DEFAULT_NAVIGATION_STATE
     return rightSidebar ? { ...base, rightSidebar } : base
   }, [focusedRoute, rightSidebar])
+
+  // Active-session memory: every time the focused panel is a session, remember
+  // it as the "last active session". Bound panels (Review/Files/Context/Preview)
+  // follow `activeSessionIdAtom = focused ?? last` so they never drift while the
+  // user focuses a board/calendar/diff panel.
+  const focusedSessionId = useAtomValue(focusedSessionIdAtom)
+  const setLastActiveSession = useSetAtom(lastActiveSessionIdAtom)
+  useEffect(() => {
+    if (focusedSessionId) setLastActiveSession(focusedSessionId)
+  }, [focusedSessionId, setLastActiveSession])
 
   // =========================================================================
   // BROWSER HISTORY TRACKING

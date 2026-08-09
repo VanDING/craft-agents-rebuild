@@ -91,6 +91,7 @@ import type { Session, Workspace, FileAttachment, PermissionRequest, LoadedSourc
 import { sessionMetaMapAtom, sendToWorkspaceAtom, type SessionMeta } from "@/atoms/sessions"
 import { sourcesAtom } from "@/atoms/sources"
 import { skillsAtom } from "@/atoms/skills"
+import { activeSessionIdAtom } from "@/atoms/active-session"
 import { panelStackAtom, panelCountAtom, focusedPanelIdAtom, focusedSessionIdAtom, focusNextPanelAtom, focusPrevPanelAtom, parseSessionIdFromRoute } from "@/atoms/panel-stack"
 import { type SessionStatusId, type SessionStatus, statusConfigsToSessionStatuses } from "@/config/session-status-config"
 import { useStatuses } from "@/hooks/useStatuses"
@@ -1173,6 +1174,11 @@ function AppShellContent({
   // Shift+Tab cycles permission mode through enabled modes (textarea handles its own, this handles when focus is elsewhere)
   // In multi-panel, targets the focused panel's session
   const effectiveSessionId = focusedSessionId ?? session.selected
+
+  // Active session for bound content panels + TopBar session-bound affordances.
+  // Sticky: follows the focused session, but holds the last focused session while
+  // a non-session panel (board/calendar/diff/files/context/preview) is focused.
+  const topBarActiveSessionId = useAtomValue(activeSessionIdAtom)
 
   // Focus chat input for the target session only (multi-panel safe).
   const focusChatInputForSession = useCallback((targetSessionId?: string | null) => {
@@ -2320,7 +2326,7 @@ function AppShellContent({
           workspaceUnreadMap={workspaceUnreadMap}
           onWorkspaceCreated={() => onRefreshWorkspaces?.()}
           onWorkspaceRemoved={() => onRefreshWorkspaces?.()}
-          activeSessionId={effectiveSessionId}
+          activeSessionId={topBarActiveSessionId}
           onNewChat={() => handleNewChat()}
           onNewWindow={() => window.electronAPI.menuNewWindow()}
           onOpenSettings={onOpenSettings}
