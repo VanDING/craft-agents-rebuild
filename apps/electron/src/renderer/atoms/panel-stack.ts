@@ -23,6 +23,12 @@ export type PanelLaneId = 'main'
  * warns (dev assertion) when a direct push would exceed it.
  */
 export const MAX_FOREGROUND_PANELS = 3
+
+/**
+ * Default proportion for a newly opened panel (normalized together with the
+ * existing stack, so it lands at ~26% next to a single full-width panel).
+ */
+export const DEFAULT_PANEL_PROPORTION = 0.35
 export type OpenIntent = 'implicit' | 'explicit'
 
 export interface PanelLanePolicy {
@@ -171,7 +177,7 @@ export const pushPanelAtom = atom(
       insertAt = afterIndex + 1
     }
 
-    const newEntry = createPanelEntry(route, 0)
+    const newEntry = createPanelEntry(route, DEFAULT_PANEL_PROPORTION)
     const newStack = [
       ...stack.slice(0, insertAt),
       newEntry,

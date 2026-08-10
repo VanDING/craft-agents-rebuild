@@ -16,6 +16,7 @@
 import { useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAtomValue, useSetAtom } from 'jotai'
+import { motion, useReducedMotion } from 'motion/react'
 import { cn } from '@/lib/utils'
 import { X, ChevronLeft, Maximize2, Minimize2 } from 'lucide-react'
 import { parseRouteToNavigationState } from '../../../shared/route-parser'
@@ -62,6 +63,7 @@ export function PanelSlot({
   const parentContext = useAppShellContext()
   const expandedPanelId = useAtomValue(expandedPanelIdAtom)
   const setExpandedPanelId = useSetAtom(expandedPanelIdAtom)
+  const reduceMotion = useReducedMotion()
   const navState = parseRouteToNavigationState(entry.route)
   const isExpanded = expandedPanelId === entry.id
 
@@ -167,8 +169,20 @@ export function PanelSlot({
             {isBoundPanelType(entry.panelType) ? (
               /* Bound workbench panels are dispatched by panelType (never by the
                  parsed nav state) so a stale/unparseable route can neither render
-                 the wrong content nor fall through to the global navigation. */
-              <BoundPanelContent entry={entry} />
+                 the wrong content nor fall through to the global navigation.
+                 Light opacity fade on open; reduced motion renders instantly. */
+              reduceMotion ? (
+                <BoundPanelContent entry={entry} />
+              ) : (
+                <motion.div
+                  className="h-full min-h-0"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ duration: 0.15, ease: 'easeOut' }}
+                >
+                  <BoundPanelContent entry={entry} />
+                </motion.div>
+              )
             ) : (
               <MainContentPanel
                 navStateOverride={navState}

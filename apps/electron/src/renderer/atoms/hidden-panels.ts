@@ -27,6 +27,7 @@ import {
   createPanelEntry,
   normalizeProportions,
   MAX_FOREGROUND_PANELS,
+  DEFAULT_PANEL_PROPORTION,
   type PanelStackEntry,
   type PanelType,
 } from './panel-stack'
@@ -38,6 +39,8 @@ export interface HiddenPanelEntry {
   id: string
   route: ViewRoute
   panelType: PanelType
+  /** The panel's proportion before eviction (restored exactly on restore) */
+  proportion: number
   /** When the panel was moved into the hidden set (LRU ordering aid) */
   hiddenAt: number
 }
@@ -108,7 +111,7 @@ export const openPanelAtom = atom(
       const hidden = get(hiddenPanelsAtom)
       set(hiddenPanelsAtom, [
         ...hidden,
-        { id: lru.id, route: lru.route, panelType: lru.panelType, hiddenAt: Date.now() },
+        { id: lru.id, route: lru.route, panelType: lru.panelType, proportion: lru.proportion, hiddenAt: Date.now() },
       ])
       // Evict the LRU panel from the foreground BEFORE pushing the new one.
       set(panelStackAtom, stack.filter((entry) => entry.id !== lru.id))
@@ -140,10 +143,10 @@ export const restorePanelAtom = atom(
     if (stack.length >= MAX_FOREGROUND_PANELS) {
       const lru = findLruForeground(stack, focusedId)
       nextStack = stack.filter((item) => item.id !== lru.id)
-      nextHidden = [...nextHidden, { id: lru.id, route: lru.route, panelType: lru.panelType, hiddenAt: Date.now() }]
+      nextHidden = [...nextHidden, { id: lru.id, route: lru.route, panelType: lru.panelType, proportion: lru.proportion, hiddenAt: Date.now() }]
     }
 
-    const restored = createPanelEntry(entry.route, 0, entry.id)
+    const restored = createPanelEntry(entry.route, entry.proportion, entry.id)
     set(panelStackAtom, normalizeProportions([...nextStack, restored]))
     set(focusedPanelIdAtom, entry.id)
     set(hiddenPanelsAtom, nextHidden)
@@ -166,6 +169,8 @@ export const closeHiddenPanelAtom = atom(
 interface PersistedHiddenPanel {
   route: ViewRoute
   panelType: PanelType
+  /** Proportion before eviction (older persisted entries may omit it) */
+  proportion?: number
 }
 
 /** Load + hydrate the hidden set for a workspace (startup & workspace switch). */
@@ -184,6 +189,7 @@ export const restoreHiddenPanelsForWorkspaceAtom = atom(
         id: `hidden-${now}-${index}`,
         route: item.route,
         panelType: item.panelType,
+        proportion: item.proportion ?? DEFAULT_PANEL_PROPORTION,
         hiddenAt: now,
       })),
     )
@@ -198,7 +204,7 @@ export const persistHiddenPanelsAtom = atom(
     const hidden = get(hiddenPanelsAtom)
     storage.set(
       storage.KEYS.hiddenPanels,
-      hidden.map((item) => ({ route: item.route, panelType: item.panelType })),
+      hidden.map((item) => ({ route: item.route, panelType: item.panelType, proportion: item.proportion })),
       workspaceSlug,
     )
   },

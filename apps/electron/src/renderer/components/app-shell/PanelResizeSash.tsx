@@ -43,6 +43,11 @@ export function PanelResizeSash({
   const startLeftWidthRef = useRef(0)
   const startRightWidthRef = useRef(0)
   const combinedProportionRef = useRef(0)
+  // rAF-merged resize writes (opencode session-panel-width "first-frame
+  // debounce" pattern): mousemove floods the event loop; we coalesce to one
+  // proportion write per animation frame and flush the last one on mouseup.
+  const resizeRafRef = useRef(0)
+  const pendingResizeRef = useRef<{ leftProportion: number; rightProportion: number } | null>(null)
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
@@ -89,10 +94,30 @@ export function PanelResizeSash({
       const leftProportion = (newLeftWidth / total) * combined
       const rightProportion = combined - leftProportion
 
-      resizePanels({ leftIndex, rightIndex, leftProportion, rightProportion })
+      // Coalesce to one write per animation frame (first-frame debounce).
+      pendingResizeRef.current = { leftProportion, rightProportion }
+      if (resizeRafRef.current) return
+      resizeRafRef.current = requestAnimationFrame(() => {
+        resizeRafRef.current = 0
+        const pending = pendingResizeRef.current
+        pendingResizeRef.current = null
+        if (pending) {
+          resizePanels({ leftIndex, rightIndex, ...pending })
+        }
+      })
     }
 
     const handleMouseUp = () => {
+      // Flush the final pending write so the last drag position lands.
+      if (resizeRafRef.current) {
+        cancelAnimationFrame(resizeRafRef.current)
+        resizeRafRef.current = 0
+      }
+      const pending = pendingResizeRef.current
+      pendingResizeRef.current = null
+      if (pending) {
+        resizePanels({ leftIndex, rightIndex, ...pending })
+      }
       document.removeEventListener('mousemove', handleMouseMove)
       document.removeEventListener('mouseup', handleMouseUp)
       document.body.style.userSelect = ''
