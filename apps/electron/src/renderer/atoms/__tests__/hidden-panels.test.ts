@@ -4,6 +4,7 @@ import {
   panelStackAtom,
   focusedPanelIdAtom,
   visibleSessionIdsAtom,
+  resizePanelsAtom,
   type PanelStackEntry,
 } from '../panel-stack'
 import {
@@ -117,6 +118,25 @@ describe('hidden panels (foreground ≤3 + background set)', () => {
     expect(['allSessions/session/s2', 'allSessions/session/s3']).toContain(getHidden(store)[0].route)
     expect(getStack(store).some((entry) => entry.route === getHidden(store)[0].route)).toBe(false)
     expect(store.get(focusedPanelIdAtom)).toBe(hiddenId)
+  })
+
+  it('restore equalizes widths and ignores the saved proportion (decision #2)', () => {
+    const store = createStore()
+
+    store.set(openPanelAtom, { route: 'allSessions/session/s1' })
+    store.set(openPanelAtom, { route: 'diff' })
+    store.set(openPanelAtom, { route: 'board' })
+    store.set(resizePanelsAtom, { leftIndex: 0, rightIndex: 1, leftProportion: 0.7, rightProportion: 0.3 })
+    // 4th open evicts the LRU (s1) → hidden with its custom proportion 0.7.
+    store.set(openPanelAtom, { route: 'files' })
+    expect(getHidden(store)[0].route).toBe('allSessions/session/s1')
+    expect(getHidden(store)[0].proportion).toBeCloseTo(0.7)
+
+    store.set(restorePanelAtom, getHidden(store)[0].id)
+
+    const stack = getStack(store)
+    expect(stack).toHaveLength(3)
+    for (const entry of stack) expect(entry.proportion).toBeCloseTo(1 / 3)
   })
 
   it('keeps the foreground at or below the limit across many opens', () => {

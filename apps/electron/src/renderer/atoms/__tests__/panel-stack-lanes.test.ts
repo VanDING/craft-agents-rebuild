@@ -4,6 +4,8 @@ import {
   panelStackAtom,
   focusedPanelIdAtom,
   pushPanelAtom,
+  closePanelAtom,
+  resizePanelsAtom,
   reconcilePanelStackAtom,
   updateFocusedPanelRouteAtom,
   type PanelStackEntry,
@@ -107,5 +109,62 @@ describe('panel stack single-lane behavior', () => {
 
     expect(changed).toBe(false)
     expect(store.get(focusedPanelIdAtom)).toBe(secondId)
+  })
+})
+
+describe('equal proportions on count changes (decision #2)', () => {
+  it('push equalizes the whole stack', () => {
+    const store = createStore()
+
+    store.set(pushPanelAtom, { route: 'allSessions/session/s1' })
+    expect(getStack(store)[0].proportion).toBeCloseTo(1)
+
+    store.set(pushPanelAtom, { route: 'sources/source/github' })
+    const two = getStack(store)
+    expect(two[0].proportion).toBeCloseTo(0.5)
+    expect(two[1].proportion).toBeCloseTo(0.5)
+
+    store.set(pushPanelAtom, { route: 'settings' })
+    const three = getStack(store)
+    expect(three).toHaveLength(3)
+    for (const panel of three) expect(panel.proportion).toBeCloseTo(1 / 3)
+  })
+
+  it('close re-equalizes the remaining panels', () => {
+    const store = createStore()
+
+    store.set(pushPanelAtom, { route: 'allSessions/session/s1' })
+    store.set(pushPanelAtom, { route: 'sources/source/github' })
+    store.set(pushPanelAtom, { route: 'settings' })
+    const middle = getStack(store)[1]
+    store.set(closePanelAtom, middle.id)
+
+    const two = getStack(store)
+    expect(two).toHaveLength(2)
+    expect(two[0].proportion).toBeCloseTo(0.5)
+    expect(two[1].proportion).toBeCloseTo(0.5)
+  })
+
+  it('drag-resize proportions survive until the next count change', () => {
+    const store = createStore()
+
+    store.set(pushPanelAtom, { route: 'allSessions/session/s1' })
+    store.set(pushPanelAtom, { route: 'sources/source/github' })
+    store.set(resizePanelsAtom, { leftIndex: 0, rightIndex: 1, leftProportion: 0.7, rightProportion: 0.3 })
+    let stack = getStack(store)
+    expect(stack[0].proportion).toBeCloseTo(0.7)
+    expect(stack[1].proportion).toBeCloseTo(0.3)
+
+    // A push is a count change → equalize.
+    store.set(pushPanelAtom, { route: 'settings' })
+    stack = getStack(store)
+    for (const panel of stack) expect(panel.proportion).toBeCloseTo(1 / 3)
+
+    // Closing back to two re-equalizes — custom widths are not restored.
+    store.set(closePanelAtom, stack[0].id)
+    stack = getStack(store)
+    expect(stack).toHaveLength(2)
+    expect(stack[0].proportion).toBeCloseTo(0.5)
+    expect(stack[1].proportion).toBeCloseTo(0.5)
   })
 })

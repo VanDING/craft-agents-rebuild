@@ -26,8 +26,8 @@ import {
   updateFocusedPanelRouteAtom,
   createPanelEntry,
   normalizeProportions,
+  setEqualProportions,
   MAX_FOREGROUND_PANELS,
-  DEFAULT_PANEL_PROPORTION,
   type PanelStackEntry,
   type PanelType,
 } from './panel-stack'
@@ -147,7 +147,9 @@ export const restorePanelAtom = atom(
     }
 
     const restored = createPanelEntry(entry.route, entry.proportion, entry.id)
-    set(panelStackAtom, normalizeProportions([...nextStack, restored]))
+    // Count change → equal widths (decision #2); the saved proportion is
+    // intentionally ignored so a restored panel re-enters at 1/N.
+    set(panelStackAtom, setEqualProportions([...nextStack, restored]))
     set(focusedPanelIdAtom, entry.id)
     set(hiddenPanelsAtom, nextHidden)
     touchPanelActivity(entry.id)
@@ -173,6 +175,9 @@ interface PersistedHiddenPanel {
   proportion?: number
 }
 
+/** Fallback metadata proportion for persisted entries without one (restore ignores it — 均分). */
+const FALLBACK_HIDDEN_PROPORTION = 1 / 3
+
 /** Load + hydrate the hidden set for a workspace (startup & workspace switch). */
 export const restoreHiddenPanelsForWorkspaceAtom = atom(
   null,
@@ -189,7 +194,7 @@ export const restoreHiddenPanelsForWorkspaceAtom = atom(
         id: `hidden-${now}-${index}`,
         route: item.route,
         panelType: item.panelType,
-        proportion: item.proportion ?? DEFAULT_PANEL_PROPORTION,
+        proportion: item.proportion ?? FALLBACK_HIDDEN_PROPORTION,
         hiddenAt: now,
       })),
     )

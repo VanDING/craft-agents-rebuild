@@ -25,8 +25,9 @@ export type PanelLaneId = 'main'
 export const MAX_FOREGROUND_PANELS = 3
 
 /**
- * Default proportion for a newly opened panel (normalized together with the
- * existing stack, so it lands at ~26% next to a single full-width panel).
+ * Default proportion for a newly created panel entry before the stack is
+ * normalized. @deprecated — count changes now equalize widths via
+ * setEqualProportions (decision #2); kept only as a seed for createPanelEntry.
  */
 export const DEFAULT_PANEL_PROPORTION = 0.35
 export type OpenIntent = 'implicit' | 'explicit'
@@ -127,6 +128,18 @@ export function normalizeProportions(stack: PanelStackEntry[]): PanelStackEntry[
   return stack.map(p => ({ ...p, proportion: p.proportion / total }))
 }
 
+/**
+ * Equalize proportions so every panel takes exactly 1/N of the width
+ * (decision #2). Used whenever the panel COUNT changes (push/close/restore);
+ * drag-resize (resizePanelsAtom) and URL reconcile (reconcilePanelStackAtom)
+ * intentionally keep custom proportions.
+ */
+export function setEqualProportions(stack: PanelStackEntry[]): PanelStackEntry[] {
+  if (stack.length === 0) return stack
+  const equal = 1 / stack.length
+  return stack.map(p => ({ ...p, proportion: equal }))
+}
+
 export function parseSessionIdFromRoute(route: ViewRoute): string | null {
   // Strip any query string first — a `?x=y` tail on the last segment would otherwise
   // leak into the extracted session id and poison every focused-session consumer.
@@ -184,7 +197,8 @@ export const pushPanelAtom = atom(
       ...stack.slice(insertAt),
     ]
 
-    const normalized = normalizeProportions(newStack)
+    // Count change → equal widths (decision #2).
+    const normalized = setEqualProportions(newStack)
     set(panelStackAtom, normalized)
     set(focusedPanelIdAtom, newEntry.id)
   }
@@ -198,7 +212,8 @@ export const closePanelAtom = atom(
     if (idx === -1) return
     const remaining = [...stack.slice(0, idx), ...stack.slice(idx + 1)]
 
-    set(panelStackAtom, normalizeProportions(remaining))
+    // Count change → equal widths (decision #2).
+    set(panelStackAtom, setEqualProportions(remaining))
 
     if (get(focusedPanelIdAtom) === id) {
       const newIdx = Math.min(idx, remaining.length - 1)
