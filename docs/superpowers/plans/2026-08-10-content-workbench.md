@@ -394,6 +394,31 @@ bun run electron:dev   # 手动场景清单（Task 14 Step 4）
 
 ## 交付物清单
 
-- 新增：`atoms/active-session.ts`、`atoms/hidden-panels.ts`、`atoms/preview.ts`、`atoms/overlay.ts`、`lib/diff-kinds.ts`、`components/content-panels/`（ReviewPanel/FilesPanel/ContextPanel/PreviewPanel/共享 header）、`atoms/__tests__/`（active-session/hidden-panels/panel-stack-content-types）
-- 修改：`panel-stack.ts`、`routes.ts`、`route-parser.ts`、`TopBar.tsx`、`AppShell.tsx`、`NavigationContext.tsx`、`PanelSlot.tsx`、`PanelResizeSash.tsx`、`ChatDisplay.tsx`、`App.tsx`、`link-interceptor.ts`、`actions/definitions.ts`、locale 文件
-- 借鉴（翻译）：opencode `review-diff-kinds.ts`、`session-panel-width.ts`（防抖部分）、`session-side-panel.tsx`/`review-panel-v2.tsx`（UI 结构）
+- 新增：`atoms/active-session.ts`、`atoms/hidden-panels.ts`、`atoms/preview.ts`、`atoms/overlay.ts`（与既有 `fullscreenOverlayOpenAtom` 合并）、`atoms/content-panel-ui.ts`、`lib/diff-kinds.ts`、`lib/workbench-panels.ts`、`lib/panel-triggers.ts`、`lib/use-session-activities.ts`、`lib/use-diff-viewer-settings.ts`、`components/content-panels/`（ReviewPanel/FilesPanel/ContextPanel/PreviewPanel/FilePreviewContent/BoundSessionBadge/PanelEmptyState/bound-panel-content）、`components/app-shell/WorkbenchPanelButtons.tsx`、`components/app-shell/ExpandedPanelOverlay.tsx`、`atoms/__tests__/`（active-session/hidden-panels/panel-stack-content-types）
+- 修改：`panel-stack.ts`、`routes.ts`、`route-parser.ts`、`TopBar.tsx`、`AppShell.tsx`、`NavigationContext.tsx`、`PanelSlot.tsx`、`PanelResizeSash.tsx`、`PanelHeader.tsx`、`ChatDisplay.tsx`、`App.tsx`、`AppShellContext.tsx`、`SessionFilesSection.tsx`、`actions/definitions.ts`、`packages/ui`（computeChangeStats/createFileSections 导出）、locale 文件（7 语言，共 1751 key）
+- 借鉴（翻译）：opencode `review-diff-kinds.ts`、`session-panel-width.ts`（防抖部分）、`session-side-panel.tsx`/`review-panel-v2.tsx`（UI 结构，间接：tabs/空状态结构）
+
+---
+
+## 实施增量修订记录（与计划正文的差异及决策）
+
+| # | 位置 | 差异 | 决策 / 理由 |
+|---|---|---|---|
+| R1 | Task 1 Step 3 | `parseRouteToNavigationState` 对绑定 route 返回 `{ navigator: 'other', panel: BoundPanelType }`（比计划的 `{navigator:'other',...}` 多一个 `panel` 字段） | 无 `panel` 字段无法经 `buildRouteFromNavigationState` 无损回写 route（round-trip 需要子类型）；`types.ts` 新增 `OtherNavigationState` + `isOtherNavigation`，`getNavigationStateKey` 补分支 |
+| R2 | Task 1 Step 5 | PanelSlot 分流经 `content-panels/bound-panel-content.tsx` 中央分发器（计划允许"统一落点"） | Tasks 6-9 各分支均落在同一分发器，而非散落 PanelSlot；非法 route 空态兜底在分发器内 |
+| R3 | Task 2 | `activeSessionIdAtom = focused ?? last`；`lastActiveSessionIdAtom` 由 NavigationContext 的 focusedPanelIdAtom 订阅写入 | 与计划一致；测试通过直接写 `lastActiveSessionIdAtom` 模拟 effect 行为 |
+| R4 | Task 5 | `MAX_FOREGROUND_PANELS` 定义在 `panel-stack.ts`（hidden-panels 引用）而非 hidden-panels 内 | 避免循环依赖（panel-stack 不能依赖 hidden-panels）；`pushPanelAtom` 超限仅 console.warn（dev 断言，不硬阻断，Cmd+T 多会话并列仍可用） |
+| R5 | Task 5 | 隐藏集额外持久化 `proportion`，唤出时按原比例恢复（计划只要求 route+panelType） | 恢复后比例不回跳 0（0 会导致新面板贴最小宽）；旧持久化数据缺字段时回退 `DEFAULT_PANEL_PROPORTION` |
+| R6 | Task 6 | `computeChangeStats`/`createFileSections`/`FileSection` 从 `packages/ui` 导出复用（计划"复用逻辑"） | 直接导出避免复制 diff 计算；`packages/ui` 改 3 文件（组件 + 2 个 barrel） |
+| R7 | Task 9 | PreviewPanel 中 json 文件以语法高亮代码渲染（ShikiCodeViewer）而非 JSONPreviewOverlay 树视图 | 嵌入式 JSON 树视图自带 overlay header 与面板 header 重复；json 仍走 classifyFile 的 json 分类，可读性等价 |
+| R8 | Task 10 | activity overlay（Bash/MCP 卡片）收敛为 preview 面板的 markdown 条目，内容用 `formatActivityAsMarkdown` | 计划 Step 2 明确要求 activity 收敛；卡片式 ActivityCardsOverlay 随 overlay 删除（决策 #8 "弹层消亡"） |
+| R9 | Task 10 | App.tsx 文件预览：有活跃会话 → preview 面板；无活跃会话 → 保留全局 overlay fallback | 按计划"倾向保留 fallback 分支"执行；打开的文件归入"活跃会话"的 preview 栈（链接拦截器无会话上下文，已知限制） |
+| R10 | Task 11 | `atoms/overlay.ts` 已存在（`fullscreenOverlayOpenAtom`，workspace 创建用）→ 合并新增 `expandedPanelIdAtom` | 未覆盖既有导出 |
+| R11 | Task 11 | 展开按钮经 AppShellContext `expandButton` 槽 + PanelHeader 上下文回退注入所有面板 header（含 ChatPage）；`rightSidebarButton` 同样改为上下文回退 | 修复内容面板此前无关闭按钮的问题（PanelHeader 只读 prop）；单一落点，各面板零改动 |
+| R12 | Task 12 Step 4 | 焦点管理：绑定面板不注册 useFocusZone 区域 | 多个同类型面板并存时 zone id 冲突（FocusContext 按 id 注册）；点击聚焦已由 PanelSlot pointerdown 覆盖，验证无回归 |
+| R13 | Task 12 Step 4 | 面板打开动画：绑定面板内容 opacity 淡入（0.15s），`prefers-reduced-motion` 直接渲染 | 不动 flex 布局（避免打开时布局跳动）；会话面板沿用既有行为 |
+| R14 | 前置修复 | 分支上既有 `lint:electron` 10 个 error（kanban shadow 类 / ProjectInfoPage 直连 openFile / playground 无效 disable） | 审计命令要求 lint:electron 通过，逐项修复（shadow-tinted/outline/shadow-minimal 等），0 error |
+| R15 | Task 4 | `panel.toggle` 语义：关闭当前聚焦的绑定面板，否则重开最近使用的绑定面板 | 计划对 panel.toggle 语义未细化，取此最小可用语义并在 definitions 注释说明 |
+| R16 | 全流程 | 全部新文案在引入时就写入 7 语言 locale（不等到 Task 12） | 保持 parity/sorted/coverage 三检全程绿；Task 12 复核通过 |
+
+> 注：`lint:electron` 与 `lint:ui` 尚有若干既有 warning（exhaustive-deps / no-localstorage——后者为计划指定的 localStorage 持久化方案，与既有 `workspaceUrl` 同模式；`packages/ui` 的 eslint 在本机 typescript-estree 加载失败，`bun run lint:ui` 不可用，属环境问题，未改动 ui lint 配置）。
