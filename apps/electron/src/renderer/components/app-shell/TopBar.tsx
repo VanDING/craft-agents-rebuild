@@ -108,7 +108,7 @@ export function TopBar({
     const update = () => {
       // Left chrome: stoplight padding 86 + sidebar toggle + app menu +
       // back/forward + workspace switcher ≈ 500px. Each button ≈ 24px.
-      const next = Math.max(4, Math.min(10, Math.floor((window.innerWidth - 500) / 24)))
+      const next = Math.max(4, Math.min(9, Math.floor((window.innerWidth - 500) / 24)))
       setMaxVisiblePanelButtons((prev) => (prev === next ? prev : next))
     }
     let frame = 0

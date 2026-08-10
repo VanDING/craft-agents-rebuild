@@ -360,6 +360,7 @@
   "contentPanel.button.browser": "浏览器",
   "contentPanel.button.calendar": "日历",
   "contentPanel.button.context": "上下文",
+  "contentPanel.button.diff": "审查与差异",
   "contentPanel.button.files": "文件",
   "contentPanel.button.preview": "预览",
   "contentPanel.button.review": "审查",

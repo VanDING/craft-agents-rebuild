@@ -360,6 +360,7 @@
   "contentPanel.button.browser": "ブラウザー",
   "contentPanel.button.calendar": "カレンダー",
   "contentPanel.button.context": "コンテキスト",
+  "contentPanel.button.diff": "レビューと差分",
   "contentPanel.button.files": "ファイル",
   "contentPanel.button.preview": "プレビュー",
   "contentPanel.button.review": "レビュー",

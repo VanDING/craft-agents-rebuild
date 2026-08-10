@@ -127,12 +127,12 @@ export function WorkbenchPanelButtons({
     onOpenPanel(kind, { replace: event.shiftKey || event.altKey })
   }, [onOpenBrowser, onOpenPanel])
 
-  // Browser is rendered as the last button in the same flat group; the two
-  // [+] menu actions (new session in panel, new browser window) and the
-  // session-list toggle follow it so narrow-window hiding removes newest
-  // actions first (decision #1).
+  // Button order (left → right): New Session, the six panel kinds, the
+  // browser (focus-or-create; Shift/Alt = new window), and the session-list
+  // toggle. New Session sits at the head so it survives narrow-window hiding
+  // (core action); the session-list toggle is newest and hides first.
   const allButtons = useMemo(
-    () => [...WORKBENCH_PANEL_KINDS, 'browser', 'newSession', 'newBrowser', 'sessionList'] as const,
+    () => ['newSession', ...WORKBENCH_PANEL_KINDS, 'browser', 'sessionList'] as const,
     [],
   )
   const visibleButtons = useMemo(() => {
@@ -178,23 +178,6 @@ export function WorkbenchPanelButtons({
           )
         }
 
-        if (kind === 'newBrowser') {
-          return (
-            <Tooltip key="newBrowser">
-              <TooltipTrigger asChild>
-                <TopBarButton
-                  aria-label={t('browser.newWindow')}
-                  onClick={onNewBrowser}
-                  className="h-[22px] w-[22px] rounded-md text-foreground/35"
-                >
-                  <Globe className="h-3.5 w-3.5" strokeWidth={2} />
-                </TopBarButton>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">{t('browser.newWindow')}</TooltipContent>
-            </Tooltip>
-          )
-        }
-
         if (kind === 'browser') {
           return (
             <Tooltip key="browser">
@@ -202,7 +185,16 @@ export function WorkbenchPanelButtons({
                 <TopBarButton
                   aria-label={t('contentPanel.button.browser')}
                   isActive={browserPresent}
-                  onClick={() => onOpenBrowser()}
+                  onClick={(event) => {
+                    // Shift/Alt click = force a brand-new browser window
+                    // (was the separate [+] menu action); plain click keeps
+                    // the focus-or-create behaviour.
+                    if (event.shiftKey || event.altKey) {
+                      onNewBrowser()
+                    } else {
+                      onOpenBrowser()
+                    }
+                  }}
                   className={cn(
                     'h-[22px] w-[22px] rounded-md',
                     browserPresent ? 'text-foreground/60' : 'text-foreground/35',

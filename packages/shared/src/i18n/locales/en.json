@@ -360,6 +360,7 @@
   "contentPanel.button.browser": "Browser",
   "contentPanel.button.calendar": "Calendar",
   "contentPanel.button.context": "Context",
+  "contentPanel.button.diff": "Review & Diff",
   "contentPanel.button.files": "Files",
   "contentPanel.button.preview": "Preview",
   "contentPanel.button.review": "Review",
