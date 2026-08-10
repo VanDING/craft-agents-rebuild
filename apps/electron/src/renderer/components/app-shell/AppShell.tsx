@@ -89,6 +89,7 @@ import { useFocusContext } from "@/context/FocusContext"
 import { getSessionTitle } from "@/utils/session"
 import { useSetAtom } from "jotai"
 import type { Session, Workspace, FileAttachment, PermissionRequest, LoadedSource, LoadedSkill, PermissionMode, SourceFilter, AutomationFilter } from "../../../shared/types"
+import { isOtherNavigation } from "../../../shared/types"
 import { sessionMetaMapAtom, sendToWorkspaceAtom, type SessionMeta } from "@/atoms/sessions"
 import { sourcesAtom } from "@/atoms/sources"
 import { skillsAtom } from "@/atoms/skills"
@@ -611,15 +612,21 @@ function AppShellContent({
     navigateToSession(sessionId)
   }, [store, setFocusedPanel, navigateToSession])
 
+  // Bound panels (diff/files/context/preview) parse to navigator 'other' —
+  // the navigator column still shows the session list for them (fallback),
+  // so the list never blanks out while a bound panel is focused (fix,
+  // verified via CDP). Filters fall back to allSessions in that case.
+  const isSessionsListVisible = isSessionsNavigation(navState) || isOtherNavigation(navState)
+
   const sessionsContext = React.useMemo(() => {
-    if (isSessionsNavigation(navState)) {
+    if (isSessionsListVisible) {
       return {
-        filter: navState.filter,
-        sessionId: navState.details?.sessionId ?? null,
+        filter: isSessionsNavigation(navState) ? navState.filter : { kind: 'allSessions' as const },
+        sessionId: isSessionsNavigation(navState) ? navState.details?.sessionId ?? null : null,
       }
     }
     return null
-  }, [navState])
+  }, [navState, isSessionsListVisible])
 
   const sessionFilter = sessionsContext?.filter ?? null
 
@@ -2802,8 +2809,9 @@ function AppShellContent({
                 <>
                   {/* Filter dropdown - available in ALL chat views.
                       Shows user-added filters (removable) and pinned filters (non-removable, derived from route).
-                      Pinned filters: state views pin a status, label views pin a label, flagged pins the flag. */}
-                  {isSessionsNavigation(navState) && (
+                      Pinned filters: state views pin a status, label views pin a label, flagged pins the flag.
+                      Also shown while a bound panel is focused (navigator keeps the session list). */}
+                  {isSessionsListVisible && (
                     isAutoCompact ? (
                       <CompactSessionListFilter
                         listFilter={listFilter}
@@ -3595,8 +3603,10 @@ function AppShellContent({
                 onSelectSubpage={(subpage) => handleSettingsClick(subpage)}
               />
             )}
-            {isSessionsNavigation(navState) && (
-              /* Sessions List */
+            {isSessionsListVisible && (
+              /* Sessions List — also rendered while a bound panel
+                 (diff/files/context/preview) is focused so the navigator
+                 never blanks out (fix, verified via CDP). */
               <>
                 {/* SessionList: Scrollable list of session cards */}
                 {/* Key on sidebarMode forces full remount when switching views, skipping animations */}
