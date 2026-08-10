@@ -97,7 +97,9 @@ export function TopBar({
  }: TopBarProps) {
   const { t } = useTranslation()
   const [maxVisibleBrowserBadges, setMaxVisibleBrowserBadges] = useState(3)
-  const [maxVisiblePanelButtons, setMaxVisiblePanelButtons] = useState(9)
+  // 10 workbench buttons at full width; the ResizeObserver tightens this for
+  // narrow slots before first paint matters.
+  const [maxVisiblePanelButtons, setMaxVisiblePanelButtons] = useState(10)
   const rightSlotRef = useRef<HTMLDivElement | null>(null)
 
   const goBackHotkey = useActionLabel('nav.goBackAlt').hotkey
