@@ -22,6 +22,15 @@
 
 ## Differences from Upstream
 
+<img width="2781" height="1480" alt="截屏2026-08-11 00 40 03" src="https://github.com/user-attachments/assets/7aa55662-a18b-4d97-864d-4b491090fdd4" />
+<img width="2781" height="1480" alt="截屏2026-08-11 00 39 21" src="https://github.com/user-attachments/assets/3b2e6f9b-bab1-4ba3-8cab-ecbf4eb3199d" />
+<img width="2781" height="1480" alt="截屏2026-08-11 00 37 41" src="https://github.com/user-attachments/assets/7b3e587a-0aa0-4b8b-9702-8dcd38198574" />
+<img width="2781" height="1480" alt="截屏2026-08-11 00 39 05" src="https://github.com/user-attachments/assets/e9e77957-6396-4b83-94d5-0ba21614ce05" />
+
+
+
+
+
 This fork's core change is architectural: **upstream maintains two AI backends (Claude Agent SDK + Pi SDK); this fork removes the Claude SDK entirely and runs everything on the Pi SDK** — one code path, one extension system, one provider catalog.
 
 | Area | Upstream (`craft-agents-oss`) | This fork |
