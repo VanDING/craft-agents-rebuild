@@ -30,6 +30,7 @@ import { cn } from '@/lib/utils'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@craft-agent/ui'
 import { TopBarButton } from '@/components/ui/TopBarButton'
 import { panelStackAtom, focusedPanelIdAtom } from '@/atoms/panel-stack'
+import { hiddenPanelsAtom } from '@/atoms/hidden-panels'
 import { browserInstancesAtom, filterInstancesForWorkspace } from '@/atoms/browser-pane'
 import { useAppShellContext } from '@/context/AppShellContext'
 import {
@@ -45,8 +46,6 @@ interface WorkbenchPanelButtonsProps {
   onOpenPanel: (kind: WorkbenchPanelKind, options?: { replace?: boolean }) => void
   /** Focus an existing browser window or create a new one */
   onOpenBrowser: () => void
-  /** Panel kinds that exist only in the hidden (background) set (Task 5) */
-  hiddenKinds?: ReadonlySet<WorkbenchPanelKind>
   /** How many panel buttons to show before collapsing into the + menu (0 = keep all visible is NOT used; undefined = all) */
   maxVisibleButtons?: number
 }
@@ -64,14 +63,24 @@ const WORKBENCH_ICONS: Record<WorkbenchPanelKind, LucideIcon> = {
 export function WorkbenchPanelButtons({
   onOpenPanel,
   onOpenBrowser,
-  hiddenKinds,
   maxVisibleButtons,
 }: WorkbenchPanelButtonsProps) {
   const { t } = useTranslation()
   const stack = useAtomValue(panelStackAtom)
   const focusedPanelId = useAtomValue(focusedPanelIdAtom)
+  const hiddenPanels = useAtomValue(hiddenPanelsAtom)
   const { activeWorkspaceId, workspaces } = useAppShellContext()
   const allBrowserInstances = useAtomValue(browserInstancesAtom)
+
+  // Background-set kinds → dimmed button with a bottom dot (three-state).
+  const hiddenKinds = useMemo(() => {
+    const kinds = new Set<WorkbenchPanelKind>()
+    for (const entry of hiddenPanels) {
+      const kind = workbenchPanelKindForRoute(entry.route)
+      if (kind) kinds.add(kind)
+    }
+    return kinds
+  }, [hiddenPanels])
 
   // Browser presence = a live window for the current workspace (local or the
   // remote-mirror workspace id, matching BrowserTabStrip's filter).

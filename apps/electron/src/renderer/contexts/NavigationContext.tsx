@@ -88,6 +88,13 @@ import {
   parseSessionIdFromRoute,
 } from '@/atoms/panel-stack'
 import { lastActiveSessionIdAtom } from '@/atoms/active-session'
+import {
+  hiddenPanelsAtom,
+  restoreHiddenPanelsForWorkspaceAtom,
+  persistHiddenPanelsAtom,
+  dedupeHiddenPanelsAtom,
+  touchPanelActivity,
+} from '@/atoms/hidden-panels'
 
 // Re-export routes for convenience
 export { routes }
@@ -376,12 +383,14 @@ export function NavigationProvider({
     return unsub
   }, [store, maybePushHistoryForSemanticChange])
 
-  // Focus changes: push history when active panel changes
+  // Focus changes: push history when active panel changes.
+  // Also records focus activity for the hidden-set LRU (every focus touch).
   useEffect(() => {
     let prevFocusId = store.get(focusedPanelIdAtom)
     const unsub = store.sub(focusedPanelIdAtom, () => {
-      if (suppressPushRef.current || !initialRouteRestoredRef.current) return
       const newFocusId = store.get(focusedPanelIdAtom)
+      if (newFocusId) touchPanelActivity(newFocusId)
+      if (suppressPushRef.current || !initialRouteRestoredRef.current) return
       if (newFocusId !== prevFocusId) {
         if (!pendingPushRef.current) {
           pendingPushRef.current = true
@@ -392,6 +401,15 @@ export function NavigationProvider({
     })
     return unsub
   }, [store, maybePushHistoryForSemanticChange])
+
+  // Persist the hidden panel set whenever it changes (per workspace).
+  useEffect(() => {
+    if (!workspaceSlug) return
+    const unsub = store.sub(hiddenPanelsAtom, () => {
+      store.set(persistHiddenPanelsAtom, workspaceSlug)
+    })
+    return unsub
+  }, [store, workspaceSlug])
 
   // Right sidebar changes: push history
   const prevSidebarTypeRef = useRef(rightSidebar?.type)
@@ -478,6 +496,12 @@ export function NavigationProvider({
       if (entries.length > 0) {
         store.set(reconcilePanelStackAtom, { entries, focusedIndex })
       }
+
+      // History/URL consistency: the hidden set lives in localStorage, not the
+      // URL. After restoring the foreground from any URL (startup, back/forward,
+      // workspace switch), drop hidden entries whose route is now in the
+      // foreground — a panel must never exist in both sets at once.
+      store.set(dedupeHiddenPanelsAtom)
     },
     [store]
   )
@@ -494,11 +518,18 @@ export function NavigationProvider({
   // disappears (navigate away, close tab, Cmd+W), check if it was empty and
   // auto-delete it. This is the single codepath for all navigate-away cleanup.
   const prevVisibleSessionIdsRef = useRef<Set<string>>(new Set())
+  const hiddenPanels = useAtomValue(hiddenPanelsAtom)
 
   useEffect(() => {
     const currentIds = new Set<string>()
     for (const entry of panelStack) {
       const sessionId = parseSessionIdFromRoute(entry.route)
+      if (sessionId) currentIds.add(sessionId)
+    }
+    // Hidden (backgrounded) panels still "hold" their session: a backgrounded
+    // empty session must never be auto-deleted (decision #5 / Task 5 Step 4).
+    for (const hidden of hiddenPanels) {
+      const sessionId = parseSessionIdFromRoute(hidden.route)
       if (sessionId) currentIds.add(sessionId)
     }
 
@@ -518,7 +549,7 @@ export function NavigationProvider({
     }
 
     prevVisibleSessionIdsRef.current = currentIds
-  }, [panelStack, onAutoDeleteEmptySession, store, getDraft])
+  }, [panelStack, hiddenPanels, onAutoDeleteEmptySession, store, getDraft])
 
   // =========================================================================
   // SESSION SELECTION SYNC
@@ -1048,6 +1079,11 @@ export function NavigationProvider({
       lastSemanticHistoryKeyRef.current = getSemanticHistoryKey()
     }
 
+    // Hidden panels are per-workspace: load the new workspace's set and dedupe
+    // against the freshly reconciled foreground (a panel never lives in both).
+    store.set(restoreHiddenPanelsForWorkspaceAtom, workspaceSlug)
+    store.set(dedupeHiddenPanelsAtom)
+
     initialRouteRestoredRef.current = true
 
     requestAnimationFrame(() => {
@@ -1074,6 +1110,10 @@ export function NavigationProvider({
 
     const params = new URLSearchParams(window.location.search)
 
+    // Restore the workspace's hidden panel set BEFORE reconciling the foreground
+    // from the URL (reconcile dedupes hidden against the restored foreground).
+    store.set(restoreHiddenPanelsForWorkspaceAtom, workspaceSlug)
+
     // Reconcile panels + sidebar from current URL
     reconcileFromUrlParamsRef.current(params)
     lastSemanticHistoryKeyRef.current = getSemanticHistoryKey()
@@ -1092,7 +1132,7 @@ export function NavigationProvider({
       suppressPushRef.current = false
       lastSemanticHistoryKeyRef.current = getSemanticHistoryKey()
     })
-  }, [isReady, isSessionsReady, workspaceId, navigate, store, getSemanticHistoryKey])
+  }, [isReady, isSessionsReady, workspaceId, workspaceSlug, navigate, store, getSemanticHistoryKey])
 
   // =========================================================================
   // PENDING NAVIGATION

@@ -16,6 +16,13 @@ function generatePanelId(): string {
 export type PanelType = 'session' | 'source' | 'settings' | 'skills' | 'other'
   | 'diff' | 'files' | 'context' | 'preview'
 export type PanelLaneId = 'main'
+
+/**
+ * Hard physical limit for foreground panels (3 × PANEL_MIN_WIDTH = 1320px).
+ * The workbench LRU layer (atoms/hidden-panels) enforces it; pushPanelAtom
+ * warns (dev assertion) when a direct push would exceed it.
+ */
+export const MAX_FOREGROUND_PANELS = 3
 export type OpenIntent = 'implicit' | 'explicit'
 
 export interface PanelLanePolicy {
@@ -88,7 +95,11 @@ export function getDefaultLaneForType(_type: PanelType): PanelLaneId {
   return 'main'
 }
 
-function createEntry(route: ViewRoute, proportion: number, id?: string): PanelStackEntry {
+/**
+ * Create a panel stack entry (public: used by hidden-panels to restore panels
+ * with their original ids so React keys / per-panel state survive hide/restore).
+ */
+export function createPanelEntry(route: ViewRoute, proportion: number, id?: string): PanelStackEntry {
   const panelType = getPanelTypeFromRoute(route)
   return {
     id: id ?? generatePanelId(),
@@ -99,7 +110,8 @@ function createEntry(route: ViewRoute, proportion: number, id?: string): PanelSt
   }
 }
 
-function normalizeProportions(stack: PanelStackEntry[]): PanelStackEntry[] {
+/** Normalize proportions so they sum to 1 (public: hidden-panels reuses it). */
+export function normalizeProportions(stack: PanelStackEntry[]): PanelStackEntry[] {
   if (stack.length === 0) return stack
   const total = stack.reduce((sum, p) => sum + p.proportion, 0)
   if (total <= 0) {
@@ -149,12 +161,17 @@ export const pushPanelAtom = atom(
     intent?: OpenIntent
   }) => {
     const stack = get(panelStackAtom)
+    if (stack.length >= MAX_FOREGROUND_PANELS) {
+      // Dev assertion: the workbench LRU layer must evict before a direct push
+      // (multi-session flows such as Cmd+T still bypass LRU intentionally).
+      console.warn('[panel-stack] pushPanelAtom exceeds MAX_FOREGROUND_PANELS', stack.length)
+    }
     let insertAt = stack.length
     if (afterIndex !== undefined && afterIndex >= 0 && afterIndex < stack.length) {
       insertAt = afterIndex + 1
     }
 
-    const newEntry = createEntry(route, 0)
+    const newEntry = createPanelEntry(route, 0)
     const newStack = [
       ...stack.slice(0, insertAt),
       newEntry,
@@ -203,24 +220,24 @@ export const reconcilePanelStackAtom = atom(
 
       if (positional && positional.route === target.route && !used.has(positional.id)) {
         used.add(positional.id)
-        const updated = createEntry(target.route, target.proportion, positional.id)
+        const updated = createPanelEntry(target.route, target.proportion, positional.id)
         return { ...updated, proportion: target.proportion }
       }
 
       const any = current.find(c => c.route === target.route && !used.has(c.id))
       if (any) {
         used.add(any.id)
-        const updated = createEntry(target.route, target.proportion, any.id)
+        const updated = createPanelEntry(target.route, target.proportion, any.id)
         return { ...updated, proportion: target.proportion }
       }
 
       if (positional && !used.has(positional.id)) {
         used.add(positional.id)
-        const updated = createEntry(target.route, target.proportion, positional.id)
+        const updated = createPanelEntry(target.route, target.proportion, positional.id)
         return { ...updated, proportion: target.proportion }
       }
 
-      return createEntry(target.route, target.proportion)
+      return createPanelEntry(target.route, target.proportion)
     })
 
     const normalized = normalizeProportions(newStack)
@@ -282,7 +299,7 @@ export const updateFocusedPanelRouteAtom = atom(
     const stack = get(panelStackAtom)
 
     if (stack.length === 0) {
-      const newEntry = createEntry(route, 1)
+      const newEntry = createPanelEntry(route, 1)
       set(panelStackAtom, [newEntry])
       set(focusedPanelIdAtom, newEntry.id)
       return
@@ -293,7 +310,7 @@ export const updateFocusedPanelRouteAtom = atom(
 
     const updated = stack.map((p) =>
       p.id === focused.id
-        ? { ...createEntry(route, p.proportion, p.id), proportion: p.proportion }
+        ? { ...createPanelEntry(route, p.proportion, p.id), proportion: p.proportion }
         : p
     )
 

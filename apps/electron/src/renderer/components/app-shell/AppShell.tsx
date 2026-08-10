@@ -92,8 +92,9 @@ import { sessionMetaMapAtom, sendToWorkspaceAtom, type SessionMeta } from "@/ato
 import { sourcesAtom } from "@/atoms/sources"
 import { skillsAtom } from "@/atoms/skills"
 import { activeSessionIdAtom } from "@/atoms/active-session"
-import { panelStackAtom, panelCountAtom, focusedPanelIdAtom, focusedSessionIdAtom, focusNextPanelAtom, focusPrevPanelAtom, parseSessionIdFromRoute, pushPanelAtom, updateFocusedPanelRouteAtom, closePanelAtom } from "@/atoms/panel-stack"
+import { panelStackAtom, panelCountAtom, focusedPanelIdAtom, focusedSessionIdAtom, focusNextPanelAtom, focusPrevPanelAtom, parseSessionIdFromRoute, closePanelAtom } from "@/atoms/panel-stack"
 import { browserInstancesAtom, activeBrowserInstanceIdAtom, filterInstancesForWorkspace } from "@/atoms/browser-pane"
+import { hiddenPanelsAtom, openPanelAtom, restorePanelAtom } from "@/atoms/hidden-panels"
 import { WORKBENCH_PANEL_ROUTES, workbenchPanelKindForRoute, type WorkbenchPanelKind } from "@/lib/workbench-panels"
 import { type SessionStatusId, type SessionStatus, statusConfigsToSessionStatuses } from "@/config/session-status-config"
 import { useStatuses } from "@/hooks/useStatuses"
@@ -2074,16 +2075,24 @@ function AppShellContent({
 
     const existing = stack.find((entry) => workbenchPanelKindForRoute(entry.route) === kind)
     if (existing) {
+      // Focus subscription in NavigationContext records the LRU activity.
       store.set(focusedPanelIdAtom, existing.id)
       return
     }
 
-    if (options?.replace && stack.length > 0) {
-      store.set(updateFocusedPanelRouteAtom, route)
+    // Background set: restore the hidden panel (evicting the LRU foreground
+    // panel when the foreground is full) instead of pushing a duplicate.
+    const hiddenEntry = store
+      .get(hiddenPanelsAtom)
+      .find((entry) => workbenchPanelKindForRoute(entry.route) === kind)
+    if (hiddenEntry) {
+      store.set(restorePanelAtom, hiddenEntry.id)
       return
     }
 
-    store.set(pushPanelAtom, { route, targetLaneId: 'main', intent: 'explicit' })
+    // LRU-aware open: evicts the least-recently-used panel into the hidden set
+    // when the foreground is full; replaceFocused swaps the focused panel.
+    store.set(openPanelAtom, { route, replaceFocused: options?.replace === true })
   }, [store])
 
   // panel.toggle: close the focused bound panel, or reopen the last used one.
