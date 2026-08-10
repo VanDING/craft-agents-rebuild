@@ -20,6 +20,44 @@
 
 ---
 
+## Differences from Upstream
+
+This fork's core change is architectural: **upstream maintains two AI backends (Claude Agent SDK + Pi SDK); this fork removes the Claude SDK entirely and runs everything on the Pi SDK** — one code path, one extension system, one provider catalog.
+
+| Area | Upstream (`craft-agents-oss`) | This fork |
+|------|------------------------------|-----------|
+| AI backend | Claude Agent SDK **+** Pi SDK (two paths) | **Pi SDK only** — one unified path |
+| Backend code | ~7,000 lines (two implementations) | ~4,500 lines (-36%) |
+| Native payload | ~210 MB Claude binary per platform | None |
+| Provider path | Two parallel implementations | One — 30+ providers, strict superset |
+| React / TS / Vite / Electron | 18 / 5 / 6 / 39 | **19 / 7 / 8 / 43** |
+
+Other notable changes:
+
+- **Removed** the Claude SDK backend, event adapters, error mappers, and the "extended context (1M)" toggle; replaced with a generic `ToolDefinition` layer and `@modelcontextprotocol/sdk`-based MCP servers
+- **Added 14 provider presets** to the UI (NVIDIA, Together AI, Fireworks, Moonshot AI, Cloudflare Workers AI / AI Gateway, Ant Ling, ZAI, Xiaomi…)
+- **Fixed Windows packaging** (`build-win.ps1`): PowerShell 5.1 SHA256, `@vscode/ripgrep` binary staging, and pi-agent-server bundling
+- **New tooling**: shared `tsconfig.base.json`, a postinstall dependency-dedupe script (prosemirror under TS 7), inlined GitHub Copilot OAuth
+- **Content Workbench** — a generic multi-panel workspace for every agent view (see below)
+- Full migration record: [`docs/single-pi-backend-migration.md`](docs/single-pi-backend-migration.md)
+
+### Content Workbench
+
+The workbench turns every agent view — sessions, board, calendar, reviews, files, context, previews, and the browser — into peer panels you can arrange side by side:
+
+- **Flat top-bar buttons** — every panel kind has a direct top-bar button with three-state indicators (open / focused / background); new-session, new-browser-window and session-list toggles are always available, and narrow windows hide buttons from the tail instead of collapsing into a menu
+- **Bound content panels** — Review & Diff, Files tree, Context and Preview render side-by-side via `PanelSlot`, each bound to the active session; at most **3 foreground panels**, with a per-workspace **hidden-panel set** (backgrounded panels restore on demand)
+- **Predictable eviction** — when the foreground is full, the *leftmost non-focused* panel moves to the background (new windows always appear on the right); the **main session is pinned to index 0** and never evicted or moved
+- **One-click fullscreen** — any panel expands to a fullscreen overlay; the top bar hides while expanded so the restore button stays clickable, and Esc or the floating restore button brings the panel back
+- **Equal-width panels** — opening, closing, or restoring a panel resets widths to 1/N; drag-resized proportions survive until the next count change
+- **Overlay convergence** — chat file previews, markdown/activity pop-outs and multi-diff views open in the bound panels instead of floating overlays, so one context stays consistent
+- **Kanban & Calendar panels** — board/calendar open as panels with close/fullscreen buttons in their headers and macOS traffic-light compensation when fullscreen
+- **Context panel upgrade** — token usage, attachments, recently opened files, and source connection status at a glance
+- **Session-list toggle** — an independent top-bar button shows/hides the session-list column, decoupled from the sidebar rail
+- **Keyboard shortcuts** for every panel (`⌘⇧R` review / `⌘⇧E` files / `⌘⇧O` context / `⌘⇧P` preview / `⌘⇧T` toggle, plus panel navigation)
+
+---
+
 ## What Is Craft Agents?
 
 Craft Agents is a desktop workspace we built to work *effectively* with AI agents. It enables:
@@ -154,28 +192,6 @@ For terminal-only workflows, the [`craft-cli`](docs/cli.md) client connects over
 ```bash
 bun run apps/cli/src/index.ts run "Summarize this repo"
 ```
-
----
-
-## Differences from Upstream
-
-This fork's core change is architectural: **upstream maintains two AI backends (Claude Agent SDK + Pi SDK); this fork removes the Claude SDK entirely and runs everything on the Pi SDK** — one code path, one extension system, one provider catalog.
-
-| Area | Upstream (`craft-agents-oss`) | This fork |
-|------|------------------------------|-----------|
-| AI backend | Claude Agent SDK **+** Pi SDK (two paths) | **Pi SDK only** — one unified path |
-| Backend code | ~7,000 lines (two implementations) | ~4,500 lines (-36%) |
-| Native payload | ~210 MB Claude binary per platform | None |
-| Provider path | Two parallel implementations | One — 30+ providers, strict superset |
-| React / TS / Vite / Electron | 18 / 5 / 6 / 39 | **19 / 7 / 8 / 43** |
-
-Other notable changes:
-
-- **Removed** the Claude SDK backend, event adapters, error mappers, and the "extended context (1M)" toggle; replaced with a generic `ToolDefinition` layer and `@modelcontextprotocol/sdk`-based MCP servers
-- **Added 14 provider presets** to the UI (NVIDIA, Together AI, Fireworks, Moonshot AI, Cloudflare Workers AI / AI Gateway, Ant Ling, ZAI, Xiaomi…)
-- **Fixed Windows packaging** (`build-win.ps1`): PowerShell 5.1 SHA256, `@vscode/ripgrep` binary staging, and pi-agent-server bundling
-- **New tooling**: shared `tsconfig.base.json`, a postinstall dependency-dedupe script (prosemirror under TS 7), inlined GitHub Copilot OAuth
-- Full migration record: [`docs/single-pi-backend-migration.md`](docs/single-pi-backend-migration.md)
 
 ---
 

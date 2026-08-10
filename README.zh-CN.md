@@ -20,6 +20,44 @@
 
 ---
 
+## 与上游的差异
+
+本 fork 的核心变更在架构层面：**上游维护两套 AI 后台（Claude Agent SDK + Pi SDK）；本 fork 完全移除 Claude SDK，全部运行在 Pi SDK 上** —— 一条代码路径、一套扩展系统、一个提供商目录。
+
+| 维度 | 上游（`craft-agents-oss`） | 本 fork |
+|------|---------------------------|---------|
+| AI 后台 | Claude Agent SDK **+** Pi SDK（两条路径） | **仅 Pi SDK** —— 统一路径 |
+| 后端代码 | ~7,000 行（两套实现） | ~4,500 行（-36%） |
+| 原生依赖 | 每平台 ~210 MB Claude 二进制 | 无 |
+| Provider 路径 | 两套并行实现 | 一套 —— 30+ 提供商，严格超集 |
+| React / TS / Vite / Electron | 18 / 5 / 6 / 39 | **19 / 7 / 8 / 43** |
+
+其他值得注意的变更：
+
+- **移除**了 Claude SDK 后端、事件适配器、错误映射器与「扩展上下文 (1M)」开关；以通用 `ToolDefinition` 层和基于 `@modelcontextprotocol/sdk` 的 MCP 服务器替代
+- **新增 14 个提供商预设**（NVIDIA、Together AI、Fireworks、Moonshot AI、Cloudflare Workers AI / AI Gateway、Ant Ling、ZAI、小米等）
+- **修复 Windows 打包**（`build-win.ps1`）：PowerShell 5.1 SHA256、`@vscode/ripgrep` 二进制暂存、pi-agent-server 打包
+- **新增工具链**：共享 `tsconfig.base.json`、postinstall 依赖去重脚本（TS 7 下的 prosemirror）、内联 GitHub Copilot OAuth
+- **内容工作台** —— 面向所有 Agent 视图的通用多面板工作区（详见下文）
+- 完整迁移记录见 [`docs/single-pi-backend-migration.md`](docs/single-pi-backend-migration.md)
+
+### 内容工作台（Content Workbench）
+
+工作台把 Agent 的所有视图 —— 会话、看板、日历、审查、文件树、上下文、预览、浏览器 —— 变成可以并排摆放的对等面板：
+
+- **顶栏平铺按钮** —— 每个面板类型都有直接的顶栏按钮，带三态指示（前台 / 聚焦 / 后台）；新建会话、新建浏览器窗口、会话列表开关始终可用；窄窗口从尾部顺序隐藏按钮，而非收进折叠菜单
+- **绑定内容面板** —— 审查与差异、文件树、上下文、预览通过 `PanelSlot` 并排渲染，各自绑定活跃会话；前台面板上限 **3 个**，并配有**按工作区持久化的后台面板集**（随时可还原）
+- **可预测的顶替规则** —— 前台满员时，**最左侧非聚焦**面板移入后台（新窗口恒从右侧出现）；**主会话固定在 index 0**，永不被顶替或移动
+- **一键全屏** —— 任意面板可展开为全屏浮层；展开期间顶栏自动隐藏（保证还原按钮可点击），Esc 或浮动还原按钮随时收回
+- **均分宽度** —— 打开、关闭或还原面板时宽度重置为 1/N；拖拽自定义的比例在下次数量变化前保持不变
+- **浮层收敛** —— 对话中的文件预览、Markdown/活动弹层、多文件差异视图统一进入绑定面板，不再漂浮为独立浮层
+- **看板与日历面板** —— 看板/日历以面板形式打开，头部带关闭与全屏按钮，全屏时自动补偿 macOS 红绿灯区域
+- **上下文面板升级** —— 一眼可见 token 用量、附件、最近打开文件与 source 连接状态
+- **会话列表独立开关** —— 顶栏独立按钮显示/隐藏会话列表列，与左侧栏解耦
+- **全面板键盘快捷键**（`⌘⇧R` 审查 / `⌘⇧E` 文件树 / `⌘⇧O` 上下文 / `⌘⇧P` 预览 / `⌘⇧T` 切换，以及面板间导航）
+
+---
+
 ## 项目介绍
 
 Craft Agents 是一个桌面工作台，目标是让我们能**高效地与 AI Agent 协作**。它提供：
@@ -154,28 +192,6 @@ CRAFT_SERVER_TOKEN=$(openssl rand -hex 32) bun run server:start
 ```bash
 bun run apps/cli/src/index.ts run "Summarize this repo"
 ```
-
----
-
-## 与上游的差异
-
-本 fork 的核心变更在架构层面：**上游维护两套 AI 后台（Claude Agent SDK + Pi SDK）；本 fork 完全移除 Claude SDK，全部运行在 Pi SDK 上** —— 一条代码路径、一套扩展系统、一个提供商目录。
-
-| 维度 | 上游（`craft-agents-oss`） | 本 fork |
-|------|---------------------------|---------|
-| AI 后台 | Claude Agent SDK **+** Pi SDK（两条路径） | **仅 Pi SDK** —— 统一路径 |
-| 后端代码 | ~7,000 行（两套实现） | ~4,500 行（-36%） |
-| 原生依赖 | 每平台 ~210 MB Claude 二进制 | 无 |
-| Provider 路径 | 两套并行实现 | 一套 —— 30+ 提供商，严格超集 |
-| React / TS / Vite / Electron | 18 / 5 / 6 / 39 | **19 / 7 / 8 / 43** |
-
-其他值得注意的变更：
-
-- **移除**了 Claude SDK 后端、事件适配器、错误映射器与「扩展上下文 (1M)」开关；以通用 `ToolDefinition` 层和基于 `@modelcontextprotocol/sdk` 的 MCP 服务器替代
-- **新增 14 个提供商预设**（NVIDIA、Together AI、Fireworks、Moonshot AI、Cloudflare Workers AI / AI Gateway、Ant Ling、ZAI、小米等）
-- **修复 Windows 打包**（`build-win.ps1`）：PowerShell 5.1 SHA256、`@vscode/ripgrep` 二进制暂存、pi-agent-server 打包
-- **新增工具链**：共享 `tsconfig.base.json`、postinstall 依赖去重脚本（TS 7 下的 prosemirror）、内联 GitHub Copilot OAuth
-- 完整迁移记录见 [`docs/single-pi-backend-migration.md`](docs/single-pi-backend-migration.md)
 
 ---
 
