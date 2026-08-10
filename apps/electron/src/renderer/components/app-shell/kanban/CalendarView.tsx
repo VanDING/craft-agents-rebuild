@@ -94,7 +94,7 @@ interface EntryFormState {
 }
 
 export function CalendarView() {
-  const { activeWorkspaceId, onCreateSession } = useAppShellContext()
+  const { activeWorkspaceId, onCreateSession, rightSidebarButton, expandButton } = useAppShellContext()
   const { t } = useTranslation()
   const { navigateToSession } = useNavigation()
   const { entries, create, update, remove } = useCalendarEntries(activeWorkspaceId ?? null)
@@ -632,6 +632,9 @@ export function CalendarView() {
           <Plus className="h-3.5 w-3.5" strokeWidth={2.5} />
           {t('schedule.newEntry')}
         </Button>
+        {/* Panel-slot injected close + fullscreen buttons (decision #3) */}
+        {rightSidebarButton}
+        {expandButton}
       </div>
 
       <div className="min-h-0 flex-1 p-4">

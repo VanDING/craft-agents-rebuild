@@ -57,7 +57,7 @@ function deriveRunState(child: SessionMeta, statusesById: Map<string, SessionSta
  * the status badge is independent from the column.
  */
 export function KanbanBoardContainer() {
-  const { activeWorkspaceId, llmConnections, sessionStatuses, onCreateSession, onSendMessage, onJumpToTaskSessions } =
+  const { activeWorkspaceId, llmConnections, sessionStatuses, onCreateSession, onSendMessage, onJumpToTaskSessions, rightSidebarButton, expandButton } =
     useAppShellContext()
   const { t } = useTranslation()
   const metaMap = useAtomValue(sessionMetaMapAtom)
@@ -542,6 +542,9 @@ export function KanbanBoardContainer() {
           >
             <Plus className="h-3.5 w-3.5" strokeWidth={2.5} /> {t('kanban.newTask')}
           </button>
+          {/* Panel-slot injected close + fullscreen buttons (decision #3) */}
+          {rightSidebarButton}
+          {expandButton}
         </div>
       </div>
       <div className="min-h-0 flex-1">
