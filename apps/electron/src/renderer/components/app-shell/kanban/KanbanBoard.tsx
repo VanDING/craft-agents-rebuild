@@ -151,7 +151,10 @@ export function KanbanBoard({
       onDragEnd={handleDragEnd}
       onDragCancel={() => setActiveId(null)}
     >
-      <div className="flex h-full gap-3 p-3">
+      {/* overflow-x-auto: in narrow workbench panels (~440px) columns hold a
+          usable min width and the board scrolls horizontally instead of
+          crushing; at full width columns still flex-grow to fill. */}
+      <div className="flex h-full gap-3 overflow-x-auto p-3">
         {columns.map((column, index) => (
           <KanbanColumn
             key={column.id}

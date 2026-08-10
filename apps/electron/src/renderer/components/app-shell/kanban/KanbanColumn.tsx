@@ -90,7 +90,7 @@ export function KanbanColumn({
   const { setNodeRef, isOver } = useDroppable({ id: column.id })
 
   return (
-    <div className="flex min-w-0 flex-1 flex-col">
+    <div className="flex min-w-[260px] flex-1 flex-col">
       <div className="flex items-center gap-2 px-0.5 pb-2">
         {/* Colored header pill carries the column identity; the count rides along
             in a translucent chip. The trailing space is a reserved WIP slot. */}

@@ -378,6 +378,13 @@ bun run lint:i18n:parity && bun run lint:i18n:sorted && bun run lint:i18n:covera
 bun run electron:dev   # 手动场景清单（Task 14 Step 4）
 ```
 
+### Task 13 验证结论（2026-08-10 实施时记录）
+
+- **Kanban（board）**：列容器原为 `flex min-w-0 flex-1`，窄面板（~440px）下列会被压碎。
+  已做最小适配：列 `min-w-[260px]` + 面板根容器 `overflow-x-auto`——窄面板下整板横向滚动，全宽下列仍弹性伸展；DragOverlay 为 fixed 定位，不受 overflow 裁剪。
+- **Calendar（calendar）**：7 列 `minmax(0,1fr)` 网格自适应压缩，单元格内容 truncate + `+N` 溢出指示，440px 下可用，无需适配。
+- **结论**：保留看板/日历平铺按钮（决策 #9 维持）。
+
 ## 风险与对策
 
 | 风险 | 对策 |
