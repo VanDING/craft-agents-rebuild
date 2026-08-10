@@ -22,6 +22,15 @@
 
 ## 与上游的差异
 
+<img width="2781" height="1480" alt="截屏2026-08-11 00 37 41" src="https://github.com/user-attachments/assets/3dd8facf-20f3-4039-8458-d222f44501de" />
+<img width="2781" height="1480" alt="截屏2026-08-11 00 39 05" src="https://github.com/user-attachments/assets/9f0a746a-60be-426e-8cd6-57f4e258c9ef" />
+<img width="2781" height="1480" alt="截屏2026-08-11 00 40 03" src="https://github.com/user-attachments/assets/ba2575a7-bebf-4d56-b39b-08dd323b6c59" />
+<img width="2781" height="1480" alt="截屏2026-08-11 00 39 21" src="https://github.com/user-attachments/assets/dd948992-74f0-4251-9125-67133b3c9ff5" />
+
+
+
+
+
 本 fork 的核心变更在架构层面：**上游维护两套 AI 后台（Claude Agent SDK + Pi SDK）；本 fork 完全移除 Claude SDK，全部运行在 Pi SDK 上** —— 一条代码路径、一套扩展系统、一个提供商目录。
 
 | 维度 | 上游（`craft-agents-oss`） | 本 fork |
