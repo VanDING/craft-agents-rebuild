@@ -411,6 +411,7 @@
   "contentPanel.title.files": "Fájlok",
   "contentPanel.title.preview": "Előnézet",
   "contentPanel.title.review": "Áttekintés és diff",
+  "contentPanel.title.sessionsList": "Munkamenetlista",
   "contentPanel.toast.replacedPanel": "A legrégebbi panel helyén nyílt meg — tartalma a háttérbe került.",
   "crash.reload": "Újratöltés",
   "crash.restartPrompt": "Kérjük, indítsd újra az alkalmazást. A hibát jelentettük.",

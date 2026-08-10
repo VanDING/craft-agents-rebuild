@@ -23,7 +23,7 @@ import { useTranslation } from 'react-i18next'
 import { useAtomValue } from 'jotai'
 import {
   MessageSquare, LayoutGrid, CalendarDays, GitCompareArrows,
-  FolderTree, ListFilter, FileText, Globe,
+  FolderTree, ListFilter, FileText, Globe, List,
   type LucideIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -51,6 +51,8 @@ interface WorkbenchPanelButtonsProps {
   onNewSessionPanel: () => void
   /** Open a brand-new browser window (was the [+] menu item) */
   onNewBrowser: () => void
+  /** Toggle the navigator (session list) column — decision #7 */
+  onToggleSessionList?: () => void
   /** How many buttons to render before hiding from the tail (0 = keep all visible is NOT used; undefined = all) */
   maxVisibleButtons?: number
 }
@@ -70,6 +72,7 @@ export function WorkbenchPanelButtons({
   onOpenBrowser,
   onNewSessionPanel,
   onNewBrowser,
+  onToggleSessionList,
   maxVisibleButtons,
 }: WorkbenchPanelButtonsProps) {
   const { t } = useTranslation()
@@ -125,10 +128,11 @@ export function WorkbenchPanelButtons({
   }, [onOpenBrowser, onOpenPanel])
 
   // Browser is rendered as the last button in the same flat group; the two
-  // [+] menu actions (new session in panel, new browser window) follow it so
-  // narrow-window hiding removes newest actions first (decision #1).
+  // [+] menu actions (new session in panel, new browser window) and the
+  // session-list toggle follow it so narrow-window hiding removes newest
+  // actions first (decision #1).
   const allButtons = useMemo(
-    () => [...WORKBENCH_PANEL_KINDS, 'browser', 'newSession', 'newBrowser'] as const,
+    () => [...WORKBENCH_PANEL_KINDS, 'browser', 'newSession', 'newBrowser', 'sessionList'] as const,
     [],
   )
   const visibleButtons = useMemo(() => {
@@ -139,6 +143,24 @@ export function WorkbenchPanelButtons({
   return (
     <div className="inline-flex items-center gap-0.5">
       {visibleButtons.map((kind) => {
+        if (kind === 'sessionList') {
+          if (!onToggleSessionList) return null
+          return (
+            <Tooltip key="sessionList">
+              <TooltipTrigger asChild>
+                <TopBarButton
+                  aria-label={t('contentPanel.title.sessionsList')}
+                  onClick={onToggleSessionList}
+                  className="h-[22px] w-[22px] rounded-md text-foreground/35"
+                >
+                  <List className="h-3.5 w-3.5" strokeWidth={2} />
+                </TopBarButton>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">{t('contentPanel.title.sessionsList')}</TooltipContent>
+            </Tooltip>
+          )
+        }
+
         if (kind === 'newSession') {
           return (
             <Tooltip key="newSession">

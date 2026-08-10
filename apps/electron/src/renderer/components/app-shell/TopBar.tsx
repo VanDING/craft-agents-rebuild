@@ -64,6 +64,8 @@ interface TopBarProps {
   onOpenPanel?: (kind: WorkbenchPanelKind, options?: { replace?: boolean }) => void
   /** Focus an existing browser window or create a new one */
   onOpenBrowser?: () => void
+  /** Toggle the navigator (session list) column visibility — decision #7 */
+  onToggleSessionList?: () => void
 }
 
 export function TopBar({
@@ -91,6 +93,7 @@ export function TopBar({
   isCompact,
   onOpenPanel,
   onOpenBrowser,
+  onToggleSessionList,
  }: TopBarProps) {
   const { t } = useTranslation()
   const [maxVisibleBrowserBadges, setMaxVisibleBrowserBadges] = useState(3)
@@ -118,14 +121,14 @@ export function TopBar({
 
       // Workbench panel buttons share the slot; hide from the tail (newest
       // actions first) when narrow — no collapse menu (decision #1).
-      // 9 buttons × 24px ≈ 216px at full width.
+      // 10 buttons × 24px ≈ 240px at full width.
       const nextMaxPanelButtons = slotWidth >= 560
-        ? 9
+        ? 10
         : slotWidth >= 430
-          ? 7
+          ? 8
           : slotWidth >= 340
-            ? 5
-            : 3
+            ? 6
+            : 4
       setMaxVisiblePanelButtons((prev) => (prev === nextMaxPanelButtons ? prev : nextMaxPanelButtons))
     }
 
@@ -253,6 +256,7 @@ export function TopBar({
             onOpenBrowser={onOpenBrowser}
             onNewSessionPanel={onAddSessionPanel}
             onNewBrowser={onAddBrowserPanel}
+            onToggleSessionList={onToggleSessionList}
             maxVisibleButtons={maxVisiblePanelButtons}
           />
         )}

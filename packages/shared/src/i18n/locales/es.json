@@ -411,6 +411,7 @@
   "contentPanel.title.files": "Archivos",
   "contentPanel.title.preview": "Vista previa",
   "contentPanel.title.review": "Revisión y diff",
+  "contentPanel.title.sessionsList": "Lista de sesiones",
   "contentPanel.toast.replacedPanel": "Se abrió en lugar del panel más antiguo; su contenido pasó a segundo plano.",
   "crash.reload": "Recargar",
   "crash.restartPrompt": "Reinicia la aplicación. El error ha sido informado.",

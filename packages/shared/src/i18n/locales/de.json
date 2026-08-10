@@ -411,6 +411,7 @@
   "contentPanel.title.files": "Dateien",
   "contentPanel.title.preview": "Vorschau",
   "contentPanel.title.review": "Überprüfung & Diff",
+  "contentPanel.title.sessionsList": "Sitzungsliste",
   "contentPanel.toast.replacedPanel": "Am Platz des ältesten Panels geöffnet – sein Inhalt wurde in den Hintergrund verschoben.",
   "crash.reload": "Neu laden",
   "crash.restartPrompt": "Bitte starte die App neu. Der Fehler wurde gemeldet.",

@@ -411,6 +411,7 @@
   "contentPanel.title.files": "Files",
   "contentPanel.title.preview": "Preview",
   "contentPanel.title.review": "Review & Diff",
+  "contentPanel.title.sessionsList": "Session list",
   "contentPanel.toast.replacedPanel": "Opened in place of the oldest panel — its content moved to the background.",
   "crash.reload": "Reload",
   "crash.restartPrompt": "Please restart the app. The error has been reported.",

@@ -543,6 +543,11 @@ function AppShellContent({
   const [isSidebarVisible, setIsSidebarVisible] = React.useState(() => {
     return storage.get(storage.KEYS.sidebarVisible, !defaultCollapsed)
   })
+  // Navigator (session list) visibility — toggled independently of the rail
+  // by the session-list button (decision #7).
+  const [isNavigatorVisible, setIsNavigatorVisible] = React.useState(() => {
+    return storage.get(storage.KEYS.navigatorVisible, true)
+  })
   const [sidebarWidth, setSidebarWidth] = React.useState(() => {
     return storage.get(storage.KEYS.sidebarWidth, 220)
   })
@@ -1725,6 +1730,11 @@ function AppShellContent({
     storage.set(storage.KEYS.sidebarVisible, isSidebarVisible)
   }, [isSidebarVisible])
 
+  // Persist navigator (session list) visibility to localStorage
+  React.useEffect(() => {
+    storage.set(storage.KEYS.navigatorVisible, isNavigatorVisible)
+  }, [isNavigatorVisible])
+
   // Persist focus mode state to localStorage
   React.useEffect(() => {
     storage.set(storage.KEYS.focusModeEnabled, isSidebarAndNavigatorHidden)
@@ -2098,6 +2108,17 @@ function AppShellContent({
     store.set(openPanelAtom, { route, replaceFocused: options?.replace === true })
   }, [store])
 
+  // Session-list toggle (decision #7): independent of the rail. Revealing the
+  // navigator also guarantees it shows the session list — focus an existing
+  // sessions panel or open one (never replaces bound-panel content).
+  const handleToggleSessionList = useCallback(() => {
+    const next = !isNavigatorVisible
+    setIsNavigatorVisible(next)
+    if (next) {
+      openPanel('sessions')
+    }
+  }, [isNavigatorVisible, openPanel])
+
   // panel.toggle: close the focused bound panel, or reopen the last used one.
   const toggleBoundPanel = useCallback(() => {
     const stack = store.get(panelStackAtom)
@@ -2434,6 +2455,7 @@ function AppShellContent({
           isCompact={isAutoCompact}
           onOpenPanel={openPanel}
           onOpenBrowser={() => { void handleFocusOrCreateBrowser() }}
+          onToggleSessionList={handleToggleSessionList}
         />}
 
       {/* === OUTER LAYOUT: Unified Panel Stack | Right Sidebar === */}
@@ -3640,7 +3662,7 @@ function AppShellContent({
             )}
             </div>
           }
-          navigatorWidth={isAutoCompact ? sessionListWidth : (effectiveSidebarAndNavigatorHidden || isFullWidthView ? 0 : sessionListWidth)}
+          navigatorWidth={isAutoCompact ? sessionListWidth : (effectiveSidebarAndNavigatorHidden || isFullWidthView || !isNavigatorVisible ? 0 : sessionListWidth)}
           isSidebarAndNavigatorHidden={effectiveSidebarAndNavigatorHidden}
           isRightSidebarVisible={false}
           isCompact={isAutoCompact}
@@ -3680,8 +3702,8 @@ function AppShellContent({
         </div>
         )}
 
-        {/* Session List Resize Handle (absolute, hidden in focused mode and board/gantt/calendar views) */}
-        {!effectiveSidebarAndNavigatorHidden && !isFullWidthView && (
+        {/* Session List Resize Handle (absolute, hidden in focused mode, board/gantt/calendar views, and when the navigator is hidden) */}
+        {!effectiveSidebarAndNavigatorHidden && !isFullWidthView && isNavigatorVisible && (
         <div
           ref={sessionListHandleRef}
           onMouseDown={(e) => { e.preventDefault(); setIsResizing('session-list') }}

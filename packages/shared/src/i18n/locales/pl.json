@@ -411,6 +411,7 @@
   "contentPanel.title.files": "Pliki",
   "contentPanel.title.preview": "Podgląd",
   "contentPanel.title.review": "Przegląd i diff",
+  "contentPanel.title.sessionsList": "Lista sesji",
   "contentPanel.toast.replacedPanel": "Otworzono w miejsce najstarszego panelu — jego zawartość przeniesiono do tła.",
   "crash.reload": "Załaduj ponownie",
   "crash.restartPrompt": "Uruchom aplikację ponownie. Błąd został zgłoszony.",

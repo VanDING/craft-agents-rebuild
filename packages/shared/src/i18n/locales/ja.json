@@ -411,6 +411,7 @@
   "contentPanel.title.files": "ファイル",
   "contentPanel.title.preview": "プレビュー",
   "contentPanel.title.review": "レビューと差分",
+  "contentPanel.title.sessionsList": "セッションリスト",
   "contentPanel.toast.replacedPanel": "最も古いパネルの代わりに開きました。その内容はバックグラウンドへ移動しました。",
   "crash.reload": "再読み込み",
   "crash.restartPrompt": "アプリを再起動してください。エラーは報告されました。",

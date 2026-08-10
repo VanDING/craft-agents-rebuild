@@ -12,6 +12,8 @@ const PREFIX = 'craft-'
 export const KEYS = {
   // Chat sidebar
   sidebarVisible: 'sidebar-visible',
+  /** Navigator (session list column) visibility — independent of the rail (decision #7) */
+  navigatorVisible: 'navigator-visible',
   sidebarWidth: 'sidebar-width',
   sessionListWidth: 'session-list-width',
   sidebarMode: 'sidebar-mode',

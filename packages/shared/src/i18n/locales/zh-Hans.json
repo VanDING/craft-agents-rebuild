@@ -411,6 +411,7 @@
   "contentPanel.title.files": "文件",
   "contentPanel.title.preview": "预览",
   "contentPanel.title.review": "审查与差异",
+  "contentPanel.title.sessionsList": "会话列表",
   "contentPanel.toast.replacedPanel": "已在最旧面板处打开——其内容移至后台。",
   "crash.reload": "重新加载",
   "crash.restartPrompt": "请重启应用。该错误已上报。",
