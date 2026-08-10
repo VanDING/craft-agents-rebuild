@@ -617,7 +617,7 @@ export function CalendarView() {
               aria-pressed={view === mode}
               className={cn(
                 'rounded-md px-2.5 py-1 text-xs font-medium transition-colors',
-                view === mode ? 'bg-card text-foreground shadow-sm' : 'text-foreground/50 hover:text-foreground/80',
+                view === mode ? 'bg-card text-foreground shadow-minimal' : 'text-foreground/50 hover:text-foreground/80',
               )}
             >
               {t(`schedule.view.${mode}`)}

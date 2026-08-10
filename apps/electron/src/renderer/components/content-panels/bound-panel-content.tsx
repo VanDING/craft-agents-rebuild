@@ -20,6 +20,7 @@ import { isOtherNavigation } from '../../../shared/types'
 import { parseRouteToNavigationState } from '../../../shared/route-parser'
 import type { PanelStackEntry } from '@/atoms/panel-stack'
 import { PanelEmptyState } from './PanelEmptyState'
+import { ReviewPanel } from './ReviewPanel'
 
 /** True for panel types that are rendered by this dispatcher (bound panels). */
 export function isBoundPanelType(panelType: PanelStackEntry['panelType']): boolean {
@@ -38,7 +39,7 @@ export function BoundPanelContent({ entry }: { entry: PanelStackEntry }) {
 
   switch (entry.panelType) {
     case 'diff':
-      return <PanelEmptyState title={t('contentPanel.title.review')} />
+      return <ReviewPanel />
     case 'files':
       return <PanelEmptyState title={t('contentPanel.title.files')} />
     case 'context':

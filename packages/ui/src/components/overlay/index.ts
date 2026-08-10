@@ -11,7 +11,7 @@ export { OverlayErrorBanner, type OverlayErrorBannerProps } from './OverlayError
 
 // Specialized overlays
 export { CodePreviewOverlay, type CodePreviewOverlayProps } from './CodePreviewOverlay'
-export { MultiDiffPreviewOverlay, type MultiDiffPreviewOverlayProps, type FileChange, type DiffViewerSettings } from './MultiDiffPreviewOverlay'
+export { MultiDiffPreviewOverlay, type MultiDiffPreviewOverlayProps, type FileChange, type DiffViewerSettings, computeChangeStats, createFileSections, type FileSection } from './MultiDiffPreviewOverlay'
 export { TerminalPreviewOverlay, type TerminalPreviewOverlayProps } from './TerminalPreviewOverlay'
 export { GenericOverlay, detectLanguage, detectLanguageFromPath, type GenericOverlayProps } from './GenericOverlay'
 export { JSONPreviewOverlay, type JSONPreviewOverlayProps } from './JSONPreviewOverlay'

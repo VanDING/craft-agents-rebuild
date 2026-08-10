@@ -82,9 +82,9 @@ export interface MultiDiffPreviewOverlayProps {
 // ============================================
 // Helpers
 // ============================================
-
-/** A group of changes for a single file (or a single ungrouped change) */
-interface FileSection {
+/**
+ * A group of changes for a single file (or a single ungrouped change) */
+export interface FileSection {
   key: string
   filePath: string
   changes: FileChange[]
@@ -95,7 +95,7 @@ interface FileSection {
  * In consolidated mode, changes to the same file are grouped together.
  * In non-consolidated mode, each change is its own section.
  */
-function createFileSections(changes: FileChange[], consolidated: boolean): FileSection[] {
+export function createFileSections(changes: FileChange[], consolidated: boolean): FileSection[] {
   if (!consolidated) {
     return changes.map(change => ({
       key: change.id,
@@ -120,7 +120,7 @@ function createFileSections(changes: FileChange[], consolidated: boolean): FileS
 }
 
 /** Compute diff stats for a single change */
-function computeChangeStats(change: FileChange): { additions: number; deletions: number } {
+export function computeChangeStats(change: FileChange): { additions: number; deletions: number } {
   // Handle Codex format: unified diff string
   if (change.unifiedDiff) {
     const stats = getUnifiedDiffStats(change.unifiedDiff, change.filePath)

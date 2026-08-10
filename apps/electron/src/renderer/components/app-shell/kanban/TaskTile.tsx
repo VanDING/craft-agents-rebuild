@@ -143,14 +143,16 @@ export function TaskTile({
       }}
       className={cn(
         'group relative overflow-hidden rounded-lg border border-border/60 bg-card shadow-minimal',
+        isLive && 'shadow-tinted',
         'cursor-pointer transition-colors hover:border-border focus-visible:outline-none',
         'focus-visible:ring-2 focus-visible:ring-ring/50'
       )}
       style={
         isLive
           ? {
-              boxShadow: `0 0 0 1px ${accent}, 0 4px 16px -4px color-mix(in srgb, ${accent} 40%, transparent)`,
-            }
+              outline: `1px solid ${accent}`,
+              '--shadow-color': `color-mix(in srgb, ${accent} 40%, transparent)`,
+            } as React.CSSProperties
           : undefined
       }
     >
