@@ -12,7 +12,13 @@
 import { parseRouteToNavigationState } from '../../shared/route-parser'
 import type { ViewRoute } from '../../shared/routes'
 
-/** Flat top-bar panel kinds (browser is not a DOM panel — handled separately). */
+/**
+ * Flat top-bar panel kinds (browser is not a DOM panel — handled separately).
+ * `preview` is deliberately NOT in the button list (decision #4): the preview
+ * panel is opened trigger-style from chat file clicks and via the panel.preview
+ * shortcut, so it has no top-bar button. The type and WORKBENCH_PANEL_ROUTES
+ * keep it so workbenchPanelKindForRoute / openTriggeredPanel stay intact.
+ */
 export type WorkbenchPanelKind =
   | 'sessions'
   | 'board'
@@ -29,7 +35,6 @@ export const WORKBENCH_PANEL_KINDS: readonly WorkbenchPanelKind[] = [
   'diff',
   'files',
   'context',
-  'preview',
 ] as const
 
 export const WORKBENCH_PANEL_ROUTES: Record<WorkbenchPanelKind, ViewRoute> = {
