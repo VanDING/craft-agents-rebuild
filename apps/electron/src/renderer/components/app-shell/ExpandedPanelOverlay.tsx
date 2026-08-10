@@ -17,7 +17,6 @@ import { useAtomValue, useSetAtom } from 'jotai'
 import { Minimize2 } from 'lucide-react'
 import { panelStackAtom, focusedPanelIdAtom } from '@/atoms/panel-stack'
 import { expandedPanelIdAtom } from '@/atoms/overlay'
-import { touchPanelActivity } from '@/atoms/hidden-panels'
 import { BoundPanelContent, isBoundPanelType } from '@/components/content-panels/bound-panel-content'
 import { MainContentPanel } from './MainContentPanel'
 import { parseRouteToNavigationState } from '../../../shared/route-parser'
@@ -39,7 +38,6 @@ export function ExpandedPanelOverlay() {
       if (event.key === 'Escape') {
         setExpandedPanelId(null)
         setFocusedPanel(expandedPanelId)
-        touchPanelActivity(expandedPanelId)
       }
     }
     window.addEventListener('keydown', onKeyDown, true)
@@ -51,7 +49,6 @@ export function ExpandedPanelOverlay() {
   const restore = () => {
     setExpandedPanelId(null)
     setFocusedPanel(entry.id)
-    touchPanelActivity(entry.id)
   }
 
   return (

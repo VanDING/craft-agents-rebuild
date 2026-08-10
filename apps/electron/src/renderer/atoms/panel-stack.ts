@@ -173,9 +173,11 @@ export const visibleSessionIdsAtom = atom((get) => {
 
 export const pushPanelAtom = atom(
   null,
-  (get, set, { route, afterIndex }: {
+  (get, set, { route, afterIndex, insertAtIndex }: {
     route: ViewRoute
     afterIndex?: number
+    /** Insert at an exact index (e.g. 0 for a pinned main session); takes precedence over afterIndex */
+    insertAtIndex?: number
     targetLaneId?: PanelLaneId
     intent?: OpenIntent
   }) => {
@@ -186,7 +188,9 @@ export const pushPanelAtom = atom(
       console.warn('[panel-stack] pushPanelAtom exceeds MAX_FOREGROUND_PANELS', stack.length)
     }
     let insertAt = stack.length
-    if (afterIndex !== undefined && afterIndex >= 0 && afterIndex < stack.length) {
+    if (insertAtIndex !== undefined && insertAtIndex >= 0 && insertAtIndex <= stack.length) {
+      insertAt = insertAtIndex
+    } else if (afterIndex !== undefined && afterIndex >= 0 && afterIndex < stack.length) {
       insertAt = afterIndex + 1
     }
 

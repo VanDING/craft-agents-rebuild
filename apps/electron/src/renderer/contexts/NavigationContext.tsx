@@ -93,7 +93,6 @@ import {
   restoreHiddenPanelsForWorkspaceAtom,
   persistHiddenPanelsAtom,
   dedupeHiddenPanelsAtom,
-  touchPanelActivity,
 } from '@/atoms/hidden-panels'
 
 // Re-export routes for convenience
@@ -384,12 +383,10 @@ export function NavigationProvider({
   }, [store, maybePushHistoryForSemanticChange])
 
   // Focus changes: push history when active panel changes.
-  // Also records focus activity for the hidden-set LRU (every focus touch).
   useEffect(() => {
     let prevFocusId = store.get(focusedPanelIdAtom)
     const unsub = store.sub(focusedPanelIdAtom, () => {
       const newFocusId = store.get(focusedPanelIdAtom)
-      if (newFocusId) touchPanelActivity(newFocusId)
       if (suppressPushRef.current || !initialRouteRestoredRef.current) return
       if (newFocusId !== prevFocusId) {
         if (!pendingPushRef.current) {
