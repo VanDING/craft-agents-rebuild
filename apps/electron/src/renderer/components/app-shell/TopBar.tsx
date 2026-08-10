@@ -23,7 +23,6 @@ import {
   StyledDropdownMenuSeparator,
 } from "@/components/ui/styled-dropdown"
 import type { SettingsMenuItem } from "../../../shared/menu-schema"
-import { SquarePenRounded } from "../icons/SquarePenRounded"
 import { useEffect, useRef, useState } from "react"
 import { BrowserTabStrip } from "../browser/BrowserTabStrip"
 import { WorkbenchPanelButtons } from "./WorkbenchPanelButtons"
@@ -117,15 +116,16 @@ export function TopBar({
 
       setMaxVisibleBrowserBadges((prev) => (prev === nextMaxVisibleBadges ? prev : nextMaxVisibleBadges))
 
-      // Workbench panel buttons share the slot; collapse them into the + menu
-      // when narrow. 9 buttons × 24px ≈ 216px at full width.
+      // Workbench panel buttons share the slot; hide from the tail (newest
+      // actions first) when narrow — no collapse menu (decision #1).
+      // 9 buttons × 24px ≈ 216px at full width.
       const nextMaxPanelButtons = slotWidth >= 560
         ? 9
         : slotWidth >= 430
-          ? 6
+          ? 7
           : slotWidth >= 340
-            ? 4
-            : 2
+            ? 5
+            : 3
       setMaxVisiblePanelButtons((prev) => (prev === nextMaxPanelButtons ? prev : nextMaxPanelButtons))
     }
 
@@ -251,61 +251,11 @@ export function TopBar({
           <WorkbenchPanelButtons
             onOpenPanel={onOpenPanel}
             onOpenBrowser={onOpenBrowser}
+            onNewSessionPanel={onAddSessionPanel}
+            onNewBrowser={onAddBrowserPanel}
             maxVisibleButtons={maxVisiblePanelButtons}
           />
         )}
-         <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <TopBarButton aria-label={t("menu.addPanelMenu")} className="ml-1 h-[26px] w-[26px] rounded-lg">
-              <Icons.Plus className="h-4 w-4 text-foreground/50" strokeWidth={1.5} />
-            </TopBarButton>
-          </DropdownMenuTrigger>
-          <StyledDropdownMenuContent align="end" minWidth="min-w-56">
-            <StyledDropdownMenuItem onClick={onAddSessionPanel}>
-              <SquarePenRounded className="h-3.5 w-3.5" />
-              {t("session.newSessionInPanel")}
-            </StyledDropdownMenuItem>
-            <StyledDropdownMenuItem onClick={onAddBrowserPanel}>
-              <Icons.Globe className="h-3.5 w-3.5" />
-              {t("browser.newWindow")}
-            </StyledDropdownMenuItem>
-
-            {onOpenPanel && (
-              <>
-                <StyledDropdownMenuSeparator />
-                <StyledDropdownMenuItem onClick={() => onOpenPanel('sessions')}>
-                  <Icons.MessageSquare className="h-3.5 w-3.5" />
-                  {t("contentPanel.button.sessions")}
-                </StyledDropdownMenuItem>
-                <StyledDropdownMenuItem onClick={() => onOpenPanel('board')}>
-                  <Icons.LayoutGrid className="h-3.5 w-3.5" />
-                  {t("contentPanel.button.board")}
-                </StyledDropdownMenuItem>
-                <StyledDropdownMenuItem onClick={() => onOpenPanel('calendar')}>
-                  <Icons.CalendarDays className="h-3.5 w-3.5" />
-                  {t("contentPanel.button.calendar")}
-                </StyledDropdownMenuItem>
-                <StyledDropdownMenuItem onClick={() => onOpenPanel('diff')}>
-                  <Icons.GitCompareArrows className="h-3.5 w-3.5" />
-                  {t("contentPanel.button.review")}
-                </StyledDropdownMenuItem>
-                <StyledDropdownMenuItem onClick={() => onOpenPanel('files')}>
-                  <Icons.FolderTree className="h-3.5 w-3.5" />
-                  {t("contentPanel.button.files")}
-                </StyledDropdownMenuItem>
-                <StyledDropdownMenuItem onClick={() => onOpenPanel('context')}>
-                  <Icons.ListFilter className="h-3.5 w-3.5" />
-                  {t("contentPanel.button.context")}
-                </StyledDropdownMenuItem>
-                <StyledDropdownMenuItem onClick={() => onOpenPanel('preview')}>
-                  <Icons.FileText className="h-3.5 w-3.5" />
-                  {t("contentPanel.button.preview")}
-                </StyledDropdownMenuItem>
-              </>
-            )}
-          </StyledDropdownMenuContent>
-        </DropdownMenu>
-
         {/* Help button */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

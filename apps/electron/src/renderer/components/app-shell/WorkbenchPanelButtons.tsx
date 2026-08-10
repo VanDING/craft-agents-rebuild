@@ -27,6 +27,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { SquarePenRounded } from '../icons/SquarePenRounded'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@craft-agent/ui'
 import { TopBarButton } from '@/components/ui/TopBarButton'
 import { panelStackAtom, focusedPanelIdAtom } from '@/atoms/panel-stack'
@@ -46,7 +47,11 @@ interface WorkbenchPanelButtonsProps {
   onOpenPanel: (kind: WorkbenchPanelKind, options?: { replace?: boolean }) => void
   /** Focus an existing browser window or create a new one */
   onOpenBrowser: () => void
-  /** How many panel buttons to show before collapsing into the + menu (0 = keep all visible is NOT used; undefined = all) */
+  /** Open a new session in a new panel (was the [+] menu item) */
+  onNewSessionPanel: () => void
+  /** Open a brand-new browser window (was the [+] menu item) */
+  onNewBrowser: () => void
+  /** How many buttons to render before hiding from the tail (0 = keep all visible is NOT used; undefined = all) */
   maxVisibleButtons?: number
 }
 
@@ -63,6 +68,8 @@ const WORKBENCH_ICONS: Record<WorkbenchPanelKind, LucideIcon> = {
 export function WorkbenchPanelButtons({
   onOpenPanel,
   onOpenBrowser,
+  onNewSessionPanel,
+  onNewBrowser,
   maxVisibleButtons,
 }: WorkbenchPanelButtonsProps) {
   const { t } = useTranslation()
@@ -117,8 +124,13 @@ export function WorkbenchPanelButtons({
     onOpenPanel(kind, { replace: event.shiftKey || event.altKey })
   }, [onOpenBrowser, onOpenPanel])
 
-  // Browser is rendered as the last button in the same flat group.
-  const allButtons = useMemo(() => [...WORKBENCH_PANEL_KINDS, 'browser'] as const, [])
+  // Browser is rendered as the last button in the same flat group; the two
+  // [+] menu actions (new session in panel, new browser window) follow it so
+  // narrow-window hiding removes newest actions first (decision #1).
+  const allButtons = useMemo(
+    () => [...WORKBENCH_PANEL_KINDS, 'browser', 'newSession', 'newBrowser'] as const,
+    [],
+  )
   const visibleButtons = useMemo(() => {
     if (maxVisibleButtons === undefined) return allButtons
     return allButtons.slice(0, maxVisibleButtons)
@@ -127,6 +139,40 @@ export function WorkbenchPanelButtons({
   return (
     <div className="inline-flex items-center gap-0.5">
       {visibleButtons.map((kind) => {
+        if (kind === 'newSession') {
+          return (
+            <Tooltip key="newSession">
+              <TooltipTrigger asChild>
+                <TopBarButton
+                  aria-label={t('session.newSessionInPanel')}
+                  onClick={onNewSessionPanel}
+                  className="h-[22px] w-[22px] rounded-md text-foreground/35"
+                >
+                  <SquarePenRounded className="h-3.5 w-3.5" strokeWidth={2} />
+                </TopBarButton>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">{t('session.newSessionInPanel')}</TooltipContent>
+            </Tooltip>
+          )
+        }
+
+        if (kind === 'newBrowser') {
+          return (
+            <Tooltip key="newBrowser">
+              <TooltipTrigger asChild>
+                <TopBarButton
+                  aria-label={t('browser.newWindow')}
+                  onClick={onNewBrowser}
+                  className="h-[22px] w-[22px] rounded-md text-foreground/35"
+                >
+                  <Globe className="h-3.5 w-3.5" strokeWidth={2} />
+                </TopBarButton>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">{t('browser.newWindow')}</TooltipContent>
+            </Tooltip>
+          )
+        }
+
         if (kind === 'browser') {
           return (
             <Tooltip key="browser">
