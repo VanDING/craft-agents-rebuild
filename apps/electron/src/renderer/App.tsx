@@ -16,7 +16,7 @@ import { OnboardingWizard, ReauthScreen } from '@/components/onboarding'
 import { WorkspacePicker } from '@/components/workspace'
 import { ResetConfirmationDialog } from '@/components/ResetConfirmationDialog'
 import { SplashScreen } from '@/components/SplashScreen'
-import { TooltipProvider } from '@craft-agent/ui'
+import { TooltipProvider, classifyFile } from '@craft-agent/ui'
 import { FocusProvider } from '@/context/FocusContext'
 import { ModalProvider } from '@/context/ModalContext'
 import { DismissibleLayerProvider } from '@/context/DismissibleLayerContext'
@@ -54,6 +54,9 @@ import {
   type BackgroundTask,
 } from '@/atoms/sessions'
 import { sourcesAtom } from '@/atoms/sources'
+import { activeSessionIdAtom } from '@/atoms/active-session'
+import { addPreviewEntryAtom } from '@/atoms/preview'
+import { usePanelTriggerOpener, useTriggerOpenToast } from '@/lib/panel-triggers'
 import { skillsAtom } from '@/atoms/skills'
 import {
   showBackgroundFinishedChipAtom,
@@ -1769,7 +1772,26 @@ export default function App() {
     })
   }, [])
 
-  const handleOpenFile = linkInterceptor.handleOpenFile
+  // File previews converge into the Preview panel (per-session). When there is
+  // an active session, opening a previewable file writes a preview entry and
+  // opens/focuses the panel (trigger strategy). Without an active session the
+  // global overlay fallback (linkInterceptor.previewState) still applies.
+  const activeSessionId = useAtomValue(activeSessionIdAtom)
+  const addPreviewEntry = useSetAtom(addPreviewEntryAtom)
+  const openTriggeredPanel = usePanelTriggerOpener()
+  const notifyTriggerToast = useTriggerOpenToast()
+
+  const handleOpenFile = useCallback((path: string) => {
+    const classification = classifyFile(path)
+    if (classification.canPreview && classification.type && activeSessionId) {
+      addPreviewEntry({ sessionId: activeSessionId, entry: { type: 'file', path } })
+      notifyTriggerToast(openTriggeredPanel('preview'))
+      return
+    }
+    // External open (non-previewable) or global overlay fallback (no session)
+    linkInterceptor.handleOpenFile(path)
+  }, [activeSessionId, addPreviewEntry, openTriggeredPanel, notifyTriggerToast, linkInterceptor])
+
   const handleOpenUrl = linkInterceptor.handleOpenUrl
 
   const handleOpenSettings = useCallback(() => {

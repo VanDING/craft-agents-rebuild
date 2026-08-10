@@ -14,6 +14,7 @@ import {
 } from "lucide-react"
 import { motion, AnimatePresence } from "motion/react"
 import { toast } from "sonner"
+import { useSetAtom } from "jotai"
 
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
@@ -26,19 +27,7 @@ import {
   parseBashResult,
   parseGrepResult,
   parseGlobResult,
-  extractOverlayData,
-  extractOverlayCards,
-  ActivityCardsOverlay,
-  CodePreviewOverlay,
-  MultiDiffPreviewOverlay,
-  TerminalPreviewOverlay,
-  GenericOverlay,
-  JSONPreviewOverlay,
-  DocumentFormattedMarkdownOverlay,
-  detectLanguage,
   type ActivityItem,
-  type FileChange,
-  type DiffViewerSettings,
 } from "@craft-agent/ui"
 import { useFocusZone } from "@/hooks/keyboard"
 import { useTheme } from "@/hooks/useTheme"
@@ -75,6 +64,9 @@ import { CHAT_LAYOUT } from "@/config/layout"
 import { collectFileChangesFromActivities, getFirstFileChangeIdForActivity } from "@/lib/file-changes"
 import { resolveBranchNewPanelOption } from "./branching"
 import { handleErrorMessageAction } from "./error-message-actions"
+import { addPreviewEntryAtom, type PreviewEntry } from "@/atoms/preview"
+import { reviewPanelFocusRequestAtom } from "@/atoms/content-panel-ui"
+import { usePanelTriggerOpener, useTriggerOpenToast } from "@/lib/panel-triggers"
 
 // ============================================================================
 // CSS Custom Highlight API helper
@@ -90,37 +82,8 @@ function getCSSHighlights(): Map<string, Highlight> | undefined {
 }
 
 // ============================================================================
-// Overlay State Types
+// (Overlay types removed — overlays converged into workbench panels, Task 10)
 // ============================================================================
-
-/** State for multi-diff overlay (Edit/Write activities) */
-interface MultiDiffOverlayState {
-  type: 'multi-diff'
-  changes: FileChange[]
-  consolidated: boolean
-  focusedChangeId?: string
-}
-
-/** State for markdown overlay (pop-out, turn details, generic activities) */
-interface MarkdownOverlayState {
-  type: 'markdown'
-  content: string
-  title: string
-  /** When true, show raw markdown source in code viewer instead of rendered preview */
-  forceCodeView?: boolean
-}
-
-/** Union of all overlay states, or null for no overlay */
-type OverlayState =
-  | { type: 'activity'; activity: ActivityItem }
-  | MultiDiffOverlayState
-  | MarkdownOverlayState
-  | null
-
-function isStackedActivityTool(activity: ActivityItem): boolean {
-  const toolName = activity.toolName?.toLowerCase() || ''
-  return toolName === 'bash' || toolName.startsWith('mcp__') || toolName.startsWith('browser_')
-}
 
 function getTurnKey(turn: Turn): string {
   if (turn.type === 'user') return `user-${turn.message.id}`
@@ -969,79 +932,34 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
   }, [validMatches.length, currentMatchIndex, isHighlighting, session?.id, onMatchInfoChange])
 
   // ============================================================================
-  // Overlay State Management
+  // Preview / Diff panel triggers (overlays converged into workbench panels)
   // ============================================================================
 
-  // Overlay state - controls which overlay is shown (if any)
-  const [overlayState, setOverlayState] = useState<OverlayState>(null)
+  const openTriggeredPanel = usePanelTriggerOpener()
+  const notifyTriggerToast = useTriggerOpenToast()
+  const addPreviewEntry = useSetAtom(addPreviewEntryAtom)
+  const setReviewPanelFocusRequest = useSetAtom(reviewPanelFocusRequestAtom)
 
-  // Diff viewer settings - loaded from user preferences on mount, persisted on change
-  // These settings are stored in ~/.craft-agent/preferences.json (not localStorage)
-  const [diffViewerSettings, setDiffViewerSettings] = useState<Partial<DiffViewerSettings>>({})
-
-  // Load diff viewer settings from preferences on mount
-  useEffect(() => {
-    window.electronAPI.readPreferences().then(({ content }) => {
-      try {
-        const prefs = JSON.parse(content)
-        if (prefs.diffViewer) {
-          setDiffViewerSettings(prefs.diffViewer)
-        }
-      } catch {
-        // Ignore parse errors, use defaults
-      }
-    })
-  }, [])
-
-  // Persist diff viewer settings to preferences when changed
-  const handleDiffViewerSettingsChange = useCallback((settings: DiffViewerSettings) => {
-    setDiffViewerSettings(settings)
-    // Read current preferences, merge in new settings, write back
-    window.electronAPI.readPreferences().then(({ content }) => {
-      try {
-        const prefs = JSON.parse(content)
-        prefs.diffViewer = settings
-        prefs.updatedAt = Date.now()
-        window.electronAPI.writePreferences(JSON.stringify(prefs, null, 2))
-      } catch {
-        // If preferences malformed, create fresh with just diffViewer
-        window.electronAPI.writePreferences(JSON.stringify({ diffViewer: settings, updatedAt: Date.now() }, null, 2))
-      }
-    })
-  }, [])
-
-  // Close overlay handler
-  const handleCloseOverlay = useCallback(() => {
-    setOverlayState(null)
-  }, [])
-
-  // Extract overlay cards for activity-based overlays (Input/Output, future extensible)
-  const overlayCards = useMemo(() => {
-    if (!overlayState || overlayState.type !== 'activity') return []
-    return extractOverlayCards(overlayState.activity)
-  }, [overlayState])
-
-  // Parsed output data for legacy output-only activity overlays
-  const activityOutputOverlayData = useMemo(() => {
-    if (!overlayState || overlayState.type !== 'activity') return null
-    return extractOverlayData(overlayState.activity)
-  }, [overlayState])
-
-  // Stacked input/output cards are only enabled for Bash and MCP tools
-  const useStackedActivityOverlay = useMemo(() => {
-    if (!overlayState || overlayState.type !== 'activity') return false
-    return isStackedActivityTool(overlayState.activity)
-  }, [overlayState])
-
-  // Pop-out handler - opens message in overlay (read-only markdown)
-  const handlePopOut = useCallback((message: Message) => {
+  // Push a preview entry for the current session and open/focus the Preview
+  // panel using the trigger-type strategy (replaces the oldest panel when full).
+  const openPreviewEntry = useCallback((entry: PreviewEntry) => {
     if (!session) return
-    setOverlayState({
-      type: 'markdown',
-      content: message.content,
-      title: 'Message Preview',
-    })
-  }, [session])
+    addPreviewEntry({ sessionId: session.id, entry })
+    notifyTriggerToast(openTriggeredPanel('preview'))
+  }, [session, addPreviewEntry, openTriggeredPanel, notifyTriggerToast])
+
+  // Pop-out handler - a message shown read-only (read-only markdown preview)
+  const handlePopOut = useCallback((message: Message) => {
+    openPreviewEntry({ type: 'markdown', content: message.content, title: t('contentPanel.preview.message') })
+  }, [openPreviewEntry, t])
+
+  // Open the Review/Diff panel, optionally scrolling to a specific change.
+  const openDiffPanel = useCallback((focusedChangeId?: string) => {
+    if (focusedChangeId) {
+      setReviewPanelFocusRequest({ changeId: focusedChangeId, nonce: Date.now() })
+    }
+    notifyTriggerToast(openTriggeredPanel('diff'))
+  }, [openTriggeredPanel, notifyTriggerToast, setReviewPanelFocusRequest])
 
   // Ref to track total turn count for scroll handler
   const totalTurnCountRef = React.useRef(0)
@@ -1835,26 +1753,17 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
                           }))
                         }}
                         onPopOut={(text) => {
-                          // Open raw markdown source in code viewer
-                          setOverlayState({
-                            type: 'markdown',
-                            content: text,
-                            title: 'Response Preview',
-                            forceCodeView: true,
-                          })
+                          // Raw markdown source → preview panel markdown entry
+                          openPreviewEntry({ type: 'markdown', content: text, title: t('contentPanel.preview.response') })
                         }}
                         onOpenDetails={() => {
-                          // Open turn details in markdown overlay
+                          // Turn details → preview panel markdown entry
                           const markdown = formatTurnAsMarkdown(turn)
-                          setOverlayState({
-                            type: 'markdown',
-                            content: markdown,
-                            title: 'Turn Details',
-                          })
+                          openPreviewEntry({ type: 'markdown', content: markdown, title: t('contentPanel.preview.turnDetails') })
                         }}
                         onOpenActivityDetails={(activity) => {
-                          // Write tool for .md/.txt → Document overlay (rendered markdown)
-                          // rather than multi-diff, since these are better viewed as formatted documents
+                          // Write tool for .md/.txt → preview panel markdown entry (document)
+                          // rather than a diff, since these are better viewed as formatted documents
                           const isDocumentWrite = activity.toolName === 'Write' && (() => {
                             const actInput = activity.toolInput as Record<string, unknown> | undefined
                             const fp = (actInput?.file_path as string) || ''
@@ -1862,21 +1771,21 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
                             return ext === 'md' || ext === 'txt'
                           })()
 
-                          // Edit/Write tool → Multi-file diff overlay (ungrouped, focused on this change)
-                          // Exception: Write to .md/.txt files goes to document overlay instead
+                          // Edit/Write tool → Review/Diff panel (focused on this change)
+                          // Exception: Write to .md/.txt files goes to preview panel instead
                           if ((activity.toolName === 'Edit' || activity.toolName === 'Write') && !isDocumentWrite) {
                             const changes = collectFileChangesFromActivities(turn.activities)
+                            const focusedChangeId = getFirstFileChangeIdForActivity(activity.id, changes)
                             if (changes.length > 0) {
-                              setOverlayState({
-                                type: 'multi-diff',
-                                changes,
-                                consolidated: false, // Ungrouped mode - show individual changes
-                                focusedChangeId: getFirstFileChangeIdForActivity(activity.id, changes),
-                              })
+                              openDiffPanel(focusedChangeId)
                             }
                           } else {
-                            // All other tools → open generic activity cards overlay (Input/Output)
-                            setOverlayState({ type: 'activity', activity })
+                            // All other tools → preview panel markdown entry (formatted activity)
+                            openPreviewEntry({
+                              type: 'markdown',
+                              content: formatActivityAsMarkdown(activity),
+                              title: activity.displayName || activity.toolName || t('contentPanel.preview.activity'),
+                            })
                           }
                         }}
                         hasEditOrWriteActivities={turn.activities.some(a =>
@@ -1885,11 +1794,7 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
                         onOpenMultiFileDiff={() => {
                           const changes = collectFileChangesFromActivities(turn.activities)
                           if (changes.length > 0) {
-                            setOverlayState({
-                              type: 'multi-diff',
-                              changes,
-                              consolidated: true, // Consolidated mode - group by file
-                            })
+                            openDiffPanel()
                           }
                         }}
                       />
@@ -1981,139 +1886,6 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
         </div>
       ) : null}
 
-      {/* ================================================================== */}
-      {/* Preview Overlays - Rendered outside the main chat flow            */}
-      {/* ================================================================== */}
-
-      {/* Activity details overlay */}
-      {overlayState?.type === 'activity' && useStackedActivityOverlay && (
-        <ActivityCardsOverlay
-          isOpen={true}
-          onClose={handleCloseOverlay}
-          cards={overlayCards}
-          title={overlayState.activity.displayName || overlayState.activity.toolName || 'Activity'}
-          theme={isDark ? 'dark' : 'light'}
-          onOpenUrl={onOpenUrl}
-          onOpenFile={onOpenFile}
-        />
-      )}
-
-      {/* Legacy output-only activity overlay for non-bash/non-mcp tools */}
-      {overlayState?.type === 'activity' && !useStackedActivityOverlay && activityOutputOverlayData && (
-        activityOutputOverlayData.type === 'code' ? (
-          <CodePreviewOverlay
-            isOpen={true}
-            onClose={handleCloseOverlay}
-            content={activityOutputOverlayData.content}
-            filePath={activityOutputOverlayData.filePath}
-            mode={activityOutputOverlayData.mode}
-            startLine={activityOutputOverlayData.startLine}
-            totalLines={activityOutputOverlayData.totalLines}
-            numLines={activityOutputOverlayData.numLines}
-            command={activityOutputOverlayData.command}
-            error={activityOutputOverlayData.error}
-            theme={isDark ? 'dark' : 'light'}
-          />
-        ) : activityOutputOverlayData.type === 'terminal' ? (
-          <TerminalPreviewOverlay
-            isOpen={true}
-            onClose={handleCloseOverlay}
-            command={activityOutputOverlayData.command}
-            output={activityOutputOverlayData.output}
-            exitCode={activityOutputOverlayData.exitCode}
-            toolType={activityOutputOverlayData.toolType}
-            description={activityOutputOverlayData.description}
-            error={activityOutputOverlayData.error}
-            theme={isDark ? 'dark' : 'light'}
-          />
-        ) : activityOutputOverlayData.type === 'json' ? (
-          <JSONPreviewOverlay
-            isOpen={true}
-            onClose={handleCloseOverlay}
-            data={activityOutputOverlayData.data}
-            title={activityOutputOverlayData.title}
-            error={activityOutputOverlayData.error}
-            theme={isDark ? 'dark' : 'light'}
-          />
-        ) : activityOutputOverlayData.type === 'document' ? (
-          <DocumentFormattedMarkdownOverlay
-            isOpen={true}
-            onClose={handleCloseOverlay}
-            content={activityOutputOverlayData.content}
-            onOpenUrl={onOpenUrl}
-            onOpenFile={onOpenFile}
-            filePath={activityOutputOverlayData.filePath}
-            typeBadge={{
-              icon: Info,
-              label: activityOutputOverlayData.toolName,
-              variant: 'blue',
-            }}
-            error={activityOutputOverlayData.error}
-          />
-        ) : detectLanguage(activityOutputOverlayData.content) === 'markdown' ? (
-          <DocumentFormattedMarkdownOverlay
-            isOpen={true}
-            onClose={handleCloseOverlay}
-            content={activityOutputOverlayData.content}
-            onOpenUrl={onOpenUrl}
-            onOpenFile={onOpenFile}
-            typeBadge={{
-              icon: Info,
-              label: overlayState.activity.displayName || overlayState.activity.toolName || 'Activity',
-              variant: 'blue',
-            }}
-            error={activityOutputOverlayData.error}
-          />
-        ) : (
-          <GenericOverlay
-            isOpen={true}
-            onClose={handleCloseOverlay}
-            content={activityOutputOverlayData.content}
-            title={activityOutputOverlayData.title}
-            error={activityOutputOverlayData.error}
-            theme={isDark ? 'dark' : 'light'}
-          />
-        )
-      )}
-
-      {/* Multi-diff preview overlay (Edit/Write tools) */}
-      {overlayState?.type === 'multi-diff' && (
-        <MultiDiffPreviewOverlay
-          isOpen={true}
-          onClose={handleCloseOverlay}
-          changes={overlayState.changes}
-          consolidated={overlayState.consolidated}
-          focusedChangeId={overlayState.focusedChangeId}
-          theme={isDark ? 'dark' : 'light'}
-          diffViewerSettings={diffViewerSettings}
-          onDiffViewerSettingsChange={handleDiffViewerSettingsChange}
-        />
-      )}
-
-      {/* Markdown preview overlay (pop-out, turn details) */}
-      {/* forceCodeView: show raw markdown source in code viewer (used by "View as Markdown" button) */}
-      {/* otherwise: render formatted markdown (used by turn details, etc.) */}
-      {overlayState?.type === 'markdown' && (
-        overlayState.forceCodeView ? (
-          <CodePreviewOverlay
-            isOpen={true}
-            onClose={handleCloseOverlay}
-            content={overlayState.content}
-            filePath="response.md"
-            language="markdown"
-            mode="read"
-            theme={isDark ? 'dark' : 'light'}
-          />
-        ) : (
-          <DocumentFormattedMarkdownOverlay
-            isOpen={true}
-            onClose={handleCloseOverlay}
-            content={overlayState.content}
-            onOpenUrl={onOpenUrl}
-            onOpenFile={onOpenFile}
-          />
-        )
-      )}
     </div>
   )
 })
