@@ -21,6 +21,7 @@ import { parseRouteToNavigationState } from '../../../shared/route-parser'
 import type { PanelStackEntry } from '@/atoms/panel-stack'
 import { PanelEmptyState } from './PanelEmptyState'
 import { ReviewPanel } from './ReviewPanel'
+import { FilesPanel } from './FilesPanel'
 
 /** True for panel types that are rendered by this dispatcher (bound panels). */
 export function isBoundPanelType(panelType: PanelStackEntry['panelType']): boolean {
@@ -41,7 +42,7 @@ export function BoundPanelContent({ entry }: { entry: PanelStackEntry }) {
     case 'diff':
       return <ReviewPanel />
     case 'files':
-      return <PanelEmptyState title={t('contentPanel.title.files')} />
+      return <FilesPanel />
     case 'context':
       return <PanelEmptyState title={t('contentPanel.title.context')} />
     case 'preview':

@@ -31,6 +31,7 @@ import { diffKindForSection, type DiffKind } from '@/lib/diff-kinds'
 import { useDiffViewerSettings } from '@/lib/use-diff-viewer-settings'
 import { reviewPanelSelectedKeyAtom, reviewPanelFocusRequestAtom } from '@/atoms/content-panel-ui'
 import { getSessionTitle } from '@/utils/session'
+import { BoundSessionBadge } from './BoundSessionBadge'
 
 const KIND_DOTS: Record<DiffKind, string> = {
   add: 'bg-emerald-500',
@@ -132,13 +133,7 @@ export function ReviewPanel() {
     : undefined
 
   const headerBadge = activeSessionId ? (
-    <span
-      className="inline-flex max-w-[24ch] items-center gap-1 truncate rounded-full border border-border/60 bg-foreground/[0.03] px-2 py-0.5 text-[11px] text-muted-foreground"
-      title={sessionName ?? activeSessionId}
-    >
-      <GitCompareArrows className="h-3 w-3 shrink-0" />
-      <span className="truncate">{sessionName ?? activeSessionId}</span>
-    </span>
+    <BoundSessionBadge name={sessionName} sessionId={activeSessionId} />
   ) : undefined
 
   if (!activeSessionId) {

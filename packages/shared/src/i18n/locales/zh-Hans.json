@@ -369,6 +369,8 @@
   "contentPanel.diff.mix": "混合",
   "contentPanel.diff.noChanges": "暂无文件变更",
   "contentPanel.diff.noChangesHint": "当代理在会话中编辑或写入文件时，变更会显示在这里。",
+  "contentPanel.files.filterPlaceholder": "过滤文件…",
+  "contentPanel.files.noFilterMatches": "没有匹配筛选条件的文件。",
   "contentPanel.noActiveSession": "没有活跃会话",
   "contentPanel.panelUnavailable": "此面板不可用，请尝试重新打开。",
   "contentPanel.title.context": "上下文",

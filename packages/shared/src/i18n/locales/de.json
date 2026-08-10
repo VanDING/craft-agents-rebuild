@@ -369,6 +369,8 @@
   "contentPanel.diff.mix": "Gemischt",
   "contentPanel.diff.noChanges": "Noch keine Dateiänderungen",
   "contentPanel.diff.noChangesHint": "Wenn der Agent in einer Sitzung Dateien bearbeitet oder schreibt, erscheinen die Änderungen hier.",
+  "contentPanel.files.filterPlaceholder": "Dateien filtern…",
+  "contentPanel.files.noFilterMatches": "Keine Dateien entsprechen dem Filter.",
   "contentPanel.noActiveSession": "Keine aktive Sitzung",
   "contentPanel.panelUnavailable": "Dieses Panel ist nicht verfügbar. Versuche, es erneut zu öffnen.",
   "contentPanel.title.context": "Kontext",

@@ -369,6 +369,8 @@
   "contentPanel.diff.mix": "混合",
   "contentPanel.diff.noChanges": "まだファイルの変更はありません",
   "contentPanel.diff.noChangesHint": "セッションでエージェントがファイルを編集・書き込みすると、変更がここに表示されます。",
+  "contentPanel.files.filterPlaceholder": "ファイルを絞り込む…",
+  "contentPanel.files.noFilterMatches": "フィルターに一致するファイルがありません。",
   "contentPanel.noActiveSession": "アクティブなセッションがありません",
   "contentPanel.panelUnavailable": "このパネルは利用できません。再度開いてください。",
   "contentPanel.title.context": "コンテキスト",

@@ -16,7 +16,7 @@
 
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
-import { useState, useEffect, useCallback, useRef, memo } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo, memo } from 'react'
 import { AnimatePresence, motion, type Variants } from 'motion/react'
 import { File, Folder, FolderOpen, FileText, Image, FileCode, ChevronRight, ExternalLink } from 'lucide-react'
 import {
@@ -75,6 +75,9 @@ export interface SessionFilesSectionProps {
   sessionFolderPath?: string
   /** Hide section header when embedded inside compact containers (e.g. popovers) */
   hideHeader?: boolean
+  /** Case-insensitive filename filter (empty = no filtering). Directory
+   *  ancestors of matches are kept so the tree path stays navigable. */
+  filterQuery?: string
 }
 
 /**
@@ -85,6 +88,36 @@ function formatFileSize(bytes?: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+/**
+ * Prune a file tree to entries matching a case-insensitive filename query.
+ * Directories are kept when they (transitively) contain a match, so the path
+ * to every match stays navigable. Pure — returns a shallow-pruned copy only
+ * for nodes that survived.
+ */
+function filterFileTree(entries: SessionFile[], query: string): SessionFile[] {
+  const needle = query.trim().toLowerCase()
+  if (!needle) return entries
+
+  const matches = (file: SessionFile): boolean => file.name.toLowerCase().includes(needle)
+
+  const visit = (items: SessionFile[]): SessionFile[] => {
+    const kept: SessionFile[] = []
+    for (const item of items) {
+      if (item.type === 'directory' && item.children) {
+        const keptChildren = visit(item.children)
+        if (matches(item) || keptChildren.length > 0) {
+          kept.push({ ...item, children: keptChildren })
+        }
+      } else if (matches(item)) {
+        kept.push(item)
+      }
+    }
+    return kept
+  }
+
+  return visit(entries)
 }
 
 /** Collect all directory paths recursively so the tree can start fully expanded. */
@@ -420,9 +453,15 @@ function FileTreeItem({
 /**
  * Section displaying session files as a tree
  */
-export function SessionFilesSection({ sessionId, className, sessionFolderPath, hideHeader = false }: SessionFilesSectionProps) {
+export function SessionFilesSection({ sessionId, className, sessionFolderPath, hideHeader = false, filterQuery = '' }: SessionFilesSectionProps) {
   const { t } = useTranslation()
   const [files, setFiles] = useState<SessionFile[]>([])
+
+  // Apply the optional filename filter (keeps matching directories' paths open).
+  const visibleFiles = useMemo(
+    () => filterFileTree(files, filterQuery),
+    [files, filterQuery],
+  )
   const [isLoading, setIsLoading] = useState(false)
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set())
   const [hasSavedExpandedState, setHasSavedExpandedState] = useState(false)
@@ -598,10 +637,14 @@ export function SessionFilesSection({ sessionId, className, sessionFolderPath, h
               {isLoading ? t('chat.sessionFilesLoading') : t('chat.sessionFilesEmpty')}
             </p>
           </div>
+        ) : visibleFiles.length === 0 ? (
+          <div className="px-4 text-muted-foreground select-none">
+            <p className="text-xs">{t('contentPanel.files.noFilterMatches')}</p>
+          </div>
         ) : (
           /* Root nav has px-2 to match LeftSidebar exactly - this constrains grid width */
           <nav className="grid gap-0.5 px-2">
-            {files.map((file) => (
+            {visibleFiles.map((file) => (
               <FileTreeItem
                 key={file.path}
                 file={file}

@@ -369,6 +369,8 @@
   "contentPanel.diff.mix": "Vegyes",
   "contentPanel.diff.noChanges": "Még nincsenek fájlváltozások",
   "contentPanel.diff.noChangesHint": "Amikor az ügynök fájlokat szerkeszt vagy ír egy munkamenetben, a változások itt jelennek meg.",
+  "contentPanel.files.filterPlaceholder": "Fájlok szűrése…",
+  "contentPanel.files.noFilterMatches": "Nincs a szűrőnek megfelelő fájl.",
   "contentPanel.noActiveSession": "Nincs aktív munkamenet",
   "contentPanel.panelUnavailable": "Ez a panel nem érhető el. Próbálja újra megnyitni.",
   "contentPanel.title.context": "Kontextus",
