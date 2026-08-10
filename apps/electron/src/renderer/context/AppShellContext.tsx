@@ -141,6 +141,10 @@ export interface AppShellContextType {
   // Right sidebar button (for page headers)
   rightSidebarButton?: React.ReactNode
 
+  // Fullscreen-expand button for panel headers (PanelSlot injects it; expands
+  // the panel into the ExpandedPanelOverlay overlay — decision #6)
+  expandButton?: React.ReactNode
+
   // Leading action button for panel header (e.g., back button in compact mode)
   leadingAction?: React.ReactNode
 

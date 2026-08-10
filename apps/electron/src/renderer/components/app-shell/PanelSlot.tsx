@@ -15,11 +15,12 @@
 
 import { useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useSetAtom } from 'jotai'
+import { useAtomValue, useSetAtom } from 'jotai'
 import { cn } from '@/lib/utils'
-import { X, ChevronLeft } from 'lucide-react'
+import { X, ChevronLeft, Maximize2, Minimize2 } from 'lucide-react'
 import { parseRouteToNavigationState } from '../../../shared/route-parser'
 import { closePanelAtom, focusedPanelIdAtom, type PanelStackEntry } from '@/atoms/panel-stack'
+import { expandedPanelIdAtom } from '@/atoms/overlay'
 import { useAppShellContext, AppShellProvider } from '@/context/AppShellContext'
 import { PanelHeaderCenterButton } from '@/components/ui/PanelHeaderCenterButton'
 import { MainContentPanel } from './MainContentPanel'
@@ -59,11 +60,18 @@ export function PanelSlot({
   const closePanel = useSetAtom(closePanelAtom)
   const setFocusedPanel = useSetAtom(focusedPanelIdAtom)
   const parentContext = useAppShellContext()
+  const expandedPanelId = useAtomValue(expandedPanelIdAtom)
+  const setExpandedPanelId = useSetAtom(expandedPanelIdAtom)
   const navState = parseRouteToNavigationState(entry.route)
+  const isExpanded = expandedPanelId === entry.id
 
   const handleClose = useCallback(() => {
+    // Closing an expanded panel must also clear the overlay (stale id).
+    if (expandedPanelId === entry.id) {
+      setExpandedPanelId(null)
+    }
     closePanel(entry.id)
-  }, [closePanel, entry.id])
+  }, [closePanel, entry.id, expandedPanelId, setExpandedPanelId])
 
   // Build close button for PanelHeader (via context override)
   const closeButton = useMemo(() => {
@@ -89,14 +97,26 @@ export function PanelSlot({
     )
   }, [isCompact, handleClose])
 
+  // Fullscreen-expand button (decision #6). Rendered in every panel header via
+  // the context slot; the overlay renders the same panel content. When the
+  // panel is already expanded (header shown inside the overlay), it restores.
+  const expandButton = useMemo(() => (
+    <PanelHeaderCenterButton
+      icon={isExpanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+      onClick={() => setExpandedPanelId(isExpanded ? null : entry.id)}
+      tooltip={isExpanded ? t("contentPanel.restore") : t("contentPanel.expand")}
+    />
+  ), [entry.id, isExpanded, setExpandedPanelId, t])
+
   // Override AppShellContext so ChatPage/PanelHeader gets our per-panel close button,
-  // back button (compact mode), and isFocusedPanel for input field appearance
+  // back button (compact mode), expand button, and isFocusedPanel for input field appearance
   const contextOverride = useMemo(() => ({
     ...parentContext,
     rightSidebarButton: closeButton,
+    expandButton,
     leadingAction: backButton,
     isFocusedPanel,
-  }), [parentContext, closeButton, backButton, isFocusedPanel])
+  }), [parentContext, closeButton, expandButton, backButton, isFocusedPanel])
 
   const handlePointerDown = useCallback(() => {
     if (!isFocusedPanel) {
@@ -117,6 +137,9 @@ export function PanelSlot({
           'bg-foreground-2',
         )}
         style={{
+          // Expanded into the fullscreen overlay: hide the slot (keep DOM state
+          // mounted) while the ExpandedPanelOverlay renders the same content.
+          display: isExpanded ? 'none' : undefined,
           // In multi-panel, unfocused panels override --background so all
           // bg-background children render at the elevated (dimmed) background.
           ...(!isFocusedPanel && !isOnly

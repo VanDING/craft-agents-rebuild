@@ -36,6 +36,7 @@ import {
 // SessionStatusIcons no longer used - icons come from dynamic sessionStatuses
 import { SourceAvatar } from "@/components/ui/source-avatar"
 import { TopBar } from "./TopBar"
+import { ExpandedPanelOverlay } from "./ExpandedPanelOverlay"
 import { SquarePenRounded } from "../icons/SquarePenRounded"
 import { McpIcon } from "../icons/McpIcon"
 import { cn } from "@/lib/utils"
@@ -3931,6 +3932,11 @@ function AppShellContent({
       {/* Messaging dialogs (pairing-code + WA connect) — driven by messagingDialogAtom.
           Mounted here so they survive context-menu / dropdown close. */}
       <MessagingDialogHost />
+
+      {/* Fullscreen rendering of an expanded panel (decision #6) — inside
+          AppShellProvider so bound panels and MainContentPanel keep their
+          context (close/expand buttons, onOpenFile, navigation). */}
+      <ExpandedPanelOverlay />
 
     </AppShellProvider>
   )

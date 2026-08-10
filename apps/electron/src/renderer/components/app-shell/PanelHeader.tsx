@@ -119,8 +119,17 @@ export function PanelHeader({
   // PanelSlot in compact mode) propagate to every page's PanelHeader without each
   // page having to forward the prop manually. ChatPage explicitly passes its own
   // value, which overrides the context.
-  const { leadingAction: contextLeadingAction, isCompactMode } = useAppShellContext()
+  const {
+    leadingAction: contextLeadingAction,
+    isCompactMode,
+    rightSidebarButton: contextRightSidebarButton,
+    expandButton: contextExpandButton,
+  } = useAppShellContext()
   const leadingAction = explicitLeadingAction ?? contextLeadingAction
+  // Context fallback lets PanelSlot inject the per-panel close + expand buttons
+  // into every page header (content panels and ChatPage alike).
+  const resolvedRightSidebarButton = rightSidebarButton ?? contextRightSidebarButton
+  const resolvedExpandButton = contextExpandButton
 
   // Use context as fallback when prop is not explicitly set.
   // Skip stoplight compensation when leadingAction is present — the back button
@@ -192,7 +201,7 @@ export function PanelHeader({
   // The side insets are based on the actual number of control slots so a long
   // title truncates before the right-side action cluster instead of overlapping it.
   const compactLeadingControlCount = leadingAction ? 1 : 0
-  const compactTrailingControlCount = [centerButton, actions, rightSidebarButton].filter(Boolean).length
+  const compactTrailingControlCount = [centerButton, actions, resolvedExpandButton, resolvedRightSidebarButton].filter(Boolean).length
   const compactTitleInsetStyle = isCompactMode
     ? {
         left: compactTitleInset(compactLeadingControlCount),
@@ -218,9 +227,14 @@ export function PanelHeader({
           {actions}
         </div>
       )}
-      {rightSidebarButton && (
+      {resolvedExpandButton && (
         <div className="titlebar-no-drag shrink-0 z-[1]">
-          {rightSidebarButton}
+          {resolvedExpandButton}
+        </div>
+      )}
+      {resolvedRightSidebarButton && (
+        <div className="titlebar-no-drag shrink-0 z-[1]">
+          {resolvedRightSidebarButton}
         </div>
       )}
       <div
@@ -254,9 +268,14 @@ export function PanelHeader({
           {actions}
         </div>
       )}
-      {rightSidebarButton && (
+      {resolvedExpandButton && (
         <div className="titlebar-no-drag shrink-0">
-          {rightSidebarButton}
+          {resolvedExpandButton}
+        </div>
+      )}
+      {resolvedRightSidebarButton && (
+        <div className="titlebar-no-drag shrink-0">
+          {resolvedRightSidebarButton}
         </div>
       )}
     </>
