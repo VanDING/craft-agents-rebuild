@@ -1084,6 +1084,11 @@ export function NavigationProvider({
     store.set(restoreHiddenPanelsForWorkspaceAtom, workspaceSlug)
     store.set(dedupeHiddenPanelsAtom)
 
+    // The remembered "last active session" belongs to the previous workspace —
+    // bound panels must not bind to a stale cross-workspace session id. It is
+    // re-populated as soon as a session in the new workspace is focused.
+    store.set(lastActiveSessionIdAtom, null)
+
     initialRouteRestoredRef.current = true
 
     requestAnimationFrame(() => {

@@ -88,7 +88,9 @@ export function ReviewPanel() {
   const focusRequest = useAtomValue(reviewPanelFocusRequestAtom)
   const setFocusRequest = useSetAtom(reviewPanelFocusRequestAtom)
 
-  const [messagesLoading, setMessagesLoading] = useState(false)
+  // Start as loading so the first frame never flashes "no changes" while the
+  // async message load (or a missing session) resolves.
+  const [messagesLoading, setMessagesLoading] = useState(true)
   const changeRefs = useRef(new Map<string, HTMLDivElement>())
 
   // Load conversation messages (async) so "no changes" is never a false positive.
@@ -152,7 +154,7 @@ export function ReviewPanel() {
     <div className="flex h-full min-h-0 flex-col">
       <PanelHeader title={t('contentPanel.title.review')} badge={headerBadge} />
 
-      {messagesLoading || (session == null && changes.length === 0) ? (
+      {messagesLoading ? (
         <div className="flex flex-1 items-center justify-center">
           <Spinner />
         </div>

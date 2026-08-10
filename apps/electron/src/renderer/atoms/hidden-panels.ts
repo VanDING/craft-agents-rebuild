@@ -228,22 +228,3 @@ export const dedupeHiddenPanelsAtom = atom(
     }
   },
 )
-
-/** All session ids referenced by hidden panels (empty-session cleanup input). */
-export const hiddenSessionIdsAtom = atom((get) => {
-  const ids = new Set<string>()
-  for (const entry of get(hiddenPanelsAtom)) {
-    const id = parseHiddenSessionId(entry.route)
-    if (id) ids.add(id)
-  }
-  return ids
-})
-
-function parseHiddenSessionId(route: ViewRoute): string | null {
-  const segments = route.split('?')[0].split('/')
-  const idx = segments.indexOf('session')
-  if (idx >= 0 && idx + 1 < segments.length) {
-    return segments[idx + 1]
-  }
-  return null
-}
