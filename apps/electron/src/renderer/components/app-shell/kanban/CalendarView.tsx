@@ -27,6 +27,7 @@ import {
   subMonths,
 } from 'date-fns'
 import { useAppShellContext } from '@/context/AppShellContext'
+import { useCompensateForStoplight } from '@/context/StoplightContext'
 import { useNavigation } from '@/contexts/NavigationContext'
 import { useCalendarEntries } from '@/hooks/useCalendarEntries'
 import { cn } from '@/lib/utils'
@@ -95,6 +96,7 @@ interface EntryFormState {
 
 export function CalendarView() {
   const { activeWorkspaceId, onCreateSession, rightSidebarButton, expandButton } = useAppShellContext()
+  const compensateForStoplight = useCompensateForStoplight()
   const { t } = useTranslation()
   const { navigateToSession } = useNavigation()
   const { entries, create, update, remove } = useCalendarEntries(activeWorkspaceId ?? null)
@@ -582,7 +584,16 @@ export function CalendarView() {
 
   return (
     <div className="flex h-full flex-col bg-background">
-      <div className="flex flex-none items-center gap-2 border-b border-border/60 px-4 py-2.5">
+      {/* Header paddings adapt at the window edge (focused mode / fullscreen
+          overlay): left reserves macOS traffic lights, right reserves the
+          floating restore button of the expanded overlay. */}
+      <div
+        className="flex flex-none items-center gap-2 border-b border-border/60 py-2.5"
+        style={{
+          paddingLeft: compensateForStoplight ? 84 : 16,
+          paddingRight: compensateForStoplight ? 48 : 16,
+        }}
+      >
         <button
           type="button"
           onClick={goPrev}

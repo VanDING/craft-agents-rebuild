@@ -97,9 +97,32 @@ export function TopBar({
  }: TopBarProps) {
   const { t } = useTranslation()
   const [maxVisibleBrowserBadges, setMaxVisibleBrowserBadges] = useState(3)
-  // 10 workbench buttons at full width; the ResizeObserver tightens this for
-  // narrow slots before first paint matters.
+  // 10 workbench buttons at full width. Decided by WINDOW width, NOT the
+  // right-slot width: the slot is content-sized (shrink-0), so measuring it
+  // made the count collapse on itself — the 10-button group (~300px incl.
+  // Help) was always below the old 340px threshold, hiding 6 of 10 buttons
+  // at any window size (fix, verified via CDP).
   const [maxVisiblePanelButtons, setMaxVisiblePanelButtons] = useState(10)
+
+  useEffect(() => {
+    const update = () => {
+      // Left chrome: stoplight padding 86 + sidebar toggle + app menu +
+      // back/forward + workspace switcher ≈ 500px. Each button ≈ 24px.
+      const next = Math.max(4, Math.min(10, Math.floor((window.innerWidth - 500) / 24)))
+      setMaxVisiblePanelButtons((prev) => (prev === next ? prev : next))
+    }
+    let frame = 0
+    const onResize = () => {
+      if (frame) cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(update)
+    }
+    update()
+    window.addEventListener('resize', onResize)
+    return () => {
+      if (frame) cancelAnimationFrame(frame)
+      window.removeEventListener('resize', onResize)
+    }
+  }, [])
   const rightSlotRef = useRef<HTMLDivElement | null>(null)
 
   const goBackHotkey = useActionLabel('nav.goBackAlt').hotkey
@@ -120,18 +143,6 @@ export function TopBar({
           : 1
 
       setMaxVisibleBrowserBadges((prev) => (prev === nextMaxVisibleBadges ? prev : nextMaxVisibleBadges))
-
-      // Workbench panel buttons share the slot; hide from the tail (newest
-      // actions first) when narrow — no collapse menu (decision #1).
-      // 10 buttons × 24px ≈ 240px at full width.
-      const nextMaxPanelButtons = slotWidth >= 560
-        ? 10
-        : slotWidth >= 430
-          ? 8
-          : slotWidth >= 340
-            ? 6
-            : 4
-      setMaxVisiblePanelButtons((prev) => (prev === nextMaxPanelButtons ? prev : nextMaxPanelButtons))
     }
 
     const schedule = () => {

@@ -54,8 +54,11 @@ export function ExpandedPanelOverlay() {
   return (
     <div className="fixed inset-0 z-[999] flex flex-col bg-background" data-expanded-panel-overlay>
       {/* Floating restore control (content headers also carry the panel's own
-          close/expand buttons — the panel content renders its own header). */}
-      <div className="pointer-events-none absolute right-3 top-2 z-10 flex items-center gap-1">
+          close/expand buttons — the panel content renders its own header).
+          z-[60] > z-panel(50): PanelHeader's actions container (relative
+          z-panel) used to cover this button, making it unclickable for
+          bound panels (fix, verified via CDP elementFromPoint). */}
+      <div className="pointer-events-none absolute right-3 top-2 z-[60] flex items-center gap-1">
         <div className="pointer-events-auto">
           <TopBarButton onClick={restore} aria-label={t('contentPanel.restore')}>
             <Minimize2 className="h-4 w-4" />
@@ -69,6 +72,8 @@ export function ExpandedPanelOverlay() {
         ) : (
           <MainContentPanel
             navStateOverride={parseRouteToNavigationState(entry.route)}
+            // Fullscreen overlay: sidebar + navigator are hidden, so children
+            // must compensate for the macOS traffic lights (StoplightProvider).
             isSidebarAndNavigatorHidden
           />
         )}

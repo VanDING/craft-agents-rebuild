@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { useAtom, useAtomValue, useSetAtom } from 'jotai'
 import { useTranslation } from 'react-i18next'
 import { useAppShellContext } from '@/context/AppShellContext'
+import { useCompensateForStoplight } from '@/context/StoplightContext'
 import { sessionMetaMapAtom, updateSessionMetaAtom, type SessionMeta } from '@/atoms/sessions'
 import { projectsAtom } from '@/atoms/projects'
 import { kanbanProjectFilterAtom, kanbanColumnStatusAtom, kanbanEditorTargetAtom } from '@/atoms/kanban'
@@ -59,6 +60,7 @@ function deriveRunState(child: SessionMeta, statusesById: Map<string, SessionSta
 export function KanbanBoardContainer() {
   const { activeWorkspaceId, llmConnections, sessionStatuses, onCreateSession, onSendMessage, onJumpToTaskSessions, rightSidebarButton, expandButton } =
     useAppShellContext()
+  const compensateForStoplight = useCompensateForStoplight()
   const { t } = useTranslation()
   const metaMap = useAtomValue(sessionMetaMapAtom)
   const projects = useAtomValue(projectsAtom)
@@ -521,7 +523,16 @@ export function KanbanBoardContainer() {
 
   return (
     <div className="flex h-full flex-col bg-background">
-      <div className="flex items-center justify-between gap-2 border-b border-border/50 px-4 py-2.5">
+      {/* Header paddings adapt when rendered at the window edge (focused mode /
+          fullscreen overlay): left reserves the macOS traffic lights, right
+          reserves the floating restore button of the expanded overlay. */}
+      <div
+        className="flex items-center justify-between gap-2 border-b border-border/50 py-2.5"
+        style={{
+          paddingLeft: compensateForStoplight ? 84 : 16,
+          paddingRight: compensateForStoplight ? 48 : 16,
+        }}
+      >
         <div className="flex min-w-0 items-center gap-2.5">
           <span className="text-sm font-medium">{t('kanban.allTasks')}</span>
           {projectOptions.length > 0 && (
