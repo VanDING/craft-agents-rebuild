@@ -92,7 +92,7 @@ import { sessionMetaMapAtom, sendToWorkspaceAtom, type SessionMeta } from "@/ato
 import { sourcesAtom } from "@/atoms/sources"
 import { skillsAtom } from "@/atoms/skills"
 import { activeSessionIdAtom } from "@/atoms/active-session"
-import { panelStackAtom, panelCountAtom, focusedPanelIdAtom, focusedSessionIdAtom, focusNextPanelAtom, focusPrevPanelAtom, parseSessionIdFromRoute, pushPanelAtom, updateFocusedPanelRouteAtom } from "@/atoms/panel-stack"
+import { panelStackAtom, panelCountAtom, focusedPanelIdAtom, focusedSessionIdAtom, focusNextPanelAtom, focusPrevPanelAtom, parseSessionIdFromRoute, pushPanelAtom, updateFocusedPanelRouteAtom, closePanelAtom } from "@/atoms/panel-stack"
 import { browserInstancesAtom, activeBrowserInstanceIdAtom, filterInstancesForWorkspace } from "@/atoms/browser-pane"
 import { WORKBENCH_PANEL_ROUTES, workbenchPanelKindForRoute, type WorkbenchPanelKind } from "@/lib/workbench-panels"
 import { type SessionStatusId, type SessionStatus, statusConfigsToSessionStatuses } from "@/config/session-status-config"
@@ -2063,7 +2063,12 @@ function AppShellContent({
    * - Shift/Alt click (`replace`) → replace the focused panel content,
    *   but only when the kind isn't already open anywhere (avoids duplicates)
    */
+  const lastBoundPanelKindRef = useRef<WorkbenchPanelKind>('diff')
   const openPanel = useCallback((kind: WorkbenchPanelKind, options?: { replace?: boolean }) => {
+    if (kind === 'diff' || kind === 'files' || kind === 'context' || kind === 'preview') {
+      lastBoundPanelKindRef.current = kind
+    }
+
     const route = WORKBENCH_PANEL_ROUTES[kind]
     const stack = store.get(panelStackAtom)
 
@@ -2080,6 +2085,26 @@ function AppShellContent({
 
     store.set(pushPanelAtom, { route, targetLaneId: 'main', intent: 'explicit' })
   }, [store])
+
+  // panel.toggle: close the focused bound panel, or reopen the last used one.
+  const toggleBoundPanel = useCallback(() => {
+    const stack = store.get(panelStackAtom)
+    const focusedEntry = stack.find((entry) => entry.id === store.get(focusedPanelIdAtom))
+    if (!focusedEntry) return
+    const focusedKind = workbenchPanelKindForRoute(focusedEntry.route)
+    if (focusedKind === 'diff' || focusedKind === 'files' || focusedKind === 'context' || focusedKind === 'preview') {
+      store.set(closePanelAtom, focusedEntry.id)
+      return
+    }
+    openPanel(lastBoundPanelKindRef.current)
+  }, [store, openPanel])
+
+  // Workbench panel hotkeys (definitions in actions/definitions.ts).
+  useAction('panel.diff', () => openPanel('diff'))
+  useAction('panel.files', () => openPanel('files'))
+  useAction('panel.context', () => openPanel('context'))
+  useAction('panel.preview', () => openPanel('preview'))
+  useAction('panel.toggle', toggleBoundPanel)
 
   // Browser workbench button state is derived inside WorkbenchPanelButtons.
 

@@ -174,6 +174,41 @@ export const actions = {
     defaultHotkey: 'mod+shift+[',
     category: 'Navigation',
   },
+  'panel.diff': {
+    id: 'panel.diff',
+    label: 'Open Review & Diff Panel',
+    description: 'Open or focus the Review & Diff panel (bound to the active session)',
+    defaultHotkey: 'mod+shift+r',
+    category: 'Panels',
+  },
+  'panel.files': {
+    id: 'panel.files',
+    label: 'Open Files Panel',
+    description: 'Open or focus the session Files panel',
+    defaultHotkey: 'mod+shift+e',
+    category: 'Panels',
+  },
+  'panel.context': {
+    id: 'panel.context',
+    label: 'Open Context Panel',
+    description: 'Open or focus the Context panel',
+    defaultHotkey: 'mod+shift+o',
+    category: 'Panels',
+  },
+  'panel.preview': {
+    id: 'panel.preview',
+    label: 'Open Preview Panel',
+    description: 'Open or focus the Preview panel',
+    defaultHotkey: 'mod+shift+p',
+    category: 'Panels',
+  },
+  'panel.toggle': {
+    id: 'panel.toggle',
+    label: 'Toggle Last Bound Panel',
+    description: 'Close the focused bound panel, or reopen the last used bound panel',
+    defaultHotkey: 'mod+shift+t',
+    category: 'Panels',
+  },
 
   // ═══════════════════════════════════════════
   // Chat
