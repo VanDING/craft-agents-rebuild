@@ -26,6 +26,8 @@ import type { SettingsMenuItem } from "../../../shared/menu-schema"
 import { SquarePenRounded } from "../icons/SquarePenRounded"
 import { useEffect, useRef, useState } from "react"
 import { BrowserTabStrip } from "../browser/BrowserTabStrip"
+import { WorkbenchPanelButtons } from "./WorkbenchPanelButtons"
+import { WORKBENCH_PANEL_KINDS, type WorkbenchPanelKind } from "@/lib/workbench-panels"
 import type { Workspace } from "../../../shared/types"
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher"
 import { CompactWorkspaceSwitcher } from "./CompactWorkspaceSwitcher"
@@ -59,10 +61,10 @@ interface TopBarProps {
   onAddBrowserPanel: () => void
   /** When true, hides controls that don't apply in compact/mobile layout */
   isCompact?: boolean
-  /** Current active view: 'list' (sessions), 'board' (kanban), or 'calendar' */
-  currentView?: 'list' | 'board' | 'calendar'
-  /** Navigate to a view when the user clicks a list/board/calendar button */
-  onNavigateToView?: (view: 'list' | 'board' | 'calendar') => void
+  /** Open/focus/replace a workbench panel (already-open → focus; closed → push; Shift/Alt → replace focused) */
+  onOpenPanel?: (kind: WorkbenchPanelKind, options?: { replace?: boolean }) => void
+  /** Focus an existing browser window or create a new one */
+  onOpenBrowser?: () => void
 }
 
 export function TopBar({
@@ -88,11 +90,12 @@ export function TopBar({
   onAddSessionPanel,
   onAddBrowserPanel,
   isCompact,
-  currentView,
-  onNavigateToView,
+  onOpenPanel,
+  onOpenBrowser,
  }: TopBarProps) {
   const { t } = useTranslation()
   const [maxVisibleBrowserBadges, setMaxVisibleBrowserBadges] = useState(3)
+  const [maxVisiblePanelButtons, setMaxVisiblePanelButtons] = useState(9)
   const rightSlotRef = useRef<HTMLDivElement | null>(null)
 
   const goBackHotkey = useActionLabel('nav.goBackAlt').hotkey
@@ -113,6 +116,17 @@ export function TopBar({
           : 1
 
       setMaxVisibleBrowserBadges((prev) => (prev === nextMaxVisibleBadges ? prev : nextMaxVisibleBadges))
+
+      // Workbench panel buttons share the slot; collapse them into the + menu
+      // when narrow. 9 buttons × 24px ≈ 216px at full width.
+      const nextMaxPanelButtons = slotWidth >= 560
+        ? 9
+        : slotWidth >= 430
+          ? 6
+          : slotWidth >= 340
+            ? 4
+            : 2
+      setMaxVisiblePanelButtons((prev) => (prev === nextMaxPanelButtons ? prev : nextMaxPanelButtons))
     }
 
     const schedule = () => {
@@ -233,33 +247,12 @@ export function TopBar({
         <div className="min-w-0">
           <BrowserTabStrip activeSessionId={activeSessionId} maxVisibleBadges={maxVisibleBrowserBadges} />
         </div>
-        {onNavigateToView && (
-          <div className="inline-flex items-center gap-0.5 rounded-lg border border-border/60 bg-foreground/[0.02] p-0.5">
-            <TopBarButton
-              aria-label={t('kanban.list')}
-              isActive={currentView === 'list'}
-              onClick={() => onNavigateToView('list')}
-              className="h-[22px] w-[22px] rounded-md"
-            >
-              <Icons.List className="h-3.5 w-3.5" strokeWidth={2} />
-            </TopBarButton>
-            <TopBarButton
-              aria-label={t('kanban.board')}
-              isActive={currentView === 'board'}
-              onClick={() => onNavigateToView('board')}
-              className="h-[22px] w-[22px] rounded-md"
-            >
-              <Icons.LayoutGrid className="h-3.5 w-3.5" strokeWidth={2} />
-            </TopBarButton>
-            <TopBarButton
-              aria-label={t('kanban.calendar')}
-              isActive={currentView === 'calendar'}
-              onClick={() => onNavigateToView('calendar')}
-              className="h-[22px] w-[22px] rounded-md"
-            >
-              <Icons.CalendarDays className="h-3.5 w-3.5" strokeWidth={2} />
-            </TopBarButton>
-          </div>
+        {onOpenPanel && onOpenBrowser && (
+          <WorkbenchPanelButtons
+            onOpenPanel={onOpenPanel}
+            onOpenBrowser={onOpenBrowser}
+            maxVisibleButtons={maxVisiblePanelButtons}
+          />
         )}
          <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -276,6 +269,40 @@ export function TopBar({
               <Icons.Globe className="h-3.5 w-3.5" />
               {t("browser.newWindow")}
             </StyledDropdownMenuItem>
+
+            {onOpenPanel && (
+              <>
+                <StyledDropdownMenuSeparator />
+                <StyledDropdownMenuItem onClick={() => onOpenPanel('sessions')}>
+                  <Icons.MessageSquare className="h-3.5 w-3.5" />
+                  {t("contentPanel.button.sessions")}
+                </StyledDropdownMenuItem>
+                <StyledDropdownMenuItem onClick={() => onOpenPanel('board')}>
+                  <Icons.LayoutGrid className="h-3.5 w-3.5" />
+                  {t("contentPanel.button.board")}
+                </StyledDropdownMenuItem>
+                <StyledDropdownMenuItem onClick={() => onOpenPanel('calendar')}>
+                  <Icons.CalendarDays className="h-3.5 w-3.5" />
+                  {t("contentPanel.button.calendar")}
+                </StyledDropdownMenuItem>
+                <StyledDropdownMenuItem onClick={() => onOpenPanel('diff')}>
+                  <Icons.GitCompareArrows className="h-3.5 w-3.5" />
+                  {t("contentPanel.button.review")}
+                </StyledDropdownMenuItem>
+                <StyledDropdownMenuItem onClick={() => onOpenPanel('files')}>
+                  <Icons.FolderTree className="h-3.5 w-3.5" />
+                  {t("contentPanel.button.files")}
+                </StyledDropdownMenuItem>
+                <StyledDropdownMenuItem onClick={() => onOpenPanel('context')}>
+                  <Icons.ListFilter className="h-3.5 w-3.5" />
+                  {t("contentPanel.button.context")}
+                </StyledDropdownMenuItem>
+                <StyledDropdownMenuItem onClick={() => onOpenPanel('preview')}>
+                  <Icons.FileText className="h-3.5 w-3.5" />
+                  {t("contentPanel.button.preview")}
+                </StyledDropdownMenuItem>
+              </>
+            )}
           </StyledDropdownMenuContent>
         </DropdownMenu>
 

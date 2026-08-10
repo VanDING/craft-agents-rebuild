@@ -92,7 +92,9 @@ import { sessionMetaMapAtom, sendToWorkspaceAtom, type SessionMeta } from "@/ato
 import { sourcesAtom } from "@/atoms/sources"
 import { skillsAtom } from "@/atoms/skills"
 import { activeSessionIdAtom } from "@/atoms/active-session"
-import { panelStackAtom, panelCountAtom, focusedPanelIdAtom, focusedSessionIdAtom, focusNextPanelAtom, focusPrevPanelAtom, parseSessionIdFromRoute } from "@/atoms/panel-stack"
+import { panelStackAtom, panelCountAtom, focusedPanelIdAtom, focusedSessionIdAtom, focusNextPanelAtom, focusPrevPanelAtom, parseSessionIdFromRoute, pushPanelAtom, updateFocusedPanelRouteAtom } from "@/atoms/panel-stack"
+import { browserInstancesAtom, activeBrowserInstanceIdAtom, filterInstancesForWorkspace } from "@/atoms/browser-pane"
+import { WORKBENCH_PANEL_ROUTES, workbenchPanelKindForRoute, type WorkbenchPanelKind } from "@/lib/workbench-panels"
 import { type SessionStatusId, type SessionStatus, statusConfigsToSessionStatuses } from "@/config/session-status-config"
 import { useStatuses } from "@/hooks/useStatuses"
 import { useLabels } from "@/hooks/useLabels"
@@ -616,9 +618,6 @@ function AppShellContent({
   // full-width panel, so the navigator (and its resize handle) collapse to
   // zero width while one of them is active.
   const isFullWidthView = isSessionsNavigation(navState) && (navState.viewMode === 'board' || navState.viewMode === 'calendar')
-  const currentView: 'list' | 'board' | 'calendar' = isSessionsNavigation(navState) && navState.viewMode
-    ? navState.viewMode
-    : 'list'
 
   // Derive source filter from navigation state (only when in sources navigator)
   const sourceFilter: SourceFilter | null = isSourcesNavigation(navState) ? navState.filter ?? null : null
@@ -2030,7 +2029,59 @@ function AppShellContent({
       console.error('[Chat] Failed to create browser window:', error)
       toast.error(t('toast.failedToCreateBrowser'))
     }
-  }, [])
+  }, [t])
+
+  // Focus an existing browser window for the workspace, or create a new one.
+  // Mirrors BrowserTabStrip's focus-or-create behaviour for the top-bar Globe.
+  const handleFocusOrCreateBrowser = useCallback(async () => {
+    const pid = contextValue.activeWorkspaceId
+    const activeWorkspace = workspaces.find((w) => w.id === pid)
+    const remoteWorkspaceId = activeWorkspace?.remoteServer?.remoteWorkspaceId ?? null
+    const instances = filterInstancesForWorkspace(
+      store.get(browserInstancesAtom),
+      pid,
+      remoteWorkspaceId,
+    )
+    if (instances.length === 0) {
+      await handleNewBrowserWindow()
+      return
+    }
+    const activeId = store.get(activeBrowserInstanceIdAtom)
+    const target = instances.find((i) => i.id === activeId) ?? instances[0]
+    try {
+      await window.electronAPI.browserPane.focus(target.id)
+    } catch (error) {
+      console.error('[Chat] Failed to focus browser window:', error)
+      toast.error(t('toast.failedToCreateBrowser'))
+    }
+  }, [store, workspaces, contextValue.activeWorkspaceId, handleNewBrowserWindow, t])
+
+  /**
+   * Unified workbench panel opener (decision #3):
+   * - already open in the foreground → focus it
+   * - closed → push a new panel
+   * - Shift/Alt click (`replace`) → replace the focused panel content,
+   *   but only when the kind isn't already open anywhere (avoids duplicates)
+   */
+  const openPanel = useCallback((kind: WorkbenchPanelKind, options?: { replace?: boolean }) => {
+    const route = WORKBENCH_PANEL_ROUTES[kind]
+    const stack = store.get(panelStackAtom)
+
+    const existing = stack.find((entry) => workbenchPanelKindForRoute(entry.route) === kind)
+    if (existing) {
+      store.set(focusedPanelIdAtom, existing.id)
+      return
+    }
+
+    if (options?.replace && stack.length > 0) {
+      store.set(updateFocusedPanelRouteAtom, route)
+      return
+    }
+
+    store.set(pushPanelAtom, { route, targetLaneId: 'main', intent: 'explicit' })
+  }, [store])
+
+  // Browser workbench button state is derived inside WorkbenchPanelButtons.
 
   // Delete Source - simplified since agents system is removed
   const handleDeleteSource = useCallback(async (sourceSlug: string) => {
@@ -2342,12 +2393,8 @@ function AppShellContent({
           onAddSessionPanel={() => handleNewChat(true)}
           onAddBrowserPanel={() => { void handleNewBrowserWindow() }}
           isCompact={isAutoCompact}
-          currentView={currentView}
-          onNavigateToView={(view) => {
-            if (view === 'board') navigate(routes.view.board())
-            else if (view === 'calendar') navigate(routes.view.calendar())
-            else navigate(routes.view.allSessions())
-          }}
+          onOpenPanel={openPanel}
+          onOpenBrowser={() => { void handleFocusOrCreateBrowser() }}
         />
 
       {/* === OUTER LAYOUT: Unified Panel Stack | Right Sidebar === */}
