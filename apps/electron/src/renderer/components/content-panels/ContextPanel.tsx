@@ -11,14 +11,15 @@
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAtomValue } from 'jotai'
-import { FolderKanban, Layers, Zap, ListFilter, FolderOpen, BadgeCheck } from 'lucide-react'
+import { FolderKanban, Layers, Zap, ListFilter, FolderOpen, BadgeCheck, Coins, Paperclip, History } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { PanelHeader } from '../app-shell/PanelHeader'
 import { PanelEmptyState } from './PanelEmptyState'
 import { BoundSessionBadge } from './BoundSessionBadge'
 import { useNavigation } from '@/contexts/NavigationContext'
 import { activeSessionIdAtom } from '@/atoms/active-session'
-import { sessionMetaMapAtom } from '@/atoms/sessions'
+import { sessionMetaMapAtom, sessionAtomFamily, loadedSessionsAtom } from '@/atoms/sessions'
+import { previewEntriesForSessionAtom } from '@/atoms/preview'
 import { sourcesAtom } from '@/atoms/sources'
 import { skillsAtom } from '@/atoms/skills'
 import { routes, type ViewRoute } from '../../../shared/routes'
@@ -26,6 +27,21 @@ import { PERMISSION_MODE_CONFIG } from '@craft-agent/shared/agent/modes'
 import { useLabels } from '@/hooks/useLabels'
 import { useAppShellContext } from '@/context/AppShellContext'
 import { findLabelById } from '@craft-agent/shared/labels'
+import type { SourceConnectionStatus } from '@craft-agent/shared/sources'
+
+/** Status dot colors for source connection states (Task 6, decision #5). */
+const CONNECTION_STATUS_DOT: Record<SourceConnectionStatus, string> = {
+  connected: 'bg-emerald-500',
+  needs_auth: 'bg-amber-500',
+  failed: 'bg-red-500',
+  untested: 'bg-foreground/30',
+  local_disabled: 'bg-foreground/30',
+}
+
+/** Last path segment of a file path (macOS + Windows separators). */
+function fileBasename(path: string): string {
+  return path.split(/[\\/]/).pop() ?? path
+}
 
 function SectionTitle({ icon, label }: { icon: React.ReactNode; label: string }) {
   return (
@@ -57,6 +73,34 @@ export function ContextPanel() {
   const { labels: labelConfigs } = useLabels(activeWorkspaceId)
 
   const meta = activeSessionId ? sessionMetaMap.get(activeSessionId) : undefined
+  // Full session (messages included once loaded) — used for the attachment
+  // list. Subscribing never forces a load: sessionAtomFamily only reflects
+  // what ChatPage has already fetched.
+  const activeSession = useAtomValue(sessionAtomFamily(activeSessionId ?? ''))
+  const loadedSessions = useAtomValue(loadedSessionsAtom)
+  const sessionLoaded = activeSessionId ? loadedSessions.has(activeSessionId) : false
+  const previewEntries = useAtomValue(previewEntriesForSessionAtom)(activeSessionId ?? '')
+
+  const attachmentNames = useMemo(() => {
+    const seen = new Set<string>()
+    const names: string[] = []
+    for (const message of activeSession?.messages ?? []) {
+      for (const attachment of message.attachments ?? []) {
+        if (!seen.has(attachment.id)) {
+          seen.add(attachment.id)
+          names.push(attachment.name)
+        }
+      }
+    }
+    return names
+  }, [activeSession])
+
+  const recentFileNames = useMemo(() => {
+    return previewEntries
+      .filter((entry) => entry.type === 'file')
+      .map((entry) => (entry.type === 'file' ? fileBasename(entry.path) : ''))
+  }, [previewEntries])
+
   const labelNames = useMemo(() => {
     if (!meta?.labels?.length) return []
     return meta.labels.map((id) => findLabelById(labelConfigs, id)?.name ?? id)
@@ -115,6 +159,60 @@ export function ContextPanel() {
           />
         )}
 
+        {/* Token usage — from the session meta (JSONL header, no message load) */}
+        {activeSessionId && meta?.tokenUsage && (
+          <section>
+            <SectionTitle icon={<Coins className="h-3.5 w-3.5" />} label={t('contentPanel.context.tokenUsageHeader')} />
+            <div className="rounded-lg border border-border/60 bg-foreground/[0.02] px-2 py-2">
+              {typeof meta.tokenUsage.inputTokens === 'number' && (
+                <MetaRow label={t('contentPanel.context.tokenInput')} value={meta.tokenUsage.inputTokens.toLocaleString()} />
+              )}
+              {typeof meta.tokenUsage.outputTokens === 'number' && (
+                <MetaRow label={t('contentPanel.context.tokenOutput')} value={meta.tokenUsage.outputTokens.toLocaleString()} />
+              )}
+              {typeof meta.tokenUsage.totalTokens === 'number' && (
+                <MetaRow label={t('contentPanel.context.tokenTotal')} value={meta.tokenUsage.totalTokens.toLocaleString()} />
+              )}
+            </div>
+          </section>
+        )}
+
+        {/* Attachments — aggregated from loaded messages (no forced load) */}
+        {activeSessionId && sessionLoaded && (
+          <section>
+            <SectionTitle icon={<Paperclip className="h-3.5 w-3.5" />} label={t('contentPanel.context.attachmentsHeader')} />
+            {attachmentNames.length === 0 ? (
+              <p className="px-1 py-1 text-[13px] text-muted-foreground/70">{t('contentPanel.context.attachmentsEmpty')}</p>
+            ) : (
+              <ul className="flex flex-col gap-0.5">
+                {attachmentNames.map((name) => (
+                  <li key={name} className="truncate rounded-lg px-2 py-1 text-[13px] text-foreground/90">
+                    {name}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        )}
+
+        {/* Recently opened files (preview stack for the active session) */}
+        {activeSessionId && (
+          <section>
+            <SectionTitle icon={<History className="h-3.5 w-3.5" />} label={t('contentPanel.context.recentFilesHeader')} />
+            {recentFileNames.length === 0 ? (
+              <p className="px-1 py-1 text-[13px] text-muted-foreground/70">{t('contentPanel.context.recentFilesEmpty')}</p>
+            ) : (
+              <ul className="flex flex-col gap-0.5">
+                {recentFileNames.map((name) => (
+                  <li key={name} className="truncate rounded-lg px-2 py-1 text-[13px] text-foreground/90">
+                    {name}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        )}
+
         {/* Workspace sources — workspace-level, always available */}
         <section>
           <SectionTitle icon={<FolderKanban className="h-3.5 w-3.5" />} label={t('contentPanel.context.sourcesHeader')} />
@@ -130,6 +228,12 @@ export function ContextPanel() {
                     className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[13px] transition-colors hover:bg-foreground/[0.03]"
                   >
                     <FolderOpen className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                    {source.config.connectionStatus && (
+                      <span
+                        title={t(`contentPanel.context.status.${source.config.connectionStatus}`)}
+                        className={cn('h-2 w-2 shrink-0 rounded-full', CONNECTION_STATUS_DOT[source.config.connectionStatus])}
+                      />
+                    )}
                     <span className="min-w-0 flex-1 truncate">{source.config.name}</span>
                   </button>
                 </li>
