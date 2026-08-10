@@ -386,6 +386,8 @@
   "contentPanel.files.noFilterMatches": "Nincs a szűrőnek megfelelő fájl.",
   "contentPanel.noActiveSession": "Nincs aktív munkamenet",
   "contentPanel.panelUnavailable": "Ez a panel nem érhető el. Próbálja újra megnyitni.",
+  "contentPanel.preview.empty": "Még nincs semmi megnyitva",
+  "contentPanel.preview.emptyHint": "Nyisson meg egy fájlt, vagy bontsa ki a dokumentumot/turn-részleteket a csevegésben, és itt fog megjelenni.",
   "contentPanel.title.context": "Kontextus",
   "contentPanel.title.files": "Fájlok",
   "contentPanel.title.preview": "Előnézet",

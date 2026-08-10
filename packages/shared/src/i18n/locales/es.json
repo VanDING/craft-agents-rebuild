@@ -386,6 +386,8 @@
   "contentPanel.files.noFilterMatches": "Ningún archivo coincide con el filtro.",
   "contentPanel.noActiveSession": "Sin sesión activa",
   "contentPanel.panelUnavailable": "Este panel no está disponible. Intenta volver a abrirlo.",
+  "contentPanel.preview.empty": "Nada abierto todavía",
+  "contentPanel.preview.emptyHint": "Abre un archivo o expande un documento o los detalles de un turno en el chat, y aparecerá aquí.",
   "contentPanel.title.context": "Contexto",
   "contentPanel.title.files": "Archivos",
   "contentPanel.title.preview": "Vista previa",

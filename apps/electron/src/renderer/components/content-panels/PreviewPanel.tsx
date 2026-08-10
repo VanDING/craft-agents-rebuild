@@ -1,0 +1,133 @@
+/**
+ * PreviewPanel - per-session previews (opened files + doc pop-outs).
+ *
+ * Collects, per active session:
+ * - files opened through the link interceptor (Task 10 routes those here)
+ * - markdown pop-outs / turn details / activity expansions from the chat
+ *
+ * Renders a tab list of entries with a content area below; the selected entry
+ * lives in a global atom (content-panel-ui) so the panel keeps its selection
+ * when expanded to fullscreen (Task 11).
+ */
+
+import { useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
+import { useAtomValue, useSetAtom } from 'jotai'
+import { FileText, Eye } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { Markdown } from '@craft-agent/ui'
+import { PanelHeader } from '../app-shell/PanelHeader'
+import { PanelEmptyState } from './PanelEmptyState'
+import { BoundSessionBadge } from './BoundSessionBadge'
+import { FilePreviewContent } from './FilePreviewContent'
+import { activeSessionIdAtom } from '@/atoms/active-session'
+import { sessionMetaMapAtom } from '@/atoms/sessions'
+import { previewEntriesForSessionAtom } from '@/atoms/preview'
+import { previewPanelSelectedKeyAtom } from '@/atoms/content-panel-ui'
+import { useAppShellContext } from '@/context/AppShellContext'
+
+const entryKey = (entry: import('@/atoms/preview').PreviewEntry): string =>
+  entry.type === 'file' ? `file:${entry.path}` : `md:${entry.title}`
+
+export function PreviewPanel() {
+  const { t } = useTranslation()
+  const activeSessionId = useAtomValue(activeSessionIdAtom)
+  const sessionMetaMap = useAtomValue(sessionMetaMapAtom)
+  const entries = useAtomValue(previewEntriesForSessionAtom)(activeSessionId ?? '')
+  const selectedKey = useAtomValue(previewPanelSelectedKeyAtom)
+  const setSelectedKey = useSetAtom(previewPanelSelectedKeyAtom)
+  const { onOpenFile, onOpenUrl } = useAppShellContext()
+
+  // Keep the selection valid: default to the most recent entry.
+  const effectiveKey = useMemo(() => {
+    if (entries.some((entry) => entryKey(entry) === selectedKey)) return selectedKey
+    return entries.length > 0 ? entryKey(entries[entries.length - 1]) : null
+  }, [entries, selectedKey])
+
+  const selected = entries.find((entry) => entryKey(entry) === effectiveKey) ?? null
+
+  if (!activeSessionId) {
+    return (
+      <>
+        <PanelHeader title={t('contentPanel.title.preview')} />
+        <PanelEmptyState
+          title={t('contentPanel.noActiveSession')}
+          icon={<Eye className="h-6 w-6" />}
+        />
+      </>
+    )
+  }
+
+  const meta = sessionMetaMap.get(activeSessionId)
+
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <PanelHeader
+        title={t('contentPanel.title.preview')}
+        badge={<BoundSessionBadge name={meta?.name} sessionId={activeSessionId} />}
+      />
+
+      {entries.length === 0 ? (
+        <PanelEmptyState
+          title={t('contentPanel.preview.empty')}
+          hint={t('contentPanel.preview.emptyHint')}
+          icon={<Eye className="h-6 w-6" />}
+        />
+      ) : (
+        <>
+          {/* Entry tabs */}
+          <div className="flex shrink-0 items-center gap-1 overflow-x-auto px-2 pb-2 pt-1" role="tablist">
+            {entries.map((entry) => {
+              const key = entryKey(entry)
+              const isActive = key === effectiveKey
+              const label = entry.type === 'file'
+                ? entry.path.split(/[/\\]/).pop() || entry.path
+                : entry.title
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  role="tab"
+                  aria-selected={isActive}
+                  onClick={() => setSelectedKey(isActive ? null : key)}
+                  className={cn(
+                    'flex h-7 max-w-[16rem] shrink-0 items-center gap-1.5 rounded-md border px-2 text-[12px] transition-colors',
+                    isActive
+                      ? 'border-border bg-foreground/[0.05] text-foreground'
+                      : 'border-transparent text-muted-foreground hover:bg-foreground/[0.03]',
+                  )}
+                >
+                  <FileText className="h-3 w-3 shrink-0" />
+                  <span className="truncate">{label}</span>
+                </button>
+              )
+            })}
+          </div>
+
+          {/* Content area */}
+          <div className="min-h-0 flex-1 overflow-hidden border-t border-border/50">
+            {selected ? (
+              selected.type === 'file' ? (
+                <FilePreviewContent
+                  filePath={selected.path}
+                  onOpenUrl={onOpenUrl}
+                  onFileClick={onOpenFile}
+                />
+              ) : (
+                <div className="h-full overflow-auto px-4 py-3">
+                  <Markdown
+                    children={selected.content}
+                    onUrlClick={onOpenUrl}
+                    onFileClick={onOpenFile}
+                  />
+                </div>
+              )
+            ) : (
+              <PanelEmptyState title={t('contentPanel.preview.empty')} />
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}

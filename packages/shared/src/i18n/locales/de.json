@@ -386,6 +386,8 @@
   "contentPanel.files.noFilterMatches": "Keine Dateien entsprechen dem Filter.",
   "contentPanel.noActiveSession": "Keine aktive Sitzung",
   "contentPanel.panelUnavailable": "Dieses Panel ist nicht verfügbar. Versuche, es erneut zu öffnen.",
+  "contentPanel.preview.empty": "Noch nichts geöffnet",
+  "contentPanel.preview.emptyHint": "Öffne eine Datei oder erweitere ein Dokument/Turn-Details im Chat – es erscheint hier.",
   "contentPanel.title.context": "Kontext",
   "contentPanel.title.files": "Dateien",
   "contentPanel.title.preview": "Vorschau",

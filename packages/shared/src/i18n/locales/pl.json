@@ -386,6 +386,8 @@
   "contentPanel.files.noFilterMatches": "Żadne pliki nie pasują do filtra.",
   "contentPanel.noActiveSession": "Brak aktywnej sesji",
   "contentPanel.panelUnavailable": "Ten panel jest niedostępny. Spróbuj otworzyć go ponownie.",
+  "contentPanel.preview.empty": "Nic jeszcze nie otwarto",
+  "contentPanel.preview.emptyHint": "Otwórz plik lub rozwiń dokument/szczegóły tury w czacie, a pojawi się tutaj.",
   "contentPanel.title.context": "Kontekst",
   "contentPanel.title.files": "Pliki",
   "contentPanel.title.preview": "Podgląd",

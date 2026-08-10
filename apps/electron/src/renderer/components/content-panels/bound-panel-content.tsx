@@ -23,6 +23,7 @@ import { PanelEmptyState } from './PanelEmptyState'
 import { ReviewPanel } from './ReviewPanel'
 import { FilesPanel } from './FilesPanel'
 import { ContextPanel } from './ContextPanel'
+import { PreviewPanel } from './PreviewPanel'
 
 /** True for panel types that are rendered by this dispatcher (bound panels). */
 export function isBoundPanelType(panelType: PanelStackEntry['panelType']): boolean {
@@ -47,7 +48,7 @@ export function BoundPanelContent({ entry }: { entry: PanelStackEntry }) {
     case 'context':
       return <ContextPanel />
     case 'preview':
-      return <PanelEmptyState title={t('contentPanel.title.preview')} />
+      return <PreviewPanel />
     default:
       return <PanelEmptyState title={t('contentPanel.panelUnavailable')} />
   }

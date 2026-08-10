@@ -386,6 +386,8 @@
   "contentPanel.files.noFilterMatches": "フィルターに一致するファイルがありません。",
   "contentPanel.noActiveSession": "アクティブなセッションがありません",
   "contentPanel.panelUnavailable": "このパネルは利用できません。再度開いてください。",
+  "contentPanel.preview.empty": "まだ何も開いていません",
+  "contentPanel.preview.emptyHint": "ファイルを開くか、チャットでドキュメントやターンの詳細を展開すると、ここに表示されます。",
   "contentPanel.title.context": "コンテキスト",
   "contentPanel.title.files": "ファイル",
   "contentPanel.title.preview": "プレビュー",

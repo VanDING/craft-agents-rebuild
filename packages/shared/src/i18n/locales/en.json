@@ -386,6 +386,8 @@
   "contentPanel.files.noFilterMatches": "No files match the filter.",
   "contentPanel.noActiveSession": "No active session",
   "contentPanel.panelUnavailable": "This panel is unavailable. Try reopening it.",
+  "contentPanel.preview.empty": "Nothing open yet",
+  "contentPanel.preview.emptyHint": "Open a file, or expand a document or turn details in the chat, and it will appear here.",
   "contentPanel.title.context": "Context",
   "contentPanel.title.files": "Files",
   "contentPanel.title.preview": "Preview",

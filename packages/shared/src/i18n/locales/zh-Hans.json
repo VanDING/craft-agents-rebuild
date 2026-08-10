@@ -386,6 +386,8 @@
   "contentPanel.files.noFilterMatches": "没有匹配筛选条件的文件。",
   "contentPanel.noActiveSession": "没有活跃会话",
   "contentPanel.panelUnavailable": "此面板不可用，请尝试重新打开。",
+  "contentPanel.preview.empty": "还没有打开的内容",
+  "contentPanel.preview.emptyHint": "打开文件，或在对话中展开文档/回合详情，即可在此显示。",
   "contentPanel.title.context": "上下文",
   "contentPanel.title.files": "文件",
   "contentPanel.title.preview": "预览",
