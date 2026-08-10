@@ -93,6 +93,7 @@ import { sessionMetaMapAtom, sendToWorkspaceAtom, type SessionMeta } from "@/ato
 import { sourcesAtom } from "@/atoms/sources"
 import { skillsAtom } from "@/atoms/skills"
 import { activeSessionIdAtom } from "@/atoms/active-session"
+import { expandedPanelIdAtom } from "@/atoms/overlay"
 import { panelStackAtom, panelCountAtom, focusedPanelIdAtom, focusedSessionIdAtom, focusNextPanelAtom, focusPrevPanelAtom, parseSessionIdFromRoute, closePanelAtom } from "@/atoms/panel-stack"
 import { browserInstancesAtom, activeBrowserInstanceIdAtom, filterInstancesForWorkspace } from "@/atoms/browser-pane"
 import { hiddenPanelsAtom, openPanelAtom, restorePanelAtom } from "@/atoms/hidden-panels"
@@ -586,6 +587,7 @@ function AppShellContent({
   const panelStack = useAtomValue(panelStackAtom)
   const panelCount = useAtomValue(panelCountAtom)
   const focusedSessionId = useAtomValue(focusedSessionIdAtom)
+  const expandedPanelId = useAtomValue(expandedPanelIdAtom)
 
   // Navigate the focused panel to a session.
   // If the session is already open in another panel, focus that panel instead.
@@ -2405,7 +2407,9 @@ function AppShellContent({
   return (
     <AppShellProvider value={appShellContextValue}>
         {/* === TOP BAR === */}
-        <TopBar
+        {/* Hidden while a panel is expanded fullscreen: the fixed drag region would
+            swallow clicks on the overlay's restore button (top-2). Esc still works. */}
+        {!expandedPanelId && <TopBar
           workspaces={workspaces}
           activeWorkspaceId={activeWorkspaceId}
           onSelectWorkspace={onSelectWorkspace}
@@ -2430,7 +2434,7 @@ function AppShellContent({
           isCompact={isAutoCompact}
           onOpenPanel={openPanel}
           onOpenBrowser={() => { void handleFocusOrCreateBrowser() }}
-        />
+        />}
 
       {/* === OUTER LAYOUT: Unified Panel Stack | Right Sidebar === */}
       <div
