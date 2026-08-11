@@ -8,7 +8,14 @@ import type { SendMessageReq } from '../adapters/wechat/ilink/api/types'
 const realFetch = globalThis.fetch
 
 let fetchCalls = 0
-let requestBodies: Array<{ msg?: { message_state?: number; client_id?: string } }> = []
+let requestBodies: Array<{
+  msg?: {
+    message_state?: number
+    client_id?: string
+    item_list?: Array<{ type?: number; text_item?: { text?: string; content?: string } }>
+  }
+  base_info?: { channel_version?: string; bot_agent?: string }
+}> = []
 
 /**
  * Stub globalThis.fetch with a single response that repeats for every call.
@@ -53,7 +60,7 @@ const req: { body: SendMessageReq } = {
           update_time_ms: 0,
           is_completed: true,
           msg_id: 'm1',
-          text_item: { content: 'hi' },
+          text_item: { text: 'hi' },
         },
       ],
     },
@@ -136,5 +143,21 @@ describe('sendMessageWeixin', () => {
     await sendMessageWeixin({ to: 'u1', text: 'hi', opts: sendOpts })
     expect(requestBodies[0]?.msg?.message_state).toBe(MessageState.FINISH)
     expect(requestBodies[0]?.msg?.client_id).toBeTruthy()
+  })
+
+  it('carries the text under text_item.text (wire format regression: was content)', async () => {
+    stubFetch(200, '')
+    await sendMessageWeixin({ to: 'u1', text: 'hi', opts: sendOpts })
+    const item = requestBodies[0]?.msg?.item_list?.[0]
+    expect(item?.type).toBe(1)
+    expect(item?.text_item?.text).toBe('hi')
+    expect(item?.text_item?.content).toBeUndefined()
+  })
+
+  it('sends base_info (channel_version + bot_agent) on every request (upstream parity)', async () => {
+    stubFetch(200, '')
+    await sendMessageWeixin({ to: 'u1', text: 'hi', opts: sendOpts })
+    expect(requestBodies[0]?.base_info?.channel_version).toBe('2.4.4')
+    expect(requestBodies[0]?.base_info?.bot_agent).toMatch(/^CraftAgent\//)
   })
 })

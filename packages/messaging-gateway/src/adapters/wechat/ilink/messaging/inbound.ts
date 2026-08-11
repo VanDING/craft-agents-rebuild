@@ -296,7 +296,7 @@ export function isMediaItem(item: MessageItem): boolean {
  * Extract the text body from a list of message items.
  *
  * This function:
- * - Concatenates text from all `TEXT` items (`text_item.content`).
+ * - Concatenates text from all `TEXT` items (`text_item.text`).
  * - For media items referencing a quoted message (`ref_msg`), inserts a short
  *   placeholder indicating the quoted content.
  * - For `VOICE` items with a transcription (`voice_item.text`), includes the
@@ -311,8 +311,8 @@ export function bodyFromItemList(itemList?: MessageItem[]): string {
   const parts: string[] = [];
 
   for (const item of itemList) {
-    if (item.type === MessageItemType.TEXT && item.text_item) {
-      parts.push(item.text_item.content);
+    if (item.type === MessageItemType.TEXT && item.text_item?.text) {
+      parts.push(item.text_item.text);
     } else if (isMediaItem(item) && item.ref_msg) {
       parts.push('[Quoted media]');
     } else if (item.type === MessageItemType.VOICE && item.voice_item?.text) {

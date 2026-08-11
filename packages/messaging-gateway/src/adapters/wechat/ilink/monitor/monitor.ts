@@ -26,6 +26,15 @@ import type { GetUpdatesResp, WeixinMessage } from '../api/types';
 // Types
 // ---------------------------------------------------------------------------
 
+/**
+ * Consecutive redeliveries of the same failed batch before the ack-based
+ * cursor is forced forward. Without this, a single persistently-failing
+ * message (e.g. an outbound reply the server rejects) wedges the whole
+ * channel: the cursor never advances and every newer message sits behind
+ * the poison one forever.
+ */
+export const MAX_FAILED_BATCH_REDELIVERIES = 5;
+
 export interface MonitorWeixinOpts {
   /** iLink provider base URL. */
   baseUrl: string;
@@ -56,6 +65,12 @@ export interface MonitorWeixinOpts {
    * monitoring.
    */
   onPoll?: (resp: GetUpdatesResp) => void;
+  /**
+   * Invoked when the server reports the bot session as expired
+   * (`ret`/`errcode` = -14). The host can surface a "re-scan the QR code"
+   * state to the user; the monitor pauses polling for 60 minutes.
+   */
+  onSessionExpired?: (accountId: string) => void;
   /**
    * Simple log / error functions provided by the runtime (e.g. OpenClaw
    * framework).  When present these take precedence over the project-wide
@@ -132,6 +147,7 @@ export async function monitorWeixinProvider(
     abortSignal,
     longPollTimeoutMs,
     onPoll,
+    onSessionExpired,
     runtime,
   } = opts;
 
@@ -164,6 +180,10 @@ export async function monitorWeixinProvider(
 
   // Consecutive-error counter for backoff.
   let consecutiveErrors = 0;
+
+  // Failed-batch redelivery tracking for the ack-cursor escape hatch.
+  let lastFailedBuf: string | undefined;
+  let failedBatchCount = 0;
 
   // ---- Poll loop ----
   while (!abortSignal?.aborted) {
@@ -208,11 +228,18 @@ export async function monitorWeixinProvider(
       // -------------------------------------------------------------------
       // Session expired
       // -------------------------------------------------------------------
-      if (resp.ret === SESSION_EXPIRED_ERRCODE) {
+      // The live server reports the expired-session code (-14) via `errcode`
+      // (with `ret` absent); older builds used `ret`. Check both, otherwise
+      // a dead session loops forever with backoff instead of pausing.
+      if (
+        resp.ret === SESSION_EXPIRED_ERRCODE ||
+        resp.errcode === SESSION_EXPIRED_ERRCODE
+      ) {
         warn(
-          `session expired for account "${accountId}" (ret=${resp.ret}), pausing 60 min`,
+          `session expired for account "${accountId}" (ret=${resp.ret} errcode=${resp.errcode}), pausing 60 min`,
         );
         pauseSession(accountId);
+        opts.onSessionExpired?.(accountId);
         // The next loop iteration will hit the pause guard above.
         continue;
       }
@@ -220,7 +247,15 @@ export async function monitorWeixinProvider(
       // -------------------------------------------------------------------
       // Other API-level errors
       // -------------------------------------------------------------------
-      if (resp.ret !== 0) {
+      // A successful response may omit `ret`/`errcode` entirely — the live
+      // server returns `{msgs, sync_buf, get_updates_buf}` with no `ret`.
+      // Only DEFINED non-zero codes are errors; `ret !== 0` on an undefined
+      // field classified every successful poll as an error and discarded
+      // every message batch.
+      const isApiError =
+        (resp.ret !== undefined && resp.ret !== 0) ||
+        (resp.errcode !== undefined && resp.errcode !== 0);
+      if (isApiError) {
         consecutiveErrors++;
         const delay = consecutiveErrors >= 3 ? 30_000 : 2_000;
         warn(
@@ -266,6 +301,29 @@ export async function monitorWeixinProvider(
       if (resp.get_updates_buf && allDispatched) {
         buf = resp.get_updates_buf;
         saveGetUpdatesBuf(bufFilePath, buf, opts.stateRoot);
+        lastFailedBuf = undefined;
+        failedBatchCount = 0;
+      } else if (resp.get_updates_buf && !allDispatched) {
+        // Escape hatch: the same batch failing forever must not starve every
+        // newer message. After MAX_FAILED_BATCH_REDELIVERIES consecutive
+        // identical failed batches, force the cursor forward — the poison
+        // message is dropped (at-least-once degrades to at-most-once for
+        // that batch) and the channel unblocks.
+        if (resp.get_updates_buf === lastFailedBuf) {
+          failedBatchCount += 1;
+        } else {
+          lastFailedBuf = resp.get_updates_buf;
+          failedBatchCount = 1;
+        }
+        if (failedBatchCount >= MAX_FAILED_BATCH_REDELIVERIES) {
+          err(
+            `batch failed ${failedBatchCount} consecutive redeliveries for account "${accountId}"; advancing sync cursor to unblock the channel — the failed messages are dropped`,
+          );
+          buf = resp.get_updates_buf;
+          saveGetUpdatesBuf(bufFilePath, buf, opts.stateRoot);
+          lastFailedBuf = undefined;
+          failedBatchCount = 0;
+        }
       }
     } catch (cause) {
       // Network errors or unexpected failures from getUpdates.

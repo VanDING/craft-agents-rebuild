@@ -1,10 +1,10 @@
 // Vendored from @tencent-weixin/openclaw-weixin@2.4.4 (MIT, Copyright (C) 2026 Tencent).
 // See ../LICENSE and ../README.md (paths relative to ilink/) for license text and local adaptations.
 
-/** iLink base app information. */
+/** Base info payload sent with every request (upstream: channel_version + bot_agent). */
 export interface BaseInfo {
-  appid: string;
-  [key: string]: unknown;
+  channel_version: string;
+  bot_agent: string;
 }
 
 /** Upload media type constants. */
@@ -65,9 +65,9 @@ export const MessageState = {
 } as const;
 export type MessageState = (typeof MessageState)[keyof typeof MessageState];
 
-/** Text message content item. */
+/** Text message content item. Matches the upstream wire format (`text_item.text`). */
 export interface TextItem {
-  content: string;
+  text?: string;
 }
 
 /** CDN media descriptor with encryption parameters. */

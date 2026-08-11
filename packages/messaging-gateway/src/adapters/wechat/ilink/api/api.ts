@@ -28,7 +28,7 @@ export const CHANNEL_VERSION = '2.4.4';
 export const ILINK_APP_ID = 'bot';
 
 /** Default bot-agent value used when no config override is available. */
-export const DEFAULT_BOT_AGENT = 'CraftAgent/0.9.6';
+export const DEFAULT_BOT_AGENT = 'CraftAgent/0.11.4';
 
 /**
  * Build a 4-byte client-version integer from a semver string.
@@ -145,10 +145,15 @@ export function sanitizeBotAgent(raw: string | undefined): string {
 }
 
 /**
- * Build a standard `BaseInfo` payload using the default iLink app identifier.
+ * Build the `base_info` payload included in every API request (upstream
+ * parity: `channel_version` + `bot_agent`). The upstream plugin sends this
+ * on every endpoint; the local vendoring dropped it.
  */
 export function buildBaseInfo(): BaseInfo {
-  return { appid: ILINK_APP_ID };
+  return {
+    channel_version: CHANNEL_VERSION,
+    bot_agent: sanitizeBotAgent(loadConfigBotAgent()),
+  };
 }
 
 // ── Low-level fetch helpers ────────────────────────────────────────────────
@@ -353,6 +358,7 @@ export async function getUpdates(
         session_id: params.session_id,
         get_updates_buf: params.get_updates_buf,
         longpolling_timeout_ms: params.longpolling_timeout_ms,
+        base_info: buildBaseInfo(),
       },
       token: params.token,
       timeoutMs,
@@ -394,6 +400,7 @@ export async function getUploadUrl(
       file_size: params.file_size,
       file_name: params.file_name,
       md5: params.md5,
+      base_info: buildBaseInfo(),
     },
     token: params.token,
     timeoutMs: params.timeoutMs,
@@ -467,7 +474,7 @@ export async function sendMessage(
       const respText = await apiPostFetch({
         baseUrl: params.baseUrl,
         endpoint: 'ilink/bot/sendmessage',
-        body: params.body,
+        body: { ...params.body, base_info: buildBaseInfo() },
         token: params.token,
         timeoutMs: params.timeoutMs,
         label: 'sendMessage',
@@ -530,6 +537,7 @@ export async function getConfig(
     body: {
       ilink_user_id: params.ilinkUserId,
       context_token: params.contextToken,
+      base_info: buildBaseInfo(),
     },
     token: params.token,
     timeoutMs: params.timeoutMs,
@@ -547,7 +555,7 @@ export async function sendTyping(
   await apiPostFetch({
     baseUrl: params.baseUrl,
     endpoint: 'ilink/bot/sendtyping',
-    body: params.body,
+    body: { ...params.body, base_info: buildBaseInfo() },
     token: params.token,
     timeoutMs: params.timeoutMs,
     label: 'sendTyping',
@@ -564,7 +572,7 @@ export async function notifyStop(
   const respText = await apiPostFetch({
     baseUrl: params.baseUrl,
     endpoint: 'ilink/bot/msg/notifystop',
-    body: {},
+    body: { base_info: buildBaseInfo() },
     token: params.token,
     timeoutMs: params.timeoutMs,
     label: 'notifyStop',
@@ -582,7 +590,7 @@ export async function notifyStart(
   const respText = await apiPostFetch({
     baseUrl: params.baseUrl,
     endpoint: 'ilink/bot/msg/notifystart',
-    body: {},
+    body: { base_info: buildBaseInfo() },
     token: params.token,
     timeoutMs: params.timeoutMs,
     label: 'notifyStart',

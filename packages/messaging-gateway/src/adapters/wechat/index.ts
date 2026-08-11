@@ -284,6 +284,7 @@ export class WeChatAdapter implements PlatformAdapter {
   private logger?: MessagingLogger
   private messageHandler?: (msg: IncomingMessage) => Promise<void>
   private buttonHandler?: (press: ButtonPress) => Promise<void>
+  private sessionExpiredHandler?: () => void
   private readonly pending = new Map<
     string,
     { msgs: WeixinMessage[]; timer: ReturnType<typeof setTimeout> }
@@ -336,6 +337,7 @@ export class WeChatAdapter implements PlatformAdapter {
       abortSignal: this.abort.signal,
       runtime: { log, error: errLog },
       onMessage: (msg) => this.handleInbound(msg),
+      onSessionExpired: () => this.sessionExpiredHandler?.(),
     }).catch((err) => {
       this.connected = false
       this.logger?.error(`wechat monitor stopped: ${String(err)}`, {
@@ -359,6 +361,15 @@ export class WeChatAdapter implements PlatformAdapter {
 
   onMessage(handler: (msg: IncomingMessage) => Promise<void>): void {
     this.messageHandler = handler
+  }
+
+  /**
+   * Register a callback fired when the iLink server reports the bot session
+   * as expired (errcode/ret -14). The host uses it to flip the platform
+   * runtime state to an error so the user is prompted to re-scan the QR.
+   */
+  onSessionExpired(handler: () => void): void {
+    this.sessionExpiredHandler = handler
   }
 
   onButtonPress(handler: (press: ButtonPress) => Promise<void>): void {

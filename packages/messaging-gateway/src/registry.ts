@@ -1688,6 +1688,23 @@ export class MessagingGatewayRegistry implements IMessagingGatewayRegistry {
 
     try {
       const adapter = new WeChatAdapter({ workspaceId })
+      // A dead iLink session (errcode/ret -14) must surface in the UI —
+      // otherwise the platform stays "connected" while every poll fails.
+      // The monitor pauses for 60 min and fires this once per expiry; the
+      // user re-scans the QR to reconnect.
+      adapter.onSessionExpired(() => {
+        this.log.warn('WeChat session expired, marking runtime state as error', {
+          event: 'wechat_session_expired',
+          workspaceId,
+          accountId: creds.accountId,
+        })
+        this.setPlatformRuntime(workspaceId, state, 'wechat', {
+          configured: true,
+          connected: false,
+          state: 'error',
+          lastError: 'WeChat session expired — re-scan the QR code to reconnect.',
+        })
+      })
       await adapter.initialize({
         token: cred.value,
         logger: this.log.child({

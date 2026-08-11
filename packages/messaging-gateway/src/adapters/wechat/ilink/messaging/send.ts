@@ -85,7 +85,7 @@ function buildTextMessageReq(
         update_time_ms: Date.now(),
         is_completed: true,
         msg_id: clientId,
-        text_item: { content: text },
+        text_item: { text },
       },
     ],
     clientId,
