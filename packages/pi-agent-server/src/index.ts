@@ -966,6 +966,12 @@ async function queryLlm(request: LLMQueryRequest): Promise<LLMQueryResult> {
       );
     }
 
+    // Prompt for this ephemeral session, captured before loader creation so the
+    // loader's getPrompt closure reads it (TDZ-safe) and never touches the
+    // module-level prompt used by the main session.
+    const promptForSession =
+      request.systemPrompt ?? 'Reply with ONLY the requested text. No explanation.';
+
     // Create minimal ephemeral session
     const ephemeralOptions: CreateAgentSessionOptions = {
       cwd: resolvedCwd(),
@@ -973,7 +979,11 @@ async function queryLlm(request: LLMQueryRequest): Promise<LLMQueryResult> {
       tools: [],
       sessionManager: PiSessionManager.inMemory(),
       model: piModel,
-      resourceLoader: await createCraftResourceLoader({ cwd: resolvedCwd(), agentDir: resolveIsolatedAgentDir() }),
+      resourceLoader: await createCraftResourceLoader({
+        cwd: resolvedCwd(),
+        agentDir: resolveIsolatedAgentDir(),
+        getPrompt: () => promptForSession,
+      }),
     };
 
     const { session: ephemeralSession } = await createAgentSession(ephemeralOptions);
@@ -987,12 +997,6 @@ async function queryLlm(request: LLMQueryRequest): Promise<LLMQueryResult> {
     }
 
     debugLog(`[queryLlm] Created ephemeral session: ${ephemeralSession.sessionId}`);
-
-    // Supply the system prompt via the loader's before_agent_start hook (re-applied
-    // every turn; see craft-resource-loader.ts).
-    const promptForSession =
-      request.systemPrompt ?? 'Reply with ONLY the requested text. No explanation.';
-    setCraftSystemPrompt(promptForSession);
 
     // Collect response text and errors from events
     let result = '';

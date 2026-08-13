@@ -18,4 +18,15 @@ describe('createCraftResourceLoader', () => {
     const loader = await createCraftResourceLoader({ cwd: dir, agentDir: join(dir, '.pi-agent') });
     expect(loader.getSystemPrompt()).toBeUndefined();
   });
+
+  it('honors an injected getPrompt instead of the module-level prompt (ephemeral isolation)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'craft-loader-'));
+    setCraftSystemPrompt('MODULE_PROMPT');
+    const loader = await createCraftResourceLoader({
+      cwd: dir,
+      agentDir: join(dir, '.pi-agent'),
+      getPrompt: () => 'EPHEMERAL',
+    });
+    expect(loader.getSystemPrompt()).toBe('EPHEMERAL');
+  });
 });
