@@ -139,7 +139,7 @@ export const BUILT_IN_CONNECTION_TEMPLATES: Record<string, {
   piAuthProvider?: string
 }> = {
   'anthropic-api': {
-    name: (h) => h ? 'Custom Anthropic-Compatible' : 'Anthropic (API Key)',
+    name: (h) => h ? 'Custom Claude-Compatible' : 'Claude (via Pi) (API Key)',
     providerType: (h) => h ? 'pi_compat' : 'pi' as LlmProviderType,
     authType: (h) => h ? 'api_key_with_endpoint' : 'api_key',
   },
@@ -226,7 +226,7 @@ export function createBuiltInConnection(slug: string, baseUrl?: string | null): 
     ? template.name(hasCustomEndpoint)
     : template.name
 
-  // Append suffix number to name for derived connections (e.g. 'anthropic-api-2' → 'Anthropic (API Key) 2')
+  // Append suffix number to name for derived connections (e.g. 'anthropic-api-2' → 'Claude (via Pi) (API Key) 2')
   const suffixMatch = slug.match(/-(\d+)$/)
   if (suffixMatch && !BUILT_IN_CONNECTION_TEMPLATES[slug]) {
     name = `${name} ${suffixMatch[1]}`

@@ -698,6 +698,7 @@
   "onboarding.completion.settingUp": "Beállítás folyamatban...",
   "onboarding.completion.startChat": "Csak kezdj egy csevegést, és máris munkához láthatsz.",
   "onboarding.credentials.apiConfiguration": "API-konfiguráció",
+  "onboarding.credentials.apiKeyHint": "Válassz egy szolgáltatói előbeállítást, és add meg az API-kulcsodat. Opcionálisan egyéni végpontot is beállíthatsz az OpenRouter, Ollama vagy kompatibilis API-khoz.",
   "onboarding.credentials.browserOpenedGitHub": "Egy böngészőablaknak kellett volna megnyílnia a github.com/login/device oldalon",
   "onboarding.credentials.browserOpenedOAuth": "A hitelesítéshez böngészőablaknak kellett volna megnyílnia. Ha másik gépen vagy, illeszd be a végső átirányítási URL-t, amikor a rendszer kéri.",
   "onboarding.credentials.chatGPTConnected": "Csatlakoztatva! A ChatGPT-előfizetésed készen áll.",

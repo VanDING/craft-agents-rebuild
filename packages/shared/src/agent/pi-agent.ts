@@ -947,9 +947,6 @@ export class PiAgent extends BaseAgent {
       case 'ready':
         // Subprocess initialized, callback server listening
         this.callbackPort = (msg.callbackPort as number) || 0;
-        // Audit M-2: token required to call the local call_llm/spawn-session
-        // HTTP endpoints; forward to any session-mcp-server spawn via
-        // CRAFT_LLM_CALLBACK_TOKEN.
         this.callbackToken = (msg.callbackToken as string) || '';
         if (msg.sessionId) {
           this.piSessionId = msg.sessionId as string;

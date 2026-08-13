@@ -346,9 +346,7 @@ export function CredentialsStep({
   // --- API Key flow ---
   // Determine provider type and description based on selected method
   const providerType = isPiApiKey ? 'pi_api_key' : 'anthropic'
-  const apiKeyDescription = isPiApiKey
-    ? "Select a provider preset and enter the API key. For arbitrary Anthropic-compatible endpoints, use Anthropic API Key mode."
-    : "Enter your API key. Optionally configure a custom endpoint for OpenRouter, Ollama, or compatible APIs."
+  const apiKeyDescription = t('onboarding.credentials.apiKeyHint')
 
   const apiKeyInputKey = [
     apiSetupMethod,

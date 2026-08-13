@@ -98,11 +98,11 @@ describe('groupConnectionsByProvider', () => {
     expect(groupConnectionsByProvider([])).toEqual([])
   })
 
-  test('groups anthropic providers into "Anthropic"', () => {
+  test('groups anthropic providers into "Pi"', () => {
     const a = conn('a', 'pi')
     const b = conn('b', 'pi')
     const result = groupConnectionsByProvider([a, b])
-    expect(result).toEqual([['Anthropic', [a, b]]])
+    expect(result).toEqual([['Pi', [a, b]]])
   })
 
   test('preserves intra-group order', () => {
@@ -113,11 +113,11 @@ describe('groupConnectionsByProvider', () => {
     expect(result[0][1].map(c => c.slug)).toEqual(['first', 'second', 'third'])
   })
 
-  test('places "Anthropic" group before pi groups (display order)', () => {
+  test('places "Pi" group before pi groups (display order)', () => {
     const piConn = conn('pi-1', 'pi')
     const anth = conn('anthropic-1', 'pi')
     const result = groupConnectionsByProvider([piConn, anth])
-    expect(result.map(([k]) => k)).toEqual(['Anthropic'])
+    expect(result.map(([k]) => k)).toEqual(['Pi'])
   })
 
   test('"pi_compat" with localhost baseUrl goes to "Local"', () => {
@@ -135,9 +135,9 @@ describe('groupConnectionsByProvider', () => {
   test('drops empty groups from the output', () => {
     const a = conn('a', 'pi')
     const result = groupConnectionsByProvider([a])
-    // Only "Anthropic" appears; "Local" and "Craft Agents Backend" are dropped.
+    // Only "Pi" appears; "Local" and "Craft Agents Backend" are dropped.
     expect(result.length).toBe(1)
-    expect(result[0][0]).toBe('Anthropic')
+    expect(result[0][0]).toBe('Pi')
   })
 
   test('full mixed input — anthropic + local + remote pi_compat + pi', () => {
@@ -147,7 +147,7 @@ describe('groupConnectionsByProvider', () => {
     const pi = conn('p', 'pi')
     const result = groupConnectionsByProvider([anth, local, remote, pi])
     expect(result.map(([k, conns]) => [k, conns.map(c => c.slug)])).toEqual([
-      ['Anthropic', ['a', 'p']],
+      ['Pi', ['a', 'p']],
       ['Local', ['ollama']],
       ['Craft Agents Backend', ['or']],
     ])

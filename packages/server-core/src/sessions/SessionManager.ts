@@ -881,7 +881,7 @@ interface ManagedSession {
   // Parent session's storage path (used only when branchContextStrategy === 'sdk-fork')
   branchFromSessionPath?: string
   // Parent session's sdkCwd — needed so the fork subprocess uses the correct
-  // ~/.claude/projects/{cwd-hash}/ directory to find the parent's session file.
+  // {sessionPath}/.pi-sessions/ directory to find the parent's session file (Pi SDK v3 JSONL).
   branchFromSdkCwd?: string
   // SDK assistant message UUID at the branch point — used as resumeSessionAt
   // to trim the forked conversation at the branch point.
@@ -2694,7 +2694,7 @@ export class SessionManager implements ISessionManager {
         ? getSessionStoragePath(workspaceRootPath, options.branchFromSessionId)
         : undefined
       // Capture parent's sdkCwd so the child SDK subprocess can find the parent's
-      // session file (stored under ~/.claude/projects/{cwd-hash}/).
+      // session file (stored under {sessionPath}/.pi-sessions/, Pi SDK v3 JSONL).
       const branchFromSdkCwd = branchContextStrategy === 'sdk-fork'
         ? (sourceManaged?.sdkCwd || sourceSession.sdkCwd)
         : undefined
@@ -3237,7 +3237,7 @@ export class SessionManager implements ISessionManager {
       if (connection) {
         sessionLog.info(`Using LLM connection "${connection.slug}" (${connection.providerType}) for session ${managed.id}`)
       } else {
-        sessionLog.warn(`No LLM connection found for session ${managed.id}, using default anthropic provider`)
+        sessionLog.warn(`No LLM connection found for session ${managed.id}, using default pi provider`)
       }
 
       // Set session directory for tool metadata cross-process sharing.
@@ -3495,7 +3495,7 @@ export class SessionManager implements ISessionManager {
         sessionLog.info(msg)
       }
 
-      // Unified auth callback — replaces per-backend onChatGptAuthRequired/onGithubAuthRequired
+      // Unified auth callback (onBackendAuthRequired)
       managed.agent.onBackendAuthRequired = (reason: string) => {
         sessionLog.warn(`Backend auth required for session ${managed.id}: ${reason}`)
         this.sendEvent({
@@ -4345,7 +4345,7 @@ export class SessionManager implements ISessionManager {
 
           // Capture the target's busy state BEFORE delivery so the sender gets a
           // truthful ack. A busy (mid-turn) target queues the message and replays
-          // it after the current turn (anthropic defaults to 'queue'); an idle
+          // it after the current turn (midStream is always 'steer' in the Pi backend); an idle
           // target starts processing immediately. sendMessage throws for an
           // unknown session — that rejection propagates to the handler's catch.
           const targetBusy = this.sessions.get(sessionId)?.isProcessing === true

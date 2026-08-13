@@ -90,7 +90,7 @@ interface Preset {
   placeholder?: string
 }
 
-// Anthropic provider presets - for Claude Code backend
+// Anthropic-compatible provider presets - routed via the Pi backend
 // Also used by Pi API key flow (same providers, routed via Pi SDK)
 const ANTHROPIC_PRESETS: Preset[] = [
   { key: 'anthropic', label: 'Anthropic', url: 'https://api.anthropic.com', placeholder: 'sk-ant-...' },
@@ -137,7 +137,7 @@ const OPENAI_COMPAT_CUSTOM_URL_PRESETS: ReadonlySet<string> = new Set(['manifest
 
 // OpenAI provider presets - for Codex backend
 // Only direct OpenAI is supported; 3PP providers (OpenRouter, Vercel, Ollama) should be
-// configured via the Anthropic/Claude connection which routes through the Claude Agent SDK.
+// configured via the Claude connection which routes through the Pi backend.
 const OPENAI_PRESETS: Preset[] = [
   { key: 'openai', label: 'OpenAI', url: '' },
 ]

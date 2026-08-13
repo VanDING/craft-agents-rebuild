@@ -49,10 +49,10 @@ const GENERATE_CLIENT_TIMEOUT_MS = 200_000
 
 // ---------------------------------------------------------------------------
 // Model catalog — real provider→model groups (from the workspace's connections),
-// with an Anthropic fallback when nothing is connected yet.
+// with a Claude (via Pi) fallback when nothing is connected yet.
 // ---------------------------------------------------------------------------
 const FALLBACK_MODEL_GROUPS: KanbanModelProviderGroup[] = [
-  { provider: 'anthropic', label: 'Anthropic', models: MODEL_REGISTRY.map((m) => ({ id: m.id, name: m.name })) },
+  { provider: 'anthropic', label: 'Claude (via Pi)', models: MODEL_REGISTRY.map((m) => ({ id: m.id, name: m.name })) },
 ]
 function resolveModelName(groups: KanbanModelProviderGroup[], id: string): string {
   for (const g of groups) {

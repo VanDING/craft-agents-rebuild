@@ -698,6 +698,7 @@
   "onboarding.completion.settingUp": "Konfigurowanie...",
   "onboarding.completion.startChat": "Rozpocznij czat i zabierz się do pracy.",
   "onboarding.credentials.apiConfiguration": "Konfiguracja API",
+  "onboarding.credentials.apiKeyHint": "Wybierz wstępnie ustawionego dostawcę i wprowadź swój klucz API. Opcjonalnie możesz skonfigurować niestandardowy endpoint dla OpenRouter, Ollama lub kompatybilnych API.",
   "onboarding.credentials.browserOpenedGitHub": "Powinno otworzyć się okno przeglądarki na github.com/login/device",
   "onboarding.credentials.browserOpenedOAuth": "Powinno otworzyć się okno przeglądarki do uwierzytelnienia. Jeśli jesteś na innym urządzeniu, wklej finalny adres przekierowania po wyświetleniu monitu.",
   "onboarding.credentials.chatGPTConnected": "Połączono! Twoja subskrypcja ChatGPT jest gotowa.",

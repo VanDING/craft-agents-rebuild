@@ -698,6 +698,7 @@
   "onboarding.completion.settingUp": "Setting up...",
   "onboarding.completion.startChat": "Just start a chat and get to work.",
   "onboarding.credentials.apiConfiguration": "API Configuration",
+  "onboarding.credentials.apiKeyHint": "Select a provider preset and enter your API key. Optionally configure a custom endpoint for OpenRouter, Ollama, or compatible APIs.",
   "onboarding.credentials.browserOpenedGitHub": "A browser window should have opened to github.com/login/device",
   "onboarding.credentials.browserOpenedOAuth": "A browser window should have opened for authentication. If you are on another machine, paste the final redirect URL below when prompted.",
   "onboarding.credentials.chatGPTConnected": "Connected! Your ChatGPT subscription is ready.",

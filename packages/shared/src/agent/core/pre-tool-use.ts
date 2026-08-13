@@ -2,11 +2,8 @@
  * Shared PreToolUse utilities and centralized PreToolUse pipeline.
  *
  * Individual utility functions (path expansion, skill qualification, etc.)
- * are used by the centralized `runPreToolUseChecks()` pipeline, which both
- * agent backends (Claude and Pi) call with normalized input and then translate
- * the result to their SDK-specific format. Pi hosts non-Anthropic model
- * providers (OpenAI, GitHub Copilot, Bedrock, etc.) under a single backend,
- * so they inherit this pipeline transparently.
+ * are used by the centralized `runPreToolUseChecks()` pipeline, called by the
+ * Pi backend's permission pipeline with normalized input.
  *
  * Pipeline steps:
  * 1. Permission mode check: Block tools disallowed by current mode

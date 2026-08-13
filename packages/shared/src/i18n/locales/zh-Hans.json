@@ -698,6 +698,7 @@
   "onboarding.completion.settingUp": "设置中...",
   "onboarding.completion.startChat": "开始聊天，开始工作。",
   "onboarding.credentials.apiConfiguration": "API 配置",
+  "onboarding.credentials.apiKeyHint": "选择一个提供方预设并输入您的 API 密钥。可选:为 OpenRouter、Ollama 或兼容 API 配置自定义端点。",
   "onboarding.credentials.browserOpenedGitHub": "浏览器应已打开 github.com/login/device",
   "onboarding.credentials.browserOpenedOAuth": "浏览器窗口应已打开进行身份验证。如果您在另一台机器上,请在提示时粘贴最终的跳转 URL。",
   "onboarding.credentials.chatGPTConnected": "已连接! ChatGPT 订阅已就绪。",

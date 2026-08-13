@@ -411,16 +411,11 @@ export abstract class BaseAgent implements AgentBackend {
    *
    * WHY THIS IS ON BaseAgent:
    * -------------------------
-   * Session-scoped tools (SubmitPlan, source_oauth_trigger, etc.) run in an
-   * EXTERNAL MCP server subprocess (packages/session-mcp-server). That subprocess
-   * has its own process memory, so when it calls getSessionScopedToolCallbacks(),
-   * the callback registry is empty — it was populated in THIS process, not the subprocess.
+   * Session tools execute in the main process; the Pi subprocess receives them
+   * as proxy tool definitions via register_tools.
    *
-   * Instead, PiAgent detects session MCP tool completions from its own event
-   * stream and calls THIS shared method to fire the appropriate callback.
-   *
-   * ClaudeAgent doesn't need this — its session-scoped tools run in-process
-   * via Claude Agent SDK, so the callback registry works directly.
+   * PiAgent detects session MCP tool completions from its own event stream and
+   * calls THIS shared method to fire the appropriate callback.
    *
    * CALLBACKS FIRED:
    * - SubmitPlan → this.onPlanSubmitted(planPath)
@@ -713,9 +708,9 @@ export abstract class BaseAgent implements AgentBackend {
 
   /**
    * Get mini agent configuration for provider-specific application.
-   * Returns centralized config that each backend interprets appropriately:
-   * - ClaudeAgent: Uses tools array, mcpServers filter, maxThinkingTokens: 0
-   * - PiAgent: Applies tool filter + minimizeThinking via runtime config
+   * Returns centralized config that PiAgent applies: tool filter +
+   * minimizeThinking, with thinking levels mapped via THINKING_TO_PI and
+   * applied through the set_thinking_level RPC.
    */
   getMiniAgentConfig(): MiniAgentConfig {
     const enabled = this.isMiniAgent();

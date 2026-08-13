@@ -698,6 +698,7 @@
   "onboarding.completion.settingUp": "設定中...",
   "onboarding.completion.startChat": "チャットを始めてすぐに作業できます。",
   "onboarding.credentials.apiConfiguration": "APIの設定",
+  "onboarding.credentials.apiKeyHint": "プロバイダーのプリセットを選択し、APIキーを入力してください。オプションで、OpenRouter、Ollama、または互換性のあるAPI用のカスタムエンドポイントを設定できます。",
   "onboarding.credentials.browserOpenedGitHub": "github.com/login/deviceへのブラウザウィンドウが開いているはずです",
   "onboarding.credentials.browserOpenedOAuth": "認証用のブラウザウィンドウが開いているはずです。別のマシンの場合は、プロンプトが表示されたら最終的なリダイレクトURLを貼り付けてください。",
   "onboarding.credentials.chatGPTConnected": "接続しました！ChatGPTサブスクリプションが利用可能です。",

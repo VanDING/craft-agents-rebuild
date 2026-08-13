@@ -1,9 +1,9 @@
 /**
  * PermissionManager - Centralized Tool Permission Evaluation
  *
- * Provides a unified interface for checking tool permissions that both
- * ClaudeAgent and PiAgent can use. Delegates to the existing mode-manager
- * implementation to ensure consistent behavior.
+ * Provides a unified interface for checking tool permissions used by the Pi
+ * backend. Delegates to the existing mode-manager implementation to ensure
+ * consistent behavior.
  *
  * Key responsibilities:
  * - Evaluate tool calls against permission mode (explore/ask/execute)

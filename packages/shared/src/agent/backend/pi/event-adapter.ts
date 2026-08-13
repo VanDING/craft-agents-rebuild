@@ -58,7 +58,7 @@ type PiEvent = PiAgentEvent | AgentSessionEvent;
  * - compaction_start → status (with "Compacting" keyword)
  * - compaction_end → info/error
  * - auto_retry_start → status
- * - auto_retry_end → status
+ * - auto_retry_end → error (failure only)
  * - queue_update → ignored (no current UI consumer)
  */
 export class PiEventAdapter extends BaseEventAdapter {

@@ -1,7 +1,7 @@
 /**
- * Pool client for API sources.
+ * In-process MCP client for REST API sources.
  *
- * Connects to an in-process McpServer (created by createSdkMcpServer) via
+ * Connects to an in-process McpServer (built by createInProcessMcpServer) via
  * in-memory transport, exposing it through the same PoolClient interface
  * that CraftMcpClient uses for remote MCP sources.
  */

@@ -625,8 +625,7 @@ export interface AgentBackend {
 
   /**
    * Called when backend-specific authentication is required.
-   * Replaces per-backend callbacks (onChatGptAuthRequired, onGithubAuthRequired).
-   * The session layer wires this to surface auth warnings in the UI.
+   * Unified callback — the session layer wires this to surface auth warnings in the UI.
    */
   onBackendAuthRequired: ((reason: string) => void) | null;
 
@@ -641,8 +640,7 @@ export interface BackendConfig extends CoreBackendConfig {
   /**
    * Provider/SDK to use for this backend.
    * Determines which agent class is instantiated:
-   * - 'anthropic' → ClaudeAgent (Anthropic SDK)
-   * - 'pi' → PiAgent (Pi via @earendil-works/pi-coding-agent)
+   * - 'pi' → PiAgent (Pi SDK subprocess)
    */
   provider: AgentProvider;
 

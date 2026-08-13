@@ -457,7 +457,7 @@ export function deleteSession(workspaceRootPath: string, sessionId: string): boo
 /**
  * Clear messages from a session while preserving metadata.
  * Used for /clear command to reset conversation without creating a new session.
- * Also clears the SDK session ID to start a fresh Claude conversation.
+ * Also clears the SDK session ID to start a fresh conversation.
  */
 export async function clearSessionMessages(workspaceRootPath: string, sessionId: string): Promise<void> {
   const session = loadSession(workspaceRootPath, sessionId);
