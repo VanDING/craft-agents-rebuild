@@ -533,12 +533,12 @@ export interface HandleLargeResponseResult {
  * Accepts string | Buffer:
  * - Buffer: binary detection on raw bytes (preserves data integrity for file saving).
  *   Used by api-tools which has raw HTTP response buffers.
- * - string: binary detection via Buffer conversion. Used by MCP pool and Claude SDK
+ * - string: binary detection via Buffer conversion. Used by the MCP pool
  *   where data is already a string.
  *
  * Pipeline: binary check → (if text) size check → save + summarize.
  *
- * Shared by McpClientPool.callTool(), api-tools.ts, and claude-agent.ts.
+ * Shared by McpClientPool.callTool() and api-tools.ts.
  */
 export async function guardLargeResult(
   input: string | Buffer,

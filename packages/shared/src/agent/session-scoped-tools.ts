@@ -5,13 +5,13 @@
  * instance of these tools with session-specific callbacks and state.
  *
  * This file is a thin adapter that wraps the shared handlers from
- * @craft-agent/session-tools-core for use with the Claude SDK.
+ * @craft-agent/session-tools-core for the Craft tool-definition flow.
  *
  * All tool definitions, schemas, and handlers live in session-tools-core.
  * This adapter only handles:
  * - Session callback registry (per-session onPlanSubmitted, onAuthRequest, queryFn)
  * - Plan state management
- * - Claude SDK tool() wrapping with DOC_REF-enriched descriptions
+ * - defineTool() wrapping with DOC_REF-enriched descriptions
  * - call_llm (backend-specific, not in registry)
  */
 
@@ -61,7 +61,7 @@ export type { BrowserPaneFns } from './browser-tools.ts';
 // Session-Scoped Tool Callbacks (re-exported from dedicated registry module)
 // ============================================================
 
-// Re-export for all downstream consumers (index.ts, claude-agent.ts, pi-agent.ts, etc.)
+// Re-export for all downstream consumers (index.ts, pi-agent.ts, base-agent.ts, etc.)
 export {
   type SessionScopedToolCallbacks,
   registerSessionScopedToolCallbacks,
