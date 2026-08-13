@@ -193,7 +193,7 @@ describe('groupActivitiesByParent', () => {
     })
   })
 
-  // Regression guard: Claude Agent SDK v0.2.72 renamed the subagent launcher
+  // Regression guard: pi-coding-agent renamed the subagent launcher
   // from 'Task' to 'Agent'. Both names must group identically. If this test
   // fails, a callsite has narrowed back to `=== 'Task'` instead of using
   // `isParentTaskTool` — fix the callsite, don't loosen this test.

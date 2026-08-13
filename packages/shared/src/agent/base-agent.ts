@@ -1,7 +1,7 @@
 /**
  * BaseAgent Abstract Class
  *
- * Shared base class for all AI agent backends (ClaudeAgent, PiAgent).
+ * Shared base class for the Pi agent backend (PiAgent).
  * Extracts common functionality including:
  * - Model/thinking configuration
  * - Permission mode management (via PermissionManager)
@@ -390,8 +390,6 @@ export abstract class BaseAgent implements AgentBackend {
    * Fire an automation agent event (from automations.json) via AutomationSystem.
    * Catches all errors — automations must never break the agent flow.
    *
-   * Non-Claude backends call this directly. ClaudeAgent uses SDK's buildSdkHooks() instead.
-   *
    * @param signal - Optional AbortSignal for cancelling automation execution on abort
    */
   protected async emitAutomationEvent(event: AutomationAgentEvent, input: SdkAutomationInput, signal?: AbortSignal): Promise<void> {
@@ -566,7 +564,7 @@ export abstract class BaseAgent implements AgentBackend {
    */
   updateWorkingDirectory(path: string): void {
     this.workingDirectory = path;
-    // Persist to session config for storage and consistency with ClaudeAgent
+    // Persist to session config for storage and consistency
     if (this.config.session) {
       this.config.session.workingDirectory = path;
     }
@@ -709,8 +707,7 @@ export abstract class BaseAgent implements AgentBackend {
   /**
    * Get mini agent configuration for provider-specific application.
    * Returns centralized config that PiAgent applies: tool filter +
-   * minimizeThinking, with thinking levels mapped via THINKING_TO_PI and
-   * applied through the set_thinking_level RPC.
+   * minimizeThinking.
    */
   getMiniAgentConfig(): MiniAgentConfig {
     const enabled = this.isMiniAgent();
@@ -1123,9 +1120,7 @@ ${formattedMessages}
    * Execute an LLM query using the agent's auth infrastructure.
    * Used by call_llm tool (via queryFn callback) and potentially by runMiniCompletion.
    *
-   * Each backend implements this using its own SDK/session mechanism:
-   * - ClaudeAgent: SDK query() with OAuth
-   * - PiAgent: One-shot completion via Pi SDK in the subprocess
+   * PiAgent implements this as a one-shot completion via the Pi SDK in the subprocess.
    *
    * @param request - The query request (prompt, model, systemPrompt, etc.)
    * @returns The model's response text and optional token usage

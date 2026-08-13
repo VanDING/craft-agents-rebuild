@@ -1,4 +1,4 @@
-// Export ClaudeAgent (renamed from CraftAgent) and backward-compatible aliases
+// PiAgent is the sole agent backend; other exports here are shared agent utilities.
 export * from './conversation-summary.ts';
 
 // Export PiAgent for direct use
@@ -123,7 +123,7 @@ export {
 } from './base-agent.ts';
 
 // Export backend abstraction - unified interface for AI agents
-// This module enables switching between Claude (Anthropic) and Pi agents
+// PiAgent is the only backend implementation.
 export {
   // Factory (createAgent is the preferred name, createBackend is kept for backward compat)
   createBackend,

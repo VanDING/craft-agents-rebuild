@@ -4345,7 +4345,8 @@ export class SessionManager implements ISessionManager {
 
           // Capture the target's busy state BEFORE delivery so the sender gets a
           // truthful ack. A busy (mid-turn) target queues the message and replays
-          // it after the current turn (midStream is always 'steer' in the Pi backend); an idle
+          // it after the current turn (midStream defaults to 'steer' for all
+          // provider types; a per-connection 'queue' override is honored); an idle
           // target starts processing immediately. sendMessage throws for an
           // unknown session — that rejection propagates to the handler's catch.
           const targetBusy = this.sessions.get(sessionId)?.isProcessing === true
@@ -4367,10 +4368,10 @@ export class SessionManager implements ISessionManager {
               reason: 'Activation failed — source may be unusable (disabled/unauthenticated) or server build failed. Check session logs.',
             }
           }
-          // Both backends need the current turn to end before new tools are visible:
-          // Claude SDK freezes mcpServers at query() start; Pi only picks up new proxy
-          // tool defs on the next handlePrompt (`toolsChanged` flag in pi-agent-server).
-          // Mark a pending restart on the agent — ClaudeAgent/PiAgent consume it after
+          // The current turn must end before new tools are visible: Pi only picks
+          // up new proxy tool defs on the next handlePrompt (`toolsChanged` flag
+          // in pi-agent-server).
+          // Mark a pending restart on the agent — PiAgent consumes it after
           // the next tool_result, yield source_activated, and forceAbort. The
           // `source_activated` handler in this class then schedules a server-side
           // resend of the original user message with a "[{slug} activated]" suffix —
@@ -5682,11 +5683,10 @@ export class SessionManager implements ISessionManager {
 
     // If currently processing, behavior depends on the connection's
     // `midStreamBehavior` (resolved via {@link resolveMidStreamBehavior},
-    // defaults to provider-appropriate value):
+    // defaults to 'steer' for all provider types):
     //
-    // - 'steer': try to deliver into the in-flight turn. Pi steers natively;
-    //   Claude emulates via PreToolUse hook. If `redirect()` returns false
-    //   (Claude with no live query, or backend can't steer), the backend has
+    // - 'steer': try to deliver into the in-flight turn. Pi steers natively.
+    //   If `redirect()` returns false (no live query to steer), the backend has
     //   already called forceAbort(Redirect) and we queue for replay.
     // - 'queue': hold the message untouched; the current turn keeps running
     //   to natural completion; replay as a new turn afterwards. NO call to

@@ -2,7 +2,7 @@
  * Tests for the centralized PreToolUse pipeline.
  *
  * Tests `runPreToolUseChecks()` (6-step pipeline) and `shouldPromptInAskMode()`
- * which are shared by both agent backends (ClaudeAgent, PiAgent).
+ * which are used by the Pi agent backend.
  */
 import { describe, it, expect, beforeEach, mock } from 'bun:test';
 

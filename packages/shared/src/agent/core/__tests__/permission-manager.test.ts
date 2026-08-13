@@ -1,8 +1,8 @@
 /**
  * Tests for PermissionManager
  *
- * Tests the centralized permission evaluation system used by both
- * ClaudeAgent and PiAgent.
+ * Tests the centralized permission evaluation system used by
+ * PiAgent.
  */
 import { describe, it, expect, beforeEach } from 'bun:test';
 import { PermissionManager } from '../permission-manager.ts';

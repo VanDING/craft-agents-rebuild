@@ -1,10 +1,9 @@
 /**
  * In-process MCP Server 工厂
  *
- * 替代 @anthropic-ai/claude-agent-sdk 的 createSdkMcpServer()。
  * 使用 @modelcontextprotocol/sdk 的 McpServer 高層 API。
  *
- * 返回类型与 createSdkMcpServer 兼容: { type: 'sdk', instance: McpServer }
+ * 返回 { type: 'sdk', instance: McpServer }
  */
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ZodRawShape } from 'zod/v4';

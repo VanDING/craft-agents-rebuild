@@ -215,7 +215,7 @@ export class PiAgent extends BaseAgent {
 
   /**
    * Look up the bound project (if any) and return a snapshot for system-prompt injection.
-   * Mirrors ClaudeAgent.resolveProjectContext — safe to call on every turn since the
+   * Mirrors the main-process project-context resolution — safe to call on every turn since the
    * project config file is small.
    */
   private resolveProjectContext(): ProjectPromptContext | null {

@@ -1,8 +1,8 @@
 /**
  * Tests for SourceManager
  *
- * Tests the centralized source state management used by both
- * ClaudeAgent and PiAgent.
+ * Tests the centralized source state management used by
+ * PiAgent.
  */
 import { describe, it, expect, beforeEach } from 'bun:test';
 import { SourceManager } from '../source-manager.ts';

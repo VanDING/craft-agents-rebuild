@@ -1,8 +1,8 @@
 /**
  * PromptBuilder - System Prompt and Context Building
  *
- * Provides utilities for building system prompts and context blocks that both
- * ClaudeAgent and PiAgent can use. Handles workspace capabilities, recovery
+ * Provides utilities for building system prompts and context blocks used by
+ * PiAgent. Handles workspace capabilities, recovery
  * context, and user preferences formatting.
  *
  * Key responsibilities:
@@ -60,12 +60,12 @@ export class PromptBuilder {
    * stable blocks). Returns an array of strings that should be prepended to the
    * user message.
    *
-   * This is the Claude path: it composes {@link buildVolatileContextParts} and
+   * This composes {@link buildVolatileContextParts} and
    * {@link buildStableContextParts} so the output is byte-identical to the
    * pre-split version (same 5 blocks, same order) AND the one-shot mode-change
    * signal is consumed exactly once per turn (only the volatile builder consumes
    * it). Callers that place volatile vs stable context in different locations
-   * (e.g. the Pi adapter, to preserve prompt caching — issue #862) should call
+   * (to preserve prompt caching — issue #862) should call
    * the two halves directly instead of this method.
    *
    * @param options - Context building options

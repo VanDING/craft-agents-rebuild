@@ -29,7 +29,7 @@ export const SERVER_BUILD_ERRORS = {
 } as const;
 
 /**
- * MCP server configuration compatible with Claude Agent SDK
+ * MCP server configuration (Craft's own shape)
  * Supports HTTP/SSE (remote) and stdio (local subprocess) transports.
  */
 export type McpServerConfig =

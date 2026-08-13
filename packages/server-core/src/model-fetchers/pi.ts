@@ -21,6 +21,7 @@ export class PiModelFetcher implements ModelFetcher {
     return fetchBackendModels({
       connection,
       credentials,
+      // Copilot model fetch needs a longer timeout (provider catalog latency).
       timeoutMs: isCopilot ? 30_000 : 15_000,
       hostRuntime: getHostRuntime(),
     })
