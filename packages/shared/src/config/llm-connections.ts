@@ -15,7 +15,6 @@ import {
   type ModelDefinition,
   normalizeDeprecatedModelId,
 } from './models';
-import type { CredentialManager } from '../credentials/manager.ts';
 
 // ============================================================
 // Pi Model Resolver (dependency injection to avoid Pi SDK in renderer)
@@ -890,26 +889,6 @@ export interface ResolvedAuthEnvVars {
   success: boolean;
   /** Warning message if auth resolution encountered issues */
   warning?: string;
-}
-/**
- * Resolve authentication environment variables for an LLM connection.
- *
- * All providers now use Pi SDK which handles auth internally in its postInit() path.
- * No env vars need to be set here — kept as a no-op for API compatibility.
- *
- * @param connection - The LLM connection config
- * @param connectionSlug - Connection slug for credential lookup
- * @param credentialManager - Credential manager instance
- * @param getValidOAuthToken - Function to get a valid (refreshed) OAuth token
- * @returns Empty env vars with success
- */
-export async function resolveAuthEnvVars(
-  _connection: LlmConnection,
-  _connectionSlug: string,
-  _credentialManager: CredentialManager,
-  _getValidOAuthToken: (slug: string) => Promise<{ accessToken?: string | null }>,
-): Promise<ResolvedAuthEnvVars> {
-  return { envVars: {}, success: true };
 }
 
 /**

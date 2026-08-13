@@ -77,8 +77,6 @@ import { loadWorkspaceSources, loadAllSources, getSourcesBySlugs, isSourceUsable
 import { listTaskSlugs, parseTaskSpec, uniqueTaskSlug } from '@craft-agent/shared/tasks'
 import { createTaskFromSpec, resolveCreateTaskProjectId } from '../tasks'
 import { ConfigWatcher, type ConfigWatcherCallbacks } from '@craft-agent/shared/config'
-import { getValidClaudeOAuthToken } from '@craft-agent/shared/auth'
-import { resolveAuthEnvVars } from '@craft-agent/shared/config'
 import { toolMetadataStore, getLastApiError } from '@craft-agent/shared/interceptor'
 import { isParentTaskTool } from '@craft-agent/shared/utils/toolNames'
 import { restoreFiles } from '@craft-agent/shared/utils/bundle-files'
@@ -1803,8 +1801,6 @@ export class SessionManager implements ISessionManager {
    */
   async reinitializeAuth(connectionSlug?: string): Promise<void> {
     try {
-      const manager = getCredentialManager()
-
       // Get the connection to use (explicit parameter or default)
       const slug = connectionSlug || getDefaultLlmConnection()
       if (!slug) {
@@ -1819,19 +1815,6 @@ export class SessionManager implements ISessionManager {
       }
 
       sessionLog.info(`Reinitializing auth for connection: ${slug} (${connection.authType})`)
-
-      // Resolve auth env vars via shared utility (provider-agnostic)
-      const result = await resolveAuthEnvVars(connection, slug!, manager, getValidClaudeOAuthToken)
-
-      if (!result.success) {
-        sessionLog.error(`Auth resolution failed for ${slug}: ${result.warning}`)
-      } else {
-        // Apply resolved env vars to process.env
-        for (const [key, value] of Object.entries(result.envVars)) {
-          process.env[key] = value
-        }
-        sessionLog.info(`Auth env vars set for connection: ${slug}`)
-      }
 
       // (deprecated no-op summarization-client reset removed — summarization
       // now runs through agent-bound runMiniCompletion)
