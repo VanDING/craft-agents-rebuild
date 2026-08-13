@@ -2,8 +2,6 @@
  * In-process MCP Server 工厂
  *
  * 使用 @modelcontextprotocol/sdk 的 McpServer 高層 API。
- *
- * 返回 { type: 'sdk', instance: McpServer }
  */
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { ZodRawShape } from 'zod/v4';
@@ -20,16 +18,11 @@ export interface SdkMcpToolEntry {
   annotations?: { readOnlyHint?: boolean };
 }
 
-export interface InProcessMcpServerResult {
-  type: 'sdk';
-  instance: McpServer;
-}
-
 export function createInProcessMcpServer(options: {
   name: string;
   version: string;
   tools: SdkMcpToolEntry[];
-}): InProcessMcpServerResult {
+}): McpServer {
   const server = new McpServer(
     { name: options.name, version: options.version },
     { capabilities: { tools: {} } },
@@ -48,8 +41,5 @@ export function createInProcessMcpServer(options: {
     );
   }
 
-  return {
-    type: 'sdk',
-    instance: server,
-  };
+  return server;
 }

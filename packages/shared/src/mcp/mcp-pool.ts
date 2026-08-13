@@ -28,15 +28,6 @@ import {
 } from '../utils/binary-detection.ts';
 
 /**
- * Configuration for an in-process API source server.
- * Used by sync() to connect API sources alongside MCP sources.
- */
-export interface ApiServerConfig {
-  type: 'sdk';
-  instance: McpServer;
-}
-
-/**
  * Proxy tool definition — the format passed to backends for registration.
  * Uses mcp__{slug}__{toolName} naming convention.
  */
@@ -243,12 +234,12 @@ export class McpClientPool {
    * Connects new sources, disconnects removed ones, keeps existing ones.
    *
    * @param mcpServers - Map of slug → config for desired MCP sources
-   * @param apiServers - Map of slug → config for desired API sources
+   * @param apiServers - Map of slug → in-process McpServer for desired API sources
    * @returns List of slugs that failed to connect
    */
   async sync(
     mcpServers: Record<string, AgentMcpServerConfig>,
-    apiServers: Record<string, ApiServerConfig> = {}
+    apiServers: Record<string, McpServer> = {}
   ): Promise<string[]> {
     // Filter out stdio sources when local MCP is disabled for this workspace.
     const localEnabled = !this.workspaceRootPath || isLocalMcpEnabled(this.workspaceRootPath);
@@ -261,13 +252,8 @@ export class McpClientPool {
       filteredMcp[slug] = config;
     }
 
-    // Extract McpServer instances from API configs
-    const apiSlugs = new Map<string, McpServer>();
-    for (const [slug, config] of Object.entries(apiServers)) {
-      if (config?.type === 'sdk' && config.instance) {
-        apiSlugs.set(slug, config.instance);
-      }
-    }
+    // API server values are McpServer instances directly
+    const apiSlugs = new Map<string, McpServer>(Object.entries(apiServers));
 
     const desiredSlugs = new Set([...Object.keys(filteredMcp), ...apiSlugs.keys()]);
     const currentSlugs = new Set(this.clients.keys());
