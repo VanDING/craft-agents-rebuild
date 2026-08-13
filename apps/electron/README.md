@@ -48,17 +48,13 @@ apps/electron/
 
 ## Key Learnings & Gotchas
 
-### 1. SDK Path Resolution (CRITICAL)
+### 1. Pi Agent Subprocess Bundling
 
-The Claude Agent SDK (`@anthropic-ai/claude-agent-sdk`) spawns a native `claude` binary from a per-platform optional dependency (`@anthropic-ai/claude-agent-sdk-{platform}-{arch}`). Packaged Electron builds must point the SDK at the staged binary because normal optional-dependency resolution does not work inside the packaged resource layout.
-
-**Runtime resolution:** `packages/shared/src/agent/backend/internal/runtime-resolver.ts` probes the build-script alias first:
-
-```text
-node_modules/@anthropic-ai/claude-agent-sdk-binary/{claude,claude.exe}
-```
-
-and falls back to the real per-arch package in dev. Once resolved, `applyAnthropicRuntimeBootstrap()` calls `setPathToClaudeCodeExecutable(path)` before any Claude agents are created.
+The Electron app spawns `packages/pi-agent-server` (a Bun-compiled JS bundle) as a
+JSONL-over-stdio subprocess. `scripts/build/common.ts` stages the interceptor bundle,
+`pi-agent-server`, and the session MCP server into the packaged resources. The Pi SDK
+(`@earendil-works/pi-coding-agent`) is bundled into the pi-agent-server build output —
+no native binaries are staged.
 
 ### 2. Authentication Environment Setup (CRITICAL)
 

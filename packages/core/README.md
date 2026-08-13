@@ -90,11 +90,10 @@ src/
 
 ## Peer Dependencies
 
-This package requires the following peer dependencies:
-- `@anthropic-ai/claude-agent-sdk` 0.3.154
+This package requires the following peer dependency:
 - `@modelcontextprotocol/sdk` >= 1.29.0
 
-The Claude Agent SDK also requires `@anthropic-ai/sdk` >= 0.93.0 at the app level.
+This package has no AI SDK dependency; agent runtimes live in packages/shared and packages/pi-agent-server.
 
 ## License
 
