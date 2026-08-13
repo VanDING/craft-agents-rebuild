@@ -70,8 +70,8 @@ runtime via `token_update` JSONL messages.
 
 The only env-var injection at spawn is AWS Bedrock (`AWS_*`), scoped to the
 subprocess env — the SDK itself never reads `ANTHROPIC_API_KEY` for provider
-auth. (`ANTHROPIC_API_KEY` / `CLAUDE_CODE_OAUTH_TOKEN` env vars still exist for
-spawned MCP subprocesses, see `packages/shared/src/mcp/client.ts`.)
+auth. (`ANTHROPIC_API_KEY` / `CLAUDE_CODE_OAUTH_TOKEN` are blocked from spawned
+MCP subprocess envs — `BLOCKED_ENV_VARS` in `packages/shared/src/mcp/client.ts`.)
 
 ### 3. AgentEvent Type Mismatches
 
