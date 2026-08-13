@@ -106,6 +106,8 @@ describe('session branching validation semantics', () => {
     expect(result?.branchFromSdkSessionId).toBe('sdk-parent')
   })
 
+  // Guards legacy-provider tolerance: LlmProviderTypeSchema (validators.ts)
+  // still accepts legacy values until old stored configs are migrated (D2).
   it('rejects branch when parent sdk session id is missing', () => {
     expect(() => validateBranchLikeSessionManager({
       request: { branchFromSessionId: 'source-1', branchFromMessageId: 'm1' },

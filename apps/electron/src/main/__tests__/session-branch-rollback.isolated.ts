@@ -10,7 +10,7 @@ const workspace = {
 let idCounter = 0
 const storedById = new Map<string, any>()
 const deletedIds: string[] = []
-let mockedProvider: 'anthropic' | 'pi' = 'anthropic'
+let mockedProvider: 'pi' = 'pi'
 
 // Partial-mock baseline: import real modules via file paths (avoids recursive mock imports)
 const actualSharedAgentModule = await import('../../../../../packages/shared/src/agent/index.ts')
@@ -80,10 +80,16 @@ mock.module('@craft-agent/shared/config', () => ({
   migrateOrphanedDefaultConnections: async () => {},
   MODEL_REGISTRY: [],
   // Targeted stubs: prevent SyntaxError in tests that import these from the barrel
-  DEFAULT_MODEL: 'claude-sonnet-4-20250514',
+  DEFAULT_MODEL: 'pi/gpt-5',
   DEFAULT_THEME: { mode: 'system' },
-  getDefaultModelsForConnection: () => ({ default: 'claude-sonnet-4-20250514', mini: 'claude-haiku-4-5-20251001' }),
-  getDefaultModelForConnection: () => 'claude-sonnet-4-20250514',
+  getDefaultModelsForConnection: () => ({ default: 'pi/gpt-5', mini: 'claude-haiku-4-5-20251001' }),
+  getDefaultModelForConnection: () => 'pi/gpt-5',
+  defaultMidStreamBehavior: () => 'steer',
+  resolveMidStreamBehavior: () => 'steer',
+  getPersistedUiLanguage: () => undefined,
+  resolveTitleLanguageName: () => undefined,
+  loadPreferences: () => ({}),
+  modelSupportsImages: () => true,
   setGitBashPath: () => {},
   clearGitBashPath: () => {},
   setActiveWorkspace: () => {},
@@ -105,7 +111,7 @@ mock.module('@craft-agent/shared/config', () => ({
   setDefaultLlmConnection: async () => {},
   touchLlmConnection: async () => {},
   isCompatProvider: () => false,
-  isAnthropicProvider: () => true,
+  isPiProvider: () => true,
 }))
 
 mock.module('@craft-agent/shared/workspaces', () => ({
@@ -142,14 +148,14 @@ mock.module('@craft-agent/shared/agent/backend', () => ({
   },
   resolveBackendContext: () => ({
     provider: mockedProvider,
-    resolvedModel: mockedProvider === 'anthropic' ? 'claude-sonnet-4-20250514' : 'pi/gpt-5',
-    connection: { providerType: mockedProvider === 'anthropic' ? 'anthropic' : 'pi' },
+    resolvedModel: 'pi/gpt-5',
+    connection: { providerType: 'pi' },
   }),
   createBackendFromResolvedContext: () => {
     throw new Error('not used in this test')
   },
   cleanupSourceRuntimeArtifacts: async () => {},
-  providerTypeToAgentProvider: () => 'anthropic',
+  providerTypeToAgentProvider: () => 'pi',
   fetchBackendModels: async () => ({ models: [] }),
   initializeBackendHostRuntime: () => {},
   resolveBackendHostTooling: () => ({
@@ -261,7 +267,7 @@ const { SessionManager } = await import('@craft-agent/server-core/sessions')
 
 describe('session branch rollback on preflight failure', () => {
   beforeEach(() => {
-    mockedProvider = 'anthropic'
+    mockedProvider = 'pi'
     idCounter = 0
     storedById.clear()
     deletedIds.length = 0
@@ -270,7 +276,7 @@ describe('session branch rollback on preflight failure', () => {
       id: 'source-1',
       workspaceRootPath,
       llmConnection: undefined,
-      model: 'claude-sonnet-4-20250514',
+      model: 'pi/gpt-5',
       sdkSessionId: 'sdk-parent',
       messages: [
         { id: 'm1', type: 'user', content: 'hello', timestamp: Date.now() - 10 },
@@ -316,7 +322,7 @@ describe('session branch rollback on preflight failure', () => {
     expect(poolStopCalled).toBe(true)
   })
 
-  it('fails branch creation when parent claude sdk session id is missing', async () => {
+  it('fails branch creation when parent pi sdk session id is missing', async () => {
     const source = storedById.get('source-1')
     source.sdkSessionId = undefined
     storedById.set('source-1', source)
