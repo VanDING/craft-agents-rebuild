@@ -153,8 +153,6 @@ export const LOCAL_ONLY_CHANNELS = new Set<string>([
   // caching — prompt cache and context settings
   RPC_CHANNELS.caching.GET_EXTENDED_PROMPT_CACHE,
   RPC_CHANNELS.caching.SET_EXTENDED_PROMPT_CACHE,
-  RPC_CHANNELS.caching.GET_ENABLE_1M_CONTEXT,
-  RPC_CHANNELS.caching.SET_ENABLE_1M_CONTEXT,
 
   // rtk — token-optimization opt-in
   RPC_CHANNELS.rtk.GET_ENABLED,

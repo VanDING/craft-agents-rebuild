@@ -604,8 +604,6 @@ export interface ElectronAPI {
   // Prompt caching & context
   getExtendedPromptCache(): Promise<boolean>
   setExtendedPromptCache(enabled: boolean): Promise<void>
-  getEnable1MContext(): Promise<boolean>
-  setEnable1MContext(enabled: boolean): Promise<void>
 
   // RTK token optimization
   getRtkEnabled(): Promise<boolean>
