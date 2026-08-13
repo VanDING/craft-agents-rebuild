@@ -128,7 +128,6 @@ export {
   // Factory (createAgent is the preferred name, createBackend is kept for backward compat)
   createBackend,
   createAgent,
-  detectProvider,
   getAvailableProviders,
   // Types
   type AgentBackend,

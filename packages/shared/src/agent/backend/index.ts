@@ -52,12 +52,10 @@ export { AbortReason } from './types.ts';
 export {
   createBackend,
   createAgent,
-  detectProvider,
   getAvailableProviders,
   isProviderAvailable,
   // LLM Connection support
-  connectionTypeToProvider,
-  connectionAuthTypeToBackendAuthType,
+  normalizeBackendAuthType,
   resolveSessionConnection,
   resolveBackendContext,
   resolveSetupTestConnectionHint,

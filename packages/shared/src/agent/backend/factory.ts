@@ -27,8 +27,7 @@ import {
   getDefaultLlmConnection,
   type LlmConnection,
 } from '../../config/storage.ts';
-// Import deprecated type for legacy migration function only
-import type { LlmConnectionType, CustomEndpointConfig } from '../../config/llm-connections.ts';
+import type { CustomEndpointConfig } from '../../config/llm-connections.ts';
 // Import validation helpers for provider-auth combinations
 import {
   isValidProviderAuthCombination,
@@ -70,18 +69,6 @@ function resolveDriverRuntime(
   const driver = getProviderDriver(provider);
   const resolvedPaths = resolveBackendRuntimePaths(hostRuntime);
   return { driver, resolvedPaths };
-}
-
-/**
- * Detect provider from stored auth type.
- *
- * Always returns 'pi' for the Pi-only backend.
- *
- * @param authType - The stored authentication type (unused)
- * @returns The detected provider
- */
-export function detectProvider(authType: string): AgentProvider {
-  return 'pi';
 }
 
 /**
@@ -211,24 +198,10 @@ export function providerTypeToAgentProvider(providerType: LlmProviderType): Agen
 }
 
 /**
- * @deprecated Use providerTypeToAgentProvider instead.
- * Map legacy LLM connection type to agent provider.
- *
- * @param connectionType - The legacy LLM connection type
- * @returns The corresponding agent provider
+ * Filter auth types that require no explicit credential passing
+ * ('none'/'environment') to undefined; pass through the rest.
  */
-export function connectionTypeToProvider(connectionType: LlmConnectionType): AgentProvider {
-  return 'pi';
-}
-
-/**
- * @deprecated Use LlmAuthType directly - no mapping needed.
- * Map legacy LLM auth type to backend auth type.
- *
- * @param authType - The legacy LLM connection auth type
- * @returns The corresponding backend auth type
- */
-export function connectionAuthTypeToBackendAuthType(
+export function normalizeBackendAuthType(
   authType: LlmAuthType
 ): LlmAuthType | undefined {
   switch (authType) {
@@ -301,7 +274,7 @@ export function resolveBackendContext(args: {
     : 'pi';
 
   const authType = connection
-    ? connectionAuthTypeToBackendAuthType(connection.authType)
+    ? normalizeBackendAuthType(connection.authType)
     : undefined;
 
   const resolvedModel = resolveModelForProvider(provider, args.managedModel, connection);
@@ -438,8 +411,8 @@ export function createConfigFromConnection(
   connection: LlmConnection,
   baseConfig: Omit<BackendConfig, 'provider' | 'authType' | 'providerType'>
 ): BackendConfig {
-  // Use new providerType if available, fall back to legacy type
-  const providerType = connection.providerType || (connection.type ? connectionTypeToProvider(connection.type) as unknown as LlmProviderType : 'pi');
+  // providerType wins; fall back to 'pi' for the Pi-only backend
+  const providerType = connection.providerType ?? 'pi';
   const provider = providerTypeToAgentProvider(providerType);
 
   return {
@@ -485,7 +458,7 @@ export function createBackendFromConnection(
   const context: ResolvedBackendContext = {
     connection,
     provider: providerTypeToAgentProvider(connection.providerType || 'pi'),
-    authType: connectionAuthTypeToBackendAuthType(connection.authType),
+    authType: normalizeBackendAuthType(connection.authType),
     resolvedModel: resolveModelForProvider(
       providerTypeToAgentProvider(connection.providerType || 'pi'),
       baseConfig.model,
