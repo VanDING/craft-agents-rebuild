@@ -54,25 +54,24 @@ The Electron app spawns `packages/pi-agent-server` (a Bun-compiled JS bundle) as
 JSONL-over-stdio subprocess. `scripts/build/common.ts` stages the interceptor bundle,
 `pi-agent-server`, and the session MCP server into the packaged resources. The Pi SDK
 (`@earendil-works/pi-coding-agent`) is bundled into the pi-agent-server build output —
-no native binaries are staged.
+no Claude native binary is staged.
 
-### 2. Authentication Environment Setup (CRITICAL)
+### 2. Authentication Setup (CRITICAL)
 
-The SDK requires authentication environment variables to be set BEFORE creating agents. The Electron app must do this explicitly during initialization.
+Agent credentials are **not** injected via `process.env` (no
+`CLAUDE_CODE_OAUTH_TOKEN` / `ANTHROPIC_API_KEY` dance). `PiAgent`
+(`packages/shared/src/agent/pi-agent.ts`) resolves the active connection's
+credential through the credential manager (`getCredentialManager()` — OAuth
+tokens, API keys, or AWS IAM) and builds a provider-aware `piAuth` object.
+That object is sent to the pi-agent-server subprocess inside the JSONL `init`
+command; the server pre-loads it into an in-memory credential store that backs
+the Pi SDK's `ModelRuntime`. Expired OAuth tokens are refreshed and pushed at
+runtime via `token_update` JSONL messages.
 
-```typescript
-import { getAuthState } from '../../../src/auth/state'
-
-// In initialize():
-const authState = await getAuthState()
-const { billing } = authState
-
-if (billing.type === 'oauth_token' && billing.claudeOAuthToken) {
-  process.env.CLAUDE_CODE_OAUTH_TOKEN = billing.claudeOAuthToken
-} else if (billing.apiKey) {
-  process.env.ANTHROPIC_API_KEY = billing.apiKey
-}
-```
+The only env-var injection at spawn is AWS Bedrock (`AWS_*`), scoped to the
+subprocess env — the SDK itself never reads `ANTHROPIC_API_KEY` for provider
+auth. (`ANTHROPIC_API_KEY` / `CLAUDE_CODE_OAUTH_TOKEN` env vars still exist for
+spawned MCP subprocesses, see `packages/shared/src/mcp/client.ts`.)
 
 ### 3. AgentEvent Type Mismatches
 
@@ -113,16 +112,19 @@ new CraftAgent({ workspace, model })
 
 ### 5. esbuild Configuration
 
-Only `electron` is externalized. The SDK is bundled into `main.js`:
+Only `electron` is externalized:
 
 ```json
 "electron:build:main": "esbuild ... --external:electron"
 ```
 
-This means:
-- SDK code is inlined (~950KB)
-- SDK's runtime path resolution breaks (see #1)
-- Native modules would need explicit externalization
+The main-process bundle contains **no AI SDK**: the Pi SDK
+(`@earendil-works/pi-coding-agent`) lives entirely inside the pi-agent-server
+bundle, which is built separately with `bun build` and spawned as a subprocess
+(see #1). The main bundle does alias grammY's bundled polyfills
+(`node-fetch@2` + `abort-controller@3`) to native Node shims — otherwise
+esbuild renames the polyfill's `class AbortSignal` and breaks node-fetch@2's
+`constructor.name` check, failing every Telegram API call.
 
 ## Environment Variables
 
