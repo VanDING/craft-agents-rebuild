@@ -233,7 +233,13 @@ interface OutboundRuntimeConfigUpdateResult {
   id: string;
   success: boolean;
   updated: boolean;
+  contextWindow?: number;
   errorMessage?: string;
+}
+interface OutboundSetModelResult {
+  type: 'set_model_result';
+  model: string;
+  contextWindow?: number;
 }
 interface OutboundSessionIdUpdate { type: 'session_id_update'; sessionId: string }
 interface OutboundError { type: 'error'; message: string; code?: string }
@@ -250,6 +256,7 @@ type OutboundMessage =
   | OutboundCompactResult
   | OutboundSetAutoCompactionResult
   | OutboundRuntimeConfigUpdateResult
+  | OutboundSetModelResult
   | OutboundSessionIdUpdate
   | OutboundError;
 
@@ -1606,7 +1613,8 @@ async function handleUpdateRuntimeConfig(msg: RuntimeConfigUpdateMessage): Promi
       debugLog('[runtime_config] Stored update; no active session/model registry yet');
     }
 
-    send({ type: 'update_runtime_config_result', id: msg.id, success: true, updated: true });
+    const contextWindow = piSession?.agent.state.model?.contextWindow;
+    send({ type: 'update_runtime_config_result', id: msg.id, success: true, updated: true, contextWindow });
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
     debugLog(`[runtime_config] Failed: ${errorMsg}`);
@@ -1640,6 +1648,8 @@ async function handleSetModel(msg: Extract<InboundMessage, { type: 'set_model' }
   try {
     await piSession.setModel(piModel);
     setInterceptorApiHints(piModel as { api?: string; provider?: string; baseUrl?: string });
+    const contextWindow = piSession.agent.state.model?.contextWindow;
+    send({ type: 'set_model_result', model: msg.model, contextWindow });
     debugLog(`[set_model] Model changed to: ${msg.model} (resolved: ${piModel.provider}/${piModel.id})`);
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);

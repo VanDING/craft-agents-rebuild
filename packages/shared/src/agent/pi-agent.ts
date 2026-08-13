@@ -1020,6 +1020,10 @@ export class PiAgent extends BaseAgent {
         this.handleRuntimeConfigUpdateResult(msg);
         break;
 
+      case 'set_model_result':
+        this.handleSetModelResult(msg);
+        break;
+
       case 'session_id_update':
         // Pi session ID changed
         if (msg.sessionId) {
@@ -1749,7 +1753,23 @@ export class PiAgent extends BaseAgent {
       return;
     }
 
+    const contextWindow = msg.contextWindow;
+    if (typeof contextWindow === 'number' && contextWindow > 0) {
+      this.adapter.setContextWindow(contextWindow);
+    }
+
     pending.resolve(Boolean(msg.updated ?? true));
+  }
+
+  /**
+   * Handle set_model_result from subprocess — refresh the adapter's cached
+   * context window so usage badges stay accurate after model switches.
+   */
+  private handleSetModelResult(msg: Record<string, unknown>): void {
+    const contextWindow = msg.contextWindow;
+    if (typeof contextWindow === 'number' && contextWindow > 0) {
+      this.adapter.setContextWindow(contextWindow);
+    }
   }
 
   /**
