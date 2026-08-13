@@ -59,7 +59,7 @@ export interface McpToolResult {
 /**
  * Convert AgentMcpServerConfig (used by backend types) to CraftMcpClient config.
  */
-function sdkConfigToClientConfig(config: AgentMcpServerConfig): McpClientConfig | null {
+function agentMcpConfigToClientConfig(config: AgentMcpServerConfig): McpClientConfig | null {
   if (config.type === 'http' || config.type === 'sse') {
     return {
       transport: 'http',
@@ -185,7 +185,7 @@ export class McpClientPool {
    */
   async connect(slug: string, config: AgentMcpServerConfig): Promise<void> {
     if (this.clients.has(slug)) return;
-    const clientConfig = sdkConfigToClientConfig(config);
+    const clientConfig = agentMcpConfigToClientConfig(config);
     if (!clientConfig) {
       this.debug(`Unknown MCP server type for ${slug}: ${(config as { type: string }).type}`);
       return;

@@ -299,7 +299,7 @@ export interface ChatOptions {
 }
 
 /**
- * SDK-compatible MCP server configuration.
+ * MCP server configuration for agent backends.
  * Supports HTTP/SSE (remote) and stdio (local subprocess) transports.
  */
 export type AgentMcpServerConfig =
