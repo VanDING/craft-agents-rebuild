@@ -2,7 +2,6 @@
  * Tests for BaseEventAdapter
  *
  * Uses a concrete TestEventAdapter to verify shared state management:
- * - Block reason tracking
  * - Read command classification
  * - Command output accumulation
  * - Turn lifecycle
@@ -28,10 +27,6 @@ class TestEventAdapter extends BaseEventAdapter {
   }
 
   // Expose protected methods for testing
-  public testConsumeBlockReason(...keys: string[]): string | undefined {
-    return this.consumeBlockReason(...keys);
-  }
-
   public testClassifyReadCommand(id: string, command: string) {
     return this.classifyReadCommand(id, command);
   }
@@ -98,13 +93,11 @@ describe('BaseEventAdapter', () => {
 
     it('should clear state on startTurn', () => {
       // Set up some state
-      adapter.setBlockReason('tool-1', 'blocked');
       adapter.accumulateOutput('tool-1', 'output');
 
       // Start new turn — should clear everything
       adapter.startTurn();
 
-      expect(adapter.testConsumeBlockReason('tool-1')).toBeUndefined();
       expect(adapter.testConsumeOutput('tool-1')).toBeUndefined();
     });
 
@@ -118,28 +111,6 @@ describe('BaseEventAdapter', () => {
       adapter.startTurn();
       const event = adapter.testCreateToolStart('t1', 'Read', {});
       expect(event).toHaveProperty('turnId', undefined);
-    });
-  });
-
-  describe('Block Reason Tracking', () => {
-    it('should store and consume block reasons', () => {
-      adapter.setBlockReason('tool-1', 'Permission denied');
-      expect(adapter.testConsumeBlockReason('tool-1')).toBe('Permission denied');
-    });
-
-    it('should delete block reason after consume', () => {
-      adapter.setBlockReason('tool-1', 'blocked');
-      adapter.testConsumeBlockReason('tool-1');
-      expect(adapter.testConsumeBlockReason('tool-1')).toBeUndefined();
-    });
-
-    it('should return undefined for unknown keys', () => {
-      expect(adapter.testConsumeBlockReason('nonexistent')).toBeUndefined();
-    });
-
-    it('should try multiple keys and return first match', () => {
-      adapter.setBlockReason('alt-key', 'found via alt');
-      expect(adapter.testConsumeBlockReason('missing', 'alt-key')).toBe('found via alt');
     });
   });
 

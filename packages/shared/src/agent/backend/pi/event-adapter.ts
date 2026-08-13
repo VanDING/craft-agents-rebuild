@@ -501,9 +501,6 @@ export class PiEventAdapter extends BaseEventAdapter {
         const resolvedToolName = this.toolNames.get(toolCallId) || 'tool';
         this.toolNames.delete(toolCallId);
 
-        // Check for block reason
-        const blockReason = this.consumeBlockReason(toolCallId, resolvedToolName);
-
         // Use accumulated output from partial results if available
         const accumulatedOutput = this.consumeOutput(toolCallId);
 
@@ -512,8 +509,6 @@ export class PiEventAdapter extends BaseEventAdapter {
 
         if (accumulatedOutput) {
           result = accumulatedOutput;
-        } else if (blockReason) {
-          result = blockReason;
         } else {
           result = this.extractToolResult(event.result, isError);
         }

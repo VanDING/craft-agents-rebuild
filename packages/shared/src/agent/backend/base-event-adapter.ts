@@ -7,7 +7,6 @@
  *
  * Subclasses implement provider-specific event dispatch (adapt*() methods)
  * while inheriting:
- * - Block reason tracking (for permission-declined tool results)
  * - Read command classification (bash commands → Read tool display)
  * - Command output accumulation (streaming deltas → final tool result)
  * - Tool start/result construction helpers
@@ -35,7 +34,6 @@ export abstract class BaseEventAdapter {
   // Shared state maps used by subclass event adapters
   protected commandOutput: Map<string, string> = new Map();
   protected readCommands: Map<string, ReadCommandInfo> = new Map();
-  protected blockReasons: Map<string, string> = new Map();
 
   constructor(logScope: string) {
     this.log = createLogger(logScope);
@@ -60,7 +58,6 @@ export abstract class BaseEventAdapter {
     this.turnIndex++;
     this.commandOutput.clear();
     this.readCommands.clear();
-    this.blockReasons.clear();
     this.currentTurnId = turnId || null;
     this.onTurnStart();
   }
@@ -69,34 +66,6 @@ export abstract class BaseEventAdapter {
    * Subclass hook called during startTurn() for resetting provider-specific state.
    */
   protected abstract onTurnStart(): void;
-
-  // ============================================================
-  // Block Reason Tracking
-  // ============================================================
-
-  /**
-   * Store the block reason for a tool call that will be declined.
-   * Called from the agent when PreToolUse/permission check blocks a tool.
-   */
-  setBlockReason(id: string, reason: string): void {
-    this.log.warn('Block reason recorded', { id, reason });
-    this.blockReasons.set(id, reason);
-  }
-
-  /**
-   * Consume and delete the block reason for a tool call.
-   * Returns undefined if no block reason was stored.
-   */
-  protected consumeBlockReason(...keys: string[]): string | undefined {
-    for (const key of keys) {
-      const reason = this.blockReasons.get(key);
-      if (reason !== undefined) {
-        this.blockReasons.delete(key);
-        return reason;
-      }
-    }
-    return undefined;
-  }
 
   // ============================================================
   // Read Command Classification
