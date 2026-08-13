@@ -220,9 +220,9 @@ bun run electron:dist:win   # 打包安装包（另有 :mac / :linux）
 
 | 症状 | 解决办法 |
 |------|----------|
-| 开发时模块解析错误 | `bun run server:build:subprocess`（重新构建 pi-agent-server / session-mcp-server bundle） |
+| 开发时模块解析错误 | `bun run server:build:subprocess`（重新构建 pi-agent-server bundle） |
 | 构建时报 "No matching export" | `bun install`（lockfile 与依赖不同步） |
-| 打包后的应用卡在 "thinking…" | 检查解包后的应用内是否存在 `resources/pi-agent-server/index.js`、`resources/session-mcp-server/index.js`、`resources/app/vendor/bun/bun.exe` |
+| 打包后的应用卡在 "thinking…" | 检查解包后的应用内是否存在 `resources/pi-agent-server/index.js` 和 `resources/app/vendor/bun/bun.exe` |
 
 ---
 

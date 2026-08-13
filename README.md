@@ -220,9 +220,9 @@ bun run electron:dist:win   # Package installers (also :mac / :linux)
 
 | Symptom | Fix |
 |---------|-----|
-| Module resolution errors in dev | `bun run server:build:subprocess` (rebuilds pi-agent-server / session-mcp-server bundles) |
+| Module resolution errors in dev | `bun run server:build:subprocess` (rebuilds the pi-agent-server bundle) |
 | "No matching export" during build | `bun install` (lockfile out of sync) |
-| Packaged app stuck at "thinking…" | Verify `resources/pi-agent-server/index.js`, `resources/session-mcp-server/index.js`, and `resources/app/vendor/bun/bun.exe` exist in the unpacked app |
+| Packaged app stuck at "thinking…" | Verify `resources/pi-agent-server/index.js` and `resources/app/vendor/bun/bun.exe` exist in the unpacked app |
 
 ---
 
