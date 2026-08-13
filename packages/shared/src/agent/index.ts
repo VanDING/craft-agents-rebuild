@@ -76,7 +76,6 @@ export {
   type ThinkingLevelDefinition,
   THINKING_LEVELS,
   DEFAULT_THINKING_LEVEL,
-  getThinkingTokens,
   getThinkingLevelNameKey,
   isValidThinkingLevel,
 } from './thinking-levels.ts';

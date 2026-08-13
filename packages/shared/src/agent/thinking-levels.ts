@@ -64,62 +64,6 @@ export const THINKING_LEVELS: readonly ThinkingLevelDefinition[] = [
 export const DEFAULT_THINKING_LEVEL: ThinkingLevel = 'medium';
 
 /**
- * Map ThinkingLevel to Anthropic SDK effort parameter.
- * Used with adaptive thinking (thinking: { type: 'adaptive' }).
- * Returns null for 'off' (thinking should be disabled entirely).
- */
-export const THINKING_TO_EFFORT: Record<ThinkingLevel, 'low' | 'medium' | 'high' | 'xhigh' | 'max' | null> = {
-  off: null,
-  low: 'low',
-  medium: 'medium',
-  high: 'high',
-  xhigh: 'xhigh',
-  max: 'max',
-};
-
-/**
- * Token budgets per model family.
- * Used as fallback for models that don't support adaptive thinking
- * (e.g., non-Claude models via OpenRouter/Ollama).
- *
- * Haiku max is 8k per Anthropic docs.
- * Sonnet/Opus can use up to 128k, but Anthropic recommends ≤32k for real-time use
- * (above 32k, batch processing is suggested to avoid timeouts).
- */
-const TOKEN_BUDGETS = {
-  haiku: {
-    off: 0,
-    low: 2_000,
-    medium: 4_000,
-    high: 6_000,
-    xhigh: 7_000,
-    max: 8_000,
-  },
-  default: {
-    off: 0,
-    low: 4_000,
-    medium: 10_000,
-    high: 20_000,
-    xhigh: 26_000,
-    max: 32_000,
-  },
-} as const;
-
-/**
- * Get the thinking token budget for a given level and model.
- * Used as fallback for models that don't support adaptive thinking.
- *
- * @param level - The thinking level
- * @param modelId - The model ID (e.g., 'claude-haiku-4-5-20251001')
- * @returns Number of thinking tokens to allocate
- */
-export function getThinkingTokens(level: ThinkingLevel, modelId: string): number {
-  const isHaiku = modelId.toLowerCase().includes('haiku');
-  const budgets = isHaiku ? TOKEN_BUDGETS.haiku : TOKEN_BUDGETS.default;
-  return budgets[level];
-}
-
-/**
  * Get the translation key for a thinking level's display name.
  * Resolve with t() or i18n.t() at the call site.
  */
