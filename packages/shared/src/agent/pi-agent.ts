@@ -351,16 +351,6 @@ export class PiAgent extends BaseAgent {
   private rpcIdCounter: number = 0;
 
   // OAuth token refresh (ChatGPT Plus)
-  /**
-   * @deprecated Use onBackendAuthRequired (inherited from BaseAgent) instead.
-   * Kept as a getter/setter alias for backward compatibility.
-   */
-  get onChatGptAuthRequired(): ((reason: string) => void) | null {
-    return this.onBackendAuthRequired;
-  }
-  set onChatGptAuthRequired(cb: ((reason: string) => void) | null) {
-    this.onBackendAuthRequired = cb;
-  }
   private tokenRefreshInProgress: Promise<void> | null = null;
 
   // Global mutex: keyed by connectionSlug so multiple PiAgent instances
@@ -2751,5 +2741,4 @@ export class PiAgent extends BaseAgent {
   }
 }
 
-// Alias for consistency with other backend naming
-export { PiAgent as PiBackend };
+
