@@ -6,6 +6,7 @@
  * and lifecycle management.
  */
 import { describe, it, expect, beforeEach } from 'bun:test';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { AbortReason } from '../backend/types.ts';
 import {
   TestAgent,
@@ -113,7 +114,7 @@ describe('BaseAgent', () => {
     it('should track source servers', async () => {
       await agent.setSourceServers(
         { 'source-1': { type: 'http', url: 'http://test' } },
-        { 'source-2': {} },
+        { 'source-2': new McpServer({ name: 'test-api', version: '1.0.0' }) },
         ['source-1', 'source-2']
       );
 

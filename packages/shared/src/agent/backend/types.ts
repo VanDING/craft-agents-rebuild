@@ -19,6 +19,7 @@ import type { PermissionMode } from '../mode-manager.ts';
 import type { LoadedSource } from '../../sources/types.ts';
 import type { AuthRequest } from '../session-scoped-tools.ts';
 import type { McpClientPool } from '../../mcp/mcp-pool.ts';
+import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Workspace } from '../../config/storage.ts';
 import type { SessionConfig as Session } from '../../sessions/storage.ts';
 import type { SourceManager } from '../core/source-manager.ts';
@@ -279,7 +280,7 @@ export interface CoreBackendConfig {
   initialSources?: {
     enabledSources: LoadedSource[];
     mcpServers: Record<string, AgentMcpServerConfig>;
-    apiServers: Record<string, unknown>;
+    apiServers: Record<string, McpServer>;
     enabledSlugs: string[];
   };
 }
@@ -514,7 +515,7 @@ export interface AgentBackend {
    */
   setSourceServers(
     mcpServers: Record<string, AgentMcpServerConfig>,
-    apiServers: Record<string, unknown>,
+    apiServers: Record<string, McpServer>,
     intendedSlugs?: string[]
   ): void | Promise<void>;
 

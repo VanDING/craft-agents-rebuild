@@ -354,7 +354,7 @@ export function createApiTool(
  * @param credential - API credential source (string for API key/token, BasicAuthCredential for basic auth,
  *                     empty string for public APIs, or async function for OAuth token refresh)
  * @param sessionPath - Optional path to session folder for saving large responses
- * @returns SDK MCP server that can be passed to query()
+ * @returns In-process McpServer for the REST API source's tools
  */
 export function createApiServer(
   config: ApiConfig,

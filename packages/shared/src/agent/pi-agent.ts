@@ -100,6 +100,7 @@ import { getPermissionModeDiagnostics, cleanupModeState } from './mode-manager.t
 
 // McpClientPool for source tool proxying (centralized pool from main process)
 import type { McpClientPool } from '../mcp/mcp-pool.ts';
+import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 // Path utilities
 import { join } from 'path';
@@ -2303,7 +2304,7 @@ export class PiAgent extends BaseAgent {
 
   override async setSourceServers(
     mcpServers: Record<string, AgentMcpServerConfig>,
-    apiServers: Record<string, unknown>,
+    apiServers: Record<string, McpServer>,
     intendedSlugs?: string[]
   ): Promise<void> {
     // BaseAgent.setSourceServers() handles:

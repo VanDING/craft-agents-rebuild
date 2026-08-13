@@ -8,6 +8,7 @@
  */
 import { describe, it, expect, beforeEach } from 'bun:test';
 import { McpClientPool } from '../src/mcp/mcp-pool.ts';
+import { createInProcessMcpServer } from '../src/mcp/sdk-mcp-server-factory.ts';
 import type { AgentMcpServerConfig } from '../src/agent/backend/types.ts';
 import type { PoolClient } from '../src/mcp/client.ts';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
@@ -182,5 +183,29 @@ describe('McpClientPool.sync — config change detection', () => {
 
     expect(failures).toContain('craft');
     expect(failPool.isConnected('craft')).toBe(false);
+  });
+
+  it('connects in-process API servers keyed by slug', async () => {
+    const apiServer = createInProcessMcpServer({
+      name: 'test-api',
+      version: '1.0.0',
+      tools: [
+        {
+          name: 'ping',
+          description: 'A ping tool',
+          inputSchema: {},
+          handler: async () => ({ content: [{ type: 'text', text: 'pong' }] }),
+        },
+      ],
+    });
+
+    await pool.sync({}, { 'my-api': apiServer });
+
+    expect(pool.isConnected('my-api')).toBe(true);
+    expect(pool.getTools('my-api').map(t => t.name)).toContain('ping');
+
+    const result = await pool.callTool('mcp__my-api__ping', {});
+    expect(result.isError).toBe(false);
+    expect(result.content).toBe('pong');
   });
 });
