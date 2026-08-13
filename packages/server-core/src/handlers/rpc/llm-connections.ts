@@ -566,7 +566,7 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
       const success = setDefaultLlmConnection(slug)
       if (success) {
         deps.platform.logger?.info(`Global default LLM connection set to: ${slug}`)
-        // Reinitialize auth so env vars and summarization model override match the new default
+        // Reinitialize auth for the new default connection (validation + logging; auth handled internally)
         await sessionManager.reinitializeAuth()
       }
       return { success, error: success ? undefined : 'Connection not found' }

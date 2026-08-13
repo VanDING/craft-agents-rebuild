@@ -1783,19 +1783,11 @@ export class SessionManager implements ISessionManager {
   }
 
   /**
-   * Reinitialize authentication environment variables.
-   * Call this after onboarding or settings changes to pick up new credentials.
+   * Reinitialize auth for the resolved LLM connection.
    *
-   * SECURITY NOTE: These env vars are propagated to the SDK subprocess via options.ts.
-   * Bun's automatic .env loading is disabled in the subprocess (--env-file=/dev/null)
-   * to prevent a user's project .env from injecting ANTHROPIC_API_KEY and overriding
-   * OAuth auth — Claude Code prioritizes API key over OAuth token when both are set.
-   * See: https://github.com/lukilabs/craft-agents-oss/issues/39
-   */
-  /**
-   * Reinitialize authentication environment variables.
-   *
-   * Uses the default LLM connection to determine which credentials to set.
+   * Validates that a connection resolves (explicit slug or the default) and logs
+   * the reinitialization. Auth itself is handled internally by the providers via
+   * the SDK's postInit()/token_update flow, so no env vars are set here.
    *
    * @param connectionSlug - Optional connection slug to use (overrides default)
    */
@@ -1836,7 +1828,8 @@ export class SessionManager implements ISessionManager {
       // This ensures credentials saved before LLM connections are available via the new system
       await migrateLegacyCredentials()
 
-      // Set up authentication environment variables (critical for SDK to work)
+      // Re-initialize auth for the resolved connection (validation + logging;
+      // provider auth flows via SDK postInit()/token_update)
       await this.reinitializeAuth()
 
       // Eagerly activate ConfigWatcher + AutomationSystem for every workspace so
