@@ -12,6 +12,7 @@
 // `stream` module — breaking the Vite renderer build. Instead, Pi model resolution is
 // injected at app startup via registerPiModelResolver().
 import {
+  BEDROCK_TO_BARE,
   type ModelDefinition,
   normalizeDeprecatedModelId,
 } from './models';
@@ -742,52 +743,6 @@ const BEDROCK_MODEL_MAP: Record<string, string> = {
   'anthropic.claude-sonnet-4-5-20250929-v1:0': 'us.anthropic.claude-sonnet-4-5-20250929-v1:0',
 }
 
-/** Reverse map: all known Bedrock ID variants → bare Anthropic ID */
-const BEDROCK_REVERSE_MAP: Record<string, string> = {
-  // US inference profiles
-  'us.anthropic.claude-opus-4-8': 'claude-opus-4-8',
-  'us.anthropic.claude-fable-5': 'claude-fable-5',
-  'us.anthropic.claude-opus-4-7': 'claude-opus-4-7',
-  'us.anthropic.claude-opus-4-7-v1': 'claude-opus-4-7',
-  'us.anthropic.claude-sonnet-5': 'claude-sonnet-5',
-  'us.anthropic.claude-sonnet-4-6': 'claude-sonnet-4-6',
-  'us.anthropic.claude-haiku-4-5-20251001-v1:0': 'claude-haiku-4-5-20251001',
-  'us.anthropic.claude-opus-4-6-v1': 'claude-opus-4-6',
-  'us.anthropic.claude-opus-4-5-20251101-v1:0': 'claude-opus-4-5-20251101',
-  'us.anthropic.claude-sonnet-4-5-20250929-v1:0': 'claude-sonnet-4-5-20250929',
-  // EU inference profiles
-  'eu.anthropic.claude-opus-4-8': 'claude-opus-4-8',
-  'eu.anthropic.claude-fable-5': 'claude-fable-5',
-  'eu.anthropic.claude-opus-4-7': 'claude-opus-4-7',
-  'eu.anthropic.claude-opus-4-7-v1': 'claude-opus-4-7',
-  'eu.anthropic.claude-sonnet-5': 'claude-sonnet-5',
-  'eu.anthropic.claude-sonnet-4-6': 'claude-sonnet-4-6',
-  'eu.anthropic.claude-haiku-4-5-20251001-v1:0': 'claude-haiku-4-5-20251001',
-  'eu.anthropic.claude-opus-4-6-v1': 'claude-opus-4-6',
-  'eu.anthropic.claude-opus-4-5-20251101-v1:0': 'claude-opus-4-5-20251101',
-  'eu.anthropic.claude-sonnet-4-5-20250929-v1:0': 'claude-sonnet-4-5-20250929',
-  // Global inference profiles
-  'global.anthropic.claude-opus-4-8': 'claude-opus-4-8',
-  'global.anthropic.claude-fable-5': 'claude-fable-5',
-  'global.anthropic.claude-opus-4-7': 'claude-opus-4-7',
-  'global.anthropic.claude-opus-4-7-v1': 'claude-opus-4-7',
-  'global.anthropic.claude-sonnet-5': 'claude-sonnet-5',
-  'global.anthropic.claude-sonnet-4-6': 'claude-sonnet-4-6',
-  'global.anthropic.claude-haiku-4-5-20251001-v1:0': 'claude-haiku-4-5-20251001',
-  'global.anthropic.claude-opus-4-6-v1': 'claude-opus-4-6',
-  // Base IDs (no region prefix)
-  'anthropic.claude-opus-4-8': 'claude-opus-4-8',
-  'anthropic.claude-fable-5': 'claude-fable-5',
-  'anthropic.claude-opus-4-7': 'claude-opus-4-7',
-  'anthropic.claude-opus-4-7-v1': 'claude-opus-4-7',
-  'anthropic.claude-sonnet-5': 'claude-sonnet-5',
-  'anthropic.claude-sonnet-4-6': 'claude-sonnet-4-6',
-  'anthropic.claude-haiku-4-5-20251001-v1:0': 'claude-haiku-4-5-20251001',
-  'anthropic.claude-opus-4-6-v1': 'claude-opus-4-6',
-  'anthropic.claude-opus-4-5-20251101-v1:0': 'claude-opus-4-5-20251101',
-  'anthropic.claude-sonnet-4-5-20250929-v1:0': 'claude-sonnet-4-5-20250929',
-}
-
 /**
  * Derive the Bedrock inference profile region prefix from an AWS region string.
  * Returns 'us', 'eu', or 'us' (default fallback for regions without inference profiles).
@@ -816,7 +771,7 @@ export function toBedrockNativeId(modelId: string, regionPrefix?: string): strin
 /** Map a Bedrock-native model ID back to its bare Anthropic equivalent. Pass-through if already bare or unknown. */
 export function fromBedrockNativeId(modelId: string): string {
   const normalizedModelId = normalizeDeprecatedModelId(modelId)
-  return BEDROCK_REVERSE_MAP[normalizedModelId] ?? normalizedModelId
+  return BEDROCK_TO_BARE[normalizedModelId] ?? normalizedModelId
 }
 
 /**

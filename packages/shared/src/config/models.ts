@@ -10,9 +10,9 @@
  * 3. Update llm-connections.ts if adding a new built-in connection
  */
 // Bedrock-native → bare Anthropic ID reverse mapping.
-// Duplicated from llm-connections.ts to avoid circular imports (llm-connections imports models).
-// Must stay in sync with BEDROCK_MODEL_MAP in llm-connections.ts.
-const BEDROCK_TO_BARE: Record<string, string> = {
+// Single source of truth — llm-connections.ts imports it (was duplicated
+// to avoid circular imports; models.ts must stay import-free of llm-connections).
+export const BEDROCK_TO_BARE: Record<string, string> = {
   // US inference profile IDs (primary)
   'us.anthropic.claude-opus-4-8': 'claude-opus-4-8',
   'us.anthropic.claude-fable-5': 'claude-fable-5',
