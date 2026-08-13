@@ -53,6 +53,8 @@ export type LlmProviderType =
 
 /**
  * @deprecated Use LlmProviderType instead. Kept for migration compatibility.
+ * Remains for legacy config parsing tolerance (D2): old stored configs can
+ * still carry a `type` field on LlmConnection until migration data is known.
  */
 export type LlmConnectionType = 'anthropic' | 'openai' | 'openai-compat';
 
@@ -788,52 +790,6 @@ export function normalizeBedrockModelId(
   return toBedrockNativeId(bare, regionPrefix)
 }
 
-// ============================================================
-// Migration Helpers
-// ============================================================
-
-/**
- * Migrate legacy connection type to new provider type.
- * Used during config migration.
- *
- * @param legacyType - Legacy LlmConnectionType value
- * @returns New LlmProviderType value
- */
-export function migrateConnectionType(legacyType: LlmConnectionType): LlmProviderType {
-  switch (legacyType) {
-    case 'anthropic':
-      return 'pi';
-    case 'openai':
-      return 'pi';
-    case 'openai-compat':
-      return 'pi_compat';
-  }
-}
-
-/**
- * Migrate legacy auth type to new auth type.
- * Determines new auth type based on legacy type + connection context.
- *
- * @param legacyAuthType - Legacy auth type ('api_key' | 'oauth' | 'none')
- * @param hasCustomEndpoint - Whether connection has a custom baseUrl
- * @returns New LlmAuthType value
- */
-export function migrateAuthType(
-  legacyAuthType: 'api_key' | 'oauth' | 'none',
-  hasCustomEndpoint: boolean
-): LlmAuthType {
-  switch (legacyAuthType) {
-    case 'api_key':
-      // If has custom endpoint, use api_key_with_endpoint
-      return hasCustomEndpoint ? 'api_key_with_endpoint' : 'api_key';
-    case 'oauth':
-      return 'oauth';
-    case 'none':
-      return 'none';
-  }
-}
-
-
 /**
  * Result of resolving auth env vars for an LLM connection.
  */
@@ -844,40 +800,4 @@ export interface ResolvedAuthEnvVars {
   success: boolean;
   /** Warning message if auth resolution encountered issues */
   warning?: string;
-}
-
-/**
- * Migrate a legacy LlmConnection to the new format.
- * Creates a new connection object with providerType instead of type.
- *
- * @param legacy - Legacy connection with 'type' field
- * @returns Migrated connection with 'providerType' field
- */
-export function migrateLlmConnection(legacy: {
-  slug: string;
-  name: string;
-  type: LlmConnectionType;
-  baseUrl?: string;
-  authType: 'api_key' | 'oauth' | 'none';
-  models?: ModelDefinition[];
-  defaultModel?: string;
-  createdAt: number;
-  lastUsedAt?: number;
-}): LlmConnection {
-  const providerType = migrateConnectionType(legacy.type);
-  const hasCustomEndpoint = !!legacy.baseUrl && legacy.type !== 'anthropic';
-  const authType = migrateAuthType(legacy.authType, hasCustomEndpoint);
-
-  return {
-    slug: legacy.slug,
-    name: legacy.name,
-    providerType,
-    type: legacy.type, // Keep for backwards compatibility
-    baseUrl: legacy.baseUrl,
-    authType,
-    models: legacy.models,
-    defaultModel: legacy.defaultModel,
-    createdAt: legacy.createdAt,
-    lastUsedAt: legacy.lastUsedAt,
-  };
 }
