@@ -8,7 +8,7 @@
  */
 import { describe, it, expect, beforeEach } from 'bun:test';
 import { McpClientPool } from '../src/mcp/mcp-pool.ts';
-import type { SdkMcpServerConfig } from '../src/agent/backend/types.ts';
+import type { AgentMcpServerConfig } from '../src/agent/backend/types.ts';
 import type { PoolClient } from '../src/mcp/client.ts';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 
@@ -32,7 +32,7 @@ function makeMockClient(): PoolClient {
   };
 }
 
-function httpConfig(token: string, url = 'https://mcp.example.com'): SdkMcpServerConfig {
+function httpConfig(token: string, url = 'https://mcp.example.com'): AgentMcpServerConfig {
   return { type: 'http', url, headers: { Authorization: `Bearer ${token}` } };
 }
 
@@ -41,10 +41,10 @@ function httpConfig(token: string, url = 'https://mcp.example.com'): SdkMcpServe
  * while letting sync()'s config-change detection logic run against real state.
  */
 class TestablePool extends McpClientPool {
-  public connectCalls: Array<{ slug: string; config: SdkMcpServerConfig }> = [];
+  public connectCalls: Array<{ slug: string; config: AgentMcpServerConfig }> = [];
   public disconnectCalls: string[] = [];
 
-  async connect(slug: string, config: SdkMcpServerConfig): Promise<void> {
+  async connect(slug: string, config: AgentMcpServerConfig): Promise<void> {
     this.connectCalls.push({ slug, config });
     await this.registerClient(slug, makeMockClient());
     this.activeConfigs.set(slug, config);
@@ -110,12 +110,12 @@ describe('McpClientPool.sync — config change detection', () => {
   it('does not reconnect when only non-auth headers change', async () => {
     // Only Authorization and URL should trigger reconnect — other header
     // changes (tracing, versioning) should not cause connection churn.
-    const config1: SdkMcpServerConfig = {
+    const config1: AgentMcpServerConfig = {
       type: 'http',
       url: 'https://mcp.example.com',
       headers: { Authorization: 'Bearer same', 'X-Request-Id': 'aaa' },
     };
-    const config2: SdkMcpServerConfig = {
+    const config2: AgentMcpServerConfig = {
       type: 'http',
       url: 'https://mcp.example.com',
       headers: { Authorization: 'Bearer same', 'X-Request-Id': 'bbb' },
@@ -168,7 +168,7 @@ describe('McpClientPool.sync — config change detection', () => {
     let connectAttempts = 0;
     const failPool = new TestablePool();
     const origConnect = failPool.connect.bind(failPool);
-    failPool.connect = async (slug: string, config: SdkMcpServerConfig) => {
+    failPool.connect = async (slug: string, config: AgentMcpServerConfig) => {
       connectAttempts++;
       if (connectAttempts > 1) throw new Error('Server unavailable');
       return origConnect(slug, config);

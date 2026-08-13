@@ -39,7 +39,7 @@ export type {
   SourceActivationCallback,
   ChatOptions,
   RecoveryMessage,
-  SdkMcpServerConfig,
+  AgentMcpServerConfig,
   LlmAuthType,
   LlmProviderType,
   PostInitResult,

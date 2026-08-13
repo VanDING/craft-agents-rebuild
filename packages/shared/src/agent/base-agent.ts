@@ -37,7 +37,7 @@ import type {
   AuthCallback,
   SourceChangeCallback,
   SourceActivationCallback,
-  SdkMcpServerConfig,
+  AgentMcpServerConfig,
   BackendConfig,
   PostInitResult,
   BridgeUpdateContext,
@@ -600,7 +600,7 @@ export abstract class BaseAgent implements AgentBackend {
    * Subclasses may override to handle provider-specific MCP setup.
    */
   async setSourceServers(
-    mcpServers: Record<string, SdkMcpServerConfig>,
+    mcpServers: Record<string, AgentMcpServerConfig>,
     apiServers: Record<string, unknown>,
     intendedSlugs?: string[]
   ): Promise<void> {

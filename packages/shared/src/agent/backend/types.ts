@@ -133,7 +133,7 @@ export interface BridgeUpdateContext {
   /** Currently enabled sources */
   enabledSources: LoadedSource[];
   /** Pre-built MCP server configs */
-  mcpServers: Record<string, SdkMcpServerConfig>;
+  mcpServers: Record<string, AgentMcpServerConfig>;
   /** Session ID */
   sessionId: string;
   /** Workspace root path */
@@ -278,7 +278,7 @@ export interface CoreBackendConfig {
    */
   initialSources?: {
     enabledSources: LoadedSource[];
-    mcpServers: Record<string, SdkMcpServerConfig>;
+    mcpServers: Record<string, AgentMcpServerConfig>;
     apiServers: Record<string, unknown>;
     enabledSlugs: string[];
   };
@@ -302,7 +302,7 @@ export interface ChatOptions {
  * SDK-compatible MCP server configuration.
  * Supports HTTP/SSE (remote) and stdio (local subprocess) transports.
  */
-export type SdkMcpServerConfig =
+export type AgentMcpServerConfig =
   | {
       type: 'http' | 'sse';
       url: string;
@@ -513,7 +513,7 @@ export interface AgentBackend {
    * @param intendedSlugs Source slugs that should be considered active
    */
   setSourceServers(
-    mcpServers: Record<string, SdkMcpServerConfig>,
+    mcpServers: Record<string, AgentMcpServerConfig>,
     apiServers: Record<string, unknown>,
     intendedSlugs?: string[]
   ): void | Promise<void>;

@@ -443,7 +443,7 @@ async function applyBridgeUpdates(
   agent: AgentInstance,
   sessionPath: string,
   enabledSources: LoadedSource[],
-  mcpServers: Record<string, import('@craft-agent/shared/agent/backend').SdkMcpServerConfig>,
+  mcpServers: Record<string, import('@craft-agent/shared/agent/backend').AgentMcpServerConfig>,
   sessionId: string,
   workspaceRootPath: string,
   context: string,

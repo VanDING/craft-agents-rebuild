@@ -16,7 +16,7 @@
 import { CraftMcpClient, type McpClientConfig, type PoolClient } from './client.ts';
 import { ApiSourcePoolClient } from './api-source-pool-client.ts';
 import { proxyToolName } from './proxy-tool-name.ts';
-import type { SdkMcpServerConfig } from '../agent/backend/types.ts';
+import type { AgentMcpServerConfig } from '../agent/backend/types.ts';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { isLocalMcpEnabled } from '../workspaces/storage.ts';
@@ -57,9 +57,9 @@ export interface McpToolResult {
 }
 
 /**
- * Convert SdkMcpServerConfig (used by backend types) to CraftMcpClient config.
+ * Convert AgentMcpServerConfig (used by backend types) to CraftMcpClient config.
  */
-function sdkConfigToClientConfig(config: SdkMcpServerConfig): McpClientConfig | null {
+function sdkConfigToClientConfig(config: AgentMcpServerConfig): McpClientConfig | null {
   if (config.type === 'http' || config.type === 'sse') {
     return {
       transport: 'http',
@@ -83,7 +83,7 @@ function sdkConfigToClientConfig(config: SdkMcpServerConfig): McpClientConfig | 
  * Compares auth headers (token refresh) and URL changes.
  * Ignores stdio sources since they don't use OAuth tokens.
  */
-function mcpConfigChanged(oldConfig: SdkMcpServerConfig, newConfig: SdkMcpServerConfig): boolean {
+function mcpConfigChanged(oldConfig: AgentMcpServerConfig, newConfig: AgentMcpServerConfig): boolean {
   if (oldConfig.type !== newConfig.type) return true;
 
   if (
@@ -104,7 +104,7 @@ export class McpClientPool {
   private clients = new Map<string, PoolClient>();
 
   /** Configs used for active MCP connections (for change detection during sync) */
-  protected activeConfigs = new Map<string, SdkMcpServerConfig>();
+  protected activeConfigs = new Map<string, AgentMcpServerConfig>();
 
   /** Cached tool lists keyed by source slug */
   private toolCache = new Map<string, Tool[]>();
@@ -183,7 +183,7 @@ export class McpClientPool {
    * Connect to an MCP source server (remote HTTP/SSE/stdio).
    * If already connected, this is a no-op.
    */
-  async connect(slug: string, config: SdkMcpServerConfig): Promise<void> {
+  async connect(slug: string, config: AgentMcpServerConfig): Promise<void> {
     if (this.clients.has(slug)) return;
     const clientConfig = sdkConfigToClientConfig(config);
     if (!clientConfig) {
@@ -247,12 +247,12 @@ export class McpClientPool {
    * @returns List of slugs that failed to connect
    */
   async sync(
-    mcpServers: Record<string, SdkMcpServerConfig>,
+    mcpServers: Record<string, AgentMcpServerConfig>,
     apiServers: Record<string, ApiServerConfig> = {}
   ): Promise<string[]> {
     // Filter out stdio sources when local MCP is disabled for this workspace.
     const localEnabled = !this.workspaceRootPath || isLocalMcpEnabled(this.workspaceRootPath);
-    const filteredMcp: Record<string, SdkMcpServerConfig> = {};
+    const filteredMcp: Record<string, AgentMcpServerConfig> = {};
     for (const [slug, config] of Object.entries(mcpServers)) {
       if (config.type === 'stdio' && !localEnabled) {
         this.debug(`Filtering out stdio source "${slug}" (local MCP disabled)`);

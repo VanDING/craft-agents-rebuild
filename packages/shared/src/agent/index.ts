@@ -141,7 +141,7 @@ export {
   type SourceActivationCallback,
   type ChatOptions,
   type RecoveryMessage,
-  type SdkMcpServerConfig as BackendMcpServerConfig,
+  type AgentMcpServerConfig as BackendMcpServerConfig,
   // Enums
   AbortReason as BackendAbortReason,
 } from './backend/index.ts';

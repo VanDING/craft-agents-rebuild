@@ -23,7 +23,7 @@ import type {
   BackendConfig,
   BackendRuntimeUpdate,
   ChatOptions,
-  SdkMcpServerConfig,
+  AgentMcpServerConfig,
 } from './backend/types.ts';
 import { AbortReason } from './backend/types.ts';
 import { getBackendRuntime } from './backend/internal/driver-types.ts';
@@ -2302,7 +2302,7 @@ export class PiAgent extends BaseAgent {
   // ============================================================
 
   override async setSourceServers(
-    mcpServers: Record<string, SdkMcpServerConfig>,
+    mcpServers: Record<string, AgentMcpServerConfig>,
     apiServers: Record<string, unknown>,
     intendedSlugs?: string[]
   ): Promise<void> {
