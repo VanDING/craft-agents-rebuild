@@ -899,111 +899,84 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
     try {
       switch (connectionSlug) {
 
-        // ── xAI / Grok (device-code flow) ────────────────────────
+        // ── xAI / Grok (SDK device-code flow) ────────────────────
         case 'grok-x': {
-          const XAI_CLIENT_ID = 'b1a00492-073a-47ea-816f-4c329264a828'
-          const XAI_SCOPE = 'openid profile email offline_access grok-cli:access api:access'
+          const { xaiProvider } = await import('@earendil-works/pi-ai/providers/xai')
+          const oauth = xaiProvider().auth.oauth
+          if (!oauth) return { success: false, error: 'Grok OAuth flow unavailable' }
 
-          // Request device code
-          const deviceRes = await fetch('https://auth.x.ai/oauth2/device/code', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: new URLSearchParams({ client_id: XAI_CLIENT_ID, scope: XAI_SCOPE }),
-          })
-          if (!deviceRes.ok) return { success: false, error: `xAI device code request failed (${deviceRes.status})` }
-          const device = await deviceRes.json() as Record<string, unknown>
-          const userCode = String(device.user_code ?? '')
-          const verificationUri = String(device.verification_uri ?? '')
-          const deviceCodeValue = String(device.device_code ?? '')
-          const interval = (Number(device.interval) || 5) * 1000
-
-          // Push device code to renderer
-          pushTyped(server, 'copilot:deviceCode', { to: 'client', clientId: ctx.clientId }, {
-            userCode,
-            verificationUri,
-          })
-          // Open browser
-          server.invokeClient(ctx.clientId, CLIENT_OPEN_EXTERNAL, verificationUri).catch(() => {})
-
-          // Poll for token
-          const deadline = Date.now() + 300_000
-          while (Date.now() < deadline) {
-            await new Promise(r => setTimeout(r, interval))
-            const res = await fetch('https://auth.x.ai/oauth2/token', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-              body: new URLSearchParams({
-                client_id: XAI_CLIENT_ID,
-                device_code: deviceCodeValue,
-                grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
-              }),
+          try {
+            const credential = await oauth.login({
+              signal: new AbortController().signal,
+              notify: (event) => {
+                if (event.type === 'device_code') {
+                  pushTyped(server, RPC_CHANNELS.copilot.DEVICE_CODE, { to: 'client', clientId: ctx.clientId }, {
+                    userCode: event.userCode,
+                    verificationUri: event.verificationUri,
+                  })
+                  server.invokeClient(ctx.clientId, CLIENT_OPEN_EXTERNAL, event.verificationUri).catch(() => {})
+                } else if (event.type === 'progress') {
+                  pushTyped(server, RPC_CHANNELS.copilot.DEVICE_CODE, { to: 'client', clientId: ctx.clientId }, {
+                    userCode: '',
+                    verificationUri: '',
+                    progressMessage: event.message,
+                  })
+                }
+              },
+              prompt: async (prompt) => {
+                throw new Error(`Unsupported Grok login prompt: ${(prompt as { type: string }).type}`)
+              },
             })
-            const data = await res.json() as Record<string, unknown>
-            if (data.access_token) {
-              await credentialManager.setLlmOAuth(connectionSlug, {
-                accessToken: String(data.access_token),
-                refreshToken: String(data.refresh_token ?? ''),
-                expiresAt: Date.now() + (Number(data.expires_in) || 3600) * 1000,
-              })
-              return { success: true, deviceCode: { userCode, verificationUri } }
-            }
-            if (data.error === 'authorization_pending') continue
-            if (data.error === 'access_denied') return { success: false, error: 'Access denied' }
-            if (data.error === 'expired_token') return { success: false, error: 'Code expired, try again' }
-            if (data.error) return { success: false, error: `xAI error: ${data.error}` }
+
+            await credentialManager.setLlmOAuth(connectionSlug, {
+              accessToken: credential.access,
+              refreshToken: credential.refresh,
+              expiresAt: credential.expires,
+            })
+            return { success: true }
+          } catch (error) {
+            return { success: false, error: error instanceof Error ? error.message : 'Grok OAuth failed' }
           }
-          return { success: false, error: 'xAI OAuth timed out' }
         }
 
-        // ── Kimi Code (device-code flow) ────────────────────────
+        // ── Kimi Code (SDK device-code flow) ────────────────────
         case 'kimi-coding': {
-          const KIMI_CLIENT_ID = '17e5f671-d194-4dfb-9706-5516cb48c098'
+          const { kimiCodingProvider } = await import('@earendil-works/pi-ai/providers/kimi-coding')
+          const oauth = kimiCodingProvider().auth.oauth
+          if (!oauth) return { success: false, error: 'Kimi OAuth flow unavailable' }
 
-          const deviceRes = await fetch('https://auth.kimi.com/oauth2/device/code', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: new URLSearchParams({ client_id: KIMI_CLIENT_ID, scope: 'openid profile email offline_access' }),
-          })
-          if (!deviceRes.ok) return { success: false, error: `Kimi device code request failed (${deviceRes.status})` }
-          const device = await deviceRes.json() as Record<string, unknown>
-          const userCode = String(device.user_code ?? '')
-          const verificationUri = String(device.verification_uri ?? '')
-          const deviceCodeValue = String(device.device_code ?? '')
-          const interval = (Number(device.interval) || 5) * 1000
-
-          pushTyped(server, 'copilot:deviceCode', { to: 'client', clientId: ctx.clientId }, {
-            userCode,
-            verificationUri,
-          })
-          server.invokeClient(ctx.clientId, CLIENT_OPEN_EXTERNAL, verificationUri).catch(() => {})
-
-          const deadline = Date.now() + 300_000
-          while (Date.now() < deadline) {
-            await new Promise(r => setTimeout(r, interval))
-            const res = await fetch('https://auth.kimi.com/oauth2/token', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-              body: new URLSearchParams({
-                client_id: KIMI_CLIENT_ID,
-                device_code: deviceCodeValue,
-                grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
-              }),
+          try {
+            const credential = await oauth.login({
+              signal: new AbortController().signal,
+              notify: (event) => {
+                if (event.type === 'device_code') {
+                  pushTyped(server, RPC_CHANNELS.copilot.DEVICE_CODE, { to: 'client', clientId: ctx.clientId }, {
+                    userCode: event.userCode,
+                    verificationUri: event.verificationUri,
+                  })
+                  server.invokeClient(ctx.clientId, CLIENT_OPEN_EXTERNAL, event.verificationUri).catch(() => {})
+                } else if (event.type === 'progress') {
+                  pushTyped(server, RPC_CHANNELS.copilot.DEVICE_CODE, { to: 'client', clientId: ctx.clientId }, {
+                    userCode: '',
+                    verificationUri: '',
+                    progressMessage: event.message,
+                  })
+                }
+              },
+              prompt: async (prompt) => {
+                throw new Error(`Unsupported Kimi login prompt: ${(prompt as { type: string }).type}`)
+              },
             })
-            const data = await res.json() as Record<string, unknown>
-            if (data.access_token) {
-              await credentialManager.setLlmOAuth(connectionSlug, {
-                accessToken: String(data.access_token),
-                refreshToken: String(data.refresh_token ?? ''),
-                expiresAt: Date.now() + (Number(data.expires_in) || 3600) * 1000,
-              })
-              return { success: true, deviceCode: { userCode, verificationUri } }
-            }
-            if (data.error === 'authorization_pending') continue
-            if (data.error === 'access_denied') return { success: false, error: 'Access denied' }
-            if (data.error === 'expired_token') return { success: false, error: 'Code expired, try again' }
-            if (data.error) return { success: false, error: `Kimi error: ${data.error}` }
+
+            await credentialManager.setLlmOAuth(connectionSlug, {
+              accessToken: credential.access,
+              refreshToken: credential.refresh,
+              expiresAt: credential.expires,
+            })
+            return { success: true }
+          } catch (error) {
+            return { success: false, error: error instanceof Error ? error.message : 'Kimi OAuth failed' }
           }
-          return { success: false, error: 'Kimi OAuth timed out' }
         }
 
         // ── OpenRouter (SDK PKCE flow: loopback callback + headless paste) ──
