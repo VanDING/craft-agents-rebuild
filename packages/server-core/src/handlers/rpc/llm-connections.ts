@@ -496,7 +496,7 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
         )
       })
       // Reinitialize auth if the saved connection is the current default
-      // (updates env vars and summarization model override)
+      // (validation + logging; provider auth flows via SDK postInit()/token_update)
       const defaultSlug = getDefaultLlmConnection()
       if (defaultSlug === connection.slug) {
         await sessionManager.reinitializeAuth()
