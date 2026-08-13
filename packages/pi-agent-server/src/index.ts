@@ -89,7 +89,7 @@ import { createWebFetchTool } from './tools/web-fetch.ts';
 import { resolveSearchProvider } from './tools/search/resolve-provider.ts';
 import { createSearchTool } from './tools/search/create-search-tool.ts';
 import { allowCraftMetadataProperties, stripCraftMetadata } from './craft-metadata-schema.ts';
-import { applySystemPromptOverride } from './system-prompt-override.ts';
+import { createCraftResourceLoader, setCraftSystemPrompt } from './craft-resource-loader.ts';
 import { guardCallbackToken } from './callback-auth.ts';
 import {
   hasSupportedBaseUrlScheme,
@@ -540,6 +540,13 @@ async function createAuthenticatedRuntime(): Promise<{
   return { credentialStore, modelRuntime, modelRegistry };
 }
 
+/** Extension isolation: agent dir under the session path so no global Pi extensions from ~/.pi/agent load. */
+function resolveIsolatedAgentDir(): string {
+  const agentDir = initConfig!.agentDir || join(initConfig!.sessionPath, '.pi-agent');
+  mkdirSync(agentDir, { recursive: true });
+  return agentDir;
+}
+
 async function ensureSession(): Promise<AgentSession> {
   if (piSession) return piSession;
   if (!initConfig) throw new Error('Cannot create session: init not received');
@@ -602,14 +609,13 @@ async function ensureSession(): Promise<AgentSession> {
     modelRuntime,
     customTools: wrappedAll,
     tools: toolAllowlist,
+    resourceLoader: await createCraftResourceLoader({ cwd, agentDir: resolveIsolatedAgentDir() }),
   };
 
   // Extension isolation: set agentDir to a temp directory under session path
   // to prevent loading global Pi extensions from ~/.pi/agent
   if (initConfig.sessionPath) {
-    const agentDir = initConfig.agentDir || join(initConfig.sessionPath, '.pi-agent');
-    mkdirSync(agentDir, { recursive: true });
-    sessionOptions.agentDir = agentDir;
+    sessionOptions.agentDir = resolveIsolatedAgentDir();
 
     // Session resume: use a per-Craft-session directory so the Pi SDK can
     // persist and resume its own session across subprocess restarts.
@@ -967,6 +973,7 @@ async function queryLlm(request: LLMQueryRequest): Promise<LLMQueryResult> {
       tools: [],
       sessionManager: PiSessionManager.inMemory(),
       model: piModel,
+      resourceLoader: await createCraftResourceLoader({ cwd: resolvedCwd(), agentDir: resolveIsolatedAgentDir() }),
     };
 
     const { session: ephemeralSession } = await createAgentSession(ephemeralOptions);
@@ -981,11 +988,11 @@ async function queryLlm(request: LLMQueryRequest): Promise<LLMQueryResult> {
 
     debugLog(`[queryLlm] Created ephemeral session: ${ephemeralSession.sessionId}`);
 
-    // Force the system prompt — see system-prompt-override.ts for why direct
-    // assignment to `state.systemPrompt` doesn't survive `session.prompt()`.
+    // Supply the system prompt via the loader's before_agent_start hook (re-applied
+    // every turn; see craft-resource-loader.ts).
     const promptForSession =
       request.systemPrompt ?? 'Reply with ONLY the requested text. No explanation.';
-    applySystemPromptOverride(ephemeralSession, promptForSession);
+    setCraftSystemPrompt(promptForSession);
 
     // Collect response text and errors from events
     let result = '';
@@ -1349,11 +1356,11 @@ async function handlePrompt(msg: Extract<InboundMessage, { type: 'prompt' }>): P
 
     const session = await ensureSession();
 
-    // Force the Craft-built system prompt onto the Pi session. Direct assignment
-    // to `state.systemPrompt` is wiped on every `session.prompt()` call by the Pi
-    // SDK (see system-prompt-override.ts).
+    // Supply the Craft-built system prompt via the loader's before_agent_start
+    // hook — re-applied every turn, surviving the SDK's per-turn reset and
+    // tool-change rebuilds (see craft-resource-loader.ts).
     if (msg.systemPrompt) {
-      applySystemPromptOverride(session, msg.systemPrompt);
+      setCraftSystemPrompt(msg.systemPrompt);
     }
 
     // Wire up event handler
