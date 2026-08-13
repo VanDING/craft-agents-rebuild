@@ -51,8 +51,8 @@ apps/electron/
 ### 1. Pi Agent Subprocess Bundling
 
 The Electron app spawns `packages/pi-agent-server` (a Bun-compiled JS bundle) as a
-JSONL-over-stdio subprocess. `scripts/build/common.ts` stages the interceptor bundle,
-`pi-agent-server`, and the session MCP server into the packaged resources. The Pi SDK
+JSONL-over-stdio subprocess. `scripts/build/common.ts` stages the interceptor bundle and
+`pi-agent-server` into the packaged resources. The Pi SDK
 (`@earendil-works/pi-coding-agent`) is bundled into the pi-agent-server build output —
 no Claude native binary is staged.
 

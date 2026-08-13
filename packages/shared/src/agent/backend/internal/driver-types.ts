@@ -13,7 +13,6 @@ import type { CredentialManager } from '../../../credentials/manager.ts';
 export interface BackendRuntimePaths {
   copilotCli?: string;
   interceptor?: string;
-  sessionServer?: string;
   node?: string;
   bridgeServer?: string;
   piServer?: string;
