@@ -134,6 +134,8 @@ interface InitMessage {
   customEndpoint?: { api: CustomEndpointApi; supportsImages?: boolean };
   customModels?: Array<string | { id: string; contextWindow?: number; supportsImages?: boolean }>;
   piAuth?: { provider: string; credential: PiCredential };
+  /** Whether the browser session tool is enabled (false = exclude via SDK denylist) */
+  browserToolEnabled?: boolean;
 }
 
 interface RuntimeConfigUpdateMessage {
@@ -609,6 +611,7 @@ async function ensureSession(): Promise<AgentSession> {
     modelRuntime,
     customTools: wrappedAll,
     tools: toolAllowlist,
+    excludeTools: initConfig.browserToolEnabled === false ? ['mcp__session__browser_tool'] : undefined,
     resourceLoader: await createCraftResourceLoader({ cwd, agentDir: resolveIsolatedAgentDir() }),
   };
 
