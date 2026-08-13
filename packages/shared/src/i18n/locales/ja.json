@@ -677,7 +677,7 @@
   "onboarding.apiSetup.beta": "ベータ",
   "onboarding.apiSetup.chatGPTPlusDesc": "ChatGPTサブスクリプションをCraft Agents Backendで使用します。",
   "onboarding.apiSetup.claude": "Claude",
-  "onboarding.apiSetup.claudeDesc": "Claude Agent SDKをメインエージェントとして使用します。ClaudeサブスクリプションまたはAPIキーで設定してください。",
+  "onboarding.apiSetup.claudeDesc": "ClaudeサブスクリプションまたはAPIキーを使用します。Craftバックエンド経由で設定されます。",
   "onboarding.apiSetup.claudeProMax": "Claude Pro / Max",
   "onboarding.apiSetup.claudeProMaxDesc": "Claudeのサブスクリプションを使用して無制限にアクセスします。",
   "onboarding.apiSetup.craftAgentsBackend": "Craft Agents Backend",

@@ -677,7 +677,7 @@
   "onboarding.apiSetup.beta": "Beta",
   "onboarding.apiSetup.chatGPTPlusDesc": "通过 Craft Agents Backend 使用 ChatGPT 订阅。",
   "onboarding.apiSetup.claude": "Claude",
-  "onboarding.apiSetup.claudeDesc": "使用 Claude Agent SDK 作为主智能体。通过 Claude 订阅或 API 密钥配置。",
+  "onboarding.apiSetup.claudeDesc": "使用 Claude 订阅或 API 密钥。通过 Craft 后端进行配置。",
   "onboarding.apiSetup.claudeProMax": "Claude Pro / Max",
   "onboarding.apiSetup.claudeProMaxDesc": "使用 Claude 订阅获得无限访问。",
   "onboarding.apiSetup.craftAgentsBackend": "Craft Agents Backend",

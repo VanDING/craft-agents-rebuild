@@ -677,7 +677,7 @@
   "onboarding.apiSetup.beta": "Béta",
   "onboarding.apiSetup.chatGPTPlusDesc": "Használd ChatGPT-előfizetésedet a Craft Agents Backenden keresztül.",
   "onboarding.apiSetup.claude": "Claude",
-  "onboarding.apiSetup.claudeDesc": "A Claude Agent SDK használata fő ügynökként. Konfigurálható Claude-előfizetéssel vagy API-kulccsal.",
+  "onboarding.apiSetup.claudeDesc": "Használd a Claude-előfizetésedet vagy API-kulcsodat. A konfiguráció a Craft backendben történik.",
   "onboarding.apiSetup.claudeProMax": "Claude Pro / Max",
   "onboarding.apiSetup.claudeProMaxDesc": "Használd a Claude előfizetésedet korlátlan hozzáféréshez.",
   "onboarding.apiSetup.craftAgentsBackend": "Craft Agents Backend",

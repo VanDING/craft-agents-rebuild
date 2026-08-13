@@ -677,7 +677,7 @@
   "onboarding.apiSetup.beta": "Beta",
   "onboarding.apiSetup.chatGPTPlusDesc": "Używaj swojej subskrypcji ChatGPT z Craft Agents Backend.",
   "onboarding.apiSetup.claude": "Claude",
-  "onboarding.apiSetup.claudeDesc": "Użyj Claude Agent SDK jako głównego agenta. Skonfiguruj za pomocą subskrypcji Claude lub klucza API.",
+  "onboarding.apiSetup.claudeDesc": "Użyj subskrypcji Claude lub klucza API. Konfiguracja odbywa się przez backend Craft.",
   "onboarding.apiSetup.claudeProMax": "Claude Pro / Max",
   "onboarding.apiSetup.claudeProMaxDesc": "Używaj swojej subskrypcji Claude dla nieograniczonego dostępu.",
   "onboarding.apiSetup.craftAgentsBackend": "Craft Agents Backend",
