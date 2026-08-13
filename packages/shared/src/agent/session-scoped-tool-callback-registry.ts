@@ -2,8 +2,8 @@
  * Session-Scoped Tool Callback Registry
  *
  * Extracted from session-scoped-tools.ts to break the dependency between
- * the callback registry (shared by Claude + Pi paths) and the Claude SDK
- * adapter layer (only used by ClaudeAgent).
+ * the callback registry (used by the Pi backend's main-process tool execution)
+ * and the SDK adapter layer.
  *
  * The registry is a simple Map keyed by sessionId. Each backend registers
  * callbacks when a session starts and merges additional callbacks (e.g.
