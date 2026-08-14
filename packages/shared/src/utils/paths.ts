@@ -38,6 +38,11 @@ export function expandPath(inputPath: string, basePath?: string): string {
     expanded = join(home, expanded.slice(2));
   }
 
+  // Handle ~\ prefix (win32 portable paths persisted with mixed separators)
+  if (expanded.startsWith('~\\')) {
+    expanded = join(home, expanded.slice(2));
+  }
+
   // Handle ${HOME} and $HOME variables
   expanded = expanded.replace(/\$\{HOME\}/g, home);
   expanded = expanded.replace(/\$HOME(?=\/|$)/g, home);
@@ -65,6 +70,13 @@ export function expandPath(inputPath: string, basePath?: string): string {
  */
 export function toPortablePath(absolutePath: string): string {
   if (!absolutePath) return absolutePath;
+
+  // Idempotency: already-portable paths pass through untouched. Double
+  // application would otherwise re-normalize mixed separators (e.g.
+  // '~/AppData\Local' → '~\AppData\Local'), producing phantom paths.
+  if (absolutePath.startsWith('~') || absolutePath.startsWith('${HOME}')) {
+    return absolutePath;
+  }
 
   const home = homedir();
   const normalized = normalize(absolutePath);

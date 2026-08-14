@@ -10,6 +10,8 @@ import { CraftMcpClient } from './client.js';
 import { debug } from '../utils/debug.ts';
 import { normalizeMcpUrl } from '../sources/server-builder.ts';
 import type { McpTransport } from '../sources/types.ts';
+import { existsSync } from 'fs';
+import { join, delimiter } from 'path';
 
 export interface InvalidProperty {
   toolName: string;
@@ -301,6 +303,38 @@ function createConnectWatchdog(
 }
 
 /**
+ * Pre-flight availability check for stdio commands.
+ *
+ * On Windows, spawning a nonexistent command does not surface ENOENT through
+ * the MCP SDK: StdioClientTransport "starts", the child closes immediately,
+ * and the failure manifests as a confusing "Connection closed" with mojibake
+ * stderr. Checking availability up front yields clean diagnostics.
+ * Mirrors Node child_process spawn semantics: paths containing a separator
+ * are checked directly; bare names are resolved against PATH (with PATHEXT
+ * extensions on win32 when the name has no extension).
+ */
+function isCommandAvailable(command: string): boolean {
+  if (command.includes('/') || command.includes('\\')) {
+    return existsSync(command);
+  }
+
+  const searchPath = (process.env.PATH ?? '').split(delimiter).filter(Boolean);
+  if (process.platform === 'win32') {
+    const hasExtension = command.includes('.');
+    const extensions = hasExtension
+      ? ['']
+      : (process.env.PATHEXT ?? '.EXE;.CMD;.BAT;.COM').split(';');
+    for (const dir of searchPath) {
+      for (const ext of extensions) {
+        if (existsSync(join(dir, command + ext))) return true;
+      }
+    }
+    return false;
+  }
+  return searchPath.some((dir) => existsSync(join(dir, command)));
+}
+
+/**
  * Validates a stdio MCP connection by spawning the process and listing tools.
  *
  * Unlike HTTP validation, this actually spawns the MCP server process,
@@ -385,6 +419,17 @@ export async function validateStdioMcpConnection(
       );
     });
   };
+
+  // Pre-flight command check: on win32 a missing command never surfaces
+  // ENOENT through the stdio transport (the child closes immediately, the
+  // SDK reports "Connection closed"), so fail with clean diagnostics here.
+  if (!isCommandAvailable(command)) {
+    return {
+      success: false,
+      error: `Command not found: "${command}". Install the required dependency and try again.`,
+      errorType: 'failed',
+    };
+  }
 
   try {
     transport = new StdioClientTransport({
