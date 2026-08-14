@@ -248,7 +248,7 @@ function ConnectionRow({ connection, isLastConnection, onRenameClick, onDelete, 
       case 'pi_compat':
         parts.push(connection.baseUrl?.toLowerCase().includes('manifest.build')
           ? 'Manifest'
-          : 'Craft Agents Backend Compatible')
+          : 'Custom Endpoint')
         break
       default: parts.push(provider || 'Unknown')
     }
@@ -1062,7 +1062,7 @@ export default function AiSettingsPage() {
                       value: conn.slug,
                       label: conn.name,
                       description: conn.providerType === 'pi' ? 'Craft Agents Backend' :
-                                   conn.providerType === 'pi_compat' ? (conn.baseUrl?.toLowerCase().includes('manifest.build') ? 'Manifest' : 'Craft Agents Backend Compatible') :
+                                   conn.providerType === 'pi_compat' ? (conn.baseUrl?.toLowerCase().includes('manifest.build') ? 'Manifest' : 'Custom Endpoint') :
                                    conn.providerType || 'Unknown',
                     }))}
                   />

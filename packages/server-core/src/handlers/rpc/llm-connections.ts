@@ -151,8 +151,16 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
         if (branch.piAuthProvider !== undefined) updates.piAuthProvider = branch.piAuthProvider
 
         // Brand-name override on first setup only (user-renamed connections aren't clobbered on re-save).
-        if (isNewConnection && !updates.name && setup.baseUrl?.toLowerCase().includes('manifest.build')) {
-          updates.name = 'Manifest'
+        if (isNewConnection && !updates.name) {
+          if (setup.baseUrl?.toLowerCase().includes('manifest.build')) {
+            updates.name = 'Manifest'
+          } else if (setup.defaultModel) {
+            // Custom endpoint: name the connection after the chosen model
+            // instead of the generic template default (e.g. "Custom
+            // Claude-Compatible"), so the list is recognizable without
+            // manual renaming.
+            updates.name = setup.defaultModel
+          }
         }
       } else if (setup.baseUrl !== undefined) {
         // Base URL was explicitly updated without custom protocol config.
