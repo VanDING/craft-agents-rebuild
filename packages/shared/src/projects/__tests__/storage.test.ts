@@ -40,7 +40,12 @@ describe('sanitizeAssetFilename', () => {
   });
 
   it('strips path separators and leading dots so an upload stays in the assets dir', () => {
-    expect(sanitizeAssetFilename('..\\..\\etc\\passwd')).toBe('etcpasswd');
+    const result = sanitizeAssetFilename('..\\..\\etc\\passwd');
+    // basename() differs by platform (POSIX: 'etcpasswd', win32: 'passwd'); both are safe
+    expect(result).toBeTruthy();
+    expect(result).not.toContain('/');
+    expect(result).not.toContain('\\');
+    expect(result).not.toContain('..');
   });
 
   it('falls back to a generated name when the input reduces to empty', () => {
