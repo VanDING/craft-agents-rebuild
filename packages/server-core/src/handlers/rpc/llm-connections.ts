@@ -15,6 +15,15 @@ import { pushTyped, type RpcServer } from '@craft-agent/server-core/transport'
 import type { HandlerDeps } from '../handler-deps'
 import { randomUUID } from 'node:crypto'
 import { CLIENT_OPEN_EXTERNAL } from '@craft-agent/server-core/transport'
+// The Pi SDK lazily loads its OAuth flow modules through a bundler-opaque
+// dynamic import that reads `import.meta.url`. esbuild's CJS output (electron
+// main) replaces `import.meta.url` with an empty object, so the lazy load
+// throws "Cannot read properties of undefined (reading 'endsWith')" on every
+// SDK OAuth login (grok-x, kimi-coding, openrouter). Register the flows
+// statically — the SDK's sanctioned path for bundled runtimes.
+import { registerBunOAuthFlows } from '@earendil-works/pi-ai/bun-oauth'
+
+registerBunOAuthFlows()
 
 // Local OAuth state
 let copilotOAuthAbort: AbortController | null = null
@@ -786,7 +795,9 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
     error?: string
   }> => {
     try {
-      const { loginGitHubCopilot } = await import('@craft-agent/shared/auth/github-copilot');
+      const { githubCopilotProvider } = await import('@earendil-works/pi-ai/providers/github-copilot')
+      const oauth = githubCopilotProvider().auth.oauth
+      if (!oauth) return { success: false, error: 'GitHub Copilot OAuth flow unavailable' }
       const credentialManager = getCredentialManager()
 
       // Cancel any previous in-flight flow
@@ -795,29 +806,31 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
 
       deps.platform.logger?.info(`Starting GitHub Copilot OAuth device flow for connection: ${connectionSlug}`)
 
-      // Use Pi SDK's login flow — this handles the device code flow AND
-      // the critical Copilot token exchange that determines the correct
-      // API endpoint for the user's subscription tier (individual/business/enterprise).
-      const credentials = await loginGitHubCopilot({
-        onDeviceCode: ({ userCode, verificationUri }) => {
-          deps.platform.logger?.info(`[GitHub OAuth] Device code: ${userCode}`)
-          pushTyped(server, RPC_CHANNELS.copilot.DEVICE_CODE, { to: 'client', clientId: ctx.clientId }, {
-            userCode,
-            verificationUri,
-          })
-          // Open GitHub device code page on the client's machine
-          server.invokeClient(ctx.clientId, CLIENT_OPEN_EXTERNAL, verificationUri).catch(err => {
-            deps.platform.logger?.warn(`Failed to open browser for GitHub OAuth: ${err}`)
-          })
+      // SDK-native login flow — handles the device code flow AND the
+      // critical Copilot token exchange that determines the correct API
+      // endpoint for the user's subscription tier
+      // (individual/business/enterprise).
+      const credentials = await oauth.login({
+        signal: copilotOAuthAbort.signal,
+        notify: (event) => {
+          if (event.type === 'device_code') {
+            deps.platform.logger?.info(`[GitHub OAuth] Device code: ${event.userCode}`)
+            pushTyped(server, RPC_CHANNELS.copilot.DEVICE_CODE, { to: 'client', clientId: ctx.clientId }, {
+              userCode: event.userCode,
+              verificationUri: event.verificationUri,
+            })
+            // Open GitHub device code page on the client's machine
+            server.invokeClient(ctx.clientId, CLIENT_OPEN_EXTERNAL, event.verificationUri).catch(err => {
+              deps.platform.logger?.warn(`Failed to open browser for GitHub OAuth: ${err}`)
+            })
+          } else if (event.type === 'progress') {
+            deps.platform.logger?.info(`[GitHub OAuth] ${event.message}`)
+          }
         },
-        onPrompt: async () => {
-          // Pi SDK asks for GitHub Enterprise domain — return empty for github.com
+        prompt: async () => {
+          // SDK asks for the GitHub Enterprise domain — return empty for github.com
           return ''
         },
-        onProgress: (message) => {
-          deps.platform.logger?.info(`[GitHub OAuth] ${message}`)
-        },
-        signal: copilotOAuthAbort.signal,
       })
 
       copilotOAuthAbort = null

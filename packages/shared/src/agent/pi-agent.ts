@@ -62,6 +62,7 @@ import { xaiProvider } from '@earendil-works/pi-ai/providers/xai';
 import { kimiCodingProvider } from '@earendil-works/pi-ai/providers/kimi-coding';
 import { openrouterProvider } from '@earendil-works/pi-ai/providers/openrouter';
 import { anthropicProvider } from '@earendil-works/pi-ai/providers/anthropic';
+import { githubCopilotProvider } from '@earendil-works/pi-ai/providers/github-copilot';
 
 // Provider-id → SDK OAuth refresh. The provider modules only lazily load
 // their OAuth flows (lazyOAuth), so this table is cheap at import time.
@@ -70,6 +71,7 @@ const PI_SUBSCRIPTION_OAUTH_REFRESH: Record<string, OAuthAuth['refresh'] | undef
   'kimi-coding': kimiCodingProvider().auth.oauth?.refresh,
   openrouter: openrouterProvider().auth.oauth?.refresh,
   anthropic: anthropicProvider().auth.oauth?.refresh,
+  'github-copilot': githubCopilotProvider().auth.oauth?.refresh,
 };
 
 // Session-scoped tool callbacks (for SubmitPlan, source auth, etc.)
@@ -798,16 +800,7 @@ export class PiAgent extends BaseAgent {
       }
 
       try {
-        if (piAuthProvider === 'github-copilot') {
-          // Copilot: refresh the short-lived Copilot token using the GitHub access token
-          const { refreshGitHubCopilotToken } = await import('../auth/github-copilot.ts');
-          const newCreds = await refreshGitHubCopilotToken(stored.refreshToken);
-          await credentialManager.setLlmOAuth(slug, {
-            accessToken: newCreds.access,
-            refreshToken: newCreds.refresh,
-            expiresAt: newCreds.expires,
-          });
-        } else if (piAuthProvider === 'openai-codex') {
+        if (piAuthProvider === 'openai-codex') {
           // ChatGPT Plus: use the ChatGPT refresh utility (correct endpoint)
           const newTokens = await refreshChatGptTokens(stored.refreshToken);
           await credentialManager.setLlmOAuth(slug, {

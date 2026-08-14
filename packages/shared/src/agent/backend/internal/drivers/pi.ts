@@ -43,10 +43,15 @@ async function listModelsViaHttp(
   githubToken: string,
   timeoutMs: number,
 ): Promise<RawCopilotModel[]> {
-  const { refreshGitHubCopilotToken } = await import('../../../../auth/github-copilot.ts');
+  const { githubCopilotProvider } = await import('@earendil-works/pi-ai/providers/github-copilot');
+  const refresh = githubCopilotProvider().auth.oauth?.refresh;
+  if (!refresh) throw new Error('GitHub Copilot OAuth flow unavailable');
 
-  // Step 1: Exchange GitHub OAuth token → Copilot API token
-  const creds = await refreshGitHubCopilotToken(githubToken);
+  // Step 1: Exchange GitHub OAuth token → Copilot API token (via Pi SDK)
+  const creds = await refresh(
+    { type: 'oauth', access: '', refresh: githubToken, expires: Date.now() },
+    new AbortController().signal,
+  );
   const copilotToken = creds.access;
 
   // Step 2: Extract base URL from token
