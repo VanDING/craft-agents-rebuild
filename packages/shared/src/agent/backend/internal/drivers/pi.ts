@@ -9,6 +9,7 @@ type RawCopilotModel = {
   name: string;
   supportedReasoningEfforts?: string[];
   policy?: { state: string };
+  modelPickerEnabled?: boolean;
   contextWindow?: number;
 };
 
@@ -92,6 +93,7 @@ async function listModelsViaHttp(
       name: (m.name || m.id) as string,
       supportedReasoningEfforts: (m.supportedReasoningEfforts || m.supported_reasoning_efforts) as string[] | undefined,
       policy: m.policy as { state: string } | undefined,
+      modelPickerEnabled: m.model_picker_enabled === true,
       contextWindow: ((m.capabilities as Record<string, unknown>)?.limits as Record<string, unknown>)?.max_context_window_tokens as number | undefined,
     }));
   } catch (err) {
@@ -107,12 +109,26 @@ async function listModelsViaHttp(
 /** Model ID prefixes to exclude — legacy models that clutter the selector. */
 const EXCLUDED_MODEL_PREFIXES = ['gpt-4', 'gpt-3.5'];
 
-/** Filter raw models to only those explicitly enabled by policy, excluding legacy models. */
-function filterEnabledModels(models: RawCopilotModel[]): RawCopilotModel[] {
-  return models.filter(m =>
-    m.policy?.state === 'enabled'
-    && !EXCLUDED_MODEL_PREFIXES.some(prefix => m.id.startsWith(prefix)),
-  );
+/** Filter raw models to picker-marked (or policy-enabled) models, excluding legacy models. */
+export function filterEnabledModels(models: RawCopilotModel[]): RawCopilotModel[] {
+  const notExcluded = (m: RawCopilotModel) =>
+    !EXCLUDED_MODEL_PREFIXES.some(prefix => m.id.startsWith(prefix))
+
+  // Prefer the models GitHub flags for the picker (model_picker_enabled).
+  // The /models API also returns internal routing variants (e.g.
+  // mai-code-1-flash-4th / -picker / -secondary / -tertiary) that must not
+  // be surfaced as separate models — same semantics as the Pi SDK's
+  // parseAvailableCopilotModelIds.
+  const picker = models.filter(m =>
+    notExcluded(m)
+    && m.modelPickerEnabled === true
+    && m.policy?.state !== 'disabled',
+  )
+  if (picker.length > 0) return picker
+
+  // Fallback: policy-enabled models (some Individual accounts report false
+  // for every picker flag despite explicit enabled policies).
+  return models.filter(m => notExcluded(m) && m.policy?.state === 'enabled')
 }
 
 /** Convert raw Copilot models to our ModelDefinition format. */
