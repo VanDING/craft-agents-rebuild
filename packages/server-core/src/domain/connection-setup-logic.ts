@@ -161,6 +161,30 @@ export const BUILT_IN_CONNECTION_TEMPLATES: Record<string, {
     authType: 'oauth',
     piAuthProvider: 'github-copilot',
   },
+  'grok-x': {
+    name: 'Grok / X',
+    providerType: 'pi',
+    authType: 'oauth',
+    piAuthProvider: 'xai',
+  },
+  'kimi-coding': {
+    name: 'Kimi Code',
+    providerType: 'pi',
+    authType: 'oauth',
+    piAuthProvider: 'kimi-coding',
+  },
+  'openrouter': {
+    name: 'OpenRouter',
+    providerType: 'pi',
+    authType: 'oauth',
+    piAuthProvider: 'openrouter',
+  },
+  'radius': {
+    name: 'Radius',
+    providerType: 'pi',
+    authType: 'oauth',
+    piAuthProvider: 'radius',
+  },
   'pi-api-key': {
     name: 'Craft Agents Backend (API Key)',
     providerType: 'pi',

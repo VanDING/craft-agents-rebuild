@@ -135,6 +135,38 @@ describe('createBuiltInConnection seeds midStreamBehavior', () => {
     expect(conn.midStreamBehavior).toBe('steer')
   })
 
+  it("Grok / X → 'steer' (xAI subscription via Pi backend)", () => {
+    const conn = createBuiltInConnection('grok-x')
+    expect(conn.providerType).toBe('pi')
+    expect(conn.authType).toBe('oauth')
+    expect(conn.piAuthProvider).toBe('xai')
+    expect(conn.midStreamBehavior).toBe('steer')
+  })
+
+  it("Kimi Code → 'steer' (Kimi subscription via Pi backend)", () => {
+    const conn = createBuiltInConnection('kimi-coding')
+    expect(conn.providerType).toBe('pi')
+    expect(conn.authType).toBe('oauth')
+    expect(conn.piAuthProvider).toBe('kimi-coding')
+    expect(conn.midStreamBehavior).toBe('steer')
+  })
+
+  it("OpenRouter → 'steer' (credits via Pi backend)", () => {
+    const conn = createBuiltInConnection('openrouter')
+    expect(conn.providerType).toBe('pi')
+    expect(conn.authType).toBe('oauth')
+    expect(conn.piAuthProvider).toBe('openrouter')
+    expect(conn.midStreamBehavior).toBe('steer')
+  })
+
+  it("Radius → 'steer' (gateway via Pi backend)", () => {
+    const conn = createBuiltInConnection('radius')
+    expect(conn.providerType).toBe('pi')
+    expect(conn.authType).toBe('oauth')
+    expect(conn.piAuthProvider).toBe('radius')
+    expect(conn.midStreamBehavior).toBe('steer')
+  })
+
   it("Pi API key (Craft Agents Backend) → 'steer'", () => {
     const conn = createBuiltInConnection('pi-api-key')
     expect(conn.providerType).toBe('pi')
