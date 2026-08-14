@@ -57,6 +57,15 @@ import { setBedrockProviderModule } from '@earendil-works/pi-ai/api/bedrock-conv
 import { bedrockProviderModule } from '@earendil-works/pi-ai/bedrock-provider';
 setBedrockProviderModule(bedrockProviderModule);
 
+// Pre-register the Pi SDK's OAuth flow modules (GitHub Copilot, xAI, Kimi,
+// OpenRouter, Anthropic, …) so the SDK never attempts its lazy dynamic import
+// of e.g. "./github-copilot.js" — which fails in the bundled output because
+// bun collapses everything into a single file ("Cannot find module
+// './github-copilot.js' from .../pi-agent-server/index.js").
+// Same rationale as setBedrockProviderModule above.
+import { registerBunOAuthFlows } from '@earendil-works/pi-ai/bun-oauth';
+registerBunOAuthFlows();
+
 // Register streamSimple as the default streamFn. pi-coding-agent's sdk.js
 // does this at its own module top-level, but bun's bundler drops that
 // side-effect call when bundling (the ./compat export resolves lazily), so
