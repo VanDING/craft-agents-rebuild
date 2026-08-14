@@ -42,16 +42,16 @@ function describeIfReachable(name: string, mcpUrl: string, fn: () => void) {
 }
 
 describe('E2E: OAuth Metadata Discovery', () => {
-  describe('GitHub MCP (api.githubcopilot.com)', () => {
-    const MCP_URL = 'https://api.githubcopilot.com/mcp/';
-
+  const GITHUB_MCP_URL = 'https://api.githubcopilot.com/mcp/';
+  describeIfReachable('GitHub MCP (api.githubcopilot.com)', GITHUB_MCP_URL, () => {
     it('extracts correct origin', () => {
-      expect(getMcpBaseUrl(MCP_URL)).toBe('https://api.githubcopilot.com');
+      expect(getMcpBaseUrl(GITHUB_MCP_URL)).toBe('https://api.githubcopilot.com');
     });
 
+    // GitHub discovery needs 4 sequential fetches; allow extra time on throttled networks.
     it('discovers OAuth metadata', async () => {
       const logs: string[] = [];
-      const metadata = await discoverOAuthMetadata(MCP_URL, (msg) => logs.push(msg));
+      const metadata = await discoverOAuthMetadata(GITHUB_MCP_URL, (msg) => logs.push(msg));
 
       // If we get null, the server might be down or require auth - that's OK for E2E
       if (metadata === null) {
@@ -63,19 +63,18 @@ describe('E2E: OAuth Metadata Discovery', () => {
       expect(metadata.authorization_endpoint).toBeTruthy();
       expect(metadata.token_endpoint).toBeTruthy();
       console.log('GitHub MCP OAuth metadata:', metadata);
-    });
+    }, 30000);
   });
 
-  describe('Linear MCP (mcp.linear.app)', () => {
-    const MCP_URL = 'https://mcp.linear.app/sse';
-
+  const LINEAR_MCP_URL = 'https://mcp.linear.app/sse';
+  describeIfReachable('Linear MCP (mcp.linear.app)', LINEAR_MCP_URL, () => {
     it('extracts correct origin', () => {
-      expect(getMcpBaseUrl(MCP_URL)).toBe('https://mcp.linear.app');
+      expect(getMcpBaseUrl(LINEAR_MCP_URL)).toBe('https://mcp.linear.app');
     });
 
     it('discovers OAuth metadata', async () => {
       const logs: string[] = [];
-      const metadata = await discoverOAuthMetadata(MCP_URL, (msg) => logs.push(msg));
+      const metadata = await discoverOAuthMetadata(LINEAR_MCP_URL, (msg) => logs.push(msg));
 
       if (metadata === null) {
         console.log('Linear MCP: No metadata discovered (server may require auth or be unavailable)');
@@ -89,17 +88,16 @@ describe('E2E: OAuth Metadata Discovery', () => {
     });
   });
 
-  describe('Ahrefs MCP (api.ahrefs.com/mcp/mcp)', () => {
-    const MCP_URL = 'https://api.ahrefs.com/mcp/mcp';
-
+  const AHREFS_MCP_URL = 'https://api.ahrefs.com/mcp/mcp';
+  describeIfReachable('Ahrefs MCP (api.ahrefs.com/mcp/mcp)', AHREFS_MCP_URL, () => {
     it('extracts correct origin (the bug we are fixing)', () => {
       // This was the original bug - the old regex would return https://api.ahrefs.com/mcp
-      expect(getMcpBaseUrl(MCP_URL)).toBe('https://api.ahrefs.com');
+      expect(getMcpBaseUrl(AHREFS_MCP_URL)).toBe('https://api.ahrefs.com');
     });
 
     it('discovers OAuth metadata', async () => {
       const logs: string[] = [];
-      const metadata = await discoverOAuthMetadata(MCP_URL, (msg) => logs.push(msg));
+      const metadata = await discoverOAuthMetadata(AHREFS_MCP_URL, (msg) => logs.push(msg));
 
       if (metadata === null) {
         console.log('Ahrefs MCP: No metadata discovered (server may require auth or be unavailable)');
