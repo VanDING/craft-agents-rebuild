@@ -82,24 +82,40 @@ export function trajectoryTimelineFocusIndexes(
 
 /**
  * Build overview blocks for one turn: each cell becomes a block with its
- * measured wall-clock span. Cells without timestamps get null spans and the
- * view falls back to equal-width layout in `actual-duration` mode.
+ * measured wall-clock span. Unmeasured cells (historical sessions) get the
+ * gap to the NEXT cell's start — the interval belongs to the record that
+ * opened it — and the final cell reports null, leaving the view to extend
+ * it to the lane edge instead of overflowing past the container.
  */
 export function trajectoryTimelineBlocks(
   turn: TrajectoryTurnModel,
 ): readonly TrajectoryTimelineBlock[] {
-  const blocks: TrajectoryTimelineBlock[] = []
-  let previousEnd: number | null = null
+  const cells: Array<{ cell: TrajectoryCellProps; startTime: number | null; measured: number | null }> = []
   for (const group of turn.groups) {
     for (const cell of group.cells) {
       const startedAt = cell.startedAt ?? cell.sourceMessage?.timestamp ?? null
       const startTime = typeof startedAt === 'number' ? startedAt : null
-      const durationMs = cell.timeSeconds !== null
-        ? cell.timeSeconds * 1000
-        : (startTime !== null && previousEnd !== null ? startTime - previousEnd : null)
-      blocks.push({ cell, startTime, durationMs: durationMs !== null ? Math.max(durationMs, MINIMUM_VISIBLE_MS) : null })
-      if (startTime !== null) previousEnd = startTime
+      const measured = cell.timeSeconds !== null ? cell.timeSeconds * 1000 : null
+      cells.push({ cell, startTime, measured })
     }
+  }
+
+  const blocks: TrajectoryTimelineBlock[] = []
+  for (let i = 0; i < cells.length; i++) {
+    const entry = cells[i]
+    if (entry === undefined) continue
+    const { cell, startTime, measured } = entry
+    let durationMs = measured
+    const next = cells[i + 1]
+    if (durationMs === null && startTime !== null && next !== undefined) {
+      const nextStart = next.startTime
+      if (nextStart !== null && nextStart >= startTime) durationMs = nextStart - startTime
+    }
+    blocks.push({
+      cell,
+      startTime,
+      durationMs: durationMs !== null ? Math.max(durationMs, MINIMUM_VISIBLE_MS) : null,
+    })
   }
   return blocks
 }

@@ -97,18 +97,19 @@ export function TopBar({
  }: TopBarProps) {
   const { t } = useTranslation()
   const [maxVisibleBrowserBadges, setMaxVisibleBrowserBadges] = useState(3)
-  // 10 workbench buttons at full width. Decided by WINDOW width, NOT the
+  // 11 workbench buttons at full width: new session + 8 panel kinds +
+  // browser + session-list toggle. Decided by WINDOW width, NOT the
   // right-slot width: the slot is content-sized (shrink-0), so measuring it
-  // made the count collapse on itself — the 10-button group (~300px incl.
-  // Help) was always below the old 340px threshold, hiding 6 of 10 buttons
-  // at any window size (fix, verified via CDP).
-  const [maxVisiblePanelButtons, setMaxVisiblePanelButtons] = useState(10)
+  // made the count collapse on itself — the 11-button group (~330px incl.
+  // Help) was always below the old 340px threshold, hiding buttons at any
+  // window size (fix, verified via CDP).
+  const [maxVisiblePanelButtons, setMaxVisiblePanelButtons] = useState(11)
 
   useEffect(() => {
     const update = () => {
       // Left chrome: stoplight padding 86 + sidebar toggle + app menu +
       // back/forward + workspace switcher ≈ 500px. Each button ≈ 24px.
-      const next = Math.max(4, Math.min(9, Math.floor((window.innerWidth - 500) / 24)))
+      const next = Math.max(4, Math.min(11, Math.floor((window.innerWidth - 500) / 24)))
       setMaxVisiblePanelButtons((prev) => (prev === next ? prev : next))
     }
     let frame = 0

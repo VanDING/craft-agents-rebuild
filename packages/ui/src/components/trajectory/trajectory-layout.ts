@@ -119,13 +119,6 @@ const KIND_LABEL: Record<TrajectoryCellKind, string> = {
   subtool: 'Sub-tool',
 }
 
-/** Wall-span duration from two epoch-ms stamps; null when either is unusable. */
-function durationSeconds(later: number | undefined, earlier: number | undefined): number | null {
-  if (typeof later !== 'number' || typeof earlier !== 'number') return null
-  if (!Number.isFinite(later) || !Number.isFinite(earlier)) return null
-  return (later - earlier) / 1000
-}
-
 /** Tool result text (truncated for the row summary). */
 function toolResultSummary(result: string | undefined): string {
   if (!result) return ''
@@ -262,9 +255,13 @@ export function deriveTrajectoryLayout(input: TrajectoryLayoutInput): readonly T
           const isSub = message.parentToolUseId !== undefined
           const group = ensureGroup(turn, isSub ? 'Sub-tools' : 'Tools')
           const result = message.toolResult ?? ''
+          // Wall-clock duration only when the pipeline measured it
+          // (server ts + adapter delta). Historical messages predating the
+          // measurement have no reliable duration — report unknown rather
+          // than a misleading 0ms.
           const duration = message.toolDuration !== undefined
             ? message.toolDuration / 1000
-            : durationSeconds(message.timestamp, message.timestamp)
+            : null
           const schema = message.toolUseId !== undefined
             ? callSchemas.get(message.toolUseId)
             : undefined

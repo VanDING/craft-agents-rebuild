@@ -149,6 +149,30 @@ describe('trajectoryTimeline', () => {
     expect(blocks[0].durationMs).toBe(2500)
   })
 
+  it('reports null duration for unmeasured tools instead of 0ms', () => {
+    const turns = layoutFor([
+      msg({ role: 'tool', toolName: 'Bash', toolUseId: 'c1', turnId: 't1', timestamp: 1000 }),
+    ])
+    const toolCell = turns[0].groups.flatMap(g => g.cells).find(c => c.kind === 'tool')
+    expect(toolCell?.timeSeconds).toBeNull()
+  })
+
+  it('estimates unmeasured block spans from message gaps', () => {
+    const turns = layoutFor([
+      msg({ role: 'user', content: 'a', turnId: 't1', timestamp: 1000 }),
+      msg({ role: 'assistant', content: 'b', turnId: 't1', timestamp: 3000, requestSeq: 1, usage }),
+      msg({ role: 'tool', toolName: 'Read', toolUseId: 'c1', toolResult: 'ok', turnId: 't1', timestamp: 5000 }),
+    ])
+    const blocks = trajectoryTimelineBlocks(turns[0])
+    // Gaps belong to the record that opens them: user opens the 2s gap to
+    // the assistant; same-timestamp usage cells floor at 1ms; the tool opens
+    // the 2s gap to the (missing) next record; the final record is null.
+    expect(blocks[0].durationMs).toBe(2000)
+    expect(blocks[1].durationMs).toBe(1)
+    expect(blocks[2].durationMs).toBe(2000)
+    expect(blocks[3].durationMs).toBeNull()
+  })
+
   it('resolves focus index to a normalized range', () => {
     const turns = layoutFor([
       msg({ role: 'user', content: 'a', turnId: 't1', timestamp: 0 }),

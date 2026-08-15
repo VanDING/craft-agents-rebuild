@@ -57,15 +57,23 @@ export const TrajectoryTimeline = memo(function TrajectoryTimeline({
       {lanes.map(({ turn, blocks }) => (
         <div key={turn.turn ?? 'between'} className="flex h-3 items-center gap-px">
           {blocks.map((block) => {
-            const startMs = block.startTime ?? domain.startMs
-            const rawWidth = block.durationMs !== null && mode === 'actual-duration'
-              ? (block.durationMs / domainMs) * 100
-              : 100 / Math.max(blocks.length, 1)
-            const width = Math.max(Math.min(rawWidth, 100), 1)
             const left = block.startTime !== null
               ? ((block.startTime - domain.startMs) / domainMs) * 100
               : 0
-            return (
+            const timed = mode === 'actual-duration'
+            const remaining = 100 - left
+            const rawWidth = block.durationMs !== null && timed
+              ? (block.durationMs / domainMs) * 100
+              // Unknown span (final record): stretch from its start to the
+              // lane edge instead of overflowing past the container; when the
+              // record already sits at the edge there is no room, so skip.
+              : timed
+                ? remaining
+                : 100 / Math.max(blocks.length, 1)
+            const width = timed && block.durationMs === null
+              ? remaining
+              : Math.max(Math.min(rawWidth, timed ? remaining : 100), 1)
+            return width > 0.5 ? (
               <div
                 key={block.cell.index}
                 title={block.cell.text}
@@ -74,9 +82,9 @@ export const TrajectoryTimeline = memo(function TrajectoryTimeline({
                   'h-3 shrink-0 cursor-pointer rounded-sm opacity-80 hover:opacity-100',
                   BLOCK_COLORS[block.cell.kind] ?? 'bg-slate-400/60',
                 )}
-                style={{ width: `${width}%`, marginLeft: left > 0 ? `${left}%` : undefined }}
+                style={{ width: `${width}%`, marginLeft: timed && left > 0 ? `${left}%` : undefined }}
               />
-            )
+            ) : null
           })}
         </div>
       ))}
