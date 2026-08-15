@@ -85,16 +85,28 @@ export {
 } from './components/trajectory/trajectory-contract'
 export {
   deriveTrajectoryLayout,
+  flattenTurnRecords,
+  collapseTurnRecords,
+  collapseAssistantRecords,
+  formatElapsedSeconds,
+  formatDurationMillis,
+  trajectoryRecordId,
   type TrajectoryTurnModel,
   type TrajectoryGroupModel,
   type TrajectoryCellProps,
+  type TrajectoryCellKind,
+  type TrajectoryRenderRecord,
+  type AssistantMetricDetail,
 } from './components/trajectory/trajectory-layout'
 export {
   searchTrajectory,
+  filterRecords,
+  recordDisplayText,
 } from './components/trajectory/trajectory-search-index'
 export {
-  flattenTurnCells,
   projectVirtualRows,
+  CONTENT_ROW_HEIGHT,
+  COLLAPSED_SUMMARY_HEIGHT,
 } from './components/trajectory/trajectory-virtual-rows'
 
 // Markdown

@@ -9,7 +9,7 @@
  * Claude / Codex / Copilot backends.
  */
 
-import type { AgentEvent as CraftAgentEvent, PiUsage } from '@craft-agent/core/types';
+import type { AgentEvent as CraftAgentEvent, PiUsage, TrajectorySourceBlock } from '@craft-agent/core/types';
 import type {
   AgentEvent as PiAgentEvent,
 } from '@earendil-works/pi-agent-core';
@@ -98,6 +98,12 @@ export class PiEventAdapter extends BaseEventAdapter {
 
   // Last assistant usage (full PiUsage) for text_complete emission.
   private lastFullUsage: PiUsage | undefined;
+
+  // Assistant step timing (trajectory TTFT / decoding): stepStartTime from
+  // message_start, firstTokenTime from the first text_delta, completedTime
+  // from message_end. Server-forwarded `ts` is authoritative when present.
+  private pendingStepStart: number | null = null;
+  private pendingFirstToken: number | null = null;
 
   // ============================================================
   // Overflow-recovery state machine
@@ -316,14 +322,25 @@ export class PiEventAdapter extends BaseEventAdapter {
       // Message events (text streaming)
       // ============================================================
 
-      case 'message_start':
-        // Pi SDK emits message_start for user messages too — skip non-assistant
+      case 'message_start': {
+        // Pi SDK emits message_start for user messages too — only assistant
+        // steps carry timing (step start → first delta → completion).
+        const role = (event.message as { role?: string } | undefined)?.role;
+        if (role === 'assistant') {
+          this.pendingStepStart = this.serverTimestamp(event) ?? Date.now();
+          this.pendingFirstToken = null;
+        }
         break;
+      }
 
       case 'message_update': {
         // Pi SDK emits message_update only for assistant messages (streaming deltas)
         const amEvent: AssistantMessageEvent = event.assistantMessageEvent;
         if (amEvent.type === 'text_delta' && amEvent.delta) {
+          // First delta of the step marks firstTokenTime for TTFT.
+          if (this.pendingFirstToken === null && this.pendingStepStart !== null) {
+            this.pendingFirstToken = this.serverTimestamp(event) ?? Date.now();
+          }
           this.hasStreamedDeltas = true;
           if (!this.messageSubTurnId) {
             this.messageSubTurnId = this.nextSubTurnId('m');
@@ -395,6 +412,21 @@ export class PiEventAdapter extends BaseEventAdapter {
           // Capture full provider usage for trajectory per-request buckets.
           const usage = this.lastFullUsage;
 
+          // Wall-clock step metrics for TTFT / decoding / throughput.
+          const stepStartTime = this.pendingStepStart;
+          const firstTokenTime = this.pendingFirstToken;
+          const completedTime = this.extractMessageTimestamp(event.message) ?? Date.now();
+          const assistantMetrics = {
+            timingRecorded: stepStartTime !== null && firstTokenTime !== null,
+            stepStartTime,
+            firstTokenTime,
+            completedTime,
+            usageProvided: !!msg.usage,
+            outputTokens: typeof msg.usage?.output === 'number' ? msg.usage.output : null,
+          };
+          this.pendingStepStart = null;
+          this.pendingFirstToken = null;
+
           yield {
             type: 'text_complete',
             text: textContent,
@@ -405,6 +437,8 @@ export class PiEventAdapter extends BaseEventAdapter {
             usage,
             requestSeq: this.requestSeq,
             promptSnapshot: (event as { promptSnapshot?: unknown }).promptSnapshot as string | undefined,
+            assistantMetrics,
+            outputBlocks: this.extractSourceBlocks(event.message),
           };
           this.hasStreamedDeltas = false;
         }
@@ -838,6 +872,56 @@ export class PiEventAdapter extends BaseEventAdapter {
     }
 
     return null;
+  }
+
+  /**
+   * Extract structured content blocks (text / image / tool-call) from a Pi
+   * AgentMessage content array, preserving model order for the trajectory
+   * details panel. Mirrors the VanDSH TrajectorySourceBlock shape.
+   */
+  private extractSourceBlocks(message: unknown): TrajectorySourceBlock[] | undefined {
+    if (!message || typeof message !== 'object') return undefined;
+    const msg = message as { content?: string | Array<Record<string, unknown>> };
+    if (!Array.isArray(msg.content) || msg.content.length === 0) return undefined;
+
+    const blocks: TrajectorySourceBlock[] = [];
+    for (const block of msg.content) {
+      const type = typeof block.type === 'string' ? block.type : 'other';
+      if (type === 'text') {
+        if (typeof block.text === 'string' && block.text.length > 0) {
+          blocks.push({ type: 'text', content: block.text });
+        }
+      } else if (type === 'image') {
+        const source = block.source as { type?: string; data?: string; url?: string; mediaType?: string } | undefined;
+        blocks.push({
+          type: 'image',
+          imageSrc: typeof source?.data === 'string'
+            ? `data:${source.mediaType ?? 'image/png'};base64,${source.data}`
+            : typeof source?.url === 'string' ? source.url : undefined,
+          imageAlt: typeof block.alt === 'string' ? block.alt : undefined,
+        });
+      } else if (type === 'tool_use') {
+        blocks.push({
+          type: 'tool-call',
+          callId: typeof block.id === 'string' ? block.id : undefined,
+          toolName: typeof block.name === 'string' ? block.name : undefined,
+        });
+      } else if (type === 'tool_result') {
+        const content = block.content;
+        const text = Array.isArray(content)
+          ? content
+            .filter((c): c is Record<string, unknown> => typeof c === 'object' && c !== null && typeof c.text === 'string')
+            .map((c) => c.text as string)
+            .join('')
+          : undefined;
+        blocks.push({
+          type: 'tool-result',
+          content: text,
+          callId: typeof block.tool_use_id === 'string' ? block.tool_use_id : undefined,
+        });
+      }
+    }
+    return blocks.length > 0 ? blocks : undefined;
   }
 
   /**

@@ -1,0 +1,54 @@
+/* Trajectory theme bridge: maps the VanDSH `--dsw-*` design tokens used by
+ * the ported trajectory CSS modules onto the Craft theme variables. Applied
+ * on the trajectory root container so the ported styles track the app's
+ * light/dark theme. */
+
+.trajectory-root {
+  --dsw-font-family: inherit;
+  --dsw-font-xxxs-11: 11px/16px var(--dsw-font-family);
+  --dsw-font-xxs-12: 12px/18px var(--dsw-font-family);
+  --dsw-font-xs-13: 13px/20px var(--dsw-font-family);
+  --dsw-font-xs-strong-13: 600 13px/20px var(--dsw-font-family);
+
+  --dsw-alias-label-primary: var(--foreground);
+  --dsw-alias-label-secondary: color-mix(in srgb, var(--foreground) 72%, var(--background));
+  --dsw-alias-label-tertiary: color-mix(in srgb, var(--foreground) 48%, var(--background));
+  --dsw-alias-label-caption: color-mix(in srgb, var(--foreground) 56%, var(--background));
+  --dsw-alias-label-dimmed: color-mix(in srgb, var(--foreground) 34%, var(--background));
+
+  --dsw-alias-bg-base: var(--background);
+  --dsw-alias-bg-layer-1: var(--background);
+  --dsw-alias-bg-layer-2: var(--foreground-2);
+  --dsw-alias-bg-layer-3: var(--foreground-3);
+  --dsw-specific-sidebar-fill: var(--background-elevated);
+
+  --dsw-alias-border-l1: color-mix(in srgb, var(--border) 55%, var(--background));
+  --dsw-alias-border-l2: var(--border);
+  --dsw-alias-border-l3: color-mix(in srgb, var(--border) 75%, var(--background));
+
+  --dsw-alias-interactive-bg-hover: var(--foreground-10);
+  --dsw-alias-interactive-bg-active: var(--foreground-20);
+  --dsw-alias-button-ghost-active-fill: var(--foreground-10);
+  --dsw-alias-bg-module-platform: var(--foreground-5);
+
+  --dsw-alias-scrollbar-bg-l2: var(--foreground-5);
+  --dsw-alias-scrollbar-hover-l2: var(--foreground-20);
+
+  --dsw-alias-brand-primary-new-colorprimary-new-color: var(--accent);
+
+  --dsw-alias-state-success-primary: color-mix(in srgb, var(--accent) 40%, oklch(0.72 0.16 150));
+  --dsw-alias-state-success-tertiary: color-mix(in srgb, var(--accent) 40%, oklch(0.72 0.16 150) 14%, var(--background));
+  --dsw-alias-state-error-primary: oklch(0.62 0.19 25);
+  --dsw-alias-state-error-secondary: color-mix(in srgb, oklch(0.62 0.19 25) 55%, var(--foreground));
+  --dsw-alias-state-warn-label: oklch(0.68 0.15 70);
+  --dsw-alias-state-warn-tertiary: color-mix(in srgb, oklch(0.68 0.15 70) 16%, var(--background));
+  --dsw-alias-state-business-primary: var(--accent);
+  --dsw-alias-state-business-tertiary: color-mix(in srgb, var(--accent) 14%, var(--background));
+
+  --dsw-alias-markdown-code-block: var(--foreground-5);
+  --dsw-alias-markdown-citation: color-mix(in srgb, var(--accent) 12%, var(--background));
+
+  --dsw-static-blue-500: oklch(0.6 0.15 250);
+
+  --dsw-shadow-lv2: 0 2px 8px rgba(var(--foreground-rgb), 0.12);
+}

@@ -1,121 +1,202 @@
 /**
- * Trajectory timeline — Chrome-Network-style overview model.
+ * Trajectory timeline — operation-sequence and recorded-time projections
+ * for the overview strip. Ported 1:1 from the VanDSH `timeline.ts` over the
+ * Craft trajectory model.
  *
- * Pure helpers: time-range math, focus-index resolution, and the windowed
- * record detail used by the overview tooltips. The overview itself is a
- * view component; everything here is framework-free.
+ * Four modes:
+ * - `sequence`: equal-width blocks in ledger order (three lanes by kind)
+ * - `duration`: recorded durations, idle gaps compressed
+ * - `time`: complete wall-clock spans, idle gaps retained
+ * - `actual`: recorded durations on the wall-clock axis (idle retained)
  */
 
-import type { TrajectoryTurnModel, TrajectoryCellProps } from './trajectory-layout'
+import type { TrajectoryTurnModel, TrajectoryCellKind, TrajectoryCellProps } from './trajectory-layout'
 
-/** Fraction of the full session domain covered by the overview window. */
+/** Horizontal projection used by the trajectory timeline. */
+export type TrajectoryTimelineMode = 'sequence' | 'duration' | 'time' | 'actual'
+
+/** Inclusive selection in the active timeline projection's domain. */
 export interface TrajectoryTimeRange {
-  start: number // 0..1
-  end: number // 0..1
+  start: number
+  end: number
 }
 
-/** Windowed display mode: recorded durations or equal-width blocks. */
-export type TrajectoryTimelineMode = 'actual-duration' | 'equal-width'
-
-/** One overview block with its measured span. */
-export interface TrajectoryTimelineBlock {
-  cell: TrajectoryCellProps
-  /** Wall-clock start (epoch ms), when known. */
-  startTime: number | null
-  /** Duration in ms, when known. */
-  durationMs: number | null
+/** One ledger record projected into the active timeline domain. */
+export interface TrajectoryTimelineSpan extends TrajectoryTimeRange {
+  index: number
+  isError: boolean
+  kind: TrajectoryCellKind
+  label: string
+  /** Three-lane projection: 0 = system/user/context, 1 = message, 2 = tool. */
+  lane: number
 }
 
-const MINIMUM_VISIBLE_MS = 1
+/** One turn boundary in the active timeline domain. */
+export interface TrajectoryTimelineTurnBoundary {
+  turn: number
+  time: number
+}
 
-/** Session domain from the first/last cell timestamps; undefined when absent. */
-export function trajectoryDomain(
+/** Full-domain model used by the overview. */
+export interface TrajectoryTimelineModel extends TrajectoryTimeRange {
+  spans: readonly TrajectoryTimelineSpan[]
+  turnBoundaries: readonly TrajectoryTimelineTurnBoundary[]
+}
+
+/** Format a timeline offset as an integer-millisecond label. */
+export function formatTimelineOffset(milliseconds: number): string {
+  return `${Math.round(milliseconds).toLocaleString()}ms`
+}
+
+function laneFor(kind: TrajectoryCellKind): number {
+  if (kind === 'tool' || kind === 'subtool') return 2
+  if (kind === 'message' || kind === 'compacted') return 1
+  return 0
+}
+
+function finite(value: number | null | undefined): value is number {
+  return value !== null && value !== undefined && Number.isFinite(value)
+}
+
+function cellRange(cell: TrajectoryCellProps): TrajectoryTimeRange | null {
+  if (!finite(cell.startedAt)) return null
+  const durationMs = finite(cell.timeSeconds)
+    ? Math.max(0, cell.timeSeconds * 1_000)
+    : 0
+  return { start: cell.startedAt, end: cell.startedAt + durationMs }
+}
+
+/**
+ * Project every visible record into a stable three-lane timeline.
+ * @param turns - Unfiltered trajectory layout.
+ * @param mode - Independent equal/recorded duration and compressed/complete time projection.
+ * @returns Timeline model, or `null` when no record is visible.
+ */
+export function deriveTrajectoryTimeline(
   turns: readonly TrajectoryTurnModel[],
-): { startMs: number; endMs: number } | undefined {
-  let startMs: number | undefined
-  let endMs: number | undefined
-  for (const turn of turns) {
-    for (const group of turn.groups) {
-      for (const cell of group.cells) {
-        const t = cell.startedAt ?? cell.sourceMessage?.timestamp
-        if (typeof t !== 'number') continue
-        if (startMs === undefined || t < startMs) startMs = t
-        if (endMs === undefined || t > endMs) endMs = t
-      }
-    }
+  mode: TrajectoryTimelineMode = 'sequence',
+): TrajectoryTimelineModel | null {
+  if (mode !== 'sequence') {
+    return deriveTimedTimeline(
+      turns,
+      mode === 'duration' || mode === 'actual',
+      mode === 'duration',
+    )
   }
-  return startMs !== undefined && endMs !== undefined ? { startMs, endMs } : undefined
-}
+  const spans: TrajectoryTimelineSpan[] = []
+  const turnBoundaries: TrajectoryTimelineTurnBoundary[] = []
 
-/** Resolve a focus index (absolute cell position) to a normalized range. */
-export function trajectoryTimelineFocusIndexes(
-  turns: readonly TrajectoryTurnModel[],
-  focusIndex: number | null,
-): TrajectoryTimeRange | null {
-  if (focusIndex === null) return null
-  const domain = trajectoryDomain(turns)
-  if (!domain) return null
-
-  // Walk cells to the focused index and record its timestamp.
-  let index = 0
-  let focusedMs: number | undefined
   for (const turn of turns) {
-    for (const group of turn.groups) {
-      for (const cell of group.cells) {
-        if (index === focusIndex) {
-          focusedMs = cell.startedAt ?? cell.sourceMessage?.timestamp
-        }
-        index += 1
-      }
+    const cells = turn.groups.flatMap(group => group.cells)
+    if (cells.length === 0) continue
+    if (turn.turn !== null) {
+      turnBoundaries.push({
+        turn: turn.turn,
+        time: spans.length,
+      })
     }
+    spans.push(...cells.map((cell, offset): TrajectoryTimelineSpan => ({
+      start: spans.length + offset,
+      end: spans.length + offset + 1,
+      index: cell.index,
+      isError: cell.isError === true,
+      kind: cell.kind,
+      label: cell.text,
+      lane: laneFor(cell.kind),
+    })))
   }
-  if (focusedMs === undefined) return null
 
-  const domainMs = Math.max(domain.endMs - domain.startMs, MINIMUM_VISIBLE_MS)
-  const center = (focusedMs - domain.startMs) / domainMs
-  const half = 0.08 // 8% window around the focused record
+  if (spans.length === 0) return null
   return {
-    start: Math.max(0, center - half),
-    end: Math.min(1, center + half),
+    start: 0,
+    end: spans.length,
+    spans,
+    turnBoundaries,
+  }
+}
+
+function deriveTimedTimeline(
+  turns: readonly TrajectoryTurnModel[],
+  actualDuration: boolean,
+  compressIdle: boolean,
+): TrajectoryTimelineModel | null {
+  const timedTurns = turns.flatMap((turn) => {
+    const rawSpans = turn.groups.flatMap(group =>
+      group.cells.flatMap((cell): TrajectoryTimelineSpan[] => {
+        const range = cellRange(cell)
+        return range === null
+          ? []
+          : [{
+            ...range,
+            index: cell.index,
+            isError: cell.isError === true,
+            kind: cell.kind,
+            label: cell.text,
+            lane: laneFor(cell.kind),
+          }]
+      }),
+    )
+    return rawSpans.length === 0 ? [] : [{ turn: turn.turn, rawSpans }]
+  })
+  const rawSpans = timedTurns.flatMap(turn => turn.rawSpans)
+  if (rawSpans.length === 0) return null
+
+  const removedIdleBySpan = new Map<TrajectoryTimelineSpan, number>()
+  let removedIdle = 0
+  let coveredUntil: number | null = null
+  for (const span of [...rawSpans].sort((left, right) =>
+    left.start - right.start || left.end - right.end)) {
+    if (compressIdle && coveredUntil !== null && span.start > coveredUntil) {
+      removedIdle += span.start - coveredUntil
+    }
+    removedIdleBySpan.set(span, removedIdle)
+    coveredUntil = coveredUntil === null ? span.end : Math.max(coveredUntil, span.end)
+  }
+
+  const spans: TrajectoryTimelineSpan[] = []
+  const turnBoundaries: TrajectoryTimelineTurnBoundary[] = []
+  for (const turn of timedTurns) {
+    const projected = turn.rawSpans.map((span): TrajectoryTimelineSpan => {
+      const offset = removedIdleBySpan.get(span) ?? 0
+      return {
+        ...span,
+        start: span.start - offset,
+        end: (actualDuration ? span.end : span.start) - offset,
+      }
+    })
+    spans.push(...projected)
+    if (turn.turn !== null) {
+      turnBoundaries.push({
+        turn: turn.turn,
+        time: Math.min(...projected.map(span => span.start)),
+      })
+    }
+  }
+
+  return {
+    start: Math.min(...spans.map(span => span.start)),
+    end: Math.max(...spans.map(span => span.end)),
+    spans,
+    turnBoundaries,
   }
 }
 
 /**
- * Build overview blocks for one turn: each cell becomes a block with its
- * measured wall-clock span. Unmeasured cells (historical sessions) get the
- * gap to the NEXT cell's start — the interval belongs to the record that
- * opened it — and the final cell reports null, leaving the view to extend
- * it to the lane edge instead of overflowing past the container.
+ * Identify records active at any point inside an inclusive selected interval.
+ * @param turns - Unfiltered trajectory layout.
+ * @param range - Selected interval in the active projection.
+ * @param mode - Independent equal/recorded duration and compressed/complete time projection.
+ * @returns Record indexes inside the focus interval.
  */
-export function trajectoryTimelineBlocks(
-  turn: TrajectoryTurnModel,
-): readonly TrajectoryTimelineBlock[] {
-  const cells: Array<{ cell: TrajectoryCellProps; startTime: number | null; measured: number | null }> = []
-  for (const group of turn.groups) {
-    for (const cell of group.cells) {
-      const startedAt = cell.startedAt ?? cell.sourceMessage?.timestamp ?? null
-      const startTime = typeof startedAt === 'number' ? startedAt : null
-      const measured = cell.timeSeconds !== null ? cell.timeSeconds * 1000 : null
-      cells.push({ cell, startTime, measured })
-    }
-  }
-
-  const blocks: TrajectoryTimelineBlock[] = []
-  for (let i = 0; i < cells.length; i++) {
-    const entry = cells[i]
-    if (entry === undefined) continue
-    const { cell, startTime, measured } = entry
-    let durationMs = measured
-    const next = cells[i + 1]
-    if (durationMs === null && startTime !== null && next !== undefined) {
-      const nextStart = next.startTime
-      if (nextStart !== null && nextStart >= startTime) durationMs = nextStart - startTime
-    }
-    blocks.push({
-      cell,
-      startTime,
-      durationMs: durationMs !== null ? Math.max(durationMs, MINIMUM_VISIBLE_MS) : null,
-    })
-  }
-  return blocks
+export function trajectoryTimelineFocusIndexes(
+  turns: readonly TrajectoryTurnModel[],
+  range: TrajectoryTimeRange,
+  mode: TrajectoryTimelineMode = 'sequence',
+): ReadonlySet<number> {
+  const model = deriveTrajectoryTimeline(turns, mode)
+  return new Set(
+    model?.spans
+      .filter(span => span.start <= range.end && span.end >= range.start)
+      .map(span => span.index),
+  )
 }

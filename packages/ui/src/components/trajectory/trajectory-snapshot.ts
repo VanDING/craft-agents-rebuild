@@ -97,6 +97,10 @@ export function buildTrajectorySnapshot(input: TrajectorySessionInput): Trajecto
       lastTurnId = messageTurnId
     }
 
+    // Contribution's turn ordinal: messages with a turnId belong to the
+    // current turn; orphaned messages (no turnId) land in Between turns.
+    const contributionTurn: number | null = messageTurnId === undefined ? null : turnCounter
+
     // Request header: captured system prompt + usage anchored before its
     // assistant message (prompt diff + per-request token buckets).
     if (message.role === 'assistant' && message.requestSeq !== undefined) {
@@ -113,18 +117,19 @@ export function buildTrajectorySnapshot(input: TrajectorySessionInput): Trajecto
         prompt: message.promptSnapshot ?? '',
         usage: message.usage,
         time: message.timestamp,
+        turn: contributionTurn,
       })
     }
 
     switch (message.role) {
       case 'user':
-        contributions.push({ kind: 'node', message })
+        contributions.push({ kind: 'node', message, turn: contributionTurn })
         break
       case 'assistant':
-        contributions.push({ kind: 'assistant', message })
+        contributions.push({ kind: 'assistant', message, turn: contributionTurn })
         break
       case 'tool': {
-        contributions.push({ kind: 'tool', message })
+        contributions.push({ kind: 'tool', message, turn: contributionTurn })
         if (message.toolUseId && message.toolInput && Object.keys(message.toolInput).length > 0) {
           try {
             callSchemas.set(message.toolUseId, JSON.stringify(message.toolInput, null, 2))
@@ -136,17 +141,17 @@ export function buildTrajectorySnapshot(input: TrajectorySessionInput): Trajecto
       }
       case 'info':
         if (message.compaction) {
-          contributions.push({ kind: 'compaction', message })
+          contributions.push({ kind: 'compaction', message, turn: null })
         } else {
-          contributions.push({ kind: 'node', message })
+          contributions.push({ kind: 'node', message, turn: contributionTurn })
         }
         break
       case 'error':
-        contributions.push({ kind: 'node', message })
+        contributions.push({ kind: 'node', message, turn: contributionTurn })
         break
       default:
         // status / plan / auth-request etc. — keep as node for context.
-        contributions.push({ kind: 'node', message })
+        contributions.push({ kind: 'node', message, turn: contributionTurn })
         break
     }
   }

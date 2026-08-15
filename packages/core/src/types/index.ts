@@ -43,6 +43,8 @@ export type {
   TokenUsage,
   AgentEventUsage,
   PiUsage,
+  AssistantMetrics,
+  TrajectorySourceBlock,
   RecoveryAction,
   ErrorCode,
   TypedError,

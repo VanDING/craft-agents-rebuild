@@ -6,7 +6,7 @@
  */
 
 import type { Session, Message, PermissionRequest, CredentialRequest, TypedError, PermissionMode, SessionStatus, AuthRequest, ToolDisplayMeta } from '../../shared/types'
-import type { PiUsage } from '@craft-agent/core/types'
+import type { PiUsage, AssistantMetrics, TrajectorySourceBlock } from '@craft-agent/core/types'
 
 /**
  * Streaming state for a session - replaces streamingTextRef
@@ -55,6 +55,10 @@ export interface TextCompleteEvent {
   requestSeq?: number
   /** Effective system prompt at this request (trajectory prompt diff). */
   promptSnapshot?: string
+  /** Wall-clock step metrics (TTFT / decoding) for trajectory timing. */
+  assistantMetrics?: AssistantMetrics
+  /** Structured content blocks in model order (trajectory details panel). */
+  outputBlocks?: TrajectorySourceBlock[]
 }
 
 /**

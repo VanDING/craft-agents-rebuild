@@ -4,7 +4,7 @@
  * over the Craft contribution model.
  */
 
-import type { Message, PiUsage } from '@craft-agent/core/types'
+import type { AssistantMetrics, Message, PiUsage, TrajectorySourceBlock } from '@craft-agent/core/types'
 import type { TrajectoryContribution, TrajectorySnapshot } from './trajectory-contract'
 
 /** Closed set of trajectory record kinds (DSH-aligned). */
@@ -18,24 +18,10 @@ export type TrajectoryCellKind =
   | 'subtool'
 
 /** Recorded inputs needed to derive assistant TTFT and decode throughput. */
-export interface AssistantMetricDetail {
-  timingRecorded: boolean
-  stepStartTime: number | null
-  firstTokenTime: number | null
-  completedTime: number | null
-  usageProvided: boolean
-  outputTokens: number | null
-}
+export type AssistantMetricDetail = AssistantMetrics
 
 /** One source content block preserved in model order for the details panel. */
-export interface TrajectorySourceBlock {
-  type: string
-  content: string
-  imageSrc?: string
-  imageAlt?: string
-  callId?: string
-  toolName?: string
-}
+export type { TrajectorySourceBlock }
 
 /** Data and presentation attributes for one trajectory record. */
 export interface TrajectoryCellProps {
@@ -76,6 +62,8 @@ export interface TrajectoryCellProps {
   timeSeconds: number | null
   /** Unix epoch ms when this operation started, when known. */
   startedAt?: number | null
+  /** Structured content blocks in model order (details panel). */
+  outputBlocks?: TrajectorySourceBlock[]
   /** Message-only token buckets. */
   input?: number
   cacheRead?: number
@@ -119,6 +107,65 @@ const KIND_LABEL: Record<TrajectoryCellKind, string> = {
   subtool: 'Sub-tool',
 }
 
+/**
+ * Format a duration in milliseconds with thousands separators.
+ * Returns `—` when unknown (DSH-aligned).
+ */
+export function formatDurationMillis(milliseconds: number | null): string {
+  if (milliseconds === null || !Number.isFinite(milliseconds)) return '—'
+  return `${Math.round(milliseconds).toLocaleString()}ms`
+}
+
+/** Format an elapsed duration given in seconds as a millisecond label. */
+export function formatElapsedSeconds(seconds: number | null): string {
+  return formatDurationMillis(seconds === null ? null : seconds * 1000)
+}
+
+/**
+ * Resolve the identity that survives prepending older projected records.
+ * Prefers the owning tool call / message id; falls back to a stable
+ * record-sequence key.
+ */
+export function trajectoryRecordId(cell: TrajectoryCellProps): string {
+  const call = cell.callId
+  if (call !== undefined && call !== '') return call
+  const seq = cell.sourceSeq
+  if (seq !== undefined && seq !== '') return seq
+  return `index-${cell.index}`
+}
+
+/**
+ * Summarize a folded turn's content: "N steps · M tool calls".
+ */
+export function summarizeTurn(records: readonly TrajectoryRenderRecord[]): string {
+  const steps = new Set(
+    records
+      .map(record => record.group)
+      .filter(group => group.startsWith('Step ')),
+  ).size
+  const toolCalls = records.filter(record =>
+    record.cell.kind === 'tool' || record.cell.kind === 'subtool',
+  ).length
+  return [
+    `${steps} ${steps === 1 ? 'step' : 'steps'}`,
+    `${toolCalls} tool ${toolCalls === 1 ? 'call' : 'calls'}`,
+  ].join(' · ')
+}
+
+/**
+ * Summarize folded tool calls under one assistant: "N tool calls · names".
+ */
+export function summarizeAssistantTools(records: readonly TrajectoryRenderRecord[]): string {
+  const names = [...new Set(records.map((record) => {
+    const text = record.cell.text
+    const separator = text.indexOf(' · ')
+    return separator === -1 ? text : text.slice(0, separator)
+  }).filter(name => name !== ''))]
+  const count = records.length
+  const summary = `${count} tool ${count === 1 ? 'call' : 'calls'}`
+  return names.length > 0 ? `${summary} · ${names.join(', ')}` : summary
+}
+
 /** Tool result text (truncated for the row summary). */
 function toolResultSummary(result: string | undefined): string {
   if (!result) return ''
@@ -145,6 +192,137 @@ function usageToCell(
     output: usage.output,
     think: usage.reasoning,
   }
+}
+
+/** One flat ledger record (post-fold, pre-virtualization). */
+export interface TrajectoryRenderRecord {
+  cell: TrajectoryCellProps
+  turn: number | null
+  group: string
+  turnStart: boolean
+  groupStart: boolean
+  turnEnd: boolean
+  /** Present on summary rows inserted by folding. */
+  collapsedSummary?: string
+  collapsedSummaryKind?: 'turn' | 'assistant'
+}
+
+/**
+ * Flatten turns → groups → cells into a record stream with boundary flags.
+ */
+export function flattenTurnRecords(
+  turns: readonly TrajectoryTurnModel[],
+): readonly TrajectoryRenderRecord[] {
+  const out: TrajectoryRenderRecord[] = []
+  for (const turn of turns) {
+    const turnKey = turn.turn ?? null
+    const groups = turn.groups
+    let groupStart = true
+    groups.forEach((group, gi) => {
+      group.cells.forEach((cell, ci) => {
+        out.push({
+          cell,
+          turn: turnKey,
+          group: group.title,
+          turnStart: gi === 0 && ci === 0,
+          groupStart,
+          turnEnd: gi === groups.length - 1 && ci === group.cells.length - 1,
+        })
+        groupStart = false
+      })
+      groupStart = true
+    })
+  }
+  return out
+}
+
+/**
+ * Fold whole turns: keep system/request-only records, replace the remaining
+ * content with one summary row ("N steps · M tool calls") on the first
+ * content record's position.
+ */
+export function collapseTurnRecords(
+  records: readonly TrajectoryRenderRecord[],
+  collapsedTurns: ReadonlySet<number>,
+): readonly TrajectoryRenderRecord[] {
+  const recordsByTurn = new Map<number, TrajectoryRenderRecord[]>()
+  for (const record of records) {
+    if (record.turn === null) continue
+    const list = recordsByTurn.get(record.turn) ?? []
+    list.push(record)
+    recordsByTurn.set(record.turn, list)
+  }
+  const out: TrajectoryRenderRecord[] = []
+  for (const record of records) {
+    if (record.turn === null || !collapsedTurns.has(record.turn)) {
+      out.push(record)
+      continue
+    }
+    const turnRecords = recordsByTurn.get(record.turn) ?? [record]
+    if (record.cell.kind === 'system') {
+      out.push(record)
+      continue
+    }
+    const contentRecords = turnRecords.filter(candidate => candidate.cell.kind !== 'system')
+    if (contentRecords.length <= 1) {
+      out.push(record)
+      continue
+    }
+    if (record !== contentRecords[0]) continue
+    out.push({ ...record, turnEnd: false })
+    out.push({
+      ...record,
+      groupStart: false,
+      turnStart: false,
+      turnEnd: true,
+      collapsedSummary: summarizeTurn(contentRecords.slice(1)),
+      collapsedSummaryKind: 'turn',
+    })
+  }
+  return out
+}
+
+/**
+ * Fold tool calls under one assistant message into a summary row
+ * ("N tool calls · names") — the assistant stays, its tools collapse.
+ */
+export function collapseAssistantRecords(
+  records: readonly TrajectoryRenderRecord[],
+  collapsedAssistants: ReadonlySet<string>,
+): readonly TrajectoryRenderRecord[] {
+  const out: TrajectoryRenderRecord[] = []
+  for (let i = 0; i < records.length; i++) {
+    const record = records[i]
+    if (record === undefined) continue
+    out.push(record)
+    if (
+      record.cell.kind !== 'message'
+      || !collapsedAssistants.has(trajectoryRecordId(record.cell))
+    ) continue
+    const calls: TrajectoryRenderRecord[] = []
+    for (let j = i + 1; j < records.length; j++) {
+      const candidate = records[j]
+      if (
+        candidate === undefined
+        || candidate.collapsedSummary !== undefined
+        || (candidate.cell.kind !== 'tool' && candidate.cell.kind !== 'subtool')
+      ) break
+      calls.push(candidate)
+    }
+    if (calls.length === 0) continue
+    const last = calls[calls.length - 1]
+    out[out.length - 1] = { ...record, turnEnd: false }
+    out.push({
+      ...record,
+      groupStart: false,
+      turnStart: false,
+      turnEnd: last?.turnEnd ?? false,
+      collapsedSummary: summarizeAssistantTools(calls),
+      collapsedSummaryKind: 'assistant',
+    })
+    i += calls.length
+  }
+  return out
 }
 
 /**
@@ -190,7 +368,7 @@ export function deriveTrajectoryLayout(input: TrajectoryLayoutInput): readonly T
         index += 1
         const usage = requestUsage.get(contribution.requestSeq)
         const prompt = prompts.get(contribution.requestSeq)
-        const turn = ensureTurn(state.turn?.turn ?? null)
+        const turn = ensureTurn(contribution.turn)
         const group = ensureGroup(turn, `Request ${contribution.requestSeq}`)
         const cell: TrajectoryCellProps = {
           index,
@@ -211,7 +389,7 @@ export function deriveTrajectoryLayout(input: TrajectoryLayoutInput): readonly T
       case 'tool': {
         const message = contribution.message
         index += 1
-        const turn = ensureTurn(state.turn?.turn ?? null)
+        const turn = ensureTurn(contribution.turn)
 
         if (message.role === 'user') {
           const group = ensureGroup(turn, 'User')
@@ -245,6 +423,8 @@ export function deriveTrajectoryLayout(input: TrajectoryLayoutInput): readonly T
             inputDetail: message.content,
             timeSeconds: null,
             startedAt: message.timestamp,
+            assistantMetrics: message.assistantMetrics,
+            outputBlocks: message.outputBlocks,
             sourceMessage: message,
           }
           const cell = message.usage ? usageToCell(base, message.usage) : base

@@ -1,10 +1,18 @@
 import { describe, expect, it } from 'bun:test'
 import type { Message } from '@craft-agent/core/types'
 import { buildTrajectorySnapshot, type TrajectorySessionInput } from '../trajectory-snapshot'
-import { deriveTrajectoryLayout } from '../trajectory-layout'
-import { searchTrajectory } from '../trajectory-search-index'
-import { flattenTurnCells, projectVirtualRows, CONTENT_ROW_HEIGHT, COLLAPSED_SUMMARY_HEIGHT } from '../trajectory-virtual-rows'
-import { trajectoryDomain, trajectoryTimelineBlocks, trajectoryTimelineFocusIndexes } from '../trajectory-timeline'
+import {
+  collapseAssistantRecords,
+  collapseTurnRecords,
+  deriveTrajectoryLayout,
+  flattenTurnRecords,
+  formatDurationMillis,
+  trajectoryRecordId,
+  type TrajectoryRenderRecord,
+} from '../trajectory-layout'
+import { filterRecords, searchTrajectory, toolCallTextParts } from '../trajectory-search-index'
+import { projectVirtualRows, CONTENT_ROW_HEIGHT, COLLAPSED_SUMMARY_HEIGHT } from '../trajectory-virtual-rows'
+import { deriveTrajectoryTimeline, trajectoryTimelineFocusIndexes } from '../trajectory-timeline'
 
 function msg(overrides: Partial<Message> & { role: Message['role'] }): Message {
   return {
@@ -50,7 +58,6 @@ describe('deriveTrajectoryLayout', () => {
     expect(titles).toContain('Assistant')
     expect(titles).toContain('Tools')
 
-    // Tool cell carries result summary + duration + schema.
     const toolCell = turns[0].groups.flatMap(g => g.cells).find(c => c.kind === 'tool')
     expect(toolCell?.result).toBe('ok')
     expect(toolCell?.callId).toBe('c1')
@@ -72,81 +79,6 @@ describe('deriveTrajectoryLayout', () => {
     ])
     expect(turns[0].turn).toBeNull()
     expect(turns[0].groups[0].title).toBe('Between turns')
-    expect(turns[0].groups[0].cells[0].text).toContain('complete')
-  })
-
-  it('attaches usage buckets to assistant cells', () => {
-    const turns = layoutFor([
-      msg({ role: 'assistant', content: 'x', turnId: 't1', requestSeq: 1, usage, timestamp: 1000 }),
-    ])
-    const cell = turns[0].groups.flatMap(g => g.cells).find(c => c.kind === 'message')
-    expect(cell?.input).toBe(12) // input + cacheRead
-    expect(cell?.output).toBe(5)
-    expect(cell?.cacheRead).toBe(2)
-  })
-})
-
-describe('searchTrajectory', () => {
-  it('finds cells by substring across text and result', () => {
-    const turns = layoutFor([
-      msg({ role: 'user', content: 'refactor the parser', turnId: 't1', timestamp: 1000 }),
-      msg({ role: 'tool', toolName: 'Bash', toolUseId: 'c1', toolResult: 'build succeeded', turnId: 't1', timestamp: 2000 }),
-    ])
-    const hits = searchTrajectory(turns, 'build succeeded')
-    expect(hits.length).toBe(1)
-    expect(hits[0].cell.kind).toBe('tool')
-  })
-
-  it('returns empty for blank query', () => {
-    expect(searchTrajectory([], '')).toEqual([])
-    expect(searchTrajectory([], '   ')).toEqual([])
-  })
-
-  it('ANDs multiple terms', () => {
-    const turns = layoutFor([
-      msg({ role: 'user', content: 'fix the flaky test', turnId: 't1', timestamp: 1000 }),
-    ])
-    expect(searchTrajectory(turns, 'flaky test').length).toBe(1)
-    expect(searchTrajectory(turns, 'flaky missing').length).toBe(0)
-  })
-})
-
-describe('projectVirtualRows', () => {
-  it('maps cells to fixed-height rows', () => {
-    const turns = layoutFor([
-      msg({ role: 'user', content: 'a', turnId: 't1', timestamp: 1000 }),
-      msg({ role: 'assistant', content: 'b', turnId: 't1', timestamp: 2000 }),
-    ])
-    const rows = projectVirtualRows(flattenTurnCells(turns))
-    expect(rows.length).toBe(2)
-    expect(rows.every(r => r.height === CONTENT_ROW_HEIGHT)).toBe(true)
-  })
-
-  it('collapses flagged kinds to summary height', () => {
-    const turns = layoutFor([
-      msg({ role: 'user', content: 'a', turnId: 't1', timestamp: 1000 }),
-    ])
-    const rows = projectVirtualRows(flattenTurnCells(turns), new Set(['user']))
-    expect(rows[0].height).toBe(COLLAPSED_SUMMARY_HEIGHT)
-  })
-})
-
-describe('trajectoryTimeline', () => {
-  it('computes domain from cell timestamps', () => {
-    const turns = layoutFor([
-      msg({ role: 'user', content: 'a', turnId: 't1', timestamp: 1000 }),
-      msg({ role: 'assistant', content: 'b', turnId: 't1', timestamp: 5000 }),
-    ])
-    const domain = trajectoryDomain(turns)
-    expect(domain).toEqual({ startMs: 1000, endMs: 5000 })
-  })
-
-  it('builds blocks with measured durations', () => {
-    const turns = layoutFor([
-      msg({ role: 'tool', toolName: 'Bash', toolUseId: 'c1', toolDuration: 2500, turnId: 't1', timestamp: 1000 }),
-    ])
-    const blocks = trajectoryTimelineBlocks(turns[0])
-    expect(blocks[0].durationMs).toBe(2500)
   })
 
   it('reports null duration for unmeasured tools instead of 0ms', () => {
@@ -157,38 +89,168 @@ describe('trajectoryTimeline', () => {
     expect(toolCell?.timeSeconds).toBeNull()
   })
 
-  it('estimates unmeasured block spans from message gaps', () => {
+  it('carries assistant metrics onto message cells', () => {
+    const metrics = {
+      timingRecorded: true,
+      stepStartTime: 1000,
+      firstTokenTime: 1500,
+      completedTime: 3000,
+      usageProvided: true,
+      outputTokens: 50,
+    }
     const turns = layoutFor([
-      msg({ role: 'user', content: 'a', turnId: 't1', timestamp: 1000 }),
-      msg({ role: 'assistant', content: 'b', turnId: 't1', timestamp: 3000, requestSeq: 1, usage }),
-      msg({ role: 'tool', toolName: 'Read', toolUseId: 'c1', toolResult: 'ok', turnId: 't1', timestamp: 5000 }),
+      msg({ role: 'user', content: 'a', turnId: 't1', timestamp: 500 }),
+      msg({ role: 'assistant', content: 'b', turnId: 't1', timestamp: 3000, requestSeq: 1, usage, assistantMetrics: metrics }),
     ])
-    const blocks = trajectoryTimelineBlocks(turns[0])
-    // Gaps belong to the record that opens them: user opens the 2s gap to
-    // the assistant; same-timestamp usage cells floor at 1ms; the tool opens
-    // the 2s gap to the (missing) next record; the final record is null.
-    expect(blocks[0].durationMs).toBe(2000)
-    expect(blocks[1].durationMs).toBe(1)
-    expect(blocks[2].durationMs).toBe(2000)
-    expect(blocks[3].durationMs).toBeNull()
+    const messageCell = turns[0].groups.flatMap(g => g.cells).find(c => c.kind === 'message')
+    expect(messageCell?.assistantMetrics?.ttft).toBeUndefined()
+    expect(messageCell?.assistantMetrics?.firstTokenTime).toBe(1500)
+  })
+})
+
+describe('formatDurationMillis', () => {
+  it('formats known durations with thousands separators', () => {
+    expect(formatDurationMillis(1500)).toBe('1,500ms')
   })
 
-  it('resolves focus index to a normalized range', () => {
-    const turns = layoutFor([
-      msg({ role: 'user', content: 'a', turnId: 't1', timestamp: 0 }),
-      msg({ role: 'assistant', content: 'b', turnId: 't1', timestamp: 1000 }),
-    ])
-    const range = trajectoryTimelineFocusIndexes(turns, 1)
-    expect(range).not.toBeNull()
-    expect(range!.start).toBeGreaterThanOrEqual(0)
-    expect(range!.end).toBeLessThanOrEqual(1)
-    expect(range!.start).toBeLessThan(range!.end)
+  it('renders em dash for unknown durations', () => {
+    expect(formatDurationMillis(null)).toBe('—')
+  })
+})
+
+describe('trajectoryRecordId', () => {
+  it('prefers call id, then source seq, then index', () => {
+    expect(trajectoryRecordId({ index: 1, kind: 'tool', text: '', timeSeconds: null, callId: 'c1' })).toBe('c1')
+    expect(trajectoryRecordId({ index: 2, kind: 'message', text: '', timeSeconds: null, sourceSeq: 'm1' })).toBe('m1')
+    expect(trajectoryRecordId({ index: 3, kind: 'user', text: '', timeSeconds: null })).toBe('index-3')
+  })
+})
+
+describe('folding', () => {
+  const turns = layoutFor([
+    msg({ role: 'user', content: 'a', turnId: 't1', timestamp: 1000 }),
+    msg({ role: 'assistant', content: 'b', turnId: 't1', timestamp: 2000, requestSeq: 1, usage }),
+    msg({ role: 'tool', toolName: 'Read', toolUseId: 'c1', toolResult: 'ok', turnId: 't1', timestamp: 3000 }),
+    msg({ role: 'user', content: 'c', turnId: 't2', timestamp: 4000 }),
+    msg({ role: 'assistant', content: 'd', turnId: 't2', timestamp: 5000, requestSeq: 2, usage }),
+    msg({ role: 'tool', toolName: 'Bash', toolUseId: 'c2', toolResult: 'ok', turnId: 't2', timestamp: 6000 }),
+  ])
+
+  it('collapses a turn into a summary row (system records retained)', () => {
+    const flat = flattenTurnRecords(turns)
+    const collapsed = collapseTurnRecords(flat, new Set([1]))
+    const summary = collapsed.find(r => r.collapsedSummaryKind === 'turn')
+    expect(summary?.collapsedSummary).toContain('step')
+    expect(summary?.collapsedSummary).toContain('tool call')
+    // System (request) records survive the fold.
+    expect(collapsed.filter(r => r.cell.kind === 'system').length).toBeGreaterThan(0)
   })
 
-  it('returns null focus when index out of range', () => {
+  it('collapses assistant tool calls into a summary row', () => {
+    const flat = flattenTurnRecords(turns)
+    const messageCell = turns[0].groups.flatMap(g => g.cells).find(c => c.kind === 'message')
+    const recordId = trajectoryRecordId(messageCell!)
+    const collapsed = collapseAssistantRecords(flat, new Set([recordId]))
+    const summary = collapsed.find(r => r.collapsedSummaryKind === 'assistant')
+    expect(summary?.collapsedSummary).toContain('tool call')
+  })
+
+  it('leaves uncollapsed turns untouched', () => {
+    const flat = flattenTurnRecords(turns)
+    const collapsed = collapseTurnRecords(flat, new Set())
+    expect(collapsed.length).toBe(flat.length)
+  })
+})
+
+describe('search', () => {
+  const turns = layoutFor([
+    msg({ role: 'user', content: 'hello world', turnId: 't1', timestamp: 1000 }),
+    msg({ role: 'assistant', content: 'hi there', turnId: 't1', timestamp: 2000, requestSeq: 1, usage }),
+    msg({ role: 'tool', toolName: 'Read', toolUseId: 'c1', toolInput: { file_path: 'a.ts' }, toolResult: 'contents', turnId: 't1', timestamp: 3000 }),
+  ])
+
+  it('matches query terms across cell text and tool call names', () => {
+    const flat = flattenTurnRecords(turns)
+    const hits = searchTrajectory(flat, 'Read')
+    // Ledger: user#1 → system#2 → message#3 → tool#4.
+    expect(hits.has(4)).toBe(true)
+  })
+
+  it('ANDs whitespace-separated terms', () => {
+    const flat = flattenTurnRecords(turns)
+    expect(searchTrajectory(flat, 'hello world').has(1)).toBe(true)
+    expect(searchTrajectory(flat, 'hello missing').size).toBe(0)
+  })
+
+  it('filters records to hits, preserving order and summaries', () => {
+    const flat = flattenTurnRecords(turns)
+    const hits = searchTrajectory(flat, 'hello')
+    const filtered = filterRecords(flat, hits)
+    expect(filtered.length).toBe(1)
+    expect(filtered[0]?.cell.kind).toBe('user')
+  })
+})
+
+describe('toolCallTextParts', () => {
+  it('splits name and args', () => {
+    expect(toolCallTextParts('tool', 'Read: a.ts')).toEqual({ name: 'Read', args: 'a.ts' })
+  })
+})
+
+describe('virtual rows', () => {
+  it('projects fixed heights with stable keys', () => {
     const turns = layoutFor([
       msg({ role: 'user', content: 'a', turnId: 't1', timestamp: 1000 }),
+      msg({ role: 'assistant', content: 'b', turnId: 't1', timestamp: 2000, requestSeq: 1, usage }),
+      msg({ role: 'tool', toolName: 'Read', toolUseId: 'c1', toolResult: 'ok', turnId: 't1', timestamp: 3000 }),
     ])
-    expect(trajectoryTimelineFocusIndexes(turns, 99)).toBeNull()
+    const flat = flattenTurnRecords(turns)
+    const rows = projectVirtualRows(flat)
+    expect(rows.length).toBe(flat.length)
+    expect(rows.every(r => r.height === CONTENT_ROW_HEIGHT)).toBe(true)
+    // Collapsed summary rows get the compact height.
+    const collapsed = collapseTurnRecords(flat, new Set([1]))
+    const projected = projectVirtualRows(collapsed)
+    const summaryRow = projected.find(r => r.record.collapsedSummary !== undefined)
+    expect(summaryRow?.height).toBe(COLLAPSED_SUMMARY_HEIGHT)
+  })
+})
+
+describe('timeline', () => {
+  it('projects sequence mode with three lanes and turn boundaries', () => {
+    const turns = layoutFor([
+      msg({ role: 'user', content: 'a', turnId: 't1', timestamp: 1000 }),
+      msg({ role: 'assistant', content: 'b', turnId: 't1', timestamp: 2000, requestSeq: 1, usage }),
+      msg({ role: 'tool', toolName: 'Read', toolUseId: 'c1', toolResult: 'ok', turnId: 't1', timestamp: 3000 }),
+    ])
+    const model = deriveTrajectoryTimeline(turns, 'sequence')
+    expect(model).not.toBeNull()
+    expect(model!.spans.length).toBeGreaterThanOrEqual(4)
+    expect(model!.turnBoundaries.length).toBe(1)
+    const toolSpan = model!.spans.find(s => s.kind === 'tool')
+    expect(toolSpan?.lane).toBe(2)
+    const messageSpan = model!.spans.find(s => s.kind === 'message')
+    expect(messageSpan?.lane).toBe(1)
+  })
+
+  it('drops cells without timestamps in timed modes', () => {
+    const turns = layoutFor([
+      msg({ role: 'user', content: 'a', turnId: 't1', timestamp: 1000 }),
+      msg({ role: 'tool', toolName: 'Read', toolUseId: 'c1', toolResult: 'ok', turnId: 't1', timestamp: 2000 }),
+    ])
+    const model = deriveTrajectoryTimeline(turns, 'time')
+    expect(model).not.toBeNull()
+    expect(model!.spans.length).toBe(2)
+  })
+
+  it('resolves focus indexes inside a range', () => {
+    const turns = layoutFor([
+      msg({ role: 'user', content: 'a', turnId: 't1', timestamp: 1000 }),
+      msg({ role: 'assistant', content: 'b', turnId: 't1', timestamp: 2000, requestSeq: 1, usage }),
+    ])
+    const model = deriveTrajectoryTimeline(turns, 'sequence')
+    expect(model).not.toBeNull()
+    const focused = trajectoryTimelineFocusIndexes(turns, { start: 0, end: 1 }, 'sequence')
+    expect(focused.size).toBeGreaterThan(0)
   })
 })

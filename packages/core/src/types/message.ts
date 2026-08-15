@@ -266,6 +266,10 @@ export interface Message {
   requestSeq?: number;
   /** Effective system prompt at this request (trajectory prompt diff). */
   promptSnapshot?: string;
+  /** Wall-clock step metrics (TTFT / decoding) for trajectory timing. */
+  assistantMetrics?: AssistantMetrics;
+  /** Structured content blocks in model order (trajectory details panel). */
+  outputBlocks?: TrajectorySourceBlock[];
   toolIntent?: string;
   toolDisplayName?: string;
   /** Tool display metadata with base64 icon - embedded at storage time for viewer */
@@ -372,6 +376,10 @@ export interface StoredMessage {
   requestSeq?: number;
   /** Effective system prompt at this request (trajectory prompt diff). */
   promptSnapshot?: string;
+  /** Wall-clock step metrics (TTFT / decoding) for trajectory timing. */
+  assistantMetrics?: AssistantMetrics;
+  /** Structured content blocks in model order (trajectory details panel). */
+  outputBlocks?: TrajectorySourceBlock[];
   toolIntent?: string;
   toolDisplayName?: string;
   /** Tool display metadata with base64 icon - embedded at storage time for viewer */
@@ -557,6 +565,35 @@ export interface PermissionRequest {
 }
 
 /**
+ * One source content block preserved in model order for the trajectory
+ * details panel (mirrors the VanDSH TrajectorySourceBlock shape).
+ */
+export interface TrajectorySourceBlock {
+  type: string;
+  content?: string;
+  imageSrc?: string;
+  imageAlt?: string;
+  callId?: string;
+  toolName?: string;
+}
+
+/**
+ * Wall-clock assistant step metrics for trajectory TTFT / decoding / throughput.
+ * Recorded by the Pi event adapter from message_start → first text_delta →
+ * message_end; missing (null fields) for historical messages or when the
+ * stream did not deliver a text delta.
+ */
+export interface AssistantMetrics {
+  /** True when stepStartTime and firstTokenTime were both recorded. */
+  timingRecorded: boolean;
+  stepStartTime: number | null;
+  firstTokenTime: number | null;
+  completedTime: number | null;
+  usageProvided: boolean;
+  outputTokens: number | null;
+}
+
+/**
  * Full provider usage breakdown mirroring the Pi SDK Usage shape.
  * Carried verbatim on text_complete / complete / usage_update events so the
  * trajectory view can render per-request token buckets and cost splits.
@@ -603,7 +640,7 @@ export type AgentEvent =
   | { type: 'status'; message: string }
   | { type: 'info'; message: string }
   | { type: 'text_delta'; text: string; turnId?: string; parentToolUseId?: string; timestamp?: number }
-  | { type: 'text_complete'; text: string; isIntermediate?: boolean; turnId?: string; parentToolUseId?: string; sdkMessageId?: string; timestamp?: number; usage?: PiUsage; requestSeq?: number; promptSnapshot?: string }
+  | { type: 'text_complete'; text: string; isIntermediate?: boolean; turnId?: string; parentToolUseId?: string; sdkMessageId?: string; timestamp?: number; usage?: PiUsage; requestSeq?: number; promptSnapshot?: string; assistantMetrics?: AssistantMetrics; outputBlocks?: TrajectorySourceBlock[] }
   | { type: 'pi_turn_anchor'; sdkMessageId: string; sdkTurnAnchor: string }
   | { type: 'tool_start'; toolName: string; toolUseId: string; input: Record<string, unknown>; intent?: string; displayName?: string; turnId?: string; parentToolUseId?: string; toolDisplayMeta?: ToolDisplayMeta; timestamp?: number }
   | { type: 'tool_result'; toolUseId: string; toolName?: string; result: string; isError: boolean; input?: Record<string, unknown>; turnId?: string; parentToolUseId?: string; timestamp?: number; durationMs?: number }

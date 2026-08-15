@@ -1,25 +1,27 @@
 /**
- * RecordInspector — details panel for a selected trajectory record.
- *
- * Tab set (DSH-aligned, mapped to Craft data availability):
- * overview / input / output / usage / timing / schema / system-prompt /
- * source / raw / tools / options / diff / rendered.
- * Tabs without a data source for the selected record render an empty hint
- * rather than being hidden, preserving the original surface.
+ * RecordInspector — type-aware details panel for a selected trajectory
+ * record. Tab sets follow the VanDSH detail tabs mapped to Craft data:
+ * - system → System prompt / Diff
+ * - compacted → Summary / Raw Output
+ * - markdown-bearing → Summary / Preview / Raw (+ Source when available)
+ * - other → Summary / Payload / Result / Schema / Timing
+ * Assistant records additionally get Usage and TTFT timing.
  */
 
 import { useMemo, useState } from 'react'
+import { X } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { Markdown } from '../markdown'
-import type { TrajectoryCellProps, TrajectorySourceBlock, AssistantMetricDetail } from './trajectory-layout'
+import type { AssistantMetricDetail, TrajectoryCellProps, TrajectorySourceBlock } from './trajectory-layout'
+import { formatDurationMillis } from './trajectory-layout'
 
 export interface RecordInspectorProps {
   cell: TrajectoryCellProps
   /** Previous request's prompt (for the diff tab). */
   previousPrompt?: string
   /** Session total usage (for the usage tab's cumulative section). */
-  sessionTotal?: { input: number; output: number; cacheRead: number; cacheWrite: number }
-  onClose?: () => void
+  sessionTotal?: { input: number; output: number; totalTokens: number }
+  onClose: () => void
 }
 
 type DetailTab =
@@ -32,241 +34,291 @@ type DetailTab =
   | 'system-prompt'
   | 'source'
   | 'raw'
-  | 'tools'
-  | 'options'
   | 'diff'
   | 'rendered'
 
-const TABS: readonly { id: DetailTab; label: string }[] = [
-  { id: 'overview', label: 'Overview' },
-  { id: 'input', label: 'Input' },
-  { id: 'output', label: 'Output' },
-  { id: 'usage', label: 'Usage' },
-  { id: 'timing', label: 'Timing' },
-  { id: 'schema', label: 'Schema' },
-  { id: 'system-prompt', label: 'System prompt' },
-  { id: 'source', label: 'Source' },
-  { id: 'raw', label: 'Raw' },
-  { id: 'tools', label: 'Tools' },
-  { id: 'options', label: 'Options' },
-  { id: 'diff', label: 'Diff' },
-  { id: 'rendered', label: 'Rendered' },
-]
+interface TabItem {
+  id: DetailTab
+  label: string
+}
 
 function EmptyHint({ label }: { label: string }) {
   return (
-    <div className="px-3 py-6 text-center text-xs text-muted-foreground/50">
-      No {label} available for this record.
+    <div className="px-3 py-6 text-center text-[12px] text-muted-foreground/50">
+      {label}
     </div>
   )
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="space-y-1">
-      <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/60">{title}</div>
-      {children}
-    </div>
+    <section className="px-3 py-2">
+      <h4 className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/60">
+        {title}
+      </h4>
+      <div className="text-[12px] leading-5">{children}</div>
+    </section>
   )
 }
 
 function KeyValue({ k, v }: { k: string; v: string | number | undefined | null }) {
   if (v === undefined || v === null || v === '') return null
   return (
-    <div className="flex justify-between gap-3 text-xs">
-      <span className="text-muted-foreground/70">{k}</span>
-      <span className="tabular-nums">{v}</span>
+    <div className="flex justify-between gap-3 py-0.5">
+      <span className="shrink-0 text-muted-foreground/60">{k}</span>
+      <span className="min-w-0 truncate text-right tabular-nums">{v}</span>
     </div>
   )
 }
 
 function formatMs(ms: number | null): string {
-  if (ms === null) return '—'
-  if (ms < 1000) return `${Math.round(ms)}ms`
-  return `${(ms / 1000).toFixed(2)}s`
+  return formatDurationMillis(ms)
 }
 
 function SourceBlocksView({ blocks }: { blocks: readonly TrajectorySourceBlock[] }) {
-  if (blocks.length === 0) return <EmptyHint label="source blocks" />
   return (
     <div className="space-y-2">
       {blocks.map((block, i) => (
-        <div key={i} className="rounded border p-2 text-xs">
-          <div className="mb-1 text-[10px] uppercase text-muted-foreground/50">{block.type}</div>
-          <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all">{block.content}</pre>
+        <div key={i} className="rounded border border-border/60 bg-foreground/[0.02] px-2 py-1.5">
+          <div className="text-[10px] uppercase tracking-wide text-muted-foreground/50">{block.type}</div>
+          {block.imageSrc !== undefined ? (
+            <img src={block.imageSrc} alt={block.imageAlt ?? 'image'} className="mt-1 max-h-40 rounded" />
+          ) : null}
+          {block.content !== undefined && block.content !== '' ? (
+            <div className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap text-[12px]">{block.content}</div>
+          ) : null}
+          {block.callId !== undefined ? (
+            <div className="mt-1 text-[11px] text-muted-foreground/60">{block.toolName ?? 'call'} {block.callId}</div>
+          ) : null}
         </div>
       ))}
     </div>
   )
 }
 
+// ============================================================
+// TTFT / decoding / throughput (DSH AssistantTimingPanel)
+// ============================================================
+
+function totalTime(metrics: AssistantMetricDetail): string {
+  const start = metrics.stepStartTime
+  const completed = metrics.completedTime
+  if (typeof start !== 'number' || typeof completed !== 'number') return '—'
+  return formatMs(completed - start)
+}
+
+function ttft(metrics: AssistantMetricDetail): string {
+  const start = metrics.stepStartTime
+  const first = metrics.firstTokenTime
+  if (typeof start !== 'number' || typeof first !== 'number') return '—'
+  return formatMs(first - start)
+}
+
+function generationTime(metrics: AssistantMetricDetail): string {
+  const first = metrics.firstTokenTime
+  const completed = metrics.completedTime
+  if (typeof first !== 'number' || typeof completed !== 'number') return '—'
+  return formatMs(completed - first)
+}
+
+function throughput(metrics: AssistantMetricDetail): string {
+  const tokens = metrics.outputTokens
+  const first = metrics.firstTokenTime
+  const completed = metrics.completedTime
+  if (typeof tokens !== 'number' || typeof first !== 'number' || typeof completed !== 'number') return '—'
+  const seconds = (completed - first) / 1000
+  if (seconds <= 0) return '—'
+  return `${(tokens / seconds).toFixed(1)} tok/s`
+}
+
+function AssistantTimingPanel({ metrics }: { metrics: AssistantMetricDetail }) {
+  const items: Array<[string, string]> = [
+    ['Total', totalTime(metrics)],
+    ['TTFT', ttft(metrics)],
+    ['Generation', generationTime(metrics)],
+    ['Throughput', throughput(metrics)],
+  ]
+  return (
+    <Section title="Timing">
+      {metrics.timingRecorded
+        ? items.map(([k, v]) => <KeyValue key={k} k={k} v={v} />)
+        : <p className="text-muted-foreground/50">No wall-clock timing recorded for this record (historical session).</p>}
+      {metrics.stepStartTime !== null && metrics.completedTime !== null ? (
+        <div className="mt-1 border-t border-border/50 pt-1">
+          <KeyValue k="Started" v={new Date(metrics.stepStartTime).toLocaleTimeString()} />
+          <KeyValue k="Completed" v={new Date(metrics.completedTime).toLocaleTimeString()} />
+        </div>
+      ) : null}
+    </Section>
+  )
+}
+
+// ============================================================
+// Record-type-aware tab sets (DSH detailTabs)
+// ============================================================
+
+function detailTabs(cell: TrajectoryCellProps): readonly TabItem[] {
+  if (cell.kind === 'system') {
+    return [
+      { id: 'system-prompt', label: 'System prompt' },
+      { id: 'diff', label: 'Diff' },
+    ]
+  }
+  if (cell.kind === 'compacted') {
+    return [
+      { id: 'overview', label: 'Summary' },
+      { id: 'raw', label: 'Raw Output' },
+    ]
+  }
+  if (cell.kind === 'user' || cell.kind === 'message') {
+    return [
+      { id: 'overview', label: 'Summary' },
+      ...(cell.kind === 'message' ? [{ id: 'usage', label: 'Usage' } as const] : []),
+      ...(cell.kind === 'message' ? [{ id: 'timing', label: 'Timing' } as const] : []),
+      { id: 'rendered', label: 'Preview' },
+      { id: 'raw', label: 'Raw' },
+      { id: 'diff', label: 'Diff' },
+    ]
+  }
+  return [
+    { id: 'overview', label: 'Summary' },
+    ...(cell.inputDetail ? [{ id: 'input', label: 'Payload' } as const] : []),
+    ...(cell.outputDetail ? [{ id: 'output', label: 'Result' } as const] : []),
+    { id: 'schema', label: 'Schema' },
+    { id: 'timing', label: 'Timing' },
+  ]
+}
+
 export function RecordInspector({ cell, previousPrompt, sessionTotal, onClose }: RecordInspectorProps) {
   const [tab, setTab] = useState<DetailTab>('overview')
-  const sourceMessage = cell.sourceMessage
-  const metrics: AssistantMetricDetail | undefined = cell.assistantMetrics
-
-  const sourceBlocks = useMemo<readonly TrajectorySourceBlock[]>(() => {
-    const blocks: TrajectorySourceBlock[] = []
-    if (cell.inputDetail) blocks.push({ type: 'input', content: cell.inputDetail })
-    if (cell.outputDetail) blocks.push({ type: 'output', content: cell.outputDetail })
-    if (cell.thinkingDetail) blocks.push({ type: 'thinking', content: cell.thinkingDetail })
-    return blocks
-  }, [cell.inputDetail, cell.outputDetail, cell.thinkingDetail])
+  const tabs = useMemo(() => detailTabs(cell), [cell])
+  const markdownSource = cell.kind === 'message' ? cell.outputDetail ?? cell.thinkingDetail : undefined
 
   return (
-    <div className="flex h-full flex-col border-l bg-background/95">
-      <div className="flex items-center justify-between border-b px-3 py-2">
-        <span className="text-xs font-medium">Record #{cell.index}</span>
-        {onClose && (
-          <button type="button" onClick={onClose} className="text-muted-foreground hover:text-foreground">
-            ✕
-          </button>
-        )}
+    <aside className="flex h-full w-80 shrink-0 flex-col border-l border-border/60" aria-label="Event details">
+      <div className="flex items-center justify-between border-b border-border/60 px-3 py-2">
+        <div className="min-w-0">
+          <div className="truncate text-[12px] font-semibold">#{cell.index} {cell.kind}</div>
+          <div className="truncate text-[11px] text-muted-foreground/60">{cell.text}</div>
+        </div>
+        <button
+          type="button"
+          aria-label="Close details"
+          className="ml-2 shrink-0 rounded p-1 text-muted-foreground/60 hover:bg-accent/50"
+          onClick={onClose}
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
       </div>
 
-      <div className="flex flex-wrap gap-0.5 border-b px-2 py-1">
-        {TABS.map(({ id, label }) => (
+      <div className="flex gap-1 overflow-x-auto border-b border-border/60 px-2 py-1" role="tablist" aria-label="Event details">
+        {tabs.map(({ id, label }) => (
           <button
             key={id}
             type="button"
-            onClick={() => setTab(id)}
+            role="tab"
+            aria-selected={tab === id}
             className={cn(
-              'rounded px-1.5 py-0.5 text-[10px] text-muted-foreground/70 hover:bg-accent hover:text-foreground',
-              tab === id && 'bg-accent text-foreground',
+              'shrink-0 rounded px-2 py-0.5 text-[11px]',
+              tab === id ? 'bg-accent text-accent-foreground' : 'text-muted-foreground/70 hover:bg-accent/40',
             )}
+            onClick={() => setTab(id)}
           >
             {label}
           </button>
         ))}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto p-3">
+      <div className="min-h-0 flex-1 overflow-y-auto">
         {tab === 'overview' && (
-          <div className="space-y-2">
-            <Section title="Kind">
-              <div className="text-xs">{cell.kind}</div>
-            </Section>
+          <>
             <Section title="Summary">
-              <div className="text-xs">{cell.text}</div>
+              <p className="whitespace-pre-wrap">{cell.text || '—'}</p>
             </Section>
-            <KeyValue k="Index" v={`#${cell.index}`} />
-            <KeyValue k="Started at" v={cell.startedAt !== null && cell.startedAt !== undefined ? new Date(cell.startedAt).toLocaleTimeString() : undefined} />
-            <KeyValue k="Duration" v={cell.timeSeconds !== null ? formatMs(cell.timeSeconds * 1000) : undefined} />
-            {cell.isError !== undefined && <KeyValue k="Error" v={cell.isError ? 'yes' : 'no'} />}
-          </div>
+            {cell.isError ? (
+              <Section title="Error">
+                <p className="text-rose-500">{cell.result}</p>
+              </Section>
+            ) : cell.result ? (
+              <Section title="Result">
+                <p className="whitespace-pre-wrap">{cell.result}</p>
+              </Section>
+            ) : null}
+            {cell.assistantMetrics !== undefined && cell.kind === 'message' ? (
+              <AssistantTimingPanel metrics={cell.assistantMetrics} />
+            ) : null}
+          </>
         )}
-
+        {tab === 'usage' && cell.kind === 'message' && (
+          <Section title="Usage">
+            <KeyValue k="Input" v={cell.input} />
+            <KeyValue k="Cache read" v={cell.cacheRead} />
+            <KeyValue k="Cache write" v={cell.cacheWrite} />
+            <KeyValue k="Output" v={cell.output} />
+            <KeyValue k="Thinking" v={cell.think} />
+            {sessionTotal !== undefined ? (
+              <div className="mt-1 border-t border-border/50 pt-1">
+                <KeyValue k="Session input" v={sessionTotal.input} />
+                <KeyValue k="Session output" v={sessionTotal.output} />
+                <KeyValue k="Session total" v={sessionTotal.totalTokens} />
+              </div>
+            ) : null}
+          </Section>
+        )}
+        {tab === 'timing' && cell.assistantMetrics !== undefined && cell.kind === 'message' ? (
+          <AssistantTimingPanel metrics={cell.assistantMetrics} />
+        ) : tab === 'timing' ? (
+          <EmptyHint label="No timing data for this record." />
+        ) : null}
         {tab === 'input' && (
           cell.inputDetail
-            ? <pre className="max-h-full overflow-auto whitespace-pre-wrap break-all rounded border p-2 text-xs">{cell.inputDetail}</pre>
-            : <EmptyHint label="input" />
+            ? <Section title="Payload"><pre className="whitespace-pre-wrap text-[11px]">{cell.inputDetail}</pre></Section>
+            : <EmptyHint label="No payload." />
         )}
-
         {tab === 'output' && (
           cell.outputDetail
-            ? <pre className="max-h-full overflow-auto whitespace-pre-wrap break-all rounded border p-2 text-xs">{cell.outputDetail}</pre>
-            : <EmptyHint label="output" />
+            ? <Section title="Result"><pre className="whitespace-pre-wrap text-[11px]">{cell.outputDetail}</pre></Section>
+            : <EmptyHint label="No result." />
         )}
-
-        {tab === 'usage' && (
-          <div className="space-y-3">
-            <Section title="This request">
-              <KeyValue k="Input tokens" v={cell.input} />
-              <KeyValue k="Cache read" v={cell.cacheRead} />
-              <KeyValue k="Cache write" v={cell.cacheWrite} />
-              <KeyValue k="Output tokens" v={cell.output} />
-              <KeyValue k="Reasoning tokens" v={cell.think} />
-            </Section>
-            {sessionTotal && (
-              <Section title="Session total">
-                <KeyValue k="Input" v={sessionTotal.input} />
-                <KeyValue k="Cache read" v={sessionTotal.cacheRead} />
-                <KeyValue k="Cache write" v={sessionTotal.cacheWrite} />
-                <KeyValue k="Output" v={sessionTotal.output} />
-              </Section>
-            )}
-          </div>
-        )}
-
-        {tab === 'timing' && (
-          <div className="space-y-3">
-            {metrics && metrics.timingRecorded ? (
-              <>
-                <KeyValue k="Step start" v={metrics.stepStartTime !== null ? new Date(metrics.stepStartTime).toLocaleTimeString() : undefined} />
-                <KeyValue k="First token" v={metrics.firstTokenTime !== null ? new Date(metrics.firstTokenTime).toLocaleTimeString() : undefined} />
-                <KeyValue k="Completed" v={metrics.completedTime !== null ? new Date(metrics.completedTime).toLocaleTimeString() : undefined} />
-                {metrics.firstTokenTime !== null && metrics.stepStartTime !== null && (
-                  <KeyValue k="TTFT (approx)" v={formatMs(metrics.firstTokenTime - metrics.stepStartTime)} />
-                )}
-                {metrics.completedTime !== null && metrics.firstTokenTime !== null && (
-                  <KeyValue k="Decode" v={formatMs(metrics.completedTime - metrics.firstTokenTime)} />
-                )}
-                {metrics.outputTokens !== null && metrics.completedTime !== null && metrics.firstTokenTime !== null && (
-                  <KeyValue k="Throughput" v={`${Math.round(metrics.outputTokens / Math.max((metrics.completedTime - metrics.firstTokenTime) / 1000, 0.001))} tok/s`} />
-                )}
-              </>
-            ) : (
-              <EmptyHint label="timing (not recorded for this record)" />
-            )}
-          </div>
-        )}
-
         {tab === 'schema' && (
           cell.schemaDetail
-            ? <pre className="max-h-full overflow-auto whitespace-pre-wrap break-all rounded border p-2 text-xs">{cell.schemaDetail}</pre>
-            : <EmptyHint label="schema" />
+            ? <Section title="Schema"><pre className="whitespace-pre-wrap text-[11px]">{cell.schemaDetail}</pre></Section>
+            : <EmptyHint label="No schema captured." />
         )}
-
         {tab === 'system-prompt' && (
-          cell.promptDetail
-            ? <pre className="max-h-full overflow-auto whitespace-pre-wrap break-all rounded border p-2 text-xs">{cell.promptDetail}</pre>
-            : <EmptyHint label="system prompt" />
+          cell.inputDetail
+            ? <Section title="System prompt"><pre className="whitespace-pre-wrap text-[11px]">{cell.inputDetail}</pre></Section>
+            : <EmptyHint label="No prompt snapshot." />
         )}
-
         {tab === 'source' && (
-          <SourceBlocksView blocks={sourceBlocks} />
+          cell.outputBlocks !== undefined
+            ? <Section title="Source blocks"><SourceBlocksView blocks={cell.outputBlocks} /></Section>
+            : <EmptyHint label="No source blocks." />
         )}
-
         {tab === 'raw' && (
-          sourceMessage
-            ? <pre className="max-h-full overflow-auto whitespace-pre-wrap break-all rounded border p-2 text-xs">{JSON.stringify(sourceMessage, null, 2)}</pre>
-            : <EmptyHint label="raw message" />
+          cell.sourceMessage !== undefined
+            ? <Section title="Raw"><pre className="whitespace-pre-wrap text-[11px]">{JSON.stringify(cell.sourceMessage, null, 2)}</pre></Section>
+            : <EmptyHint label="No raw message." />
         )}
-
-        {tab === 'tools' && (
-          <EmptyHint label="tool catalog (available on request-header records)" />
-        )}
-
-        {tab === 'options' && (
-          <div className="space-y-1">
-            <KeyValue k="Tool" v={sourceMessage?.toolName} />
-            <KeyValue k="Turn" v={sourceMessage?.turnId} />
-            <KeyValue k="Parent" v={sourceMessage?.parentToolUseId} />
-            <KeyValue k="Message id" v={sourceMessage?.id} />
-          </div>
-        )}
-
-        {tab === 'diff' && (
-          previousPrompt !== undefined && cell.promptDetail !== undefined && previousPrompt !== cell.promptDetail
-            ? (
-              <div className="space-y-2">
-                <Section title="Before">
-                  <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all rounded border p-2 text-xs">{previousPrompt}</pre>
-                </Section>
-                <Section title="After">
-                  <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all rounded border p-2 text-xs">{cell.promptDetail}</pre>
-                </Section>
-              </div>
-            )
-            : <EmptyHint label="prompt diff" />
-        )}
-
         {tab === 'rendered' && (
-          cell.previewMarkdown
-            ? <Markdown>{cell.previewMarkdown}</Markdown>
-            : <EmptyHint label="rendered markdown" />
+          markdownSource !== undefined
+            ? <Section title="Preview"><Markdown>{markdownSource}</Markdown></Section>
+            : <EmptyHint label="Nothing to render." />
+        )}
+        {tab === 'diff' && (
+          <Section title="Prompt diff">
+            {previousPrompt !== undefined && cell.inputDetail !== undefined
+              ? (
+                <pre className="whitespace-pre-wrap text-[11px]">
+                  {previousPrompt === cell.inputDetail
+                    ? 'Prompt unchanged'
+                    : `— previous (${previousPrompt.length} chars)\n${previousPrompt}\n\n+ current (${cell.inputDetail.length} chars)\n${cell.inputDetail}`}
+                </pre>
+              )
+              : <EmptyHint label="No previous prompt snapshot." />}
+          </Section>
         )}
       </div>
-    </div>
+    </aside>
   )
 }

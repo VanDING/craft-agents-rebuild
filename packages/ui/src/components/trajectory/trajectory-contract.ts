@@ -15,14 +15,20 @@ export type TrajectoryContribution =
   | {
       kind: 'node'
       message: Message
+      /** 1-based turn ordinal; null inside a Between-turns section. */
+      turn: number | null
     }
   | {
       kind: 'assistant'
       message: Message
+      /** 1-based turn ordinal; null inside a Between-turns section. */
+      turn: number | null
     }
   | {
       kind: 'tool'
       message: Message
+      /** 1-based turn ordinal; null inside a Between-turns section. */
+      turn: number | null
     }
   | {
       kind: 'request-header'
@@ -30,10 +36,14 @@ export type TrajectoryContribution =
       prompt: string
       usage?: PiUsage
       time: number
+      /** 1-based turn ordinal; null inside a Between-turns section. */
+      turn: number | null
     }
   | {
       kind: 'compaction'
       message: Message
+      /** Compaction lives between turns: always null. */
+      turn: null
     }
   | {
       kind: 'session-end'
