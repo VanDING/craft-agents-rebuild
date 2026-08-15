@@ -68,7 +68,6 @@ export {
 export {
   TrajectoryView,
   TrajectoryTable,
-  TrajectoryCell,
   TrajectoryToolbar,
   TrajectoryTimeline,
   RecordInspector,

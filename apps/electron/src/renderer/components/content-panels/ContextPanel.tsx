@@ -1,17 +1,17 @@
 /**
- * ContextPanel - workspace context + active session metadata.
+ * ContextPanel - active-session context, opencode-style stats grid.
  *
- * Sources/skills are workspace-level resources (LoadedSource carries no session
- * association), so they are listed here regardless of the active session; each
- * item navigates to its source/skill route. The active-session section shows
- * the metadata the renderer actually keeps (SessionMeta), and a guidance block
- * invites the user to focus a session for session-specific context.
+ * Answers "what environment is this session in, what has it consumed, what is
+ * it carrying": a two-column stat grid (label above value, missing values show
+ * an em dash), then attachments / recently opened files / the workspace
+ * resources section. Sources/skills are workspace-level and duplicated by the
+ * left sidebar, so they sit in a collapsed section by default.
  */
 
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAtomValue } from 'jotai'
-import { FolderKanban, Layers, Zap, ListFilter, FolderOpen, BadgeCheck, Coins, Paperclip, History } from 'lucide-react'
+import { FolderKanban, Layers, ListFilter, Paperclip, History, ChevronDown, ChevronRight, FileText } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { PanelHeader } from '../app-shell/PanelHeader'
 import { PanelEmptyState } from './PanelEmptyState'
@@ -43,22 +43,46 @@ function fileBasename(path: string): string {
   return path.split(/[\\/]/).pop() ?? path
 }
 
-function SectionTitle({ icon, label }: { icon: React.ReactNode; label: string }) {
+/** Stat cell — label above value, em dash placeholder (opencode pattern). */
+function Stat({ label, value, span }: { label: string; value?: React.ReactNode; span?: boolean }) {
   return (
+    <div className={cn(
+      'flex min-w-0 flex-col gap-0.5 rounded-lg border border-border/60 bg-foreground/[0.02] px-2 py-1.5',
+      span && 'col-span-2',
+    )}>
+      <span className="text-[11px] text-muted-foreground/70">{label}</span>
+      <span
+        className="min-w-0 truncate text-[13px] font-medium text-foreground/90"
+        title={typeof value === 'string' ? value : undefined}
+      >
+        {value ?? '—'}
+      </span>
+    </div>
+  )
+}
+
+function SectionTitle({ icon, label, collapsed, onToggle }: {
+  icon: React.ReactNode
+  label: string
+  collapsed?: boolean
+  onToggle?: () => void
+}) {
+  const content = (
     <h3 className="flex items-center gap-1.5 px-1 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">
+      {collapsed !== undefined && onToggle && (
+        <span className="-ml-1 text-muted-foreground/60">
+          {collapsed ? <ChevronRight className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+        </span>
+      )}
       {icon}
       <span className="truncate">{label}</span>
     </h3>
   )
-}
-
-function MetaRow({ label, value }: { label: string; value?: React.ReactNode }) {
-  if (value === undefined || value === null || value === '') return null
+  if (collapsed === undefined || !onToggle) return content
   return (
-    <div className="flex items-start gap-2 px-1 py-1 text-[13px]">
-      <span className="w-32 shrink-0 truncate text-muted-foreground/60">{label}</span>
-      <span className="min-w-0 flex-1 break-words text-foreground/90">{value}</span>
-    </div>
+    <button type="button" onClick={onToggle} className="w-full text-left" aria-expanded={!collapsed}>
+      {content}
+    </button>
   )
 }
 
@@ -69,8 +93,9 @@ export function ContextPanel() {
   const sessionMetaMap = useAtomValue(sessionMetaMapAtom)
   const sources = useAtomValue(sourcesAtom)
   const skills = useAtomValue(skillsAtom)
-  const { activeWorkspaceId } = useAppShellContext()
+  const { activeWorkspaceId, onOpenFile } = useAppShellContext()
   const { labels: labelConfigs } = useLabels(activeWorkspaceId)
+  const [workspaceExpanded, setWorkspaceExpanded] = useState(false)
 
   const meta = activeSessionId ? sessionMetaMap.get(activeSessionId) : undefined
   // Full session (messages included once loaded) — used for the attachment
@@ -95,10 +120,8 @@ export function ContextPanel() {
     return names
   }, [activeSession])
 
-  const recentFileNames = useMemo(() => {
-    return previewEntries
-      .filter((entry) => entry.type === 'file')
-      .map((entry) => (entry.type === 'file' ? fileBasename(entry.path) : ''))
+  const recentFiles = useMemo(() => {
+    return previewEntries.filter((entry): entry is Extract<typeof entry, { type: 'file' }> => entry.type === 'file')
   }, [previewEntries])
 
   const labelNames = useMemo(() => {
@@ -117,6 +140,8 @@ export function ContextPanel() {
     ? PERMISSION_MODE_CONFIG[permissionMode as keyof typeof PERMISSION_MODE_CONFIG]
     : undefined
 
+  const tokens = meta?.tokenUsage
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       <PanelHeader
@@ -126,147 +151,184 @@ export function ContextPanel() {
         ) : undefined}
       />
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2 pb-6">
-        {/* Active session metadata (only meaningful once a session is focused) */}
-        {activeSessionId && meta ? (
+      {!activeSessionId || !meta ? (
+        <PanelEmptyState
+          title={t('contentPanel.context.noSessionContext')}
+          hint={t('contentPanel.context.noSessionContextHint')}
+          icon={<ListFilter className="h-6 w-6" />}
+        />
+      ) : (
+        <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2 pb-6">
+          {/* Session + token stats (opencode-style grid, em dash for missing) */}
+          <div className="grid grid-cols-2 gap-1.5">
+            <Stat label={t('contentPanel.context.name')} value={meta.name} />
+            <Stat
+              label={t('contentPanel.context.status')}
+              value={meta.isProcessing ? t('contentPanel.context.status.processing') : meta.sessionStatus}
+            />
+            <Stat label={t('contentPanel.context.model')} value={meta.model} />
+            <Stat
+              label={t('contentPanel.context.permissionMode')}
+              value={modeConfig?.displayName ?? meta.permissionMode}
+            />
+            <Stat label={t('contentPanel.context.workingDirectory')} value={meta.workingDirectory} span />
+            {labelNames.length > 0 && (
+              <div className="col-span-2 flex min-w-0 flex-col gap-1 rounded-lg border border-border/60 bg-foreground/[0.02] px-2 py-1.5">
+                <span className="text-[11px] text-muted-foreground/70">{t('contentPanel.context.labels')}</span>
+                <span className="flex min-w-0 flex-1 flex-wrap gap-1">
+                  {labelNames.map((name) => (
+                    <span key={name} className="rounded-full border border-border/60 bg-foreground/[0.03] px-2 py-0.5 text-[11px] text-muted-foreground">
+                      {name}
+                    </span>
+                  ))}
+                </span>
+              </div>
+            )}
+            <Stat
+              label={t('contentPanel.context.messageCount')}
+              value={meta.messageCount?.toLocaleString()}
+            />
+            <Stat
+              label={t('contentPanel.context.createdAt')}
+              value={meta.createdAt ? new Date(meta.createdAt).toLocaleString() : undefined}
+            />
+            <Stat
+              label={t('contentPanel.context.lastActivity')}
+              value={meta.lastMessageAt ? new Date(meta.lastMessageAt).toLocaleString() : undefined}
+            />
+            <Stat
+              label={t('contentPanel.context.tokenTotal')}
+              value={typeof tokens?.totalTokens === 'number' ? tokens.totalTokens.toLocaleString() : undefined}
+            />
+            <Stat
+              label={t('contentPanel.context.contextTokens')}
+              value={typeof tokens?.contextTokens === 'number' ? tokens.contextTokens.toLocaleString() : undefined}
+            />
+            <Stat
+              label={t('contentPanel.context.tokenInput')}
+              value={typeof tokens?.inputTokens === 'number' ? tokens.inputTokens.toLocaleString() : undefined}
+            />
+            <Stat
+              label={t('contentPanel.context.tokenOutput')}
+              value={typeof tokens?.outputTokens === 'number' ? tokens.outputTokens.toLocaleString() : undefined}
+            />
+            <Stat
+              label={t('contentPanel.context.cost')}
+              value={typeof tokens?.costUsd === 'number' ? `$${tokens.costUsd.toFixed(4)}` : undefined}
+            />
+          </div>
+
+          {/* Attachments — aggregated from loaded messages (no forced load) */}
+          {activeSessionId && sessionLoaded && (
+            <section>
+              <SectionTitle icon={<Paperclip className="h-3.5 w-3.5" />} label={t('contentPanel.context.attachmentsHeader')} />
+              {attachmentNames.length === 0 ? (
+                <p className="px-1 py-1 text-[13px] text-muted-foreground/70">{t('contentPanel.context.attachmentsEmpty')}</p>
+              ) : (
+                <ul className="flex flex-col gap-0.5">
+                  {attachmentNames.map((name) => (
+                    <li key={name} className="truncate rounded-lg px-2 py-1 text-[13px] text-foreground/90">
+                      {name}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          )}
+
+          {/* Recently opened files — clickable, routes through the interceptor */}
+          {activeSessionId && (
+            <section>
+              <SectionTitle icon={<History className="h-3.5 w-3.5" />} label={t('contentPanel.context.recentFilesHeader')} />
+              {recentFiles.length === 0 ? (
+                <p className="px-1 py-1 text-[13px] text-muted-foreground/70">{t('contentPanel.context.recentFilesEmpty')}</p>
+              ) : (
+                <ul className="flex flex-col gap-0.5">
+                  {recentFiles.map((entry) => (
+                    <li key={entry.path}>
+                      <button
+                        type="button"
+                        onClick={() => onOpenFile?.(entry.path)}
+                        className="flex w-full items-center gap-2 rounded-lg px-2 py-1 text-left text-[13px] text-foreground/90 transition-colors hover:bg-foreground/[0.03]"
+                        title={entry.path}
+                      >
+                        <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                        <span className="min-w-0 flex-1 truncate">{fileBasename(entry.path)}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          )}
+
+          {/* Workspace resources — duplicated by the left sidebar, collapsed */}
           <section>
-            <SectionTitle icon={<BadgeCheck className="h-3.5 w-3.5" />} label={t('contentPanel.context.sessionHeader')} />
-            <div className="rounded-lg border border-border/60 bg-foreground/[0.02] px-2 py-2">
-              <MetaRow label={t('contentPanel.context.name')} value={meta.name} />
-              <MetaRow label={t('contentPanel.context.workingDirectory')} value={meta.workingDirectory} />
-              <MetaRow label={t('contentPanel.context.permissionMode')} value={modeConfig?.displayName ?? meta.permissionMode} />
-              <MetaRow label={t('contentPanel.context.status')} value={meta.sessionStatus} />
-              <MetaRow label={t('contentPanel.context.model')} value={meta.model} />
-              {labelNames.length > 0 && (
-                <div className="flex items-start gap-2 px-1 py-1 text-[13px]">
-                  <span className="w-32 shrink-0 truncate text-muted-foreground/60">{t('contentPanel.context.labels')}</span>
-                  <span className="flex min-w-0 flex-1 flex-wrap gap-1">
-                    {labelNames.map((name) => (
-                      <span key={name} className="rounded-full border border-border/60 bg-foreground/[0.03] px-2 py-0.5 text-[11px] text-muted-foreground">
-                        {name}
-                      </span>
-                    ))}
-                  </span>
+            <SectionTitle
+              icon={<FolderKanban className="h-3.5 w-3.5" />}
+              label={t('contentPanel.context.workspaceHeader')}
+              collapsed={!workspaceExpanded}
+              onToggle={() => setWorkspaceExpanded((prev) => !prev)}
+            />
+            {workspaceExpanded && (
+              <div className="flex flex-col gap-3">
+                <div>
+                  <p className="px-1 pb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/50">
+                    {t('contentPanel.context.sourcesHeader')}
+                  </p>
+                  {visibleSources.length === 0 ? (
+                    <p className="px-1 py-1 text-[13px] text-muted-foreground/70">{t('contentPanel.context.sourcesEmpty')}</p>
+                  ) : (
+                    <ul className="flex flex-col gap-0.5">
+                      {visibleSources.map((source) => (
+                        <li key={source.config.slug}>
+                          <button
+                            type="button"
+                            onClick={() => navigateFromPanel(routes.view.sources({ sourceSlug: source.config.slug }))}
+                            className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[13px] transition-colors hover:bg-foreground/[0.03]"
+                          >
+                            <FolderKanban className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                            {source.config.connectionStatus && (
+                              <span
+                                title={t(`contentPanel.context.status.${source.config.connectionStatus}`)}
+                                className={cn('h-2 w-2 shrink-0 rounded-full', CONNECTION_STATUS_DOT[source.config.connectionStatus])}
+                              />
+                            )}
+                            <span className="min-w-0 flex-1 truncate">{source.config.name}</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
-              )}
-            </div>
-          </section>
-        ) : (
-          <PanelEmptyState
-            title={t('contentPanel.context.noSessionContext')}
-            hint={t('contentPanel.context.noSessionContextHint')}
-            icon={<ListFilter className="h-6 w-6" />}
-          />
-        )}
-
-        {/* Token usage — from the session meta (JSONL header, no message load) */}
-        {activeSessionId && meta?.tokenUsage && (
-          <section>
-            <SectionTitle icon={<Coins className="h-3.5 w-3.5" />} label={t('contentPanel.context.tokenUsageHeader')} />
-            <div className="rounded-lg border border-border/60 bg-foreground/[0.02] px-2 py-2">
-              {typeof meta.tokenUsage.inputTokens === 'number' && (
-                <MetaRow label={t('contentPanel.context.tokenInput')} value={meta.tokenUsage.inputTokens.toLocaleString()} />
-              )}
-              {typeof meta.tokenUsage.outputTokens === 'number' && (
-                <MetaRow label={t('contentPanel.context.tokenOutput')} value={meta.tokenUsage.outputTokens.toLocaleString()} />
-              )}
-              {typeof meta.tokenUsage.totalTokens === 'number' && (
-                <MetaRow label={t('contentPanel.context.tokenTotal')} value={meta.tokenUsage.totalTokens.toLocaleString()} />
-              )}
-            </div>
-          </section>
-        )}
-
-        {/* Attachments — aggregated from loaded messages (no forced load) */}
-        {activeSessionId && sessionLoaded && (
-          <section>
-            <SectionTitle icon={<Paperclip className="h-3.5 w-3.5" />} label={t('contentPanel.context.attachmentsHeader')} />
-            {attachmentNames.length === 0 ? (
-              <p className="px-1 py-1 text-[13px] text-muted-foreground/70">{t('contentPanel.context.attachmentsEmpty')}</p>
-            ) : (
-              <ul className="flex flex-col gap-0.5">
-                {attachmentNames.map((name) => (
-                  <li key={name} className="truncate rounded-lg px-2 py-1 text-[13px] text-foreground/90">
-                    {name}
-                  </li>
-                ))}
-              </ul>
+                <div>
+                  <p className="px-1 pb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/50">
+                    {t('contentPanel.context.skillsHeader')}
+                  </p>
+                  {skills.length === 0 ? (
+                    <p className="px-1 py-1 text-[13px] text-muted-foreground/70">{t('contentPanel.context.skillsEmpty')}</p>
+                  ) : (
+                    <ul className="flex flex-col gap-0.5">
+                      {skills.map((skill) => (
+                        <li key={skill.slug}>
+                          <button
+                            type="button"
+                            onClick={() => navigateFromPanel(routes.view.skills(skill.slug))}
+                            className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[13px] transition-colors hover:bg-foreground/[0.03]"
+                          >
+                            <Layers className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                            <span className="min-w-0 flex-1 truncate">{skill.metadata.name ?? skill.slug}</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
             )}
           </section>
-        )}
-
-        {/* Recently opened files (preview stack for the active session) */}
-        {activeSessionId && (
-          <section>
-            <SectionTitle icon={<History className="h-3.5 w-3.5" />} label={t('contentPanel.context.recentFilesHeader')} />
-            {recentFileNames.length === 0 ? (
-              <p className="px-1 py-1 text-[13px] text-muted-foreground/70">{t('contentPanel.context.recentFilesEmpty')}</p>
-            ) : (
-              <ul className="flex flex-col gap-0.5">
-                {recentFileNames.map((name) => (
-                  <li key={name} className="truncate rounded-lg px-2 py-1 text-[13px] text-foreground/90">
-                    {name}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-        )}
-
-        {/* Workspace sources — workspace-level, always available */}
-        <section>
-          <SectionTitle icon={<FolderKanban className="h-3.5 w-3.5" />} label={t('contentPanel.context.sourcesHeader')} />
-          {visibleSources.length === 0 ? (
-            <p className="px-1 py-1 text-[13px] text-muted-foreground/70">{t('contentPanel.context.sourcesEmpty')}</p>
-          ) : (
-            <ul className="flex flex-col gap-0.5">
-              {visibleSources.map((source) => (
-                <li key={source.config.slug}>
-                  <button
-                    type="button"
-                    onClick={() => navigateFromPanel(routes.view.sources({ sourceSlug: source.config.slug }))}
-                    className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[13px] transition-colors hover:bg-foreground/[0.03]"
-                  >
-                    <FolderOpen className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                    {source.config.connectionStatus && (
-                      <span
-                        title={t(`contentPanel.context.status.${source.config.connectionStatus}`)}
-                        className={cn('h-2 w-2 shrink-0 rounded-full', CONNECTION_STATUS_DOT[source.config.connectionStatus])}
-                      />
-                    )}
-                    <span className="min-w-0 flex-1 truncate">{source.config.name}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-
-        {/* Workspace skills — workspace-level, always available */}
-        <section>
-          <SectionTitle icon={<Layers className="h-3.5 w-3.5" />} label={t('contentPanel.context.skillsHeader')} />
-          {skills.length === 0 ? (
-            <p className="px-1 py-1 text-[13px] text-muted-foreground/70">{t('contentPanel.context.skillsEmpty')}</p>
-          ) : (
-            <ul className="flex flex-col gap-0.5">
-              {skills.map((skill) => (
-                <li key={skill.slug}>
-                  <button
-                    type="button"
-                    onClick={() => navigateFromPanel(routes.view.skills(skill.slug))}
-                    className={cn(
-                      'flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[13px] transition-colors hover:bg-foreground/[0.03]',
-                    )}
-                  >
-                    <Zap className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                    <span className="min-w-0 flex-1 truncate">{skill.metadata.name ?? skill.slug}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      </div>
+        </div>
+      )}
     </div>
   )
 }

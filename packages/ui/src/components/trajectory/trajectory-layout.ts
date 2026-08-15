@@ -82,13 +82,13 @@ export interface TrajectoryCellProps {
 export interface TrajectoryGroupModel {
   title: string
   description?: string
-  cells: readonly TrajectoryCellProps[]
+  cells: TrajectoryCellProps[]
 }
 
 /** One sticky turn, or a standalone compaction section between turns. */
 export interface TrajectoryTurnModel {
   turn: number | null
-  groups: readonly TrajectoryGroupModel[]
+  groups: TrajectoryGroupModel[]
 }
 
 /** Folding input (subset of the trajectory snapshot). */
@@ -343,25 +343,21 @@ export function deriveTrajectoryLayout(input: TrajectoryLayoutInput): readonly T
 
   // Current section accumulator (mutable container so closure control-flow
   // analysis does not narrow the captured variables to never).
-  const state: {
-    turn: TrajectoryTurnModel | null
-    group: TrajectoryGroupModel | null
-  } = { turn: null, group: null }
+  const state: { turn: TrajectoryTurnModel | null } = { turn: null }
 
   const ensureTurn = (turn: number | null): TrajectoryTurnModel => {
     if (state.turn !== null && state.turn.turn === turn) return state.turn
     state.turn = { turn, groups: [] }
     turns.push(state.turn)
-    state.group = null
     return state.turn
   }
 
   const ensureGroup = (turn: TrajectoryTurnModel, title: string): TrajectoryGroupModel => {
     const last = turn.groups.length > 0 ? turn.groups[turn.groups.length - 1] : undefined
     if (last !== undefined && last.title === title) return last
-    state.group = { title, cells: [] }
-    turn.groups = [...turn.groups, state.group]
-    return state.group
+    const group: TrajectoryGroupModel = { title, cells: [] }
+    turn.groups.push(group)
+    return group
   }
 
   for (const contribution of contributions) {
@@ -382,8 +378,7 @@ export function deriveTrajectoryLayout(input: TrajectoryLayoutInput): readonly T
           timeSeconds: null,
           startedAt: contribution.time,
         }
-        state.group = { ...group, cells: [...group.cells, usageToCell(cell, usage)] }
-        turn.groups = [...turn.groups.slice(0, -1), state.group]
+        group.cells.push(usageToCell(cell, usage))
         break
       }
 
@@ -396,25 +391,18 @@ export function deriveTrajectoryLayout(input: TrajectoryLayoutInput): readonly T
 
         if (message.role === 'user') {
           const group = ensureGroup(turn, 'User')
-          state.group = {
-            ...group,
-            cells: [
-              ...group.cells,
-              {
-                index,
-                kind: 'user',
-                text: messageText(message),
-                previewMarkdown: message.content,
-                opensTurn: true,
-                sourceSeq: message.id,
-                inputDetail: message.content,
-                timeSeconds: null,
-                startedAt: message.timestamp,
-                sourceMessage: message,
-              },
-            ],
-          }
-          turn.groups = [...turn.groups.slice(0, -1), state.group]
+          group.cells.push({
+            index,
+            kind: 'user',
+            text: messageText(message),
+            previewMarkdown: message.content,
+            opensTurn: true,
+            sourceSeq: message.id,
+            inputDetail: message.content,
+            timeSeconds: null,
+            startedAt: message.timestamp,
+            sourceMessage: message,
+          })
         } else if (message.role === 'assistant') {
           const group = ensureGroup(turn, 'Assistant')
           const base: TrajectoryCellProps = {
@@ -431,8 +419,7 @@ export function deriveTrajectoryLayout(input: TrajectoryLayoutInput): readonly T
             sourceMessage: message,
           }
           const cell = message.usage ? usageToCell(base, message.usage) : base
-          state.group = { ...group, cells: [...group.cells, cell] }
-          turn.groups = [...turn.groups.slice(0, -1), state.group]
+          group.cells.push(cell)
         } else {
           // Tool or subtool.
           const isSub = message.parentToolUseId !== undefined
@@ -462,8 +449,7 @@ export function deriveTrajectoryLayout(input: TrajectoryLayoutInput): readonly T
             startedAt: message.timestamp,
             sourceMessage: message,
           }
-          state.group = { ...group, cells: [...group.cells, cell] }
-          turn.groups = [...turn.groups.slice(0, -1), state.group]
+          group.cells.push(cell)
         }
         break
       }
@@ -479,23 +465,16 @@ export function deriveTrajectoryLayout(input: TrajectoryLayoutInput): readonly T
           : message.compaction?.errorMessage
             ? 'failed'
             : 'complete'
-        state.group = {
-          ...group,
-          cells: [
-            ...group.cells,
-            {
-              index,
-              kind: 'compacted',
-              text: `Compaction ${outcome} (${message.compaction?.reason ?? 'unknown'} trigger)`,
-              sourceSeq: message.id,
-              inputDetail: message.content,
-              timeSeconds: null,
-              startedAt: message.timestamp,
-              sourceMessage: message,
-            },
-          ],
-        }
-        section.groups = [...section.groups.slice(0, -1), state.group]
+        group.cells.push({
+          index,
+          kind: 'compacted',
+          text: `Compaction ${outcome} (${message.compaction?.reason ?? 'unknown'} trigger)`,
+          sourceSeq: message.id,
+          inputDetail: message.content,
+          timeSeconds: null,
+          startedAt: message.timestamp,
+          sourceMessage: message,
+        })
         break
       }
 

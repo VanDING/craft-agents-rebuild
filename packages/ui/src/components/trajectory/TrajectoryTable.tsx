@@ -4,16 +4,16 @@
  * Craft render-record stream; virtualized with fixed-height rows.
  */
 
-import { memo, useMemo } from 'react'
+import { memo, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { MessageSquare, RefreshCw, Settings, User, Wrench, FileText } from 'lucide-react'
-import type { TrajectoryCellKind, TrajectoryTurnModel } from './trajectory-layout'
-import { collapseAssistantRecords, collapseTurnRecords, flattenTurnRecords, formatElapsedSeconds, trajectoryRecordId } from './trajectory-layout'
+import type { TrajectoryCellKind, TrajectoryRenderRecord } from './trajectory-layout'
+import { collapseAssistantRecords, collapseTurnRecords, formatElapsedSeconds, trajectoryRecordId } from './trajectory-layout'
 import { filterRecords, recordDisplayText } from './trajectory-search-index'
-import { projectVirtualRows } from './trajectory-virtual-rows'
+import { computeVirtualRowWindow, projectVirtualRows } from './trajectory-virtual-rows'
 import css from './TrajectoryTable.module.css'
 
 export interface TrajectoryTableProps {
-  turns: readonly TrajectoryTurnModel[]
+  flatRecords: readonly TrajectoryRenderRecord[]
   /** Folded turn numbers (rendered as summary rows). */
   collapsedTurns: ReadonlySet<number>
   onToggleTurn: (turn: number | null) => void
@@ -69,7 +69,7 @@ function sectionLabel(turn: number | null): string {
 }
 
 export const TrajectoryTable = memo(function TrajectoryTable({
-  turns,
+  flatRecords,
   collapsedTurns,
   onToggleTurn,
   collapsedAssistants,
@@ -80,27 +80,47 @@ export const TrajectoryTable = memo(function TrajectoryTable({
   onSelectIndex,
 }: TrajectoryTableProps) {
   const rows = useMemo(() => {
-    const flat = flattenTurnRecords(turns)
-    const withTurnFolds = collapseTurnRecords(flat, collapsedTurns)
+    const withTurnFolds = collapseTurnRecords(flatRecords, collapsedTurns)
     const withAssistantFolds = collapseAssistantRecords(withTurnFolds, collapsedAssistants)
     const final = searchMatchIndexes === null
       ? withAssistantFolds
       : filterRecords(withAssistantFolds, searchMatchIndexes)
     return projectVirtualRows(final)
-  }, [turns, collapsedTurns, collapsedAssistants, searchMatchIndexes])
+  }, [flatRecords, collapsedTurns, collapsedAssistants, searchMatchIndexes])
 
-  // Simple windowed virtualization over fixed heights.
-  const virtualRows = rows
+  const paneRef = useRef<HTMLDivElement | null>(null)
+  const [scrollTop, setScrollTop] = useState(0)
+  const [viewportHeight, setViewportHeight] = useState(0)
+
+  useLayoutEffect(() => {
+    const pane = paneRef.current
+    if (!pane) return
+    const observer = new ResizeObserver(() => setViewportHeight(pane.clientHeight))
+    observer.observe(pane)
+    setViewportHeight(pane.clientHeight)
+    return () => observer.disconnect()
+  }, [])
+
+  const visibleWindow = useMemo(
+    () => computeVirtualRowWindow(rows, scrollTop, viewportHeight),
+    [rows, scrollTop, viewportHeight],
+  )
+  const visibleRows = rows.slice(visibleWindow.start, visibleWindow.end)
 
   return (
-    <div className={css.tablePane}>
+    <div
+      ref={paneRef}
+      className={css.tablePane}
+      onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
+    >
+      {visibleWindow.top > 0 && <div style={{ height: visibleWindow.top }} aria-hidden="true" />}
       <table className={css.table} data-scroll-ready="true" role="table" aria-rowcount={rows.length}>
         <colgroup>
           <col className={css.eventColumn} />
           <col className={css.contentColumn} />
         </colgroup>
         <tbody>
-          {virtualRows.map((row, index) => {
+          {visibleRows.map((row) => {
             const record = row.record
             const cell = record.cell
             const isCollapsedSummary = record.collapsedSummary !== undefined
@@ -214,6 +234,7 @@ export const TrajectoryTable = memo(function TrajectoryTable({
           )}
         </tbody>
       </table>
+      {visibleWindow.bottom > 0 && <div style={{ height: visibleWindow.bottom }} aria-hidden="true" />}
     </div>
   )
 })

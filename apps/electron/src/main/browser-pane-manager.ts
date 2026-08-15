@@ -148,6 +148,7 @@ interface BrowserInstance {
   title: string
   favicon: string | null
   isLoading: boolean
+  loadError: { code: number; description: string } | null
   canGoBack: boolean
   canGoForward: boolean
   boundSessionId: string | null
@@ -454,6 +455,7 @@ export class BrowserPaneManager implements IBrowserPaneManager {
       title: 'New Tab',
       favicon: null,
       isLoading: false,
+      loadError: null,
       canGoBack: false,
       canGoForward: false,
       boundSessionId: ownerSessionId,
@@ -2331,6 +2333,7 @@ export class BrowserPaneManager implements IBrowserPaneManager {
       canGoBack: instance.canGoBack,
       canGoForward: instance.canGoForward,
       themeColor: instance.themeColor,
+      loadError: instance.loadError,
     }
     instance.toolbarView.webContents.send(TOOLBAR_CHANNELS.STATE_UPDATE, state)
   }
@@ -3366,6 +3369,7 @@ export class BrowserPaneManager implements IBrowserPaneManager {
 
     pageWc.on('did-start-loading', () => {
       instance.isLoading = true
+      instance.loadError = null
       this.emitStateChange(instance)
       void this.pushToolbarState(instance)
     })
@@ -3417,8 +3421,8 @@ export class BrowserPaneManager implements IBrowserPaneManager {
         clearTimeout(instance.inPageThemeTimer)
         instance.inPageThemeTimer = null
       }
-      instance.themeObserverToken = null
       instance.themeColor = null // reset for new page (batched with state push below)
+      instance.loadError = null
       const normalized = this.normalizePageState(url, pageWc.getTitle())
       instance.currentUrl = normalized.url
       instance.title = normalized.title
@@ -3484,8 +3488,31 @@ export class BrowserPaneManager implements IBrowserPaneManager {
       this.applyThemeColor(instance, color ?? null)
     })
 
-    pageWc.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+    pageWc.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
       mainLog.warn(`[browser-pane] did-fail-load id=${instance.id} code=${errorCode} url=${validatedURL} error=${errorDescription}`)
+      if (!isMainFrame) return
+      instance.isLoading = false
+      instance.loadError = {
+        code: errorCode,
+        description: `${errorDescription} (${validatedURL})`,
+      }
+      this.emitStateChange(instance)
+      void this.pushToolbarState(instance)
+    })
+
+    pageWc.on('did-finish-load', () => {
+      instance.loadError = null
+    })
+
+    pageWc.on('render-process-gone', (_event, details) => {
+      instance.isLoading = false
+      instance.loadError = {
+        code: details.exitCode,
+        description: `Renderer process crashed (${instance.currentUrl})`,
+      }
+      mainLog.warn(`[browser-pane] render-process-gone id=${instance.id} reason=${details.reason} exitCode=${details.exitCode} url=${instance.currentUrl}`)
+      this.emitStateChange(instance)
+      void this.pushToolbarState(instance)
     })
 
     pageWc.on('console-message', (_event, level, message) => {
@@ -3624,6 +3651,7 @@ export class BrowserPaneManager implements IBrowserPaneManager {
       agentControlActive: !!instance.agentControl?.active,
       themeColor: instance.themeColor,
       workspaceId: instance.workspaceId,
+      loadError: instance.loadError,
     }
   }
 

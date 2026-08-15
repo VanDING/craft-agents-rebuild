@@ -826,6 +826,7 @@ describe('BrowserPaneManager', () => {
         canGoBack: true,
         canGoForward: false,
         themeColor: '#123456',
+        loadError: null,
       },
     ])
   })
@@ -858,6 +859,7 @@ describe('BrowserPaneManager', () => {
         canGoBack: true,
         canGoForward: true,
         themeColor: '#654321',
+        loadError: null,
       },
     ])
   })
@@ -1293,6 +1295,73 @@ describe('BrowserPaneManager', () => {
         ref: '@e3',
         status: 'failed',
       })
+    })
+  })
+
+  describe('load error tracking', () => {
+    it('records did-fail-load as loadError, broadcasts it, and clears isLoading', () => {
+      const stateEvents: any[] = []
+      manager.onStateChange((info) => stateEvents.push(info))
+
+      manager.createInstance('load-fail')
+      const instance = (manager as any).instances.get('load-fail')
+      instance.isLoading = true
+
+      instance.pageView.webContents._emit('did-fail-load', -105, 'ERR_NAME_NOT_RESOLVED', 'https://bad.example.com', true)
+
+      expect(instance.isLoading).toBe(false)
+      expect(instance.loadError).toEqual({
+        code: -105,
+        description: 'ERR_NAME_NOT_RESOLVED (https://bad.example.com)',
+      })
+
+      const failEvents = stateEvents.filter((e) => e.id === 'load-fail')
+      expect(failEvents.some((e) => e.loadError?.code === -105)).toBe(true)
+      expect(failEvents.some((e) => e.loadError?.description.includes('https://bad.example.com'))).toBe(true)
+      expect(failEvents.some((e) => e.isLoading === false)).toBe(true)
+    })
+
+    it('ignores subframe did-fail-load', () => {
+      manager.createInstance('load-fail-subframe')
+      const instance = (manager as any).instances.get('load-fail-subframe')
+
+      instance.pageView.webContents._emit('did-fail-load', -3, 'ERR_ABORTED', 'https://ads.example.com/track', false)
+
+      expect(instance.loadError).toBeNull()
+    })
+
+    it('records render-process-gone as a crashed loadError and clears isLoading', () => {
+      const stateEvents: any[] = []
+      manager.onStateChange((info) => stateEvents.push(info))
+
+      manager.createInstance('load-crash')
+      const instance = (manager as any).instances.get('load-crash')
+      instance.currentUrl = 'https://crash.example.com'
+      instance.isLoading = true
+
+      instance.pageView.webContents._emit('render-process-gone', { reason: 'crashed', exitCode: 1 })
+
+      expect(instance.isLoading).toBe(false)
+      expect(instance.loadError).toEqual({
+        code: 1,
+        description: 'Renderer process crashed (https://crash.example.com)',
+      })
+
+      const crashEvents = stateEvents.filter((e) => e.id === 'load-crash')
+      expect(crashEvents.some((e) => e.loadError?.description.includes('crashed'))).toBe(true)
+      expect(crashEvents.some((e) => e.isLoading === false)).toBe(true)
+    })
+
+    it('clears loadError when a new load starts', () => {
+      manager.createInstance('load-clear')
+      const instance = (manager as any).instances.get('load-clear')
+      instance.loadError = { code: -105, description: 'ERR_NAME_NOT_RESOLVED (https://bad.example.com)' }
+      instance.isLoading = false
+
+      instance.pageView.webContents._emit('did-start-loading')
+
+      expect(instance.loadError).toBeNull()
+      expect(instance.isLoading).toBe(true)
     })
   })
 })

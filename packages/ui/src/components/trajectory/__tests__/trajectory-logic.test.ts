@@ -8,10 +8,11 @@ import {
   flattenTurnRecords,
   formatDurationMillis,
   trajectoryRecordId,
+  type TrajectoryCellProps,
   type TrajectoryRenderRecord,
 } from '../trajectory-layout'
 import { filterRecords, searchTrajectory, toolCallTextParts } from '../trajectory-search-index'
-import { projectVirtualRows, CONTENT_ROW_HEIGHT, COLLAPSED_SUMMARY_HEIGHT } from '../trajectory-virtual-rows'
+import { computeVirtualRowWindow, projectVirtualRows, CONTENT_ROW_HEIGHT, COLLAPSED_SUMMARY_HEIGHT } from '../trajectory-virtual-rows'
 import { deriveTrajectoryTimeline, trajectoryTimelineFocusIndexes } from '../trajectory-timeline'
 
 function msg(overrides: Partial<Message> & { role: Message['role'] }): Message {
@@ -213,6 +214,43 @@ describe('virtual rows', () => {
     const projected = projectVirtualRows(collapsed)
     const summaryRow = projected.find(r => r.record.collapsedSummary !== undefined)
     expect(summaryRow?.height).toBe(COLLAPSED_SUMMARY_HEIGHT)
+  })
+})
+
+describe('virtual window', () => {
+  const rows = Array.from({ length: 100 }, (_, i) => {
+    const cell: TrajectoryCellProps = { index: i + 1, kind: 'user', text: '', timeSeconds: null }
+    const record: TrajectoryRenderRecord = {
+      cell,
+      turn: 1,
+      group: 'User',
+      turnStart: false,
+      groupStart: false,
+      turnEnd: false,
+    }
+    return { record, height: CONTENT_ROW_HEIGHT, key: `r${i}` }
+  })
+
+  it('renders only the rows overlapping the viewport plus overscan', () => {
+    const win = computeVirtualRowWindow(rows, 0, 180)
+    expect(win.start).toBe(0)
+    expect(win.end).toBe(11)
+    expect(win.top).toBe(0)
+    expect(win.bottom).toBe(100 * CONTENT_ROW_HEIGHT - win.end * CONTENT_ROW_HEIGHT)
+  })
+
+  it('slices with top and bottom spacers when scrolled', () => {
+    const win = computeVirtualRowWindow(rows, 300, 180)
+    expect(win.start).toBe(5)
+    expect(win.end).toBe(21)
+    expect(win.top).toBe(150)
+    expect(win.bottom).toBe(100 * CONTENT_ROW_HEIGHT - win.end * CONTENT_ROW_HEIGHT)
+  })
+
+  it('keeps the scroll height stable across any window', () => {
+    const win = computeVirtualRowWindow(rows, 300, 180)
+    const rendered = win.end - win.start
+    expect(win.top + rendered * CONTENT_ROW_HEIGHT + win.bottom).toBe(100 * CONTENT_ROW_HEIGHT)
   })
 })
 

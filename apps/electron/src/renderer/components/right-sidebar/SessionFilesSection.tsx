@@ -18,7 +18,7 @@ import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 import { useState, useEffect, useCallback, useRef, useMemo, memo } from 'react'
 import { AnimatePresence, motion, type Variants } from 'motion/react'
-import { File, Folder, FolderOpen, FileText, Image, FileCode, ChevronRight, ExternalLink } from 'lucide-react'
+import { File, Folder, FolderOpen, FileText, Image, FileCode, ChevronRight, ExternalLink, Copy } from 'lucide-react'
 import {
   ContextMenu,
   ContextMenuTrigger,
@@ -28,6 +28,7 @@ import {
 import type { SessionFile } from '../../../shared/types'
 import { cn } from '@/lib/utils'
 import * as storage from '@/lib/local-storage'
+import { toast } from 'sonner'
 import { useAppShellContext } from '@/context/AppShellContext'
 import { getFileManagerName } from '@/lib/platform'
 import { restoreSessionFileWatch } from './session-files-watch'
@@ -336,38 +337,37 @@ function FileTreeItem({
         // Same padding for all items - nested indentation handled by container
         "px-2"
       )}
-      title={`${file.path}\n${file.type === 'file' ? formatFileSize(file.size) : 'Directory'}\n\nClick to ${hasChildren ? 'expand' : 'reveal'}, double-click to open`}
+      aria-expanded={hasChildren ? isExpanded : undefined}
+      title={`${file.path}\n${file.type === 'file' ? formatFileSize(file.size) : 'Directory'}\n\nClick to ${hasChildren ? 'expand' : 'preview'}, double-click to open externally`}
     >
-      {/* Icon container with hover-revealed chevron for expandable items */}
-      <span className="relative h-3.5 w-3.5 shrink-0 flex items-center justify-center">
+      {/* Icon row — persistent chevron for expandable items, alignment slot
+          for plain files so every row lines up. */}
+      <span className="flex h-3.5 shrink-0 items-center gap-0.5">
         {hasChildren ? (
-          <>
-            {/* Main icon - hidden on hover */}
-            <span className="absolute inset-0 flex items-center justify-center group-hover:opacity-0 transition-opacity duration-150">
-              {getFileIcon(file, isExpanded)}
-            </span>
-            {/* Toggle chevron - shown on hover */}
-            <span
-              className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-150 cursor-pointer"
-              onClick={handleChevronClick}
-            >
-              <ChevronRight
-                className={cn(
-                  "h-3.5 w-3.5 text-muted-foreground transition-transform duration-200",
-                  isExpanded && "rotate-90"
-                )}
-              />
-            </span>
-          </>
+          <span
+            className="flex h-3 w-3 shrink-0 cursor-pointer items-center justify-center rounded-sm text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
+            onClick={handleChevronClick}
+          >
+            <ChevronRight
+              className={cn(
+                "h-3 w-3 transition-transform duration-200",
+                isExpanded && "rotate-90"
+              )}
+            />
+          </span>
         ) : (
-          /* Non-directory files: show thumbnail preview for previewable types,
-             with cross-fade from icon. Falls back to icon for unsupported types. */
-          <FileThumbnail file={file} />
+          <span className="h-3 w-3 shrink-0" />
         )}
+        <span className="flex h-3.5 w-3.5 shrink-0 items-center justify-center">
+          {hasChildren ? (
+            getFileIcon(file, isExpanded)
+          ) : (
+            /* Non-directory files: show thumbnail preview for previewable types,
+               with cross-fade from icon. Falls back to icon for unsupported types. */
+            <FileThumbnail file={file} />
+          )}
+        </span>
       </span>
-
-      {/* File/folder name - min-w-0 required for truncate to work in flex container */}
-      <span className="flex-1 min-w-0 truncate">{file.name}</span>
     </button>
   )
 
@@ -388,6 +388,18 @@ function FileTreeItem({
               {t("chat.openFile")}
             </StyledContextMenuItem>
           )}
+          {/* Copy path */}
+          <StyledContextMenuItem
+            onSelect={() => {
+              navigator.clipboard.writeText(file.path).then(
+                () => toast.success(t('toast.pathCopied')),
+                () => toast.error(t('toast.copyFailed')),
+              )
+            }}
+          >
+            <Copy className="h-3.5 w-3.5" />
+            {t('common.copyPath')}
+          </StyledContextMenuItem>
           {/* Show in file manager */}
           <StyledContextMenuItem
             onSelect={() => onRevealInFileManager(file.path)}
@@ -463,6 +475,7 @@ export function SessionFilesSection({ sessionId, className, sessionFolderPath, h
     [files, filterQuery],
   )
   const [isLoading, setIsLoading] = useState(false)
+  const [loadError, setLoadError] = useState(false)
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set())
   const [hasSavedExpandedState, setHasSavedExpandedState] = useState(false)
   const mountedRef = useRef(true)
@@ -504,6 +517,7 @@ export function SessionFilesSection({ sessionId, className, sessionFolderPath, h
     try {
       const sessionFiles = await window.electronAPI.getSessionFiles(sessionId)
       if (mountedRef.current) {
+        setLoadError(false)
         setFiles(sessionFiles)
 
         // Default behavior: expand the entire folder tree when there's no saved state yet.
@@ -519,6 +533,7 @@ export function SessionFilesSection({ sessionId, className, sessionFolderPath, h
     } catch (error) {
       console.error('Failed to load session files:', error)
       if (mountedRef.current) {
+        setLoadError(true)
         setFiles([])
       }
     } finally {
@@ -582,15 +597,12 @@ export function SessionFilesSection({ sessionId, className, sessionFolderPath, h
     }
   }, [onOpenFile])
 
-  // Handle double-click — same as single click (interceptor decides preview vs external)
+  // Handle double-click — open in the system default app (distinct from the
+  // in-app preview on single click; directories go to the file manager).
   const handleFileDoubleClick = useCallback((file: SessionFile) => {
-    if (file.type === 'directory') {
-      // eslint-disable-next-line craft-links/no-direct-file-open -- directories can't be previewed in-app
-      window.electronAPI.openFile(file.path)
-    } else {
-      onOpenFile(file.path)
-    }
-  }, [onOpenFile])
+    // eslint-disable-next-line craft-links/no-direct-file-open -- external open is the intended double-click semantic
+    window.electronAPI.openFile(file.path)
+  }, [])
 
   // Toggle folder expanded state
   const handleToggleExpand = useCallback((path: string) => {
@@ -631,7 +643,11 @@ export function SessionFilesSection({ sessionId, className, sessionFolderPath, h
       {/* File tree - px-2 is on nav to match LeftSidebar exactly (constrains grid width) */}
       {/* overflow-x-hidden prevents horizontal scroll, forcing truncation */}
       <div className="flex-1 overflow-y-auto overflow-x-hidden pb-2 min-h-0">
-        {files.length === 0 ? (
+        {loadError ? (
+          <div className="px-4 text-destructive select-none">
+            <p className="text-xs">{t('chat.sessionFilesError')}</p>
+          </div>
+        ) : files.length === 0 ? (
           <div className="px-4 text-muted-foreground select-none">
             <p className="text-xs">
               {isLoading ? t('chat.sessionFilesLoading') : t('chat.sessionFilesEmpty')}

@@ -42,6 +42,11 @@ import {
 
 export type PanelButtonState = 'closed' | 'open' | 'focused' | 'background'
 
+/** Top-bar button order (left → right): New Session, the panel kinds, the
+ * browser (focus-or-create; Shift/Alt = new window), and the session-list
+ * toggle. All entries are always rendered tiled — no width truncation. */
+const TOP_BAR_BUTTON_ORDER = ['newSession', ...WORKBENCH_PANEL_KINDS, 'browser', 'sessionList'] as const
+
 interface WorkbenchPanelButtonsProps {
   /** Open/focus/replace a workbench panel (AppShell wires this) */
   onOpenPanel: (kind: WorkbenchPanelKind, options?: { replace?: boolean }) => void
@@ -53,11 +58,9 @@ interface WorkbenchPanelButtonsProps {
   onNewBrowser: () => void
   /** Toggle the navigator (session list) column — decision #7 */
   onToggleSessionList?: () => void
-  /** How many buttons to render before hiding from the tail (0 = keep all visible is NOT used; undefined = all) */
-  maxVisibleButtons?: number
 }
 
-const WORKBENCH_ICONS: Record<WorkbenchPanelKind, LucideIcon> = {
+export const WORKBENCH_ICONS: Record<WorkbenchPanelKind, LucideIcon> = {
   sessions: MessageSquare,
   board: LayoutGrid,
   calendar: CalendarDays,
@@ -74,7 +77,6 @@ export function WorkbenchPanelButtons({
   onNewSessionPanel,
   onNewBrowser,
   onToggleSessionList,
-  maxVisibleButtons,
 }: WorkbenchPanelButtonsProps) {
   const { t } = useTranslation()
   const stack = useAtomValue(panelStackAtom)
@@ -128,22 +130,13 @@ export function WorkbenchPanelButtons({
     onOpenPanel(kind, { replace: event.shiftKey || event.altKey })
   }, [onOpenBrowser, onOpenPanel])
 
-  // Button order (left → right): New Session, the six panel kinds, the
-  // browser (focus-or-create; Shift/Alt = new window), and the session-list
-  // toggle. New Session sits at the head so it survives narrow-window hiding
-  // (core action); the session-list toggle is newest and hides first.
-  const allButtons = useMemo(
-    () => ['newSession', ...WORKBENCH_PANEL_KINDS, 'browser', 'sessionList'] as const,
-    [],
-  )
-  const visibleButtons = useMemo(() => {
-    if (maxVisibleButtons === undefined) return allButtons
-    return allButtons.slice(0, maxVisibleButtons)
-  }, [allButtons, maxVisibleButtons])
+  // All buttons render tiled (no width truncation — every entry stays
+  // directly clickable).
+  const allButtons = TOP_BAR_BUTTON_ORDER
 
   return (
     <div className="inline-flex items-center gap-0.5">
-      {visibleButtons.map((kind) => {
+      {allButtons.map((kind) => {
         if (kind === 'sessionList') {
           if (!onToggleSessionList) return null
           return (

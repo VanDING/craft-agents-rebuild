@@ -20,7 +20,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAtomValue } from 'jotai'
 import { useTranslation } from 'react-i18next'
 import { Panel } from './Panel'
+import { PanelHeader } from './PanelHeader'
+import { PanelEmptyState } from '../content-panels/PanelEmptyState'
 import { MultiSelectPanel } from './MultiSelectPanel'
+import { MessagesSquare } from 'lucide-react'
 import { useAppShellContext } from '@/context/AppShellContext'
 import { sessionMetaMapAtom, type SessionMeta } from '@/atoms/sessions'
 import { StoplightProvider } from '@/context/StoplightContext'
@@ -402,17 +405,22 @@ export function MainContentPanel({
     if (isMultiSelectActive) {
       return wrapWithStoplight(
         <Panel variant="grow" className={className}>
-          <MultiSelectPanel
-            count={selectionCount}
-            sessionStatuses={sessionStatuses}
-            activeStatusId={activeStatusId}
-            onSetStatus={handleBatchSetStatus}
-            labels={labels}
-            appliedLabelIds={appliedLabelIds}
-            onToggleLabel={handleBatchToggleLabel}
-            onArchive={handleBatchArchive}
-            onClearSelection={clearMultiSelect}
-          />
+          {/* PanelHeader gives the slot-injected close/expand buttons a home and
+              keeps this state consistent with every other panel. */}
+          <div className="flex h-full min-h-0 flex-col">
+            <PanelHeader title={t('contentPanel.button.sessions')} />
+            <MultiSelectPanel
+              count={selectionCount}
+              sessionStatuses={sessionStatuses}
+              activeStatusId={activeStatusId}
+              onSetStatus={handleBatchSetStatus}
+              labels={labels}
+              appliedLabelIds={appliedLabelIds}
+              onToggleLabel={handleBatchToggleLabel}
+              onArchive={handleBatchArchive}
+              onClearSelection={clearMultiSelect}
+            />
+          </div>
         </Panel>
       )
     }
@@ -427,8 +435,12 @@ export function MainContentPanel({
     // No session selected - empty state
     return wrapWithStoplight(
       <Panel variant="grow" className={className}>
-        <div className="flex items-center justify-center h-full text-muted-foreground">
-          <p className="text-sm">{t("session.noSessionSelected")}</p>
+        <div className="flex h-full min-h-0 flex-col">
+          <PanelHeader title={t('contentPanel.button.sessions')} />
+          <PanelEmptyState
+            title={t("session.noSessionSelected")}
+            icon={<MessagesSquare className="h-6 w-6" />}
+          />
         </div>
       </Panel>
     )
@@ -437,8 +449,12 @@ export function MainContentPanel({
   // Fallback (should not happen with proper NavigationState)
   return wrapWithStoplight(
     <Panel variant="grow" className={className}>
-      <div className="flex items-center justify-center h-full text-muted-foreground">
-        <p className="text-sm">{t("session.selectConversation")}</p>
+      <div className="flex h-full min-h-0 flex-col">
+        <PanelHeader title={t('contentPanel.button.sessions')} />
+        <PanelEmptyState
+          title={t("session.selectConversation")}
+          icon={<MessagesSquare className="h-6 w-6" />}
+        />
       </div>
     </Panel>
   )

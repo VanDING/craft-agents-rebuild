@@ -29,17 +29,31 @@ export const HANDLED_CHANNELS = [
   RPC_CHANNELS.fs.LIST_DIRECTORY,
 ] as const
 
+
+/** In-app file reads are capped (attachments share the same 50 MB limit —
+ *  whole-file IPC transfers above this freeze the renderer). */
+const MAX_APP_READ_BYTES = 50 * 1024 * 1024
+
+/** Reject files too large to shuttle over IPC before reading them. */
+async function assertReadableSize(safePath: string): Promise<void> {
+  const fileStat = await stat(safePath)
+  if (fileStat.size > MAX_APP_READ_BYTES) {
+    const sizeMb = Math.round(fileStat.size / 1024 / 1024)
+    const limitMb = MAX_APP_READ_BYTES / 1024 / 1024
+    throw new Error(`File too large to open in-app (${sizeMb} MB > ${limitMb} MB limit). Open it externally instead.`)
+  }
+}
 export function registerFilesHandlers(server: RpcServer, deps: HandlerDeps): void {
   // Read a file (with path validation to prevent traversal attacks)
   server.handle(RPC_CHANNELS.file.READ, async (ctx, path: string) => {
     try {
       const workspaceId = ctx.workspaceId ?? deps.windowManager?.getWorkspaceForWindow(ctx.webContentsId!)
       const safePath = await validateFilePath(path, getWorkspaceAllowedDirs(workspaceId))
+      await assertReadableSize(safePath)
       const content = await readFile(safePath, 'utf-8')
       return content
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error'
-      // ENOENT is expected for optional config files (e.g. automations.json)
       if (error instanceof Error && 'code' in error && (error as NodeJS.ErrnoException).code === 'ENOENT') {
         deps.platform.logger.debug('readFile: file not found:', path)
       } else {
@@ -55,6 +69,7 @@ export function registerFilesHandlers(server: RpcServer, deps: HandlerDeps): voi
     try {
       const workspaceId = ctx.workspaceId ?? deps.windowManager?.getWorkspaceForWindow(ctx.webContentsId!)
       const safePath = await validateFilePath(path, getWorkspaceAllowedDirs(workspaceId))
+      await assertReadableSize(safePath)
       const buffer = await readFile(safePath)
       const ext = safePath.split('.').pop()?.toLowerCase() ?? ''
 
@@ -107,6 +122,7 @@ export function registerFilesHandlers(server: RpcServer, deps: HandlerDeps): voi
     try {
       const workspaceId = ctx.workspaceId ?? deps.windowManager?.getWorkspaceForWindow(ctx.webContentsId!)
       const safePath = await validateFilePath(path, getWorkspaceAllowedDirs(workspaceId))
+      await assertReadableSize(safePath)
       const buffer = await readFile(safePath)
       // Return as Uint8Array (serializes to ArrayBuffer over IPC)
       return new Uint8Array(buffer)

@@ -829,6 +829,13 @@ export interface BrowserInstanceInfo {
    * and main processes that pre-date the field working unchanged.
    */
   workspaceId?: string | null
+  /**
+   * Last page-load failure, or `null` while the page loads normally. `code` is
+   * the Chromium error code (`-1` for a renderer-process crash); `description`
+   * is a hardcoded English string that includes the URL that triggered the
+   * failure. Cleared on the next load start / finish / navigation.
+   */
+  loadError?: { code: number; description: string } | null
 }
 
 export interface DeepLinkNavigation {

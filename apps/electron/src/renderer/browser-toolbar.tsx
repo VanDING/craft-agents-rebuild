@@ -37,6 +37,7 @@ interface ToolbarState {
   canGoBack: boolean
   canGoForward: boolean
   themeColor?: string | null
+  loadError?: { code: number; description: string } | null
 }
 
 declare global {
@@ -70,6 +71,7 @@ function BrowserToolbarApp() {
     isLoading: false,
     canGoBack: false,
     canGoForward: false,
+    loadError: null,
   })
   const [themeColor, setThemeColor] = useState<string | null>(null)
   const [windowMenuOpen, setWindowMenuOpen] = useState(false)
@@ -182,6 +184,7 @@ function BrowserToolbarApp() {
       <BrowserControls
         url={state.url}
         loading={state.isLoading}
+        loadError={state.loadError}
         canGoBack={state.canGoBack}
         canGoForward={state.canGoForward}
         onNavigate={handleNavigate}

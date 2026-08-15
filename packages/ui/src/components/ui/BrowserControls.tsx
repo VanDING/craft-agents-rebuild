@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect, forwardRef, type ReactNode } from 'react'
-import { ChevronLeft, ChevronRight, RotateCw, X, Globe } from 'lucide-react'
+import { ChevronLeft, ChevronRight, RotateCw, X, Globe, AlertTriangle } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { cn } from '../../lib/utils'
 import { useTranslation } from 'react-i18next'
@@ -43,6 +43,8 @@ export interface BrowserControlsProps {
   url?: string
   /** Whether page is loading (toggles Stop/Reload, shows progress) */
   loading?: boolean
+  /** Page load failure to surface; when set the URL form is replaced by an inline error and the reload button acts as retry. */
+  loadError?: { code: number; description: string } | null
   /** Enable back button */
   canGoBack?: boolean
   /** Enable forward button */
@@ -147,6 +149,7 @@ const HALF_MAX_WIDTH = 300
 export function BrowserControls({
   url: controlledUrl,
   loading = false,
+  loadError,
   canGoBack = false,
   canGoForward = false,
   onNavigate,
@@ -343,7 +346,14 @@ export function BrowserControls({
       <div className="flex-1 flex items-center min-w-0">
         <div className={cn('mx-auto flex items-center gap-1 w-full', urlBarClassName)}>
           {reloadButton}
-          {urlForm}
+          {loadError && !loading ? (
+            <div className="flex-1 min-w-0 flex items-center gap-1.5 text-xs text-destructive" role="alert">
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate" title={loadError.description}>{loadError.description}</span>
+            </div>
+          ) : (
+            urlForm
+          )}
         </div>
       </div>
 

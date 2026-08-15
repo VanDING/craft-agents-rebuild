@@ -37,6 +37,10 @@ interface FilePreviewContentProps {
   /** Markdown file-path clicks (routes through the link interceptor) */
   onFileClick?: (path: string) => void
 }
+/** Cap on rendered text — beyond this the DOM/Shiki cost is prohibitive. */
+const TEXT_PREVIEW_MAX_CHARS = 1_000_000
+/** Probe window for NUL-byte binary detection. */
+const BINARY_SNIFF_CHARS = 8_192
 
 export function FilePreviewContent({ filePath, onOpenUrl, onFileClick }: FilePreviewContentProps) {
   const classification = classifyFile(filePath)
@@ -44,14 +48,15 @@ export function FilePreviewContent({ filePath, onOpenUrl, onFileClick }: FilePre
 
   const [dataUrl, setDataUrl] = useState<string | null>(null)
   const [textContent, setTextContent] = useState<string | null>(null)
+  const [textTruncated, setTextTruncated] = useState(false)
   const [pdfData, setPdfData] = useState<Uint8Array | null>(null)
   const [loadError, setLoadError] = useState<string | undefined>()
   const [numPages, setNumPages] = useState(0)
-
   useEffect(() => {
     let stale = false
     setDataUrl(null)
     setTextContent(null)
+    setTextTruncated(false)
     setPdfData(null)
     setNumPages(0)
     setLoadError(undefined)
@@ -66,7 +71,15 @@ export function FilePreviewContent({ filePath, onOpenUrl, onFileClick }: FilePre
         .catch((err) => { if (!stale) setLoadError(err instanceof Error ? err.message : 'Failed to read PDF') })
     } else {
       window.electronAPI.readFile(filePath)
-        .then((content) => { if (!stale) setTextContent(content) })
+        .then((content) => {
+          if (stale) return
+          if (content.slice(0, BINARY_SNIFF_CHARS).includes('\u0000')) {
+            setLoadError('This file is binary and cannot be previewed as text. Open it externally instead.')
+            return
+          }
+          setTextTruncated(content.length > TEXT_PREVIEW_MAX_CHARS)
+          setTextContent(content.slice(0, TEXT_PREVIEW_MAX_CHARS))
+        })
         .catch((err) => { if (!stale) setLoadError(err instanceof Error ? err.message : 'Failed to read file') })
     }
     return () => { stale = true }
@@ -101,31 +114,45 @@ export function FilePreviewContent({ filePath, onOpenUrl, onFileClick }: FilePre
           </Document>
         </div>
       ) : <Loading />
-
     case 'markdown':
       return textContent !== null ? (
-        <div className="h-full overflow-auto px-4 py-3">
-          <Markdown
-            children={textContent}
-            onUrlClick={onOpenUrl}
-            onFileClick={onFileClick}
-            collapsible={false}
-          />
+        <div className="flex h-full min-h-0 flex-col">
+          {textTruncated && (
+            <div className="shrink-0 border-b border-border/50 px-4 py-1.5 text-[12px] text-muted-foreground">
+              Preview truncated to the first {(TEXT_PREVIEW_MAX_CHARS / 1_000_000).toFixed(1).replace(/\.0$/, '')} MB — open externally for the full file.
+            </div>
+          )}
+          <div className="min-h-0 flex-1 overflow-auto px-4 py-3">
+            <Markdown
+              children={textContent}
+              onUrlClick={onOpenUrl}
+              onFileClick={onFileClick}
+              collapsible={false}
+            />
+          </div>
         </div>
       ) : <Loading />
 
     default:
       // code / text / json — syntax-highlighted code view
       return textContent !== null ? (
-        <div className="h-full overflow-auto py-2">
-          <ShikiCodeViewer
-            code={textContent}
-            filePath={filePath}
-            language={type === 'text' ? 'plaintext' : getLanguageFromPath(filePath)}
-            startLine={1}
-            className="min-w-full"
-          />
+        <div className="flex h-full min-h-0 flex-col">
+          {textTruncated && (
+            <div className="shrink-0 border-b border-border/50 px-4 py-1.5 text-[12px] text-muted-foreground">
+              Preview truncated to the first {(TEXT_PREVIEW_MAX_CHARS / 1_000_000).toFixed(1).replace(/\.0$/, '')} MB — open externally for the full file.
+            </div>
+          )}
+          <div className="min-h-0 flex-1 overflow-auto py-2">
+            <ShikiCodeViewer
+              code={textContent}
+              filePath={filePath}
+              language={type === 'text' ? 'plaintext' : getLanguageFromPath(filePath)}
+              startLine={1}
+              className="min-w-full"
+            />
+          </div>
         </div>
       ) : <Loading />
   }
 }
+

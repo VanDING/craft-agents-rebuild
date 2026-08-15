@@ -13,7 +13,7 @@
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAtomValue, useSetAtom } from 'jotai'
-import { FileText, Eye } from 'lucide-react'
+import { FileText, Eye, MessageSquare, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Markdown } from '@craft-agent/ui'
 import { PanelHeader } from '../app-shell/PanelHeader'
@@ -22,12 +22,12 @@ import { BoundSessionBadge } from './BoundSessionBadge'
 import { FilePreviewContent } from './FilePreviewContent'
 import { activeSessionIdAtom } from '@/atoms/active-session'
 import { sessionMetaMapAtom } from '@/atoms/sessions'
-import { previewEntriesForSessionAtom } from '@/atoms/preview'
+import { previewEntriesForSessionAtom, removePreviewEntryAtom, type PreviewEntry } from '@/atoms/preview'
 import { previewPanelSelectedKeyAtom } from '@/atoms/content-panel-ui'
 import { useAppShellContext } from '@/context/AppShellContext'
 
-const entryKey = (entry: import('@/atoms/preview').PreviewEntry): string =>
-  entry.type === 'file' ? `file:${entry.path}` : `md:${entry.title}`
+const entryKey = (entry: PreviewEntry): string =>
+  entry.type === 'file' ? `file:${entry.path}` : `md:${entry.id}`
 
 export function PreviewPanel() {
   const { t } = useTranslation()
@@ -36,6 +36,7 @@ export function PreviewPanel() {
   const entries = useAtomValue(previewEntriesForSessionAtom)(activeSessionId ?? '')
   const selectedKey = useAtomValue(previewPanelSelectedKeyAtom)
   const setSelectedKey = useSetAtom(previewPanelSelectedKeyAtom)
+  const removeEntry = useSetAtom(removePreviewEntryAtom)
   const { onOpenFile, onOpenUrl } = useAppShellContext()
 
   // Keep the selection valid: default to the most recent entry.
@@ -83,23 +84,41 @@ export function PreviewPanel() {
               const label = entry.type === 'file'
                 ? entry.path.split(/[/\\]/).pop() || entry.path
                 : entry.title
+              const Icon = entry.type === 'file' ? FileText : MessageSquare
               return (
-                <button
+                <div
                   key={key}
-                  type="button"
-                  role="tab"
-                  aria-selected={isActive}
-                  onClick={() => setSelectedKey(isActive ? null : key)}
+                  ref={isActive ? (el) => el?.scrollIntoView({ block: 'nearest', inline: 'nearest' }) : undefined}
                   className={cn(
-                    'flex h-7 max-w-[16rem] shrink-0 items-center gap-1.5 rounded-md border px-2 text-[12px] transition-colors',
+                    'group flex h-7 max-w-[16rem] shrink-0 items-center gap-0.5 rounded-md border px-1.5 text-[12px] transition-colors',
                     isActive
                       ? 'border-border bg-foreground/[0.05] text-foreground'
                       : 'border-transparent text-muted-foreground hover:bg-foreground/[0.03]',
                   )}
                 >
-                  <FileText className="h-3 w-3 shrink-0" />
-                  <span className="truncate">{label}</span>
-                </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={isActive}
+                    title={entry.type === 'file' ? entry.path : entry.title}
+                    onClick={() => { if (!isActive) setSelectedKey(key) }}
+                    className="flex h-full min-w-0 flex-1 items-center gap-1.5"
+                  >
+                    <Icon className="h-3 w-3 shrink-0" />
+                    <span className="truncate">{label}</span>
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={t('common.close')}
+                    onClick={() => removeEntry({ sessionId: activeSessionId, identity: key })}
+                    className={cn(
+                      'flex h-4 w-4 shrink-0 items-center justify-center rounded-sm text-muted-foreground/60 transition-colors hover:bg-foreground/10 hover:text-foreground',
+                      isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100',
+                    )}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
               )
             })}
           </div>

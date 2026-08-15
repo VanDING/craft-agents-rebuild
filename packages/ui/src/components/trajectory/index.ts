@@ -1,6 +1,5 @@
 export { TrajectoryView, type TrajectoryViewProps } from './TrajectoryView'
 export { TrajectoryTable, type TrajectoryTableProps } from './TrajectoryTable'
-export { TrajectoryCell } from './TrajectoryCell'
 export { TrajectoryToolbar, type TrajectoryToolbarProps } from './TrajectoryToolbar'
 export { TrajectoryTimeline, type TrajectoryTimelineProps } from './TrajectoryTimeline'
 export { RecordInspector, type RecordInspectorProps } from './RecordInspector'

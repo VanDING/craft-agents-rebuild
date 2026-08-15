@@ -23,6 +23,8 @@ export interface TrajectoryToolbarProps {
   /** Current live ledger search query. */
   searchQuery: string
   onSearchQueryChange: (query: string) => void
+  /** Whether the session is currently processing (live indicator only). */
+  isProcessing?: boolean
 }
 
 export function TrajectoryToolbar({
@@ -36,6 +38,7 @@ export function TrajectoryToolbar({
   onToggleAllAssistants,
   searchQuery,
   onSearchQueryChange,
+  isProcessing,
 }: TrajectoryToolbarProps) {
   return (
     <div className={css.root} role="toolbar" aria-label="Trajectory controls">
@@ -111,6 +114,9 @@ export function TrajectoryToolbar({
             onChange={(event) => { onSearchQueryChange(event.currentTarget.value) }}
           />
         </div>
+        {isProcessing && (
+          <span className={css.live} role="status" aria-label="Processing" />
+        )}
       </div>
     </div>
   )

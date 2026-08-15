@@ -23,10 +23,17 @@ import {
   StyledDropdownMenuSeparator,
 } from "@/components/ui/styled-dropdown"
 import type { SettingsMenuItem } from "../../../shared/menu-schema"
-import { useEffect, useRef, useState } from "react"
+
+import { useCallback, useEffect, useRef, useState } from "react"
+import { useAtomValue, useSetAtom } from "jotai"
 import { BrowserTabStrip } from "../browser/BrowserTabStrip"
 import { WorkbenchPanelButtons } from "./WorkbenchPanelButtons"
 import type { WorkbenchPanelKind } from "@/lib/workbench-panels"
+import { workbenchPanelKindForRoute } from "@/lib/workbench-panels"
+import { WORKBENCH_ICONS } from "./WorkbenchPanelButtons"
+import { hiddenPanelsAtom, restorePanelAtom } from "@/atoms/hidden-panels"
+import { parseRouteToNavigationState } from "../../../shared/route-parser"
+import type { ViewRoute } from "../../../shared/routes"
 import type { Workspace } from "../../../shared/types"
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher"
 import { CompactWorkspaceSwitcher } from "./CompactWorkspaceSwitcher"
@@ -94,37 +101,32 @@ export function TopBar({
   onOpenPanel,
   onOpenBrowser,
   onToggleSessionList,
- }: TopBarProps) {
+}: TopBarProps) {
   const { t } = useTranslation()
   const [maxVisibleBrowserBadges, setMaxVisibleBrowserBadges] = useState(3)
-  // 11 workbench buttons at full width: new session + 8 panel kinds +
-  // browser + session-list toggle. Decided by WINDOW width, NOT the
-  // right-slot width: the slot is content-sized (shrink-0), so measuring it
-  // made the count collapse on itself — the 11-button group (~330px incl.
-  // Help) was always below the old 340px threshold, hiding buttons at any
-  // window size (fix, verified via CDP).
-  const [maxVisiblePanelButtons, setMaxVisiblePanelButtons] = useState(11)
-
-  useEffect(() => {
-    const update = () => {
-      // Left chrome: stoplight padding 86 + sidebar toggle + app menu +
-      // back/forward + workspace switcher ≈ 500px. Each button ≈ 24px.
-      const next = Math.max(4, Math.min(11, Math.floor((window.innerWidth - 500) / 24)))
-      setMaxVisiblePanelButtons((prev) => (prev === next ? prev : next))
-    }
-    let frame = 0
-    const onResize = () => {
-      if (frame) cancelAnimationFrame(frame)
-      frame = requestAnimationFrame(update)
-    }
-    update()
-    window.addEventListener('resize', onResize)
-    return () => {
-      if (frame) cancelAnimationFrame(frame)
-      window.removeEventListener('resize', onResize)
-    }
-  }, [])
   const rightSlotRef = useRef<HTMLDivElement | null>(null)
+
+  const hiddenPanels = useAtomValue(hiddenPanelsAtom)
+  const restorePanel = useSetAtom(restorePanelAtom)
+  // The more menu exists only to restore hidden panels (no button truncation —
+  // all workbench buttons stay tiled and directly clickable).
+  const hasMoreMenu = hiddenPanels.length > 0
+
+  /** Human label for a hidden panel entry (workbench kinds + navigator pages). */
+  const hiddenPanelLabel = useCallback((route: ViewRoute): string => {
+    const kind = workbenchPanelKindForRoute(route)
+    if (kind) return t(`contentPanel.button.${kind}`)
+    const nav = parseRouteToNavigationState(route)
+    switch (nav?.navigator) {
+      case 'sources': return t('sidebar.sources')
+      case 'skills': return t('sidebar.skills')
+      case 'settings': return t('sidebar.settings')
+      case 'automations': return t('sidebar.automations')
+      case 'projects': return t('sidebar.projects')
+      default: return String(route)
+    }
+  }, [t])
+
 
   const goBackHotkey = useActionLabel('nav.goBackAlt').hotkey
   const goForwardHotkey = useActionLabel('nav.goForwardAlt').hotkey
@@ -271,9 +273,33 @@ export function TopBar({
             onNewSessionPanel={onAddSessionPanel}
             onNewBrowser={onAddBrowserPanel}
             onToggleSessionList={onToggleSessionList}
-            maxVisibleButtons={maxVisiblePanelButtons}
           />
         )}
+        {/* Hidden-panel restore menu — sources/skills/settings pages have no
+            top-bar button of their own, so this is their only way back. */}
+        {onOpenPanel && hasMoreMenu && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <TopBarButton aria-label={t("common.more")} className="h-[22px] w-[22px] rounded-md text-foreground/35">
+                <Icons.MoreHorizontal className="h-3.5 w-3.5" strokeWidth={2} />
+              </TopBarButton>
+            </DropdownMenuTrigger>
+            <StyledDropdownMenuContent align="end" minWidth="min-w-52">
+              {hiddenPanels.map((entry) => {
+                const kind = workbenchPanelKindForRoute(entry.route)
+                const Icon = kind ? WORKBENCH_ICONS[kind] : Icons.Eye
+                return (
+                  <StyledDropdownMenuItem key={entry.id} onClick={() => restorePanel(entry.id)}>
+                    <Icon className="h-3.5 w-3.5" />
+                    <span className="flex-1">{hiddenPanelLabel(entry.route)}</span>
+                    <Icons.RotateCcw className="h-3 w-3 text-muted-foreground" />
+                  </StyledDropdownMenuItem>
+                )
+              })}
+            </StyledDropdownMenuContent>
+          </DropdownMenu>
+        )}
+
         {/* Help button */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

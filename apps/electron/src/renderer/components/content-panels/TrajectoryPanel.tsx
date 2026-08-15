@@ -27,17 +27,24 @@ export function TrajectoryPanel() {
   const ensureMessagesLoaded = useSetAtom(ensureSessionMessagesLoadedAtom)
 
   const [messagesLoading, setMessagesLoading] = useState(true)
+  const [loadError, setLoadError] = useState(false)
 
   useEffect(() => {
     if (!activeSessionId) {
       setMessagesLoading(false)
+      setLoadError(false)
       return
     }
     let cancelled = false
     setMessagesLoading(true)
-    void ensureMessagesLoaded(activeSessionId).finally(() => {
-      if (!cancelled) setMessagesLoading(false)
-    })
+    setLoadError(false)
+    void ensureMessagesLoaded(activeSessionId)
+      .catch(() => {
+        if (!cancelled) setLoadError(true)
+      })
+      .finally(() => {
+        if (!cancelled) setMessagesLoading(false)
+      })
     return () => {
       cancelled = true
     }
@@ -73,6 +80,19 @@ export function TrajectoryPanel() {
         <div className="flex flex-1 items-center justify-center">
           <Spinner />
         </div>
+      </div>
+    )
+  }
+
+  if (loadError) {
+    return (
+      <div className="flex h-full flex-col">
+        <PanelHeader title={t('contentPanel.title.trajectory')} actions={<BoundSessionBadge sessionId={activeSessionId} />} />
+        <PanelEmptyState
+          icon={<Activity className="h-8 w-8" />}
+          title={t('errors.failedToLoadSession')}
+          hint={t('errors.pleaseReload')}
+        />
       </div>
     )
   }

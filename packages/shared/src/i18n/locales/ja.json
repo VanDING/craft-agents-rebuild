@@ -1769,5 +1769,16 @@
   "workspace.selectWorkspaceDesc": "このサーバー上のWorkspaceを選択するか、新規作成してください。",
   "workspace.selectWorkspacePlaceholder": "Workspaceを選択...",
   "workspace.serverAuthToken": "サーバー認証トークン",
-  "workspace.underDefaultFolder": ".craft-agentフォルダ内"
+  "workspace.underDefaultFolder": ".craft-agentフォルダ内",
+  "contentPanel.context.status.processing": "処理中",
+  "contentPanel.context.messageCount": "メッセージ",
+  "contentPanel.context.createdAt": "作成日時",
+  "contentPanel.context.lastActivity": "最終アクティビティ",
+  "contentPanel.context.contextTokens": "コンテキストトークン",
+  "contentPanel.context.cost": "コスト",
+  "contentPanel.context.workspaceHeader": "ワークスペース",
+  "contentPanel.diff.styleUnified": "統一",
+  "contentPanel.diff.styleSplit": "分割",
+  "contentPanel.diff.collapseAll": "すべて折りたたむ",
+  "chat.sessionFilesError": "セッションファイルを読み込めませんでした。"
 }

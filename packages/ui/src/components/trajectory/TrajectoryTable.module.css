@@ -174,16 +174,6 @@
   white-space: nowrap;
 }
 
-.table tbody .virtualSpacer {
-  pointer-events: none;
-}
-
-.table tbody .virtualSpacer td {
-  height: var(--trajectory-virtual-spacer-height);
-  padding: 0;
-  border: 0;
-}
-
 .table tbody tr:not([data-collapsed-summary]):not([data-virtual-spacer]):not([data-history-load]) {
   cursor: default;
   outline: none;

@@ -77,8 +77,12 @@ export function PanelStackContainer({
   // Compact mode: drill-in is "detail focused", not just "session selected".
   // For sessions: a session is selected. For settings: a subpage is selected.
   // For sources/skills/automations: a detail entity is selected.
+  // Bound workbench panels (files/diff/context/preview/trajectory) are 'other'
+  // navigator routes — standalone content, ALWAYS treated as detail; otherwise
+  // the detail slot stays inactive and the panel renders off-screen.
   const focusedNavState = focusedRoute ? parseRouteToNavigationState(focusedRoute) : null
-  const isDetailFocused = isDetailNavState(focusedNavState)
+  const isDetailFocused =
+    isDetailNavState(focusedNavState) || focusedNavState?.navigator === 'other'
   const hasSelectedContent = isCompact && isDetailFocused
 
   const visiblePanels = isCompact

@@ -1769,5 +1769,16 @@
   "workspace.selectWorkspaceDesc": "Válassz egy munkaterületet ezen a szerveren, vagy hozz létre újat.",
   "workspace.selectWorkspacePlaceholder": "Válassz munkaterületet...",
   "workspace.serverAuthToken": "Szerver hitelesítési token",
-  "workspace.underDefaultFolder": "a .craft-agent mappában"
+  "workspace.underDefaultFolder": "a .craft-agent mappában",
+  "contentPanel.context.status.processing": "Feldolgozás",
+  "contentPanel.context.messageCount": "Üzenetek",
+  "contentPanel.context.createdAt": "Létrehozva",
+  "contentPanel.context.lastActivity": "Utolsó aktivitás",
+  "contentPanel.context.contextTokens": "Kontextus tokenek",
+  "contentPanel.context.cost": "Költség",
+  "contentPanel.context.workspaceHeader": "Munkaterület",
+  "contentPanel.diff.styleUnified": "Egyesített",
+  "contentPanel.diff.styleSplit": "Osztott",
+  "contentPanel.diff.collapseAll": "Összes bezárása",
+  "chat.sessionFilesError": "A munkamenet fájljainak betöltése nem sikerült."
 }

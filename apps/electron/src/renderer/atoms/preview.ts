@@ -13,14 +13,17 @@ import { atom } from 'jotai'
 
 export type PreviewEntry =
   | { type: 'file'; path: string }
-  | { type: 'markdown'; content: string; title: string }
+  /** `id` must be stable per source (message id / turn key / activity id) —
+   *  two pop-outs sharing a title are distinct entries, same source re-opened
+   *  replaces its entry and lands at the end (re-selected by PreviewPanel). */
+  | { type: 'markdown'; content: string; title: string; id: string }
 
 /** Per-session preview entry stacks. */
 export const previewStateBySessionAtom = atom<Map<string, PreviewEntry[]>>(new Map())
 
-/** Identity used for de-duplication (re-opening the same file/doc moves it to the front). */
+/** Identity used for de-duplication (file path / stable source id). */
 function previewIdentity(entry: PreviewEntry): string {
-  return entry.type === 'file' ? `file:${entry.path}` : `md:${entry.title}`
+  return entry.type === 'file' ? `file:${entry.path}` : `md:${entry.id}`
 }
 
 /** Preview entries for a session (derived). */
@@ -37,6 +40,21 @@ export const addPreviewEntryAtom = atom(
     const identity = previewIdentity(entry)
     const rest = current.filter((item) => previewIdentity(item) !== identity)
     map.set(sessionId, [...rest, entry])
+    set(previewStateBySessionAtom, map)
+  },
+)
+
+/** Remove an entry by its identity (tab close). Deletes the session bucket
+ *  when it empties so the Map never accumulates dead session keys. */
+export const removePreviewEntryAtom = atom(
+  null,
+  (get, set, { sessionId, identity }: { sessionId: string; identity: string }) => {
+    const map = new Map(get(previewStateBySessionAtom))
+    const current = map.get(sessionId)
+    if (!current) return
+    const next = current.filter((item) => previewIdentity(item) !== identity)
+    if (next.length === 0) map.delete(sessionId)
+    else map.set(sessionId, next)
     set(previewStateBySessionAtom, map)
   },
 )

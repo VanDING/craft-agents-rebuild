@@ -950,7 +950,7 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
 
   // Pop-out handler - a message shown read-only (read-only markdown preview)
   const handlePopOut = useCallback((message: Message) => {
-    openPreviewEntry({ type: 'markdown', content: message.content, title: t('contentPanel.preview.message') })
+    openPreviewEntry({ type: 'markdown', content: message.content, title: t('contentPanel.preview.message'), id: `msg:${message.id}` })
   }, [openPreviewEntry, t])
 
   // Open the Review/Diff panel, optionally scrolling to a specific change.
@@ -1754,12 +1754,12 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
                         }}
                         onPopOut={(text) => {
                           // Raw markdown source → preview panel markdown entry
-                          openPreviewEntry({ type: 'markdown', content: text, title: t('contentPanel.preview.response') })
+                          openPreviewEntry({ type: 'markdown', content: text, title: t('contentPanel.preview.response'), id: `raw:${assistantUiKey}` })
                         }}
                         onOpenDetails={() => {
                           // Turn details → preview panel markdown entry
                           const markdown = formatTurnAsMarkdown(turn)
-                          openPreviewEntry({ type: 'markdown', content: markdown, title: t('contentPanel.preview.turnDetails') })
+                          openPreviewEntry({ type: 'markdown', content: markdown, title: t('contentPanel.preview.turnDetails'), id: `turn:${assistantUiKey}` })
                         }}
                         onOpenActivityDetails={(activity) => {
                           // Write tool for .md/.txt → preview panel markdown entry (document)
@@ -1785,6 +1785,7 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
                               type: 'markdown',
                               content: formatActivityAsMarkdown(activity),
                               title: activity.displayName || activity.toolName || t('contentPanel.preview.activity'),
+                              id: `activity:${activity.id}`,
                             })
                           }
                         }}

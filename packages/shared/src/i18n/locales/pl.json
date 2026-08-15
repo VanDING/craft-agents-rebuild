@@ -1769,5 +1769,16 @@
   "workspace.selectWorkspaceDesc": "Wybierz Workspace na tym serwerze lub utwórz nowy.",
   "workspace.selectWorkspacePlaceholder": "Wybierz Workspace...",
   "workspace.serverAuthToken": "Token uwierzytelniający serwera",
-  "workspace.underDefaultFolder": "w folderze .craft-agent"
+  "workspace.underDefaultFolder": "w folderze .craft-agent",
+  "contentPanel.context.status.processing": "Przetwarzanie",
+  "contentPanel.context.messageCount": "Wiadomości",
+  "contentPanel.context.createdAt": "Utworzono",
+  "contentPanel.context.lastActivity": "Ostatnia aktywność",
+  "contentPanel.context.contextTokens": "Tokeny kontekstu",
+  "contentPanel.context.cost": "Koszt",
+  "contentPanel.context.workspaceHeader": "Obszar roboczy",
+  "contentPanel.diff.styleUnified": "Zunifikowany",
+  "contentPanel.diff.styleSplit": "Podzielony",
+  "contentPanel.diff.collapseAll": "Zwiń wszystko",
+  "chat.sessionFilesError": "Nie udało się wczytać plików sesji."
 }

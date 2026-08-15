@@ -39,6 +39,10 @@ const OVERLAY_SELECTORS = [
   // Inline menus (@mention, /slash, #label autocomplete)
   '[data-inline-menu]',
 
+  // Fullscreen expanded panel — its own Esc handler restores the panel; without
+  // this entry the chat interrupt Esc fires first (double side effect).
+  '[data-expanded-panel-overlay]',
+
   // Dialog-mode islands (from @craft-agent/ui Island primitive)
   '[data-ca-island-dialog="true"][data-state="open"]',
 ]

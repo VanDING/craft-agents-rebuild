@@ -26,12 +26,15 @@ export const BrowserTabBadge = forwardRef<HTMLButtonElement, BrowserTabBadgeProp
 
   const themeLuminance = instance.themeColor ? getThemeLuminance(instance.themeColor) : null
   const isDarkThemeColor = themeLuminance !== null && themeLuminance < 0.42
+  const hasLoadError = !!instance.loadError
 
-  const foregroundClass = instance.themeColor
-    ? (isDarkThemeColor
-      ? 'text-white/90 hover:bg-white/10'
-      : 'text-black/80 hover:bg-black/5')
-    : 'text-foreground hover:bg-foreground/[0.03]'
+  const foregroundClass = hasLoadError
+    ? 'text-destructive hover:bg-destructive/10'
+    : instance.themeColor
+      ? (isDarkThemeColor
+        ? 'text-white/90 hover:bg-white/10'
+        : 'text-black/80 hover:bg-black/5')
+      : 'text-foreground hover:bg-foreground/[0.03]'
 
   const [faviconFailed, setFaviconFailed] = useState(false)
 
@@ -48,7 +51,8 @@ export const BrowserTabBadge = forwardRef<HTMLButtonElement, BrowserTabBadgeProp
         text-[11px] leading-tight transition-colors max-w-[160px] shadow-minimal
         bg-background
         ${foregroundClass}
-        ${instance.agentControlActive ? 'border border-accent' : ''}
+        ${instance.agentControlActive && !hasLoadError ? 'border border-accent' : ''}
+        ${hasLoadError ? 'border border-destructive/60' : ''}
         ${className ?? ''}
       `}
       style={{
@@ -60,7 +64,9 @@ export const BrowserTabBadge = forwardRef<HTMLButtonElement, BrowserTabBadgeProp
       {...buttonProps}
     >
       <span className={`shrink-0 flex items-center justify-center ${isDarkThemeColor ? 'h-3.5 w-3.5' : 'h-3 w-3'}`}>
-        {instance.isLoading ? (
+        {hasLoadError ? (
+          <Icons.AlertTriangle className="h-3 w-3" />
+        ) : instance.isLoading ? (
           <Spinner className="text-[9px] leading-none" />
         ) : instance.favicon && !faviconFailed ? (
           isDarkThemeColor ? (

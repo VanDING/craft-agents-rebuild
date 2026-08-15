@@ -1769,5 +1769,16 @@
   "workspace.selectWorkspaceDesc": "Workspace auf diesem Server wählen oder neuen erstellen.",
   "workspace.selectWorkspacePlaceholder": "Workspace auswählen...",
   "workspace.serverAuthToken": "Server-Authentifizierungstoken",
-  "workspace.underDefaultFolder": "im .craft-agent-Ordner"
+  "workspace.underDefaultFolder": "im .craft-agent-Ordner",
+  "contentPanel.context.status.processing": "Verarbeitung",
+  "contentPanel.context.messageCount": "Nachrichten",
+  "contentPanel.context.createdAt": "Erstellt",
+  "contentPanel.context.lastActivity": "Letzte Aktivität",
+  "contentPanel.context.contextTokens": "Kontext-Tokens",
+  "contentPanel.context.cost": "Kosten",
+  "contentPanel.context.workspaceHeader": "Arbeitsbereich",
+  "contentPanel.diff.styleUnified": "Einheitlich",
+  "contentPanel.diff.styleSplit": "Geteilt",
+  "contentPanel.diff.collapseAll": "Alle einklappen",
+  "chat.sessionFilesError": "Sitzungsdateien konnten nicht geladen werden."
 }

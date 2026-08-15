@@ -15,7 +15,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAtomValue, useSetAtom } from 'jotai'
-import { ChevronRight, ChevronDown, FilePlus, PencilLine, GitCompareArrows } from 'lucide-react'
+import { ChevronRight, ChevronDown, FilePlus, PencilLine, GitCompareArrows, ChevronsUp } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { usePlatform, UnifiedDiffViewer, Spinner } from '@craft-agent/ui'
 import { ShikiDiffViewer } from '@/components/shiki/ShikiDiffViewer'
@@ -39,14 +39,11 @@ const KIND_DOTS: Record<DiffKind, string> = {
   mix: 'bg-amber-500',
 }
 
-function DiffKindLabel({ kind }: { kind: DiffKind }) {
-  const { t } = useTranslation()
+/** Localized label for a diff kind — used as the dot's tooltip (the visual
+ *  encoding is the dot color; a text label was a third redundant channel). */
+function diffKindLabel(kind: DiffKind, t: (key: string) => string): string {
   const key = kind === 'add' ? 'contentPanel.diff.add' : kind === 'del' ? 'contentPanel.diff.del' : 'contentPanel.diff.mix'
-  return (
-    <span className="shrink-0 text-[10px] uppercase tracking-wide text-muted-foreground/60">
-      {t(key)}
-    </span>
-  )
+  return t(key)
 }
 
 function SectionStats({ changes }: { changes: import('@craft-agent/ui').FileChange[] }) {
@@ -137,6 +134,41 @@ export function ReviewPanel() {
   const headerBadge = activeSessionId ? (
     <BoundSessionBadge name={sessionName} sessionId={activeSessionId} />
   ) : undefined
+  // In-panel diff style toggle (mirrors the global preference) + collapse all.
+  const headerActions = useMemo(() => {
+    const styleButtons = (['unified', 'split'] as const).map((style) => (
+      <button
+        key={style}
+        type="button"
+        aria-pressed={viewerSettings.diffStyle === style}
+        onClick={() => setViewerSettings({ diffStyle: style, disableBackground: viewerSettings.disableBackground })}
+        className={cn(
+          'rounded px-1.5 py-0.5 text-[11px] font-medium transition-colors',
+          viewerSettings.diffStyle === style
+            ? 'bg-foreground/10 text-foreground'
+            : 'text-muted-foreground hover:text-foreground',
+        )}
+      >
+        {t(`contentPanel.diff.style${style === 'unified' ? 'Unified' : 'Split'}`)}
+      </button>
+    ))
+    return (
+      <div className="flex items-center gap-1.5">
+        <div className="flex items-center rounded-md border border-border/60 p-0.5">
+          {styleButtons}
+        </div>
+        <button
+          type="button"
+          aria-label={t('contentPanel.diff.collapseAll')}
+          title={t('contentPanel.diff.collapseAll')}
+          onClick={() => setSelectedKey(null)}
+          className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-foreground/[0.05] hover:text-foreground"
+        >
+          <ChevronsUp className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    )
+  }, [viewerSettings, setViewerSettings, setSelectedKey, t])
 
   if (!activeSessionId) {
     return (
@@ -152,7 +184,7 @@ export function ReviewPanel() {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <PanelHeader title={t('contentPanel.title.review')} badge={headerBadge} />
+      <PanelHeader title={t('contentPanel.title.review')} badge={headerBadge} actions={headerActions} />
 
       {messagesLoading ? (
         <div className="flex flex-1 items-center justify-center">
@@ -191,11 +223,10 @@ export function ReviewPanel() {
                     ) : (
                       <PencilLine className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                     )}
-                    <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', KIND_DOTS[kind])} />
+                    <span className={cn('h-1.5 w-1.5 shrink-0 rounded-full', KIND_DOTS[kind])} title={diffKindLabel(kind, t)} />
                     <span className="min-w-0 flex-1 truncate">
                       <span className="font-medium" title={section.filePath}>{fileBaseName(section.filePath)}</span>
                     </span>
-                    <DiffKindLabel kind={kind} />
                     <SectionStats changes={section.changes} />
                   </button>
 
@@ -206,7 +237,13 @@ export function ReviewPanel() {
                           key={change.id}
                           ref={(el) => setChangeRef(change.id, el)}
                           className="overflow-hidden rounded-xl border border-border/60"
-                          style={{ minHeight: change.error ? undefined : 200 }}
+                          style={{
+                            // Skip layout/highlight work for off-screen diffs;
+                            // 600px intrinsic estimate keeps scrollbar stable.
+                            contentVisibility: 'auto',
+                            containIntrinsicSize: 'auto 600px',
+                            minHeight: change.error ? undefined : 200,
+                          }}
                         >
                           {change.error ? (
                             <div className="px-4 py-4">

@@ -39,7 +39,7 @@ function assistantRecordId(cell: TrajectoryCellProps): string {
   return cell.sourceSeq ?? cell.callId ?? `index-${cell.index}`
 }
 
-export function TrajectoryView({ snapshot, sessionTotal }: TrajectoryViewProps) {
+export function TrajectoryView({ snapshot, sessionTotal, isProcessing }: TrajectoryViewProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [collapsedTurns, setCollapsedTurns] = useState<ReadonlySet<number>>(new Set())
   const [collapsedAssistants, setCollapsedAssistants] = useState<ReadonlySet<string>>(new Set())
@@ -59,9 +59,11 @@ export function TrajectoryView({ snapshot, sessionTotal }: TrajectoryViewProps) 
     })
   }, [snapshot])
 
+  const flatRecords = useMemo(() => flattenTurnRecords(turns), [turns])
+
   const searchMatchIndexes = useMemo(
-    () => searchQuery.trim() === '' ? null : searchTrajectory(flattenTurnRecords(turns), searchQuery),
-    [turns, searchQuery],
+    () => searchQuery.trim() === '' ? null : searchTrajectory(flatRecords, searchQuery),
+    [flatRecords, searchQuery],
   )
 
   const timelineFocusIndexes = useMemo(
@@ -179,6 +181,7 @@ export function TrajectoryView({ snapshot, sessionTotal }: TrajectoryViewProps) 
         onToggleAllAssistants={toggleAllAssistants}
         searchQuery={searchQuery}
         onSearchQueryChange={setSearchQuery}
+        isProcessing={isProcessing}
       />
 
       <TrajectoryTimeline
@@ -194,7 +197,7 @@ export function TrajectoryView({ snapshot, sessionTotal }: TrajectoryViewProps) 
 
       <div className="flex min-h-0 min-w-0 flex-1">
         <TrajectoryTable
-          turns={turns}
+          flatRecords={flatRecords}
           collapsedTurns={collapsedTurns}
           onToggleTurn={toggleTurn}
           collapsedAssistants={collapsedAssistants}
