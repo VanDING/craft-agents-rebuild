@@ -17,9 +17,7 @@
   justify-content: space-between;
   box-sizing: border-box;
   width: 100%;
-  max-width: 880px;
   height: 100%;
-  margin: 0 auto;
   padding: 0 16px;
 }
 
@@ -52,4 +50,12 @@
   margin-left: 12px;
   font: var(--dsw-font-xs-13);
   color: var(--dsw-alias-label-tertiary);
+}
+
+/* Craft adaptation: narrow panels keep the turn title readable by hiding
+ * the Input/Output/Think/Time metric labels. */
+@media (max-width: 640px) {
+  .columns {
+    display: none;
+  }
 }

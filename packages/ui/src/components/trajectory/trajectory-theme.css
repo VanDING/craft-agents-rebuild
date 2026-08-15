@@ -9,6 +9,8 @@
   --dsw-font-xxs-12: 12px/18px var(--dsw-font-family);
   --dsw-font-xs-13: 13px/20px var(--dsw-font-family);
   --dsw-font-xs-strong-13: 600 13px/20px var(--dsw-font-family);
+  --ds-ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --ds-font-family-code: ui-monospace, 'Cascadia Code', 'Consolas', monospace;
 
   --dsw-alias-label-primary: var(--foreground);
   --dsw-alias-label-secondary: color-mix(in srgb, var(--foreground) 72%, var(--background));

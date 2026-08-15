@@ -95,7 +95,7 @@ export const TrajectoryTable = memo(function TrajectoryTable({
 
   return (
     <div className={css.tablePane}>
-      <table className={css.table} role="table" aria-rowcount={rows.length}>
+      <table className={css.table} data-scroll-ready="true" role="table" aria-rowcount={rows.length}>
         <colgroup>
           <col className={css.eventColumn} />
           <col className={css.contentColumn} />
