@@ -64,6 +64,39 @@ export {
   type InlineActivityItem,
 } from './components/chat'
 
+// Trajectory (DSH-style turn-aware ledger)
+export {
+  TrajectoryView,
+  TrajectoryTable,
+  TrajectoryCell,
+  TrajectoryToolbar,
+  TrajectoryTimeline,
+  RecordInspector,
+  type TrajectoryViewProps,
+} from './components/trajectory'
+export {
+  buildTrajectorySnapshot,
+  type TrajectorySessionInput,
+} from './components/trajectory/trajectory-snapshot'
+export {
+  EMPTY_TRAJECTORY_SNAPSHOT,
+  type TrajectorySnapshot,
+  type TrajectoryContribution,
+} from './components/trajectory/trajectory-contract'
+export {
+  deriveTrajectoryLayout,
+  type TrajectoryTurnModel,
+  type TrajectoryGroupModel,
+  type TrajectoryCellProps,
+} from './components/trajectory/trajectory-layout'
+export {
+  searchTrajectory,
+} from './components/trajectory/trajectory-search-index'
+export {
+  flattenTurnCells,
+  projectVirtualRows,
+} from './components/trajectory/trajectory-virtual-rows'
+
 // Markdown
 export {
   Markdown,

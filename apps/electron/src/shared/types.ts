@@ -947,7 +947,7 @@ export interface ProjectsNavigationState {
  * segment constant (`diff`/`files`/`context`/`preview`), same convention as
  * the standalone `board`/`calendar` prefixes.
  */
-export type BoundPanelType = 'diff' | 'files' | 'context' | 'preview'
+export type BoundPanelType = 'diff' | 'files' | 'context' | 'preview' | 'trajectory'
 
 /**
  * Content-workbench panel navigation state.

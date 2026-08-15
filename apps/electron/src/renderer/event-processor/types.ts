@@ -6,6 +6,7 @@
  */
 
 import type { Session, Message, PermissionRequest, CredentialRequest, TypedError, PermissionMode, SessionStatus, AuthRequest, ToolDisplayMeta } from '../../shared/types'
+import type { PiUsage } from '@craft-agent/core/types'
 
 /**
  * Streaming state for a session - replaces streamingTextRef
@@ -48,6 +49,12 @@ export interface TextCompleteEvent {
   timestamp?: number
   /** Authoritative message ID from main process for persistence/branching parity */
   messageId?: string
+  /** Full provider usage breakdown (Pi SDK) for per-request trajectory buckets. */
+  usage?: PiUsage
+  /** Per-session request ordinal for request-header grouping in the trajectory view. */
+  requestSeq?: number
+  /** Effective system prompt at this request (trajectory prompt diff). */
+  promptSnapshot?: string
 }
 
 /**
@@ -84,6 +91,8 @@ export interface ToolResultEvent {
   parentToolUseId?: string
   /** Timestamp from main process for consistent ordering */
   timestamp?: number
+  /** Wall-clock execution duration in ms (server-measured start→end). */
+  durationMs?: number
 }
 
 /**
@@ -102,6 +111,8 @@ export interface CompleteEvent {
    * `complete`; a real `task_completed` will arrive when the agent actually finishes.
    */
   backgroundTasksAlive?: boolean
+  /** Full provider usage breakdown (Pi SDK) for trajectory usage aggregation. */
+  fullUsage?: PiUsage
 }
 
 /**
@@ -509,6 +520,32 @@ export interface UsageUpdateEvent {
     inputTokens: number
     contextWindow?: number
   }
+  /** Full provider usage breakdown (Pi SDK) when the backend exposes it. */
+  full?: PiUsage
+}
+
+/**
+ * Compaction start event - SDK began context compaction.
+ * Kept as a first-class event so the trajectory view can render it as a
+ * standalone "Between turns" section with its trigger reason.
+ */
+export interface CompactionStartEvent {
+  type: 'compaction_start'
+  sessionId: string
+  reason: 'manual' | 'threshold' | 'overflow'
+}
+
+/**
+ * Compaction end event - SDK finished (or aborted) context compaction.
+ * Carries the outcome so the trajectory view can show success/error states.
+ */
+export interface CompactionEndEvent {
+  type: 'compaction_end'
+  sessionId: string
+  reason: 'manual' | 'threshold' | 'overflow'
+  aborted: boolean
+  willRetry: boolean
+  errorMessage?: string
 }
 
 /**
@@ -559,6 +596,8 @@ export type AgentEvent =
   | AuthCompletedEvent
   | SourceActivatedEvent
   | UsageUpdateEvent
+  | CompactionStartEvent
+  | CompactionEndEvent
 
 /**
  * Side effects that need to be handled outside the pure processor

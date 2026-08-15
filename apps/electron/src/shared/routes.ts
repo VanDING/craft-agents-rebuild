@@ -215,6 +215,9 @@ export const routes = {
 
     /** Preview panel (opened files + document pop-outs, bound to the active session) */
     preview: () => 'preview' as const,
+
+    /** Trajectory panel (turn-aware event ledger, bound to the active session) */
+    trajectory: () => 'trajectory' as const,
   },
 } as const
 

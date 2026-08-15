@@ -9,7 +9,7 @@
  * Claude / Codex / Copilot backends.
  */
 
-import type { AgentEvent as CraftAgentEvent } from '@craft-agent/core/types';
+import type { AgentEvent as CraftAgentEvent, PiUsage } from '@craft-agent/core/types';
 import type {
   AgentEvent as PiAgentEvent,
 } from '@earendil-works/pi-agent-core';
@@ -86,6 +86,18 @@ export class PiEventAdapter extends BaseEventAdapter {
 
   // Track last usage for emitting with complete event
   private lastUsage: { input: number; output: number; cacheRead: number; cacheWrite: number; totalTokens: number; cost: { total: number } } | undefined;
+
+  // Tool wall-clock tracking: toolCallId → start timestamp (epoch ms).
+  // Server-forwarded `ts` on tool_execution_start (set by pi-agent-server)
+  // is authoritative; Date.now() is the fallback when absent.
+  private toolStartTimes: Map<string, number> = new Map();
+
+  // Per-session request ordinal for trajectory request-header grouping.
+  // Incremented on each assistant message_end (matches turn request count).
+  private requestSeq: number = 0;
+
+  // Last assistant usage (full PiUsage) for text_complete emission.
+  private lastFullUsage: PiUsage | undefined;
 
   // ============================================================
   // Overflow-recovery state machine
@@ -371,6 +383,17 @@ export class PiEventAdapter extends BaseEventAdapter {
 
           const mTurnId = this.messageSubTurnId || this.nextSubTurnId('m');
           this.messageSubTurnId = null;
+          // Server-assigned request ordinal (authoritative, matches the prompt
+          // snapshot captured in pi-agent-server); fall back to local counter.
+          const serverSeq = (event as { requestSeq?: unknown }).requestSeq;
+          if (typeof serverSeq === 'number') {
+            this.requestSeq = serverSeq;
+          } else {
+            this.requestSeq += 1;
+          }
+
+          // Capture full provider usage for trajectory per-request buckets.
+          const usage = this.lastFullUsage;
 
           yield {
             type: 'text_complete',
@@ -378,6 +401,10 @@ export class PiEventAdapter extends BaseEventAdapter {
             isIntermediate,
             turnId: mTurnId,
             sdkMessageId,
+            timestamp: this.extractMessageTimestamp(event.message),
+            usage,
+            requestSeq: this.requestSeq,
+            promptSnapshot: (event as { promptSnapshot?: unknown }).promptSnapshot as string | undefined,
           };
           this.hasStreamedDeltas = false;
         }
@@ -385,6 +412,7 @@ export class PiEventAdapter extends BaseEventAdapter {
         // Emit usage_update if the assistant message includes token usage
         if (msg.usage && typeof msg.usage.input === 'number') {
           this.lastUsage = msg.usage;
+          this.lastFullUsage = msg.usage as PiUsage;
           const inputTokens = msg.usage.input + (msg.usage.cacheRead || 0);
           yield {
             type: 'usage_update',
@@ -392,6 +420,7 @@ export class PiEventAdapter extends BaseEventAdapter {
               inputTokens,
               contextWindow: this.contextWindow,
             },
+            full: msg.usage as PiUsage,
           };
         }
         break;
@@ -405,6 +434,11 @@ export class PiEventAdapter extends BaseEventAdapter {
         const toolCallId = event.toolCallId;
         const toolName = this.resolveToolName(event.toolName);
         this.toolNames.set(toolCallId, toolName);
+
+        // Server-forwarded `ts` (pi-agent-server Date.now() stamp) is
+        // authoritative; fall back to local time when absent.
+        const startTs = this.serverTimestamp(event) ?? Date.now();
+        this.toolStartTimes.set(toolCallId, startTs);
 
         // Normalize Pi field names to Claude Code format for UI compatibility
         // (diff stats, diff overlay, document routing all expect Claude Code format)
@@ -501,6 +535,12 @@ export class PiEventAdapter extends BaseEventAdapter {
         const resolvedToolName = this.toolNames.get(toolCallId) || 'tool';
         this.toolNames.delete(toolCallId);
 
+        // Wall-clock duration from the tracked start stamp (server ts or local).
+        const endTs = this.serverTimestamp(event) ?? Date.now();
+        const startTs = this.toolStartTimes.get(toolCallId);
+        this.toolStartTimes.delete(toolCallId);
+        const durationMs = startTs !== undefined ? endTs - startTs : undefined;
+
         // Use accumulated output from partial results if available
         const accumulatedOutput = this.consumeOutput(toolCallId);
 
@@ -520,11 +560,11 @@ export class PiEventAdapter extends BaseEventAdapter {
         // Check if this was classified as a file read
         const readInfo = this.consumeReadCommand(toolCallId);
         if (readInfo) {
-          yield this.createToolResult(toolCallId, 'Read', result, isError);
+          yield this.createToolResult(toolCallId, 'Read', result, isError, undefined, endTs, durationMs);
           break;
         }
 
-        yield this.createToolResult(toolCallId, resolvedToolName, result, isError);
+        yield this.createToolResult(toolCallId, resolvedToolName, result, isError, undefined, endTs, durationMs);
         break;
       }
 
@@ -532,7 +572,7 @@ export class PiEventAdapter extends BaseEventAdapter {
       // Session-level events (AgentSessionEvent extensions)
       // ============================================================
 
-      case 'compaction_start':
+      case 'compaction_start': {
         // Cancel the overflow fallback timer — the SDK is now actively
         // recovering, so we no longer need the "no compaction event arrived"
         // safety net. State transitions: held|awaiting → compacting.
@@ -540,12 +580,25 @@ export class PiEventAdapter extends BaseEventAdapter {
           this.cancelOverflowFallbackTimer();
           this.overflowState = 'compacting';
         }
+        const startEvent = event as Extract<AgentSessionEvent, { type: 'compaction_start' }>;
+        // Structured event for the trajectory view (Between turns section).
+        yield { type: 'compaction_start', reason: startEvent.reason };
         // Use "Compacting" keyword so session handler detects statusType: 'compacting'
         yield { type: 'status', message: 'Compacting context...' };
         break;
+      }
 
       case 'compaction_end': {
         const compactionEvent = event as Extract<AgentSessionEvent, { type: 'compaction_end' }>;
+        // Structured outcome for the trajectory view, emitted for every
+        // terminal state (success, aborted, or failed).
+        yield {
+          type: 'compaction_end',
+          reason: compactionEvent.reason,
+          aborted: compactionEvent.aborted,
+          willRetry: compactionEvent.willRetry,
+          errorMessage: compactionEvent.errorMessage,
+        };
         if (compactionEvent.result && !compactionEvent.aborted) {
           // Success: stay open and wait for the recovered agent_end. State
           // transitions: compacting → recovering. Threshold-only compactions
@@ -627,6 +680,28 @@ export class PiEventAdapter extends BaseEventAdapter {
   // ============================================================
   // Helpers
   // ============================================================
+
+  /**
+   * Read the server-forwarded wall-clock stamp (`ts`) that pi-agent-server
+   * attaches to tool_execution_start/end events. Not part of the typed
+   * AgentSessionEvent surface, so narrow through an indexed read + typeof.
+   */
+  private serverTimestamp(event: PiEvent): number | undefined {
+    if (typeof event !== 'object' || event === null) return undefined;
+    const ts = (event as { ts?: unknown }).ts;
+    return typeof ts === 'number' ? ts : undefined;
+  }
+
+  /**
+   * Extract the SDK message timestamp (epoch ms) from a Pi AgentMessage when
+   * present. AssistantMessage / ToolResultMessage carry `timestamp` in the
+   * pi-ai Message shape.
+   */
+  private extractMessageTimestamp(message: unknown): number | undefined {
+    if (typeof message !== 'object' || message === null) return undefined;
+    const ts = (message as { timestamp?: unknown }).timestamp;
+    return typeof ts === 'number' ? ts : undefined;
+  }
 
   /**
    * Extract canonical tool metadata from enriched tool_execution_start events.

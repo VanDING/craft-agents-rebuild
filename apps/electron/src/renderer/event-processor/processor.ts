@@ -49,6 +49,8 @@ import {
   handleAuthRequest,
   handleAuthCompleted,
   handleUsageUpdate,
+  handleCompactionStart,
+  handleCompactionEnd,
 } from './handlers/session'
 
 /**
@@ -221,6 +223,12 @@ export function processEvent(
 
     case 'usage_update':
       return handleUsageUpdate(state, event)
+
+    case 'compaction_start':
+      return handleCompactionStart(state, event)
+
+    case 'compaction_end':
+      return handleCompactionEnd(state, event)
 
     default: {
       // Unknown event type - return state unchanged but as new reference

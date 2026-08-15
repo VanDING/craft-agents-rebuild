@@ -23,7 +23,7 @@ import { useTranslation } from 'react-i18next'
 import { useAtomValue } from 'jotai'
 import {
   MessageSquare, LayoutGrid, CalendarDays, GitCompareArrows,
-  FolderTree, ListFilter, FileText, Globe, List,
+  FolderTree, ListFilter, FileText, Globe, List, Activity,
   type LucideIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -65,6 +65,7 @@ const WORKBENCH_ICONS: Record<WorkbenchPanelKind, LucideIcon> = {
   files: FolderTree,
   context: ListFilter,
   preview: FileText,
+  trajectory: Activity,
 }
 
 export function WorkbenchPanelButtons({

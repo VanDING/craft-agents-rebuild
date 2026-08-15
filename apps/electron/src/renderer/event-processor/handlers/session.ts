@@ -41,6 +41,8 @@ import type {
   AuthRequestEvent,
   AuthCompletedEvent,
   UsageUpdateEvent,
+  CompactionStartEvent,
+  CompactionEndEvent,
   Effect,
 } from '../types'
 import type { Message } from '../../../shared/types'
@@ -962,6 +964,88 @@ export function handleAuthCompleted(
 }
 
 /**
+ * Handle compaction_start - record the trigger reason as a compacting message.
+ * The existing 'status' ("Compacting context...") from the adapter drives the
+ * ProcessingIndicator; this event carries the structured reason for the
+ * trajectory view.
+ */
+export function handleCompactionStart(
+  state: SessionState,
+  event: CompactionStartEvent
+): ProcessResult {
+  const { session, streaming } = state
+
+  // Update an existing compacting status message if present (the adapter emits
+  // status first), otherwise append a dedicated info record.
+  const hasCompactingStatus = session.messages.some(
+    m => m.role === 'status' && m.statusType === 'compacting'
+  )
+  if (hasCompactingStatus) {
+    return { state: { session, streaming }, effects: [] }
+  }
+
+  const message: Message = {
+    id: generateMessageId(),
+    role: 'status',
+    content: 'Compacting context...',
+    timestamp: Date.now(),
+    statusType: 'compacting',
+    compaction: { reason: event.reason },
+  }
+
+  return {
+    state: { session: appendMessage(session, message), streaming },
+    effects: [],
+  }
+}
+
+/**
+ * Handle compaction_end - finalize the compaction record with its outcome.
+ * Converts the transient compacting status into a persisted info record the
+ * trajectory view can group into a "Between turns" section.
+ */
+export function handleCompactionEnd(
+  state: SessionState,
+  event: CompactionEndEvent
+): ProcessResult {
+  const { session, streaming } = state
+
+  const updatedMessages = session.messages.map(m =>
+    m.role === 'status' && m.statusType === 'compacting'
+      ? {
+          ...m,
+          role: 'info' as const,
+          content: event.aborted
+            ? 'Compaction aborted'
+            : event.errorMessage
+              ? `Compaction failed: ${event.errorMessage}`
+              : 'Compacted context to fit within limits',
+          statusType: 'compaction_complete' as const,
+          infoLevel: (event.aborted || event.errorMessage ? 'warning' : 'info') as Message['infoLevel'],
+          compaction: {
+            reason: event.reason,
+            aborted: event.aborted,
+            willRetry: event.willRetry,
+            errorMessage: event.errorMessage,
+          },
+        }
+      : m
+  )
+
+  return {
+    state: {
+      session: {
+        ...session,
+        messages: updatedMessages,
+        currentStatus: undefined,
+      },
+      streaming,
+    },
+    effects: [],
+  }
+}
+
+/**
  * Handle usage_update - real-time context usage during processing
  * Merges usage update into existing tokenUsage (preserves outputTokens, costUsd, etc.)
  */
@@ -988,6 +1072,9 @@ export function handleUsageUpdate(
       session: {
         ...session,
         tokenUsage: updatedTokenUsage,
+        // Full provider breakdown (Pi SDK) — kept verbatim for the trajectory
+        // view's per-session usage aggregation.
+        ...(event.full ? { lastFullUsage: event.full } : {}),
       },
       streaming,
     },

@@ -260,6 +260,12 @@ export interface Message {
   toolResult?: string;
   toolStatus?: ToolStatus;
   toolDuration?: number;
+  /** Full provider usage breakdown for assistant messages (Pi SDK). */
+  usage?: PiUsage;
+  /** Per-session request ordinal for trajectory request-header grouping. */
+  requestSeq?: number;
+  /** Effective system prompt at this request (trajectory prompt diff). */
+  promptSnapshot?: string;
   toolIntent?: string;
   toolDisplayName?: string;
   /** Tool display metadata with base64 icon - embedded at storage time for viewer */
@@ -297,6 +303,13 @@ export interface Message {
   turnId?: string;
   // Status type for special status messages (e.g., compacting)
   statusType?: 'compacting' | 'compaction_complete';
+  /** Structured compaction lifecycle record (trajectory view). */
+  compaction?: {
+    reason: 'manual' | 'threshold' | 'overflow';
+    aborted?: boolean;
+    willRetry?: boolean;
+    errorMessage?: string;
+  };
   // Info level for info messages (determines icon/color)
   infoLevel?: 'info' | 'warning' | 'error' | 'success';
   // Error-specific fields (for typed errors with diagnostics)
@@ -353,6 +366,12 @@ export interface StoredMessage {
   toolResult?: string;
   toolStatus?: ToolStatus;
   toolDuration?: number;
+  /** Full provider usage breakdown for assistant messages (Pi SDK). */
+  usage?: PiUsage;
+  /** Per-session request ordinal for trajectory request-header grouping. */
+  requestSeq?: number;
+  /** Effective system prompt at this request (trajectory prompt diff). */
+  promptSnapshot?: string;
   toolIntent?: string;
   toolDisplayName?: string;
   /** Tool display metadata with base64 icon - embedded at storage time for viewer */
@@ -376,6 +395,13 @@ export interface StoredMessage {
   turnId?: string;
   // Status type for compaction messages (persisted for reload)
   statusType?: 'compacting' | 'compaction_complete';
+  /** Structured compaction lifecycle record (trajectory view, persisted). */
+  compaction?: {
+    reason: 'manual' | 'threshold' | 'overflow';
+    aborted?: boolean;
+    willRetry?: boolean;
+    errorMessage?: string;
+  };
   // Info level for info messages (persisted for reload)
   infoLevel?: 'info' | 'warning' | 'error' | 'success';
   // Error display fields
@@ -531,6 +557,29 @@ export interface PermissionRequest {
 }
 
 /**
+ * Full provider usage breakdown mirroring the Pi SDK Usage shape.
+ * Carried verbatim on text_complete / complete / usage_update events so the
+ * trajectory view can render per-request token buckets and cost splits.
+ */
+export interface PiUsage {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+  cacheWrite1h?: number;
+  /** Reasoning/thinking tokens; subset of output when the provider reports it. */
+  reasoning?: number;
+  totalTokens: number;
+  cost: {
+    input: number;
+    output: number;
+    cacheRead: number;
+    cacheWrite: number;
+    total: number;
+  };
+}
+
+/**
  * Usage data emitted by CraftAgent in 'complete' events
  * Note: This is a subset of TokenUsage - totalTokens/contextTokens are computed by consumers
  */
@@ -542,6 +591,8 @@ export interface AgentEventUsage {
   costUsd?: number;
   /** Model's context window size in tokens (from SDK modelUsage) */
   contextWindow?: number;
+  /** Full provider usage breakdown when the backend exposes it (Pi SDK). */
+  full?: PiUsage;
 }
 
 /**
@@ -551,11 +602,13 @@ export interface AgentEventUsage {
 export type AgentEvent =
   | { type: 'status'; message: string }
   | { type: 'info'; message: string }
-  | { type: 'text_delta'; text: string; turnId?: string; parentToolUseId?: string }
-  | { type: 'text_complete'; text: string; isIntermediate?: boolean; turnId?: string; parentToolUseId?: string; sdkMessageId?: string }
+  | { type: 'text_delta'; text: string; turnId?: string; parentToolUseId?: string; timestamp?: number }
+  | { type: 'text_complete'; text: string; isIntermediate?: boolean; turnId?: string; parentToolUseId?: string; sdkMessageId?: string; timestamp?: number; usage?: PiUsage; requestSeq?: number; promptSnapshot?: string }
   | { type: 'pi_turn_anchor'; sdkMessageId: string; sdkTurnAnchor: string }
-  | { type: 'tool_start'; toolName: string; toolUseId: string; input: Record<string, unknown>; intent?: string; displayName?: string; turnId?: string; parentToolUseId?: string; toolDisplayMeta?: ToolDisplayMeta }
-  | { type: 'tool_result'; toolUseId: string; toolName?: string; result: string; isError: boolean; input?: Record<string, unknown>; turnId?: string; parentToolUseId?: string }
+  | { type: 'tool_start'; toolName: string; toolUseId: string; input: Record<string, unknown>; intent?: string; displayName?: string; turnId?: string; parentToolUseId?: string; toolDisplayMeta?: ToolDisplayMeta; timestamp?: number }
+  | { type: 'tool_result'; toolUseId: string; toolName?: string; result: string; isError: boolean; input?: Record<string, unknown>; turnId?: string; parentToolUseId?: string; timestamp?: number; durationMs?: number }
+  | { type: 'compaction_start'; reason: 'manual' | 'threshold' | 'overflow' }
+  | { type: 'compaction_end'; reason: 'manual' | 'threshold' | 'overflow'; aborted: boolean; willRetry: boolean; errorMessage?: string }
   | {
       type: 'permission_request';
       requestId: string;
@@ -573,7 +626,7 @@ export type AgentEvent =
     }
   | { type: 'error'; message: string }
   | { type: 'typed_error'; error: TypedError }
-  | { type: 'complete'; usage?: AgentEventUsage }
+  | { type: 'complete'; usage?: AgentEventUsage; fullUsage?: PiUsage }
   | { type: 'working_directory_changed'; workingDirectory: string }
   | { type: 'task_backgrounded'; toolUseId: string; taskId: string; intent?: string; turnId?: string; kind?: 'workflow'; workflowId?: string }
   | { type: 'shell_backgrounded'; toolUseId: string; shellId: string; intent?: string; command?: string; turnId?: string }
@@ -582,7 +635,7 @@ export type AgentEvent =
   | { type: 'workflow_agent_completed'; workflowId: string; agentId: string; turnId?: string }
   | { type: 'shell_killed'; shellId: string; turnId?: string }
   | { type: 'source_activated'; sourceSlug: string; originalMessage: string }
-  | { type: 'usage_update'; usage: Pick<AgentEventUsage, 'inputTokens' | 'contextWindow'> }
+  | { type: 'usage_update'; usage: Pick<AgentEventUsage, 'inputTokens' | 'contextWindow'>; full?: PiUsage }
   | { type: 'steer_undelivered'; message: string };
 
 /**

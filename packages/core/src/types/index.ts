@@ -42,6 +42,7 @@ export type {
   StoredMessage,
   TokenUsage,
   AgentEventUsage,
+  PiUsage,
   RecoveryAction,
   ErrorCode,
   TypedError,

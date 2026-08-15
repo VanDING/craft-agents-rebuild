@@ -83,7 +83,7 @@ import { restoreFiles } from '@craft-agent/shared/utils/bundle-files'
 import { getCredentialManager } from '@craft-agent/shared/credentials'
 import { CraftMcpClient, McpClientPool, McpPoolServer } from '@craft-agent/shared/mcp'
 import { type Session, type SessionEvent, type FileAttachment, type SendMessageOptions, type UnreadSummary, type RemoteSessionTransferPayload, type ImportRemoteSessionTransferResult, RPC_CHANNELS, generateMessageId } from '@craft-agent/shared/protocol'
-import { messageToStored, storedToMessage, type AgentEvent, type Message, type StoredAttachment, type ToolDisplayMeta, type TokenUsage } from '@craft-agent/core/types'
+import { messageToStored, storedToMessage, type AgentEvent, type Message, type StoredAttachment, type ToolDisplayMeta, type TokenUsage, type PiUsage } from '@craft-agent/core/types'
 import { formatPathsToRelative, formatToolInputPaths, perf, encodeIconToDataUrlAsync, getEmojiIcon, resolveToolIcon, readFileAttachment, selectSpreadMessages, normalizePath } from '@craft-agent/shared/utils'
 import { loadAllSkills, loadSkillBySlug, invalidateSkillsCache, type LoadedSkill } from '@craft-agent/shared/skills'
 import { invalidateContextFileCache } from '@craft-agent/shared/prompts/system'
@@ -762,6 +762,9 @@ interface ManagedSession {
     /** Model's context window size in tokens (from SDK modelUsage) */
     contextWindow?: number
   }
+  /** Full provider usage breakdown (Pi SDK) from the last turn, for the
+   *  trajectory view's per-session usage aggregation. */
+  lastFullUsage?: PiUsage
   // Session status (user-controlled) - determines open vs closed
   // Dynamic status ID referencing workspace status config
   sessionStatus?: string
@@ -4007,7 +4010,7 @@ export class SessionManager implements ISessionManager {
             )
 
             // Send complete event so renderer knows processing stopped (include tokenUsage for real-time updates)
-            this.sendEvent({ type: 'complete', sessionId: managed.id, tokenUsage: managed.tokenUsage, backgroundTasksAlive: this.keepBackgroundTasksAlive }, managed.workspace.id)
+            this.sendEvent({ type: 'complete', sessionId: managed.id, tokenUsage: managed.tokenUsage, backgroundTasksAlive: this.keepBackgroundTasksAlive, fullUsage: managed.lastFullUsage }, managed.workspace.id)
 
             // Persist session state
             this.persistSession(managed)
@@ -6563,6 +6566,7 @@ export class SessionManager implements ISessionManager {
         // chip orphan-backstop does not falsely flip live tasks to `orphaned`; a
         // real `task_completed` will arrive when the agent actually finishes.
         backgroundTasksAlive: this.keepBackgroundTasksAlive,
+        fullUsage: managed.lastFullUsage,
       }, managed.workspace.id)
 
       // Tasks Conductor seam: signal true completion (queue empty) with the stop
@@ -7491,6 +7495,9 @@ export class SessionManager implements ISessionManager {
           isIntermediate: event.isIntermediate,
           turnId: event.turnId,
           parentToolUseId: event.parentToolUseId,
+          usage: event.usage,
+          requestSeq: event.requestSeq,
+          promptSnapshot: event.promptSnapshot,
         }
         managed.messages.push(assistantMessage)
         managed.streamingText = ''
@@ -7522,7 +7529,7 @@ export class SessionManager implements ISessionManager {
           }
         }
 
-        this.sendEvent({ type: 'text_complete', sessionId, text: event.text, isIntermediate: event.isIntermediate, turnId: event.turnId, parentToolUseId: event.parentToolUseId, timestamp: assistantMessage.timestamp, messageId: assistantMessage.id }, workspaceId)
+        this.sendEvent({ type: 'text_complete', sessionId, text: event.text, isIntermediate: event.isIntermediate, turnId: event.turnId, parentToolUseId: event.parentToolUseId, timestamp: assistantMessage.timestamp, messageId: assistantMessage.id, usage: event.usage, requestSeq: event.requestSeq, promptSnapshot: event.promptSnapshot }, workspaceId)
 
         // Persist session after complete message to prevent data loss on quit
         this.persistSession(managed)
@@ -7758,6 +7765,7 @@ export class SessionManager implements ISessionManager {
             parentToolUseId,
             isError: inferredError,
             timestamp: toolResultTimestamp,
+            durationMs: event.durationMs,
           }, workspaceId)
         }
 
@@ -7790,6 +7798,29 @@ export class SessionManager implements ISessionManager {
         this.persistSession(managed)
         break
       }
+
+      case 'compaction_start':
+        // Structured compaction lifecycle event for the trajectory view.
+        // The adapter also emits a 'status' ("Compacting context...") for the
+        // existing chat UI; both flow through — the renderer processor keeps
+        // them distinct by type.
+        this.sendEvent({
+          type: 'compaction_start',
+          sessionId,
+          reason: event.reason,
+        }, workspaceId)
+        break
+
+      case 'compaction_end':
+        this.sendEvent({
+          type: 'compaction_end',
+          sessionId,
+          reason: event.reason,
+          aborted: event.aborted,
+          willRetry: event.willRetry,
+          errorMessage: event.errorMessage,
+        }, workspaceId)
+        break
 
       case 'status':
         this.sendEvent({
@@ -8192,6 +8223,9 @@ export class SessionManager implements ISessionManager {
       case 'complete':
         // Complete event from CraftAgent - accumulate usage from this turn
         // Actual 'complete' sent to renderer comes from the finally block in sendMessage
+        if (event.fullUsage) {
+          managed.lastFullUsage = event.fullUsage
+        }
         if (event.usage) {
           // Initialize tokenUsage if not set
           if (!managed.tokenUsage) {

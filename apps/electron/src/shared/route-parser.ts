@@ -66,7 +66,7 @@ export interface ParsedCompoundRoute {
  * Known prefixes that indicate a compound route
  */
 const COMPOUND_ROUTE_PREFIXES = [
-  'allSessions', 'flagged', 'archived', 'state', 'label', 'view', 'board', 'calendar', 'sources', 'skills', 'automations', 'projects', 'settings', 'diff', 'files', 'context', 'preview'
+  'allSessions', 'flagged', 'archived', 'state', 'label', 'view', 'board', 'calendar', 'sources', 'skills', 'automations', 'projects', 'settings', 'diff', 'files', 'context', 'preview', 'trajectory'
 ]
 
 /**
@@ -127,7 +127,7 @@ export function parseCompoundRoute(route: string): ParsedCompoundRoute | null {
   // Bound content-workbench panels — standalone single-segment routes that
   // carry no session id (content follows the active session). Same prefix
   // convention as board/calendar.
-  if (first === 'diff' || first === 'files' || first === 'context' || first === 'preview') {
+  if (first === 'diff' || first === 'files' || first === 'context' || first === 'preview' || first === 'trajectory') {
     return {
       navigator: 'other',
       panel: first as BoundPanelType,

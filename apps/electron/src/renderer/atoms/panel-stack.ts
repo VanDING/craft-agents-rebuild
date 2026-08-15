@@ -14,7 +14,7 @@ function generatePanelId(): string {
 }
 
 export type PanelType = 'session' | 'source' | 'settings' | 'skills' | 'other'
-  | 'diff' | 'files' | 'context' | 'preview'
+  | 'diff' | 'files' | 'context' | 'preview' | 'trajectory'
 export type PanelLaneId = 'main'
 
 /**

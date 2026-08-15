@@ -119,6 +119,10 @@ export function handleTextComplete(
       // Overwrite text_delta's Date.now() with main process monotonic timestamp
       // This ensures reload order matches live order
       ...(event.timestamp ? { timestamp: event.timestamp } : {}),
+      // Full provider usage + request ordinal for trajectory per-request buckets.
+      ...(event.usage ? { usage: event.usage } : {}),
+      ...(event.requestSeq !== undefined ? { requestSeq: event.requestSeq } : {}),
+      ...(event.promptSnapshot !== undefined ? { promptSnapshot: event.promptSnapshot } : {}),
     }, shouldUpdateTimestamp)
     return { session: updatedSession, streaming: null }
   }
@@ -136,6 +140,9 @@ export function handleTextComplete(
     isIntermediate: event.isIntermediate,
     turnId: event.turnId,
     parentToolUseId: event.parentToolUseId,
+    usage: event.usage,
+    requestSeq: event.requestSeq,
+    promptSnapshot: event.promptSnapshot,
   }
 
   // Only update lastMessageAt for final (non-intermediate) messages

@@ -27,6 +27,7 @@ export type WorkbenchPanelKind =
   | 'files'
   | 'context'
   | 'preview'
+  | 'trajectory'
 
 export const WORKBENCH_PANEL_KINDS: readonly WorkbenchPanelKind[] = [
   'sessions',
@@ -35,6 +36,7 @@ export const WORKBENCH_PANEL_KINDS: readonly WorkbenchPanelKind[] = [
   'diff',
   'files',
   'context',
+  'trajectory',
 ] as const
 
 export const WORKBENCH_PANEL_ROUTES: Record<WorkbenchPanelKind, ViewRoute> = {
@@ -45,6 +47,7 @@ export const WORKBENCH_PANEL_ROUTES: Record<WorkbenchPanelKind, ViewRoute> = {
   files: 'files',
   context: 'context',
   preview: 'preview',
+  trajectory: 'trajectory',
 }
 
 /**

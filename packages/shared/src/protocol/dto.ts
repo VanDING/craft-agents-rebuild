@@ -13,6 +13,7 @@ import type {
   ToolDisplayMeta,
   AnnotationV1,
   PermissionRequest as BasePermissionRequest,
+  PiUsage,
 } from '@craft-agent/core/types'
 import type { PermissionMode } from '../agent/mode-types'
 import type { ThinkingLevel } from '../agent/thinking-levels'
@@ -96,6 +97,8 @@ export interface Session {
     /** Model's context window size in tokens (from SDK modelUsage) */
     contextWindow?: number
   }
+  /** Full provider usage breakdown (Pi SDK) from the last turn — trajectory view. */
+  lastFullUsage?: PiUsage
   /** When true, session is hidden from session list (e.g., mini edit sessions) */
   hidden?: boolean
   isArchived?: boolean
@@ -373,14 +376,16 @@ export interface PermissionModeState {
 // turnId: Correlation ID from the API's message.id, groups all events in an assistant turn
 export type SessionEvent =
   | { type: 'text_delta'; sessionId: string; delta: string; turnId?: string }
-  | { type: 'text_complete'; sessionId: string; text: string; isIntermediate?: boolean; turnId?: string; parentToolUseId?: string; timestamp?: number; messageId?: string }
+  | { type: 'text_complete'; sessionId: string; text: string; isIntermediate?: boolean; turnId?: string; parentToolUseId?: string; timestamp?: number; messageId?: string; usage?: PiUsage; requestSeq?: number; promptSnapshot?: string }
   | { type: 'tool_start'; sessionId: string; toolName: string; toolUseId: string; toolInput: Record<string, unknown>; toolIntent?: string; toolDisplayName?: string; toolDisplayMeta?: ToolDisplayMeta; turnId?: string; parentToolUseId?: string; timestamp?: number }
-  | { type: 'tool_result'; sessionId: string; toolUseId: string; toolName: string; result: string; turnId?: string; parentToolUseId?: string; isError?: boolean; timestamp?: number }
+  | { type: 'tool_result'; sessionId: string; toolUseId: string; toolName: string; result: string; turnId?: string; parentToolUseId?: string; isError?: boolean; timestamp?: number; durationMs?: number }
   | { type: 'error'; sessionId: string; error: string; timestamp?: number }
   | { type: 'typed_error'; sessionId: string; error: TypedError; timestamp?: number }
-  | { type: 'complete'; sessionId: string; tokenUsage?: Session['tokenUsage']; hasUnread?: boolean; backgroundTasksAlive?: boolean }
+  | { type: 'complete'; sessionId: string; tokenUsage?: Session['tokenUsage']; hasUnread?: boolean; backgroundTasksAlive?: boolean; fullUsage?: PiUsage }
   | { type: 'interrupted'; sessionId: string; message?: Message; queuedMessages?: string[] }
   | { type: 'status'; sessionId: string; message: string; statusType?: 'compacting' }
+  | { type: 'compaction_start'; sessionId: string; reason: 'manual' | 'threshold' | 'overflow' }
+  | { type: 'compaction_end'; sessionId: string; reason: 'manual' | 'threshold' | 'overflow'; aborted: boolean; willRetry: boolean; errorMessage?: string }
   | { type: 'info'; sessionId: string; message: string; statusType?: 'compaction_complete'; level?: 'info' | 'warning' | 'error' | 'success'; timestamp?: number }
   | { type: 'title_generated'; sessionId: string; title: string }
   | { type: 'title_regenerating'; sessionId: string; isRegenerating: boolean }
@@ -416,7 +421,7 @@ export type SessionEvent =
   | { type: 'auth_request'; sessionId: string; message: Message; request: SharedAuthRequest }
   | { type: 'auth_completed'; sessionId: string; requestId: string; success: boolean; cancelled?: boolean; error?: string }
   | { type: 'source_activated'; sessionId: string; sourceSlug: string; originalMessage: string }
-  | { type: 'usage_update'; sessionId: string; tokenUsage: { inputTokens: number; contextWindow?: number } }
+  | { type: 'usage_update'; sessionId: string; tokenUsage: { inputTokens: number; contextWindow?: number }; full?: PiUsage }
   | { type: 'message_annotations_updated'; sessionId: string; messageId: string; annotations: AnnotationV1[] }
   | { type: 'working_directory_error'; sessionId: string; error: string }
 

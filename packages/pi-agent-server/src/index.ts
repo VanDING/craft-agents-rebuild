@@ -194,9 +194,22 @@ interface ToolExecutionMetadata {
 
 type EnrichedToolExecutionStartEvent = Extract<AgentSessionEvent, { type: 'tool_execution_start' }> & {
   toolMetadata?: ToolExecutionMetadata;
+  /** Wall-clock stamp (epoch ms) added at forward time for trajectory timing. */
+  ts?: number;
 };
 
-type OutboundAgentEvent = AgentSessionEvent | EnrichedToolExecutionStartEvent;
+/** Trajectory-enrichment fields attached at forward time (main process reads
+ *  them via the typed adapter boundary; they are not part of the SDK event). */
+interface TrajectoryEventAttachments {
+  /** Wall-clock stamp (epoch ms) added at forward time for trajectory timing. */
+  ts?: number;
+  /** Server-assigned per-session request ordinal (matches prompt snapshots). */
+  requestSeq?: number;
+  /** Effective system prompt captured for this request. */
+  promptSnapshot?: string;
+}
+
+type OutboundAgentEvent = AgentSessionEvent | (EnrichedToolExecutionStartEvent & TrajectoryEventAttachments);
 
 /** Messages to main process (stdout) */
 interface OutboundReady { type: 'ready'; sessionId: string | null; callbackPort: number; callbackToken: string }
@@ -301,6 +314,42 @@ let proxyToolDefs: ProxyToolDef[] = [];
 // Each proxy tool's execute() then hits the cache instead of sending a new request.
 const PREFETCHABLE_TOOLS = new Set(['call_llm']);
 const prefetchCache = new Map<string, Promise<{ content: string; isError: boolean }>>();
+
+// ============================================================
+// Prompt snapshots (trajectory request-header / prompt-diff data)
+// ============================================================
+
+/** One captured request snapshot: the effective system prompt at request time. */
+export interface PromptSnapshot {
+  seq: number;
+  prompt: string;
+}
+
+const PROMPT_SNAPSHOT_LIMIT = 50;
+const promptSnapshots = new Map<number, PromptSnapshot>();
+
+/**
+ * Capture the current session's effective system prompt under the next
+ * request ordinal. Returns the seq so the caller can attach it to the
+ * forwarded message_end event.
+ */
+function capturePromptSnapshot(session: AgentSession): number {
+  const seq = promptSnapshots.size + 1;
+  const prompt = session.systemPrompt ?? '';
+  promptSnapshots.set(seq, { seq, prompt });
+
+  // Bounded ring: drop oldest once over the cap.
+  if (promptSnapshots.size > PROMPT_SNAPSHOT_LIMIT) {
+    const oldest = promptSnapshots.keys().next().value;
+    if (oldest !== undefined) promptSnapshots.delete(oldest);
+  }
+  return seq;
+}
+
+/** Reset snapshot state (session teardown / init). */
+function clearPromptSnapshots(): void {
+  promptSnapshots.clear();
+}
 
 function isPrefetchableTool(toolName: string): boolean {
   const stripped = toolName.replace(/^(mcp__session__|session__)/, '');
@@ -1197,9 +1246,18 @@ function handleSessionEvent(event: AgentSessionEvent): void {
       // order (after this `message_end`, before the next event).
       const sdkMessageId = (msg as { id?: string }).id;
       if (sdkMessageId) {
+        // Per-session request ordinal + system-prompt snapshot for the
+        // trajectory view's request-header grouping and prompt diff. The
+        // snapshot is captured here because the SDK's `systemPrompt` getter is
+        // only meaningful while a session exists, and message_end is the
+        // earliest point after the request completed.
+        const requestSeq = capturePromptSnapshot(piSession);
+        const snapshot = promptSnapshots.get(requestSeq);
         forwardedEvent = {
           ...(event as Record<string, unknown>),
           sdkMessageId,
+          requestSeq,
+          ...(snapshot ? { promptSnapshot: snapshot.prompt } : {}),
         } as unknown as OutboundAgentEvent;
 
         const sessionManagerSnapshot = piSession.sessionManager;
@@ -1262,12 +1320,12 @@ function handleSessionEvent(event: AgentSessionEvent): void {
     }
 
     const toolMetadata = extractToolExecutionMetadata((event.args ?? {}) as Record<string, unknown>);
-    if (toolMetadata) {
-      forwardedEvent = {
-        ...event,
-        toolMetadata,
-      };
-    }
+    // Wall-clock stamp for trajectory timing (authoritative over adapter-local time).
+    forwardedEvent = {
+      ...event,
+      ...(toolMetadata ? { toolMetadata } : {}),
+      ts: Date.now(),
+    } as unknown as OutboundAgentEvent;
   }
 
   if (event.type === 'tool_execution_end') {
@@ -1281,6 +1339,12 @@ function handleSessionEvent(event: AgentSessionEvent): void {
         isError: !!event.isError,
       });
     }
+
+    // Wall-clock stamp for trajectory duration (start → end delta).
+    forwardedEvent = {
+      ...event,
+      ts: Date.now(),
+    } as unknown as OutboundAgentEvent;
   }
 
   // Forward all events to main process

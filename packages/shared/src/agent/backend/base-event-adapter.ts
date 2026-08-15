@@ -154,6 +154,7 @@ export abstract class BaseEventAdapter {
     intent?: string,
     displayName?: string,
     parentToolUseId?: string,
+    timestamp?: number,
   ): AgentEvent {
     return {
       type: 'tool_start',
@@ -164,6 +165,7 @@ export abstract class BaseEventAdapter {
       displayName,
       turnId: this.currentTurnId || undefined,
       parentToolUseId,
+      timestamp,
     };
   }
 
@@ -176,6 +178,8 @@ export abstract class BaseEventAdapter {
     result: string,
     isError: boolean,
     parentToolUseId?: string,
+    timestamp?: number,
+    durationMs?: number,
   ): AgentEvent {
     return {
       type: 'tool_result',
@@ -185,6 +189,8 @@ export abstract class BaseEventAdapter {
       isError,
       turnId: this.currentTurnId || undefined,
       parentToolUseId,
+      timestamp,
+      durationMs,
     };
   }
 

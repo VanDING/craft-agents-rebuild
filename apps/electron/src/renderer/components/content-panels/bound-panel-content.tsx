@@ -24,10 +24,11 @@ import { ReviewPanel } from './ReviewPanel'
 import { FilesPanel } from './FilesPanel'
 import { ContextPanel } from './ContextPanel'
 import { PreviewPanel } from './PreviewPanel'
+import { TrajectoryPanel } from './TrajectoryPanel'
 
 /** True for panel types that are rendered by this dispatcher (bound panels). */
 export function isBoundPanelType(panelType: PanelStackEntry['panelType']): boolean {
-  return panelType === 'diff' || panelType === 'files' || panelType === 'context' || panelType === 'preview'
+  return panelType === 'diff' || panelType === 'files' || panelType === 'context' || panelType === 'preview' || panelType === 'trajectory'
 }
 
 export function BoundPanelContent({ entry }: { entry: PanelStackEntry }) {
@@ -49,6 +50,8 @@ export function BoundPanelContent({ entry }: { entry: PanelStackEntry }) {
       return <ContextPanel />
     case 'preview':
       return <PreviewPanel />
+    case 'trajectory':
+      return <TrajectoryPanel />
     default:
       return <PanelEmptyState title={t('contentPanel.panelUnavailable')} />
   }
