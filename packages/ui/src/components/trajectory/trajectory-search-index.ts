@@ -28,12 +28,15 @@ export function toolCallTextParts(
   return { name: text, args: '' }
 }
 
-/** Markdown-aware single-line display text (DSH `recordDisplayText`). */
+/**
+ * Markdown-aware single-line display text. Craft's `text` is already the
+ * single-line content summary, so the Markdown-stripped preview is used as
+ * the display text when available and the plain text otherwise — never both
+ * (they share the same source and would duplicate).
+ */
 export function recordDisplayText(cell: TrajectoryCellProps): string {
-  if (cell.previewMarkdown !== undefined) {
-    const preview = trajectoryPreviewText(cell.previewMarkdown)
-    if (cell.text === '') return preview
-    return preview === '' ? cell.text : `${cell.text} · ${preview}`
+  if (cell.previewMarkdown !== undefined && cell.previewMarkdown !== '') {
+    return trajectoryPreviewText(cell.previewMarkdown)
   }
   if (cell.text !== '') return cell.text
   const markdown = cell.kind === 'user' || cell.kind === 'context'

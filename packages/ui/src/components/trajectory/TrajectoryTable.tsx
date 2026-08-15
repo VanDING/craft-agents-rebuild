@@ -6,11 +6,10 @@
 
 import { memo, useMemo } from 'react'
 import { MessageSquare, RefreshCw, Settings, User, Wrench, FileText } from 'lucide-react'
-import type { TrajectoryCellKind, TrajectoryRenderRecord, TrajectoryTurnModel } from './trajectory-layout'
-import { collapseAssistantRecords, collapseTurnRecords, flattenTurnRecords, trajectoryRecordId } from './trajectory-layout'
-import { filterRecords } from './trajectory-search-index'
+import type { TrajectoryCellKind, TrajectoryTurnModel } from './trajectory-layout'
+import { collapseAssistantRecords, collapseTurnRecords, flattenTurnRecords, formatElapsedSeconds, trajectoryRecordId } from './trajectory-layout'
+import { filterRecords, recordDisplayText } from './trajectory-search-index'
 import { projectVirtualRows } from './trajectory-virtual-rows'
-import { TrajectoryCell } from './TrajectoryCell'
 import css from './TrajectoryTable.module.css'
 
 export interface TrajectoryTableProps {
@@ -109,8 +108,9 @@ export const TrajectoryTable = memo(function TrajectoryTable({
             const focus = isCollapsedSummary || timelineFocusIndexes === null
               ? undefined
               : timelineFocusIndexes.has(cell.index) ? 'inside' : 'outside'
-            const requestLabel = cell.kind === 'system'
-              ? `Request ${cell.index}`
+            const displayText = isCollapsedSummary ? '' : recordDisplayText(cell)
+            const resultText = !isCollapsedSummary && cell.result !== undefined && cell.result !== ''
+              ? cell.result
               : undefined
             return (
               <tr
@@ -173,17 +173,20 @@ export const TrajectoryTable = memo(function TrajectoryTable({
                       <span className={css.collapsedTurnText}>{record.collapsedSummary}</span>
                     </span>
                   ) : (
-                    <TrajectoryCell
-                      index={cell.index}
-                      kind={cell.kind}
-                      text={cell.text}
-                      timeSeconds={cell.timeSeconds}
-                      input={cell.input}
-                      output={cell.output}
-                      think={cell.think}
-                      selected={selected}
-                      title={requestLabel ?? cell.text}
-                    />
+                    <div className={css.contentRow}>
+                      <span className={css.contentText} title={displayText}>
+                        {displayText}
+                        {resultText !== undefined && (
+                          <span className={cell.isError ? `${css.inlineResult} ${css.error}` : css.inlineResult}>
+                            <span className={css.arrow}>→</span>
+                            <span className={css.inlineResultText}>{resultText}</span>
+                          </span>
+                        )}
+                      </span>
+                      {cell.timeSeconds !== null && (
+                        <span className={css.time}>{formatElapsedSeconds(cell.timeSeconds)}</span>
+                      )}
+                    </div>
                   )}
                 </td>
               </tr>

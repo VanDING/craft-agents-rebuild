@@ -725,6 +725,32 @@
   white-space: nowrap;
 }
 
+/* Craft adaptation: content cell hosts the display text, optional inline
+ * result preview, and the elapsed time as one flex row. */
+.table tbody tr td.content {
+  padding-top: 0;
+  padding-bottom: 0;
+  vertical-align: middle;
+}
+
+.contentRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.time {
+  flex: none;
+  margin-left: auto;
+  padding-left: 8px;
+  color: var(--dsw-alias-label-tertiary);
+  font: var(--dsw-font-xxs-12);
+  font-variant-numeric: tabular-nums;
+}
+
 .toolCallOnly {
   color: var(--dsw-alias-label-tertiary);
 }

@@ -14,7 +14,7 @@
 .plot {
   display: grid;
   grid-template-columns: 44px minmax(0, 1fr);
-  height: 50px;
+  height: 44px;
   overflow: hidden;
   background: var(--dsw-alias-bg-layer-2);
 }
@@ -39,15 +39,15 @@
 }
 
 .labels span:nth-child(1) {
-  top: 7px;
+  top: 6px;
 }
 
 .labels span:nth-child(2) {
-  top: 21px;
+  top: 18px;
 }
 
 .labels span:nth-child(3) {
-  top: 35px;
+  top: 30px;
 }
 
 .track {
@@ -118,8 +118,8 @@
 .lanes {
   position: absolute;
   z-index: 2;
-  top: 7px;
-  bottom: 7px;
+  top: 4px;
+  bottom: 4px;
   left: var(--trajectory-domain-left);
   width: var(--trajectory-domain-width);
 }
