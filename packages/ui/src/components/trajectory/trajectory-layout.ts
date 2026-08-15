@@ -70,6 +70,8 @@ export interface TrajectoryCellProps {
   cacheWrite?: number
   output?: number
   think?: number
+  /** Session-global request ordinal (request-header cells). */
+  requestSeq?: number
   /** Whether the cell renders its selection treatment. */
   selected?: boolean
   /** Underlying Craft message (for inspector access to raw fields). */
@@ -376,6 +378,7 @@ export function deriveTrajectoryLayout(input: TrajectoryLayoutInput): readonly T
           text: prompt ? `System prompt (${prompt.length} chars)` : 'System prompt',
           previewMarkdown: prompt,
           inputDetail: prompt,
+          requestSeq: contribution.requestSeq,
           timeSeconds: null,
           startedAt: contribution.time,
         }

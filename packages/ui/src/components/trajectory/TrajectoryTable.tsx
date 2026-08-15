@@ -144,6 +144,19 @@ export const TrajectoryTable = memo(function TrajectoryTable({
                 }}
               >
                 <td className={css.event}>
+                  {cell.kind === 'system' && cell.requestSeq !== undefined && (
+                    <button
+                      type="button"
+                      className={css.requestBoundaryControl}
+                      aria-label={`Request #${cell.requestSeq}`}
+                      aria-pressed={selected}
+                      data-label={`Request #${cell.requestSeq}`}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        onSelectIndex(cell.index)
+                      }}
+                    />
+                  )}
                   {record.turn !== null && record.turnStart && (
                     <span className={css.turnLabel} aria-label={sectionLabel(record.turn)}>
                       <span className={css.turnLabelFull} aria-hidden="true">{sectionLabel(record.turn)}</span>

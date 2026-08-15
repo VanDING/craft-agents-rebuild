@@ -8,7 +8,7 @@
  * Assistant records additionally get Usage and TTFT timing.
  */
 
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { X } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { Markdown } from '../markdown'
@@ -189,13 +189,63 @@ function detailTabs(cell: TrajectoryCellProps): readonly TabItem[] {
   ]
 }
 
+const DETAILS_MIN_WIDTH = 320
+const DETAILS_MAX_WIDTH = 720
+const DETAILS_RESIZE_STEP = 16
+
+function clampDetailsWidth(width: number): number {
+  return Math.min(DETAILS_MAX_WIDTH, Math.max(DETAILS_MIN_WIDTH, width))
+}
+
 export function RecordInspector({ cell, previousPrompt, sessionTotal, onClose }: RecordInspectorProps) {
   const [tab, setTab] = useState<DetailTab>('overview')
+  const [detailsWidth, setDetailsWidth] = useState<number | null>(null)
+  const resizeDrag = useRef<{ pointerId: number; startX: number; startWidth: number } | null>(null)
   const tabs = useMemo(() => detailTabs(cell), [cell])
   const markdownSource = cell.kind === 'message' ? cell.outputDetail ?? cell.thinkingDetail : undefined
 
   return (
-    <aside className="flex h-full w-80 shrink-0 flex-col border-l border-border/60" aria-label="Event details">
+    <aside
+      className="relative flex h-full shrink-0 flex-col border-l border-border/60"
+      aria-label="Event details"
+      style={detailsWidth === null ? undefined : { width: detailsWidth }}
+    >
+      <div
+        className="group absolute -left-1 top-0 bottom-0 z-10 w-2 cursor-col-resize"
+        role="separator"
+        aria-label="Resize event details"
+        aria-orientation="vertical"
+        tabIndex={0}
+        title="Drag to resize. Double-click to reset."
+        onDoubleClick={() => setDetailsWidth(null)}
+        onPointerDown={(event) => {
+          if (event.button !== 0) return
+          resizeDrag.current = {
+            pointerId: event.pointerId,
+            startX: event.clientX,
+            startWidth: detailsWidth ?? 320,
+          }
+          event.currentTarget.setPointerCapture(event.pointerId)
+          event.preventDefault()
+        }}
+        onPointerMove={(event) => {
+          const drag = resizeDrag.current
+          if (drag === null || drag.pointerId !== event.pointerId) return
+          setDetailsWidth(clampDetailsWidth(drag.startWidth + drag.startX - event.clientX))
+        }}
+        onPointerUp={(event) => {
+          if (resizeDrag.current?.pointerId !== event.pointerId) return
+          resizeDrag.current = null
+          event.currentTarget.releasePointerCapture(event.pointerId)
+        }}
+        onPointerCancel={() => { resizeDrag.current = null }}
+        onKeyDown={(event) => {
+          if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+          const direction = event.key === 'ArrowLeft' ? 1 : -1
+          setDetailsWidth(clampDetailsWidth((detailsWidth ?? 320) + direction * DETAILS_RESIZE_STEP))
+          event.preventDefault()
+        }}
+      />
       <div className="flex items-center justify-between border-b border-border/60 px-3 py-2">
         <div className="min-w-0">
           <div className="truncate text-[12px] font-semibold">#{cell.index} {cell.kind}</div>
