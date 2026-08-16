@@ -368,6 +368,9 @@ function FileTreeItem({
           )}
         </span>
       </span>
+
+      {/* File/folder name - min-w-0 required for truncate to work in flex container */}
+      <span className="flex-1 min-w-0 truncate">{file.name}</span>
     </button>
   )
 
