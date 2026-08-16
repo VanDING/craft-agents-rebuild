@@ -5,6 +5,7 @@ node_modules
 out
 dist
 *.tgz
+/main.cjs
 .build
 apps/electron/release
 apps/electron/resources/session-mcp-server/
