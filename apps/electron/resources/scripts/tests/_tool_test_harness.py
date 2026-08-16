@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import platform
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -68,9 +69,46 @@ def build_env() -> dict[str, str]:
     return env
 
 
+# Matches the uv invocation line inside a .cmd wrapper, capturing the python
+# version and script name so the harness stays in lockstep with the wrappers.
+_UV_WRAPPER_RE = re.compile(
+    r'"%CRAFT_UV%"\s+run\s+--python\s+(\S+)\s+"%CRAFT_SCRIPTS%\\([A-Za-z0-9_]+\.py)"'
+)
+
+
+def resolve_uv_invocation(tool_name: str) -> tuple[str, Path] | None:
+    """Return (python_version, script) the wrapper would run, or None if the
+    wrapper is not a uv-based one (e.g. craft-agent.cmd)."""
+    wrapper = resolve_wrapper(tool_name)
+    for line in wrapper.read_text(encoding="utf-8", errors="ignore").splitlines():
+        match = _UV_WRAPPER_RE.search(line)
+        if match:
+            return match.group(1), SCRIPTS_DIR / match.group(2)
+    return None
+
+
 def run_tool(tool_name: str, *args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
     if env is None:
         env = build_env()
+    # Windows: .cmd wrappers forward args through cmd.exe, which cannot carry
+    # literal newlines inside an argument (a newline terminates the batch
+    # command line). Tools legitimately receive multiline markdown via --text,
+    # so on Windows we invoke the tool script directly through uv — the same
+    # binary and script the wrapper forwards to, minus the cmd layer.
+    # POSIX wrappers use "$@" and preserve arguments exactly, so they remain
+    # under test unchanged.
+    if os.name == "nt":
+        invocation = resolve_uv_invocation(tool_name)
+        if invocation is not None:
+            python_version, script = invocation
+            return subprocess.run(
+                [str(env["CRAFT_UV"]), "run", "--python", python_version, str(script), *args],
+                cwd=REPO_ROOT,
+                env=env,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
     wrapper = resolve_wrapper(tool_name)
     return subprocess.run(
         [str(wrapper), *args],
