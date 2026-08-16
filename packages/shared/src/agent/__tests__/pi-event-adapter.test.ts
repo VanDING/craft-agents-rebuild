@@ -180,6 +180,23 @@ describe('PiEventAdapter', () => {
       expect((events[0] as { sdkTurnAnchor?: string }).sdkTurnAnchor).toBeUndefined();
     });
 
+    it('should fall back to responseId when message_end carries no id (SDK 0.84 shape)', () => {
+      collect(adapter.adaptEvent({ type: 'turn_start' } as any));
+      // SDK 0.84 assistant messages at message_end have no `id` — only the
+      // provider responseId (pi-agent-server forwards the same fallback).
+      const events = collect(adapter.adaptEvent({
+        type: 'message_end',
+        message: { role: 'assistant', stopReason: 'stop', content: 'Anchored output', responseId: 'resp_abc123' },
+      } as any));
+
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({
+        type: 'text_complete',
+        text: 'Anchored output',
+        sdkMessageId: 'resp_abc123',
+      });
+    });
+
     it('should forward pi_turn_anchor events as Craft AgentEvents', () => {
       const events = collect(adapter.adaptEvent({
         type: 'pi_turn_anchor',

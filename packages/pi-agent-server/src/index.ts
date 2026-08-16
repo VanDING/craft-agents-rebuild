@@ -329,12 +329,20 @@ const PROMPT_SNAPSHOT_LIMIT = 50;
 const promptSnapshots = new Map<number, PromptSnapshot>();
 
 /**
+ * Monotonic request ordinal. NEVER derived from `promptSnapshots.size`: once
+ * the bounded ring evicts the oldest entry the size stops growing, so
+ * `size + 1` would repeat seqs and collide prompt-diff keys (trajectory view
+ * groups requests by seq and diffs against seq - 1).
+ */
+let promptSnapshotSeq = 0;
+
+/**
  * Capture the current session's effective system prompt under the next
  * request ordinal. Returns the seq so the caller can attach it to the
  * forwarded message_end event.
  */
 function capturePromptSnapshot(session: AgentSession): number {
-  const seq = promptSnapshots.size + 1;
+  const seq = ++promptSnapshotSeq;
   const prompt = session.systemPrompt ?? '';
   promptSnapshots.set(seq, { seq, prompt });
 
@@ -349,6 +357,7 @@ function capturePromptSnapshot(session: AgentSession): number {
 /** Reset snapshot state (session teardown / init). */
 function clearPromptSnapshots(): void {
   promptSnapshots.clear();
+  promptSnapshotSeq = 0;
 }
 
 function isPrefetchableTool(toolName: string): boolean {
@@ -1238,28 +1247,35 @@ function handleSessionEvent(event: AgentSessionEvent): void {
       // turn a sibling of the assistant message, dropping the assistant reply
       // from the LLM's view of history (craft-agents-oss#782).
       //
-      // Instead, attach the SDK's message id to the forwarded event so the main
+      // Instead, attach a correlation id to the forwarded event so the main
       // process can correlate this turn, then queue a microtask to read the
       // correct leaf AFTER `appendMessage` has run. The microtask drains before
       // any subsequent SDK event is dispatched, so the follow-up
       // `pi_turn_anchor` event is delivered to the main process in the right
       // order (after this `message_end`, before the next event).
-      const sdkMessageId = (msg as { id?: string }).id;
-      if (sdkMessageId) {
-        // Per-session request ordinal + system-prompt snapshot for the
-        // trajectory view's request-header grouping and prompt diff. The
-        // snapshot is captured here because the SDK's `systemPrompt` getter is
-        // only meaningful while a session exists, and message_end is the
-        // earliest point after the request completed.
-        const requestSeq = capturePromptSnapshot(piSession);
-        const snapshot = promptSnapshots.get(requestSeq);
-        forwardedEvent = {
-          ...(event as Record<string, unknown>),
-          sdkMessageId,
-          requestSeq,
-          ...(snapshot ? { promptSnapshot: snapshot.prompt } : {}),
-        } as unknown as OutboundAgentEvent;
+      //
+      // SDK 0.84 assistant messages carry no `id` at message_end — only the
+      // provider `responseId` (unique per assistant message, verified against
+      // persisted SDK sessions). Fall back to it for correlation.
+      const sdkMessageId = (msg as { id?: string }).id ?? (msg as { responseId?: string }).responseId;
 
+      // Per-session request ordinal + system-prompt snapshot for the
+      // trajectory view's request-header grouping and prompt diff. The
+      // snapshot is captured here because the SDK's `systemPrompt` getter is
+      // only meaningful while a session exists, and message_end is the
+      // earliest point after the request completed.
+      // Deliberately NOT gated on sdkMessageId: the enrichment is independent
+      // of the anchor correlation and must survive providers that omit ids.
+      const requestSeq = capturePromptSnapshot(piSession);
+      const snapshot = promptSnapshots.get(requestSeq);
+      forwardedEvent = {
+        ...(event as Record<string, unknown>),
+        ...(sdkMessageId ? { sdkMessageId } : {}),
+        requestSeq,
+        ...(snapshot ? { promptSnapshot: snapshot.prompt } : {}),
+      } as unknown as OutboundAgentEvent;
+
+      if (sdkMessageId) {
         const sessionManagerSnapshot = piSession.sessionManager;
         queueMicrotask(() => {
           // Defensive: session may have been disposed between the message_end

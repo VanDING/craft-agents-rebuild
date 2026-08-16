@@ -361,7 +361,11 @@ export class PiEventAdapter extends BaseEventAdapter {
         // SDK message id, set by pi-agent-server when forwarding the event.
         // SessionManager uses this to correlate the follow-up `pi_turn_anchor`
         // event to the Craft assistant message created here (#782).
-        const sdkMessageId = (event as { sdkMessageId?: string }).sdkMessageId ?? msg?.id;
+        // SDK 0.84 messages carry no `id` at message_end — fall back to the
+        // provider `responseId` (pi-agent-server forwards the same fallback).
+        const sdkMessageId = (event as { sdkMessageId?: string }).sdkMessageId
+          ?? msg?.id
+          ?? (msg as { responseId?: string }).responseId;
         if (msg?.role !== 'assistant') break;
 
         // Surface API errors — Pi SDK sets stopReason: 'error' and errorMessage on failures
