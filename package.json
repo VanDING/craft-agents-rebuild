@@ -1,6 +1,6 @@
 {
   "name": "craft-agent",
-  "version": "0.11.4",
+  "version": "0.12.0",
   "license": "Apache-2.0",
   "description": "Claude Code-like agent for Craft documents",
   "type": "module",
@@ -17,8 +17,7 @@
   ],
   "workspaces": [
     "packages/*",
-    "apps/*",
-    "!apps/online-docs"
+    "apps/*"
   ],
   "scripts": {
     "test": "bun test && for f in $(find . -name '*.isolated.ts' -not -path './node_modules/*'); do bun test \"$f\" || exit 1; done",
@@ -85,7 +84,6 @@
     "marketing:dev": "vite dev --config apps/marketing/vite.config.ts",
     "marketing:build": "vite build --config apps/marketing/vite.config.ts",
     "marketing:preview": "vite preview --config apps/marketing/vite.config.ts",
-    "docs:dev": "cd apps/online-docs && npm install && npx mintlify dev",
     "prepare": "husky",
     "postinstall": ""
   },

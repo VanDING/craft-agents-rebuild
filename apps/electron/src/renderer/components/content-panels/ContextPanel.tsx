@@ -134,7 +134,7 @@ export function ContextPanel() {
     navigate(route)
   }
 
-  const visibleSources = sources.filter((source) => !source.isBuiltin)
+  const visibleSources = sources
   const permissionMode = meta?.permissionMode
   const modeConfig = permissionMode && permissionMode in PERMISSION_MODE_CONFIG
     ? PERMISSION_MODE_CONFIG[permissionMode as keyof typeof PERMISSION_MODE_CONFIG]
