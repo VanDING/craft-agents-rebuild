@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Craft 主题引擎 · 五套主题 · 全维度演示</title>
+<style>
+  /* ============================================================
+     Craft 主题引擎拟设计：语义 token 分层 + 高阶 --depth 维度
+     同一骨架，仅换 token → 五套截然不同的风格。
+     L1 色彩 · L2 形状(边框样式/粗细/圆角) · L3 材质(阴影色/玻璃blur/硬影)
+     L4 排版 · L5 图标风格(stroke/线帽) · L6 密度 · DEPTH 深度语义层
+     ============================================================ */
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body { font-family: var(--font-sans, system-ui); color: #222; line-height: 1.6; padding: 26px;
+         background: #1b1e2b; } /* 深底衬托玻璃 */
+
+  .page-head { max-width: 1780px; margin: 0 auto 24px; color: #e8eaf0; }
+  .page-head h1 { font-size: 24px; font-weight: 750; letter-spacing: -.5px; }
+  .page-head p { color: #aeb3c4; font-size: 13px; margin-top: 6px; max-width: 1320px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 14px 24px; margin-top: 14px; font-size: 12px; color: #aeb3c4; }
+  .legend b { font-weight: 750; color: #fff; }
+  .tagdim { display:inline-block; color:#0b0e16; font-size:10px; font-weight:700; border-radius:4px; padding:1px 6px; margin-right:2px; }
+  .dim-L1{background:#e0e7ff;}.dim-L2{background:#fde68a;}.dim-L3{background:#a7f3d0;}
+  .dim-L4{background:#fbcfe8;}.dim-L5{background:#bae6fd;}.dim-L6{background:#ddd6fe;}.dim-DP{background:#fecaca;}
+
+  /* 5 列自适应网格 —— 光斑背景放在容器层供玻璃主题透出 */
+  .compare { display: grid; grid-template-columns: repeat(auto-fit, minmax(310px, 1fr)); gap: 24px;
+             max-width: 1780px; margin: 0 auto; padding: 6px;
+             background:
+               radial-gradient(420px 260px at 12% 8%,  rgba(0,229,255,.55), transparent 60%),
+               radial-gradient(480px 300px at 88% 12%, rgba(255,42,109,.5),  transparent 60%),
+               radial-gradient(520px 340px at 60% 88%, rgba(124,58,237,.55), transparent 62%),
+               radial-gradient(380px 260px at 30% 60%, rgba(255,214,10,.4), transparent 60%),
+               #20232f;
+             border-radius: 18px; }
+
+  /* ============ 共享骨架：全部消费 var() token ============ */
+  .theme { border: var(--border-w,1px) var(--border-style,solid) var(--border);
+           border-radius: var(--radius-lg,var(--radius,0)); background: var(--bg); color: var(--fg);
+           overflow: hidden; display: flex; flex-direction: column; position: relative;
+           box-shadow: var(--shadow-card,var(--shadow-md,none)); }
+
+  /* L3 材质：磨砂玻璃层（仅供 glass 主题启用，半透明 + blur）*/
+  .theme-glass { background: var(--glass-face, rgba(255,255,255,.16));
+                 backdrop-filter: blur(var(--glass-blur,12px)); -webkit-backdrop-filter: blur(var(--glass-blur,12px)); }
+
+  /* 深度演示条 —— 直观体现 --depth 语义层差异 */
+  .elev { position: relative; border: var(--border-w,1px) var(--border-style,solid) var(--border);
+          border-radius: var(--radius-sm,var(--radius,0)); padding: 12px 14px; margin: 2px 0 2px;
+          background: var(--elev-face, var(--card)); color: var(--fg);
+          box-shadow: var(--elev-shadow, none); }
+  .elev .e-title { font-size: 12.5px; font-weight: 750; }
+  .elev .e-sub { font-size: 11px; color: var(--muted); margin-top: 2px; opacity:.9; }
+  .elev .e-badge { position: absolute; top: 10px; right: 12px; font-size: 10px; font-weight: 700;
+                   font-family: var(--font-mono,monospace); padding: 1px 6px; border-radius: 3px;
+                   background: var(--accent); color: var(--accent-fg); }
+
+  .bar { display:flex; align-items:center; gap:10px; padding:var(--pad-bar,10px) 14px; background:var(--nav,#0000);
+         border-bottom:var(--border-w,1px) var(--border-style,solid) var(--border); font-size:12.5px; }
+  .bar .logo { font-weight:750; font-size:13px; letter-spacing:.2px; color:var(--accent); }
+  .bar .spacer { flex:1; }
+  .bar .tabs { display:flex; gap:4px; }
+  .bar .tab { padding:4px 10px; border-radius:var(--radius-sm); color:var(--muted); }
+  .bar .tab[data-active] { background:var(--secondary); color:var(--fg); }
+
+  .body { padding:var(--pad-body,16px); display:flex; flex-direction:column; gap:var(--gap-body,14px); flex:1; }
+  .kicker { font-size:11px; letter-spacing:1.5px; text-transform:uppercase; color:var(--accent); font-weight:750; }
+  .h-title { font-size:var(--fs-title,20px); font-weight:750; letter-spacing:-.3px; line-height:var(--lh-title,1.3); }
+  .h-sub { font-size:13px; color:var(--muted); line-height:var(--lh-body,1.7); }
+
+  .card { background:var(--card,#0000); border:var(--border-w,1px) var(--border-style,solid) var(--border);
+          border-radius:var(--radius); padding:var(--pad-card,12px) 14px;
+          box-shadow:var(--shadow-minimal,var(--shadow-sm,none)); }
+  .card h4 { font-size:13.5px; margin-bottom:4px; }
+  .card p { font-size:12.5px; color:var(--muted); line-height:var(--lh-body,1.7); }
+
+  .btn-row { display:flex; gap:12px; flex-wrap:wrap; }
+  .btn { padding:var(--pad-btn-v,7px) var(--pad-btn-h,16px); border-radius:var(--radius-sm); font-size:12.5px;
+         font-weight:600; cursor:pointer; border:var(--border-w,1px) var(--border-style,solid) var(--border);
+         background:var(--secondary,#0000); color:var(--fg); box-shadow:var(--btn-shadow,none); }
+  .btn.primary { background:var(--accent); color:var(--accent-fg); border-color:transparent; box-shadow:var(--btn-shadow-primary,none); }
+  .btn.ghost { background:transparent; color:var(--muted); }
+
+  .input { width:100%; padding:8px 12px; border:var(--border-w,1px) var(--border-style,solid) var(--border);
+           border-radius:var(--radius-sm); background:var(--input,#0000); color:var(--fg); font-size:13px; }
+  .input:focus { outline:none; border-color:var(--ring); box-shadow:0 0 0 var(--ring-w) var(--ring-glow,var(--ring)); }
+
+  .badges { display:flex; gap:8px; flex-wrap:wrap; }
+  .badge { padding:3px 10px; border-radius: var(--pill,999px); font-size:11px; font-weight:600;
+           border:var(--border-w,1px) var(--border-style,solid) transparent; }
+  .badge.success     { background:var(--success-tint); color:var(--success-text); border-color:var(--success); }
+  .badge.info        { background:var(--info-tint); color:var(--info-text); border-color:var(--info); }
+  .badge.destructive { background:var(--destructive-tint); color:var(--destructive-text); border-color:var(--destructive); }
+  .badge.accent      { background:var(--secondary,#0000); color:var(--accent); border-color:var(--accent); }
+
+  .divider { height:1px; background:var(--border); }
+
+  .bubble { padding:var(--pad-bubble,9px) 12px; border-radius:var(--radius); font-size:12.5px;
+            background:var(--user-bubble,#0000); color:var(--fg); line-height:var(--lh-body,1.7);
+            border:var(--border-w,1px) var(--border-style,solid) transparent; }
+  .bubble.bot { background:var(--card,#0000); border-color:var(--border); }
+
+  .steps { display:flex; flex-direction:column; gap:8px; }
+  .step { display:flex; gap:10px; align-items:flex-start; padding:var(--pad-step,8px) 10px; border-radius:var(--radius-sm);
+          background:var(--card,#0000); border:var(--border-w,1px) var(--border-style,solid) var(--border); }
+  .step .n { flex:0 0 var(--step-size); height:var(--step-size); border-radius:var(--step-radius); font-size:11px;
+             font-weight:700; text-align:center; line-height:var(--step-size); background:var(--accent); color:var(--accent-fg); }
+  .step .txt { font-size:12px; }
+  .step .txt b { display:block; font-size:12.5px; }
+
+  .md-list { list-style:none; font-size:12.5px; display:flex; flex-direction:column; gap:var(--gap-list,6px); }
+  .md-list li::before { content:"\25CF"; color:var(--md-bullets); margin-right:8px; font-size:10px; }
+
+  .code { font-family:var(--font-mono,monospace); font-size:var(--fs-code,11.5px); padding:10px 12px;
+          border-radius:var(--radius-sm); background:var(--code-bg,var(--secondary,#0000)); color:var(--fg);
+          border:var(--border-w,1px) var(--border-style,solid) var(--border); white-space:pre-wrap; line-height:var(--lh-code,1.6); }
+
+  .serif-demo { font-family:var(--font-serif,serif); font-size:13px; color:var(--muted); font-style:italic; }
+
+  /* L5 图标风格变体 */
+  .iconbar { display:flex; gap:14px; padding:6px 2px; align-items:center; }
+  .iconbar svg { stroke:var(--fg,currentColor); stroke-width:var(--icon-stroke,1.5);
+                 stroke-linecap:var(--icon-cap,square); stroke-linejoin:var(--icon-join,miter);
+                 fill:none; width:22px; height:22px; flex:0 0 auto; }
+  .iconbar .cap-label { font-size:10px; color:var(--muted); font-family:var(--font-mono,monospace); }
+
+  /* 维度徽标行 */
+  .dims { display:flex; flex-wrap:wrap; gap:5px; padding:8px 14px; border-top:var(--border-w,1px) var(--border-style,solid) var(--border);
+          margin-top:auto; }
+  .dims span { font-size:9.5px; font-weight:700; padding:2px 6px; border-radius:3px; color:#0b0e16; }
+
+  /* Token 面板 */
+  .tokens { margin:0; padding:10px 14px 12px; border-top:var(--border-w,1px) var(--border-style,solid) var(--border);
+            font-family:var(--font-mono,monospace); font-size:10px; line-height:1.75; color:var(--muted); }
+  .tokens .t-label { font-family:var(--font-sans,sans-serif); font-size:10.5px; font-weight:750; letter-spacing:1px;
+                     text-transform:uppercase; margin-bottom:5px; color:var(--fg); }
+  .tokens .swatch { display:inline-block; width:9px; height:9px; border-radius:2px; vertical-align:middle;
+                    margin:0 4px 1px 0; border:1px solid rgba(0,0,0,.2); }
+  .tokens code { font-size:10px; }
+  .tokens .k { color:var(--accent); }
+
+  .theme-label { padding:8px 14px; font-size:13px; font-weight:750; letter-spacing:.3px; display:flex; align-items:center;
+                 gap:8px; border-bottom:var(--border-w,1px) var(--border-style,solid) var(--border); background:var(--nav,#0000); }
+  .theme-label .dot { width:10px; height:10px; border-radius:50%; background:var(--accent); }
+  .theme-label .sub { margin-left:auto; font-weight:500; font-size:10.5px; color:var(--muted); font-family:var(--font-mono,monospace); }
+</style>
+<style>
+  /* ============================================================
+     五套主题 token —— 每套声明高阶 --depth，并列出其派生组。
+     （themeToCSS 负责把 --depth 展开为下方低阶 token 组）
+     ============================================================ */
+
+  /* ---------- ① 默认简约 Minimal · depth:flat ---------- */
+  .theme-minimal {
+    /* DEPTH: flat —— 扁平：近零阴影、无渐变、无玻璃 */
+    --depth: flat;
+    --bg:#fafafa; --nav:#f1f1f3; --card:#ffffff; --input:#ffffff;
+    --fg:#1a1a2e; --muted:#6b7280;
+    --accent:#4f46e5; --accent-fg:#fff; --secondary:#eef0f6;
+    --success:#16a34a; --success-tint:#ecfdf3; --success-text:#15803d;
+    --info:#d97706; --info-tint:#fffbeb; --info-text:#b45309;
+    --destructive:#dc2626; --destructive-tint:#fef2f2; --destructive-text:#b91c1c;
+    --border:#e5e7eb; --ring:#4f46e5; --ring-w:2px; --ring-glow:#4f46e540;
+    --user-bubble:#eef2ff; --md-bullets:#4f46e5; --pill:999px;
+    /* L2 */ --border-w:1px; --border-style:solid; --radius:8px; --radius-sm:6px; --radius-lg:12px;
+    /* L3 材质：极轻投影 */
+    --shadow-card:0 1px 3px rgba(16,24,40,.06);
+    --shadow-md:0 4px 14px -2px rgba(16,24,40,.08);
+    --shadow-sm:0 1px 2px rgba(16,24,40,.04);
+    --elev-face:#ffffff; --elev-shadow:0 1px 3px rgba(16,24,40,.10);
+    /* L4 */ --font-sans:-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    --font-serif:"Songti SC","Noto Serif SC",Georgia,serif;
+    --font-mono:"SF Mono",ui-monospace,Menlo,monospace;
+    --fs-title:20px; --lh-title:1.3; --lh-body:1.7; --fs-code:11.5px;
+    /* L5 */ --icon-stroke:1.5; --icon-cap:square; --icon-join:miter;
+    /* L6 */ --pad-body:16px; --gap-body:14px; --pad-card:12px; --pad-step:8px; --pad-bubble:9px; --pad-bar:10px;
+  }
+
+  /* ---------- ② 水墨禅意 Ink Zen · depth:elevated ---------- */
+  .theme-ink {
+    /* DEPTH: elevated —— 抬升：暖色纸面、淡墨影、顶部高光 */
+    --depth: elevated;
+    --bg:#f4efe4; --nav:#ece4d2; --card:#fbf7ec; --input:#fbf7ec;
+    --fg:#29251d; --muted:#8a7f6a;
+    --accent:#9b4a2f; --accent-fg:#fbf7ec; --secondary:#ece4d2;
+    --success:#5c6b4f; --success-tint:#e9ecdf; --success-text:#46553b;
+    --info:#9a8a5a; --info-tint:#f1ead4; --info-text:#6f6240;
+    --destructive:#8c4334; --destructive-tint:#f0e0d8; --destructive-text:#73362b;
+    --border:#c9bb9c; --ring:#9b4a2f; --ring-w:1px; --ring-glow:#9b4a2f20;
+    --user-bubble:#ece4d2; --md-bullets:#9b4a2f; --pill:2px;
+    /* L2 */ --border-w:1px; --border-style:dotted; --radius:2px; --radius-sm:1px; --radius-lg:4px;
+    /* L3 材质：暖墨色影 + 顶部纸面高光 */
+    --shadow-card:0 2px 8px -1px rgba(120,92,48,.16);
+    --shadow-md:0 3px 10px -1px rgba(120,92,48,.18);
+    --shadow-sm:0 1px 2px rgba(120,92,48,.10);
+    --elev-face:#fbf7ec; --elev-shadow:0 3px 8px rgba(120,92,48,.18), inset 0 1px 0 rgba(255,255,255,.7);
+    /* L4 */ --font-sans:"Songti SC","Noto Serif SC","PingFang SC",serif;
+    --font-serif:"STKaiti","KaiTi","Kaiti SC",serif;
+    --font-mono:"Songti SC","Noto Serif SC",monospace;
+    --fs-title:22px; --lh-title:1.5; --lh-body:2.0; --fs-code:12px;
+    /* L5 */ --icon-stroke:2.2; --icon-cap:round; --icon-join:round;
+    /* L6 */ --pad-body:22px; --gap-body:18px; --pad-card:16px; --pad-step:12px; --pad-bubble:12px; --pad-bar:14px;
+  }
+
+  /* ---------- ③ 赛博朋克 Cyberpunk · depth:neon ---------- */
+  .theme-cyber {
+    /* DEPTH: neon —— 实底暗夜 + 霓虹辉光（非磨砂玻璃） */
+    --depth: neon;
+    --bg:#0a0e1a; --nav:rgba(14,20,36,.82); --card:rgba(17,26,46,.75); --input:rgba(10,15,30,.6);
+    --fg:#e6f7ff; --muted:#7a8bb0;
+    --accent:#00e5ff; --accent-fg:#001018; --secondary:rgba(26,36,64,.7);
+    --success:#00ff9f; --success-tint:rgba(6,40,27,.7); --success-text:#00ff9f;
+    --info:#ffd60a; --info-tint:rgba(42,36,0,.7); --info-text:#ffd60a;
+    --destructive:#ff2a6d; --destructive-tint:rgba(42,10,20,.7); --destructive-text:#ff5c8a;
+    --border:#00e5ff55; --ring:#ff2a6d; --ring-w:3px; --ring-glow:#ff2a6d66;
+    --user-bubble:rgba(22,35,63,.8); --md-bullets:#00e5ff; --pill:999px;
+    /* L2 */ --border-w:2px; --border-style:double; --radius:0px; --radius-sm:0px; --radius-lg:0px;
+    /* L3 材质：霓虹辉光（实底色影，非玻璃磨砂） */
+    --shadow-card:0 0 14px -2px rgba(0,229,255,.55);
+    --shadow-md:0 0 26px -4px rgba(0,229,255,.65);
+    --shadow-sm:0 0 8px -2px rgba(0,229,255,.45);
+    --elev-face:rgba(15,24,42,.9); --elev-shadow:0 0 20px rgba(0,229,255,.6), inset 0 0 14px rgba(0,229,255,.2);
+    /* L4 */ --font-sans:"Orbitron","Segoe UI","PingFang SC",system-ui,sans-serif;
+    --font-serif:"Orbitron","PingFang SC",serif;
+    --font-mono:"JetBrains Mono","Fira Code",ui-monospace,monospace;
+    --fs-title:19px; --lh-title:1.1; --lh-body:1.5; --fs-code:11px;
+    /* L5 */ --icon-stroke:1.2; --icon-cap:square; --icon-join:miter;
+    /* L6 */ --pad-body:12px; --gap-body:10px; --pad-card:10px; --pad-step:7px; --pad-bubble:7px; --pad-bar:7px;
+  }
+
+  /* ---------- ④ 玻璃拟态 Glassmorphism · depth:glass ---------- */
+  .theme-glass {
+    /* DEPTH: glass —— 全表面半透明磨砂、细亮边框、柔和辉光 */
+    --depth: glass;
+    --bg:transparent; --nav:rgba(255,255,255,.18); --card:rgba(255,255,255,.22); --input:rgba(255,255,255,.28);
+    --fg:#1a2340; --muted:#4b5578;
+    --accent:#7c3aed; --accent-fg:#fff; --secondary:rgba(255,255,255,.42);
+    --success:#16a34a; --success-tint:rgba(220,252,231,.8); --success-text:#15803d;
+    --info:#d97706; --info-tint:rgba(254,249,195,.8); --info-text:#b45309;
+    --destructive:#e11d48; --destructive-tint:rgba(254,226,226,.85); --destructive-text:#be123c;
+    --border:rgba(255,255,255,.65); --ring:#7c3aed; --ring-w:2px; --ring-glow:#7c3aed4d;
+    --user-bubble:rgba(255,255,255,.4); --md-bullets:#7c3aed; --pill:999px;
+    /* L2 */ --border-w:1px; --border-style:solid; --radius:18px; --radius-sm:12px; --radius-lg:22px;
+    /* L3 材质：柔和高亮边框 + 玻璃磨砂 */
+    --shadow-card:0 8px 28px -6px rgba(31,38,135,.35), inset 0 1px 0 rgba(255,255,255,.6);
+    --shadow-md:0 12px 34px -8px rgba(31,38,135,.4);
+    --shadow-sm:0 6px 20px -6px rgba(31,38,135,.3);
+    --glass-face:rgba(255,255,255,.20); --glass-blur:22px;
+    --elev-face:rgba(255,255,255,.30); --elev-shadow:0 10px 30px -6px rgba(31,38,135,.35), inset 0 1px 0 rgba(255,255,255,.7);
+    /* L4 */ --font-sans:"SF Pro Display","Segoe UI","PingFang SC",system-ui,sans-serif;
+    --font-serif:"Songti SC",Georgia,serif;
+    --font-mono:"SF Mono",ui-monospace,Menlo,monospace;
+    --fs-title:21px; --lh-title:1.25; --lh-body:1.75; --fs-code:11.5px;
+    /* L5 */ --icon-stroke:1.7; --icon-cap:round; --icon-join:round;
+    /* L6 */ --pad-body:16px; --gap-body:14px; --pad-card:13px; --pad-step:8px; --pad-bubble:9px; --pad-bar:10px;
+  }
+
+  /* ---------- ⑤ 粗野主义 Neo-Brutalism · depth:raised ---------- */
+  .theme-brutal {
+    /* DEPTH: raised —— 硬抬升：粗黑边框、零模糊硬影、直给高饱和 */
+    --depth: raised;
+    --bg:#fff7e6; --nav:#ffe08a; --card:#f6f3ea; --input:#ffffff;
+    --fg:#0b0e16; --muted:#4a3f2a;
+    --accent:#ff5d1f; --accent-fg:#0b0e16; --secondary:#ffd166;
+    --success:#2ea44f; --success-tint:#d8f5e0; --success-text:#14532d;
+    --info:#f59e0b; --info-tint:#fef3c7; --info-text:#92400e;
+    --destructive:#e63946; --destructive-tint:#fde3e5; --destructive-text:#9d1c28;
+    --border:#0b0e16; --ring:#ff5d1f; --ring-w:3px; --ring-glow:#ff5d1f80;
+    --user-bubble:#ffe3d0; --md-bullets:#0b0e16; --pill:0px;
+    /* L2 */ --border-w:2px; --border-style:solid; --radius:0px; --radius-sm:0px; --radius-lg:0px;
+    /* L3 材质：零模糊硬影（纯色偏移）+ 无渐变 */
+    --shadow-card:4px 4px 0 rgba(11,14,22,1);
+    --shadow-md:6px 6px 0 rgba(11,14,22,1);
+    --shadow-sm:3px 3px 0 rgba(11,14,22,1);
+    --elev-face:#ffffff; --elev-shadow:4px 4px 0 rgba(11,14,22,1);
+    --btn-shadow:3px 3px 0 rgba(11,14,22,1);
+    --btn-shadow-primary:3px 3px 0 rgba(11,14,22,1);
+    /* L4 */ --font-sans:"Arial Black","Helvetica Neue","PingFang SC",system-ui,sans-serif;
+    --font-serif:"Arial","PingFang SC",serif;
+    --font-mono:"Courier New",ui-monospace,monospace;
+    --fs-title:22px; --lh-title:1.05; --lh-body:1.6; --fs-code:11.5px;
+    /* L5 */ --icon-stroke:2.6; --icon-cap:square; --icon-join:miter;
+    /* L6 */ --pad-body:14px; --gap-body:12px; --pad-card:12px; --pad-step:8px; --pad-bubble:8px; --pad-bar:10px;
+  }
+</style>
+</head>
+<body>
+
+<header class="page-head">
+  <h1>Craft 主题引擎 · 五套主题全维度演示（L1–L6 + DEPTH 深度语义层）</h1>
+  <p>同一套工作台骨架，仅切换 token 呈现五种风格迥异的主题。维度徽标与 Token 面板标出每套主题启用的引擎维度。
+     重点展示材质与深度——通过高阶语义 token <code style="color:#7dd3fc">--depth</code>（flat / elevated / glass / raised）联动一组低阶 token。</p>
+  <div class="legend">
+    <span><b>① Minimal</b> <span class="tagdim dim-DP">flat</span> 扁平 · 轻影 · sans · comfortable</span>
+    <span><b>② Ink Zen</b> <span class="tagdim dim-DP">elevated</span> 抬升纸面 · 墨影 · serif · cozy</span>
+    <span><b>③ Cyberpunk</b> <span class="tagdim dim-DP">glass</span> 磨砂+霓虹 · 双线 · mono · compact</span>
+    <span><b>④ Glass</b> <span class="tagdim dim-DP">glass</span> 全玻璃拟态 · 亮细边 · 大圆角</span>
+    <span><b>⑤ Brutal</b> <span class="tagdim dim-DP">raised</span> 粗黑边框 · 硬影 · 高饱和</span>
+  </div>
+</header>
+
+<div class="compare">
+
+  <!-- ================= ① 默认简约 ================= -->
+  <section class="theme theme-minimal">
+    <div class="theme-label"><span class="dot"></span>① 默认简约 <span class="sub">depth:flat</span></div>
+    <div class="bar">
+      <span class="logo">Craft</span>
+      <div class="tabs"><span class="tab" data-active>会话</span><span class="tab">看板</span><span class="tab">日历</span></div>
+      <span class="spacer"></span><span class="badge accent">Execute</span>
+    </div>
+    <div class="body">
+      <div class="kicker">Active Workspace</div>
+      <div class="h-title">跨生态移植评估</div>
+      <div class="h-sub">DSH / Pi / Codex · 六层 + 深度，齐调</div>
+
+      <!-- 深度演示条 -->
+      <div class="elev"><span class="e-badge">flat</span><div class="e-title">扁平 · 无层级</div><div class="e-sub">浅灰投影 · 无色差</div></div>
+
+      <div class="iconbar">
+        <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+        <span class="cap-label">stroke 1.5 · square</span>
+      </div>
+
+      <div class="card"><h4>token 分层已解耦</h4><p>边框、阴影、图标、密度独立覆盖，深度扁平化。</p></div>
+      <div class="btn-row">
+        <button class="btn primary">运行任务</button>
+        <button class="btn">保存草稿</button>
+        <button class="btn ghost">取消</button>
+      </div>
+      <input class="input" placeholder="搜索记忆 / 命令…">
+      <div class="badges"><span class="badge success">已连接</span><span class="badge info">待审阅</span><span class="badge destructive">2 错误</span></div>
+      <div class="divider"></div>
+      <div class="bubble"><b>你：</b>扁平也能分层</div>
+      <div class="bubble bot"><b>Craft：</b>depth:flat → 无投影、纯色表达。</div>
+      <div class="steps"><div class="step"><span class="n">1</span><span class="txt"><b>探索</b>抓三生态</span></div><div class="step"><span class="n">2</span><span class="txt"><b>评估</b>对照基线</span></div></div>
+      <div class="code">$ craft theme --apply minimal
+depth flat · shadow rgba(16,24,40,.08)
+icon 1.5 square · density comfortable</div>
+    </div>
+    <div class="dims"><span class="dim-L1">L1色</span><span class="dim-L2">L2形</span><span class="dim-L3">L3材</span><span class="dim-L4">L4字</span><span class="dim-L5">L5标</span><span class="dim-L6">L6密</span><span class="dim-DP">depth:flat</span></div>
+    <div class="tokens"><div class="t-label">Token · Minimal</div><span class="swatch" style="background:#fafafa"></span><code>bg #fafafa · border <span class="k">solid</span> 1px</code><br><code>shadow <span class="k">rgba(16,24,40,.08)</span> · font sans · den <span class="k">comfortable</span></code></div>
+  </section>
+
+  <!-- ================= ② 水墨禅意 ================= -->
+  <section class="theme theme-ink">
+    <div class="theme-label"><span class="dot"></span>② 水墨禅意 <span class="sub">depth:elevated</span></div>
+    <div class="bar">
+      <span class="logo">茶舍</span>
+      <div class="tabs"><span class="tab" data-active>问对</span><span class="tab">看板</span><span class="tab">日历</span></div>
+      <span class="spacer"></span><span class="badge accent">挥毫</span>
+    </div>
+    <div class="body">
+      <div class="kicker">当下 · 观照</div>
+      <div class="h-title">跨生态移植 · 与古为新</div>
+      <div class="h-sub">DSH / Pi / Codex · 疏密与墨色齐调</div>
+
+      <div class="elev"><span class="e-badge">elevated</span><div class="e-title">纸面抬升 · 暖墨之影</div><div class="e-sub">顶部高光 · 淡墨投影</div></div>
+
+      <div class="iconbar">
+        <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+        <span class="cap-label">stroke 2.2 · round</span>
+      </div>
+
+      <div class="card"><h4>点线虚边 · 疏朗有致</h4><p>边框为点线、阴影为暖墨、笔锋圆转、留白疏朗。</p></div>
+      <div class="btn-row"><button class="btn primary">运行任务</button><button class="btn">保存草稿</button><button class="btn ghost">取消</button></div>
+      <input class="input" placeholder="搜索记忆 / 命令…">
+      <div class="badges"><span class="badge success">已连接</span><span class="badge info">待审阅</span><span class="badge destructive">2 错误</span></div>
+      <div class="divider"></div>
+      <div class="bubble"><b>君：</b>抬升亦有其度</div>
+      <div class="bubble bot"><b>师：</b>depth:elevated → 纸面浮起，暖墨为影。</div>
+      <div class="steps"><div class="step"><span class="n">一</span><span class="txt"><b>游</b>采三界</span></div><div class="step"><span class="n">二</span><span class="txt"><b>衡</b>质旧能</span></div></div>
+      <div class="code">$ craft theme --apply ink
+depth elevated · shadow rgba(120,92,48,.16)
+icon 2.2 round · density cozy</div>
+    </div>
+    <div class="dims"><span class="dim-L1">L1色</span><span class="dim-L2">L2形</span><span class="dim-L3">L3材</span><span class="dim-L4">L4字</span><span class="dim-L5">L5标</span><span class="dim-L6">L6密</span><span class="dim-DP">depth:elevated</span></div>
+    <div class="tokens"><div class="t-label">Token · Ink Zen</div><span class="swatch" style="background:#f4efe4"></span><code>bg #f4efe4 · border <span class="k">dotted</span> 1px</code><br><code>shadow <span class="k">rgba(120,92,48,.16)</span> · font serif · den <span class="k">cozy</span></code></div>
+  </section>
+
+  <!-- ================= ③ 赛博朋克 ================= -->
+  <section class="theme theme-cyber">
+    <div class="theme-label"><span class="dot"></span>③ 赛博朋克 <span class="sub">depth:neon</span></div>
+    <div class="bar">
+      <span class="logo">NET//RUNNER</span>
+      <div class="tabs"><span class="tab" data-active>SESS</span><span class="tab">看板</span><span class="tab">日历</span></div>
+      <span class="spacer"></span><span class="badge accent">EXEC</span>
+    </div>
+    <div class="body">
+      <div class="kicker">// ACTIVE_UPLINK</div>
+      <div class="h-title">ECOSYS TRANSPLANT v2.4</div>
+      <div class="h-sub">DSH / Pi / Codex · 六自由度权限已解锁</div>
+
+      <div class="elev"><span class="e-badge">neon</span><div class="e-title">霓虹辉光 · 实底暗夜</div><div class="e-sub">深蓝实底 · 霓虹色影发光</div></div>
+
+      <div class="iconbar">
+        <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+        <span class="cap-label">stroke 1.2 · square</span>
+      </div>
+
+      <div class="card"><h4>双线线框 · 霓虹辉光</h4><p>双线边框、霓虹色影发光、实底暗夜、紧凑密度。</p></div>
+      <div class="btn-row"><button class="btn primary">运行任务</button><button class="btn">保存草稿</button><button class="btn ghost">取消</button></div>
+      <input class="input" placeholder="搜索记忆 / 命令…">
+      <div class="badges"><span class="badge success">已连接</span><span class="badge info">待审阅</span><span class="badge destructive">2 错误</span></div>
+      <div class="divider"></div>
+      <div class="bubble"><b>YOU:</b> neon 深度如何做</div>
+      <div class="bubble bot"><b>CRAFT:</b> depth:neon → 实底暗夜 + 霓虹辉光色影。</div>
+      <div class="steps"><div class="step"><span class="n">1</span><span class="txt"><b>SCAN</b> 抓三生态</span></div><div class="step"><span class="n">2</span><span class="txt"><b>EVAL</b> 对照基线</span></div></div>
+      <div class="code">$ craft theme --apply cyber
+depth neon · glow rgba(0,229,255,.65)
+icon 1.2 square · density compact</div>
+    </div>
+    <div class="dims"><span class="dim-L1">L1色</span><span class="dim-L2">L2形</span><span class="dim-L3">L3材</span><span class="dim-L4">L4字</span><span class="dim-L5">L5标</span><span class="dim-L6">L6密</span><span class="dim-DP">depth:neon</span></div>
+    <div class="tokens"><div class="t-label">Token · Cyberpunk</div><span class="swatch" style="background:#0a0e1a"></span><code>bg #0a0e1a · border <span class="k">double</span> 2px</code><br><code>glow <span class="k">rgba(0,229,255,.65)</span> · radius <span class="k">0</span></code></div>
+  </section>
+
+  <!-- ================= ④ 玻璃拟态 ================= -->
+  <section class="theme theme-glass theme-glass">
+    <div class="theme-label"><span class="dot"></span>④ 玻璃拟态 <span class="sub">depth:glass</span></div>
+    <div class="bar">
+      <span class="logo">AURA</span>
+      <div class="tabs"><span class="tab" data-active>Float</span><span class="tab">看板</span><span class="tab">日历</span></div>
+      <span class="spacer"></span><span class="badge accent">Live</span>
+    </div>
+    <div class="body">
+      <div class="kicker">Frosted · Translucent</div>
+      <div class="h-title">玻璃拟态 Glassmorphism</div>
+      <div class="h-sub">半透明磨砂面板 · 细亮边框 · 大圆角 · 柔和辉光</div>
+
+      <div class="elev"><span class="e-badge">glass</span><div class="e-title">磨砂玻璃 · 层层通透</div><div class="e-sub">bg blur 22px · 顶部高光 · 细亮边</div></div>
+
+      <div class="iconbar">
+        <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+        <span class="cap-label">stroke 1.7 · round</span>
+      </div>
+
+      <div class="card"><h4>通透轻盈 · 克制的层次</h4><p>半透明面逐层叠加，细亮边框勾勒轮廓，柔和辉光托起浮层。</p></div>
+      <div class="btn-row"><button class="btn primary">运行任务</button><button class="btn">保存草稿</button><button class="btn ghost">取消</button></div>
+      <input class="input" placeholder="搜索记忆 / 命令…">
+      <div class="badges"><span class="badge success">已连接</span><span class="badge info">待审阅</span><span class="badge destructive">2 错误</span></div>
+      <div class="divider"></div>
+      <div class="bubble"><b>你：</b>玻璃与赛博同为 glass，差别在细节</div>
+      <div class="bubble bot"><b>Craft：</b>depth 值同，材质参数不同 → 风格各异。</div>
+      <div class="steps"><div class="step"><span class="n">1</span><span class="txt"><b>磨砂</b>高 blur</span></div><div class="step"><span class="n">2</span><span class="txt"><b>层叠</b>透光</span></div></div>
+      <div class="code">$ craft theme --apply aurora-glass
+depth glass · blur 22px · border light 1px
+icon 1.7 round · density comfortable</div>
+    </div>
+    <div class="dims"><span class="dim-L1">L1色</span><span class="dim-L2">L2形</span><span class="dim-L3">L3材</span><span class="dim-L4">L4字</span><span class="dim-L5">L5标</span><span class="dim-L6">L6密</span><span class="dim-DP">depth:glass</span></div>
+    <div class="tokens"><div class="t-label">Token · Glassmorphism</div><span class="swatch" style="background:rgba(255,255,255,.2)"></span><code>bg <span class="k">translucent .2</span> · border light 1px</code><br><code>blur <span class="k">22px</span> · radius <span class="k">18px</span> · font sans</code></div>
+  </section>
+
+  <!-- ================= ⑤ 粗野主义 ================= -->
+  <section class="theme theme-brutal">
+    <div class="theme-label"><span class="dot"></span>⑤ 粗野主义 <span class="sub">depth:raised</span></div>
+    <div class="bar">
+      <span class="logo">BRUTE</span>
+      <div class="tabs"><span class="tab" data-active>直给</span><span class="tab">看板</span><span class="tab">日历</span></div>
+      <span class="spacer"></span><span class="badge accent">ACTION</span>
+    </div>
+    <div class="body">
+      <div class="kicker">BRUTAL · NO FRILLS</div>
+      <div class="h-title">粗野主义 Neo-Brutalism</div>
+      <div class="h-sub">粗黑硬边框 · 零模糊硬影 · 高饱和 · 直给不装饰</div>
+
+      <div class="elev"><span class="e-badge">raised</span><div class="e-title">硬抬升 · 纯色偏移</div><div class="e-sub">box-shadow 4px 4px 0 #0b0e16 · 无模糊</div></div>
+
+      <div class="iconbar">
+        <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+        <span class="cap-label">stroke 2.6 · square</span>
+      </div>
+
+      <div class="card"><h4>全是硬边 · 全是直话</h4><p>粗黑边框框死一切，硬影撑起层次，高饱和直给态度。</p></div>
+      <div class="btn-row"><button class="btn primary">运行任务</button><button class="btn">保存草稿</button><button class="btn ghost">取消</button></div>
+      <input class="input" placeholder="搜索记忆 / 命令…">
+      <div class="badges"><span class="badge success">已连接</span><span class="badge info">待审阅</span><span class="badge destructive">2 错误</span></div>
+      <div class="divider"></div>
+      <div class="bubble"><b>你：</b>硬派分层怎么玩</div>
+      <div class="bubble bot"><b>Craft：</b>depth:raised → 硬影偏移，绝无虚化。</div>
+      <div class="steps"><div class="step"><span class="n">1</span><span class="txt"><b>抓</b>三生态</span></div><div class="step"><span class="n">2</span><span class="txt"><b>比</b>对照基线</span></div></div>
+      <div class="code">$ craft theme --apply brutal
+depth raised · hard 4px 4px 0 #0b0e16
+icon 2.6 square · density mustered</div>
+    </div>
+    <div class="dims"><span class="dim-L1">L1色</span><span class="dim-L2">L2形</span><span class="dim-L3">L3材</span><span class="dim-L4">L4字</span><span class="dim-L5">L5标</span><span class="dim-L6">L6密</span><span class="dim-DP">depth:raised</span></div>
+    <div class="tokens"><div class="t-label">Token · Neo-Brutalism</div><span class="swatch" style="background:#fff7e6"></span><code>bg #fff7e6 · border <span class="k">solid 2px #0b0e16</span></code><br><code>shadow <span class="k">4px 4px 0 #0b0e16</span> · font arial · radius <span class="k">0</span></code></div>
+  </section>
+
+</div>
+
+<footer style="max-width:1780px;margin:26px auto 0;font-size:12px;color:#aeb3c4;border-top:1px solid #333;padding-top:14px;">
+  五套主题 · 全维度实证：<b>L1 色彩</b> · <b>L2 形状</b>(border样式/粗细/圆角) · <b>L3 材质</b>(阴影色unlock · 玻璃blur · 硬影) ·
+  <b>L4 排版</b> · <b>L5 图标</b>(stroke/线帽) · <b>L6 密度</b> · <b>DEPTH 深度语义层</b>(flat/elevated/neon/glass/raised)。
+  高阶 <code style="color:#7dd3fc">--depth</code> 在 themeToCSS 展开为一组低阶 token（表面混合/阴影/高光/blur），主题只需声明一个值即联动多维度。
+  玻璃拟态用 depth:glass（磨砂半透明）、赛博用 depth:neon（实底霓虹辉光）——同为发光深度，材质参数不同 → 风格各异，证明自由度足够且未局限。
+  已排除：整套图标替换 / L7 动效 / L8 语气。
+</footer>
+
+</body>
+</html>
