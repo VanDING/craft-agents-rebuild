@@ -1007,10 +1007,16 @@ describe('PiEventAdapter', () => {
     it('should emit status for compaction_start', () => {
       const events = collect(adapter.adaptEvent({
         type: 'compaction_start',
+        reason: 'context_window_exceeded',
       } as any));
 
-      expect(events).toHaveLength(1);
+      // Structured event for the trajectory view + user-facing status.
+      expect(events).toHaveLength(2);
       expect(events[0]).toMatchObject({
+        type: 'compaction_start',
+        reason: 'context_window_exceeded',
+      });
+      expect(events[1]).toMatchObject({
         type: 'status',
         message: 'Compacting context...',
       });
@@ -1023,8 +1029,13 @@ describe('PiEventAdapter', () => {
         aborted: false,
       } as any));
 
-      expect(events).toHaveLength(1);
+      // Structured outcome for the trajectory view + user-facing info.
+      expect(events).toHaveLength(2);
       expect(events[0]).toMatchObject({
+        type: 'compaction_end',
+        aborted: false,
+      });
+      expect(events[1]).toMatchObject({
         type: 'info',
         message: 'Compacted context to fit within limits',
       });
@@ -1038,21 +1049,32 @@ describe('PiEventAdapter', () => {
         errorMessage: 'Out of memory',
       } as any));
 
-      expect(events).toHaveLength(1);
+      expect(events).toHaveLength(2);
       expect(events[0]).toMatchObject({
+        type: 'compaction_end',
+        aborted: false,
+        errorMessage: 'Out of memory',
+      });
+      expect(events[1]).toMatchObject({
         type: 'error',
         message: 'Context compaction failed: Out of memory',
       });
     });
 
-    it('should emit nothing for aborted compaction', () => {
+    it('emits only the structured outcome for aborted compaction', () => {
       const events = collect(adapter.adaptEvent({
         type: 'compaction_end',
         result: null,
         aborted: true,
       } as any));
 
-      expect(events).toHaveLength(0);
+      // No user-facing status/error — but the trajectory view still gets
+      // the structured outcome for every terminal compaction state.
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({
+        type: 'compaction_end',
+        aborted: true,
+      });
     });
 
     it('should emit status for auto_retry_start', () => {
@@ -1206,17 +1228,19 @@ describe('PiEventAdapter', () => {
       expect(heldAgentEnd).toHaveLength(0);
       expect(adapter.shouldCompleteQueue(true)).toBe(false);
 
-      // 3. compaction_start — status surfaces.
+      // 3. compaction_start — structured event + status surfaces.
       const startEvents = collect(adapter.adaptEvent({ type: 'compaction_start' } as any));
-      expect(startEvents).toMatchObject([{ type: 'status', message: 'Compacting context...' }]);
+      expect(startEvents.map(e => e.type)).toEqual(['compaction_start', 'status']);
+      expect(startEvents[1]).toMatchObject({ type: 'status', message: 'Compacting context...' });
 
-      // 4. compaction_end success — info surfaces, still no complete.
+      // 4. compaction_end success — structured outcome + info surfaces, still no complete.
       const endEvents = collect(adapter.adaptEvent({
         type: 'compaction_end',
         result: { /* compaction result */ },
         aborted: false,
       } as any));
-      expect(endEvents).toMatchObject([{ type: 'info', message: 'Compacted context to fit within limits' }]);
+      expect(endEvents.map(e => e.type)).toEqual(['compaction_end', 'info']);
+      expect(endEvents[1]).toMatchObject({ type: 'info', message: 'Compacted context to fit within limits' });
       expect(adapter.shouldCompleteQueue(false)).toBe(false);
 
       // 5. Recovered text + final agent_end — text_complete + complete arrive.
@@ -1250,10 +1274,16 @@ describe('PiEventAdapter', () => {
         errorMessage: 'Out of memory during summary',
       } as any));
 
-      expect(failureEvents).toEqual([
-        { type: 'error', message: 'Context compaction failed: Out of memory during summary' },
-        { type: 'complete' },
-      ]);
+      expect(failureEvents.map(e => e.type)).toEqual(['compaction_end', 'error', 'complete']);
+      expect(failureEvents[0]).toMatchObject({
+        type: 'compaction_end',
+        errorMessage: 'Out of memory during summary',
+      });
+      expect(failureEvents[1]).toEqual({
+        type: 'error',
+        message: 'Context compaction failed: Out of memory during summary',
+      });
+      expect(failureEvents[2]).toEqual({ type: 'complete' });
       // Queue should terminate even though the event wasn't agent_end.
       expect(adapter.shouldCompleteQueue(false)).toBe(true);
       // Only one terminal complete — subsequent calls return false.
@@ -1319,13 +1349,21 @@ describe('PiEventAdapter', () => {
         errorMessage: "Auto-compaction failed: undefined is not an object (evaluating 'this._autoCompactionAbortController.signal')",
       } as any));
 
-      expect(events).toEqual([
-        { type: 'error', message: 'Auto-compaction hit a transient error. Try /compact manually.' },
-        { type: 'complete' },
-      ]);
-      // The raw `_autoCompactionAbortController.signal` text is not in any yield.
-      const allMessages = events.map((e: any) => e.message ?? '').join(' ');
-      expect(allMessages).not.toMatch(/_autoCompactionAbortController/);
+      expect(events.map(e => e.type)).toEqual(['compaction_end', 'error', 'complete']);
+      expect(events[0]).toMatchObject({ type: 'compaction_end' });
+      expect(events[1]).toEqual({
+        type: 'error',
+        message: 'Auto-compaction hit a transient error. Try /compact manually.',
+      });
+      expect(events[2]).toEqual({ type: 'complete' });
+      // The raw `_autoCompactionAbortController.signal` text is not in any
+      // user-facing yield (only in the structured trajectory event's
+      // errorMessage, which the chat surface never renders).
+      const userFacingMessages = events
+        .filter(e => e.type === 'error' || e.type === 'status' || e.type === 'info')
+        .map(e => e.message ?? '')
+        .join(' ');
+      expect(userFacingMessages).not.toMatch(/_autoCompactionAbortController/);
       expect(adapter.shouldCompleteQueue(false)).toBe(true);
     });
   });
