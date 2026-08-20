@@ -78,7 +78,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Configuration
-BUN_VERSION="bun-v1.3.9"  # Pinned version for reproducible builds
+BUN_VERSION="bun-v1.4.0"  # Pinned version for reproducible builds
 # Download base for Bun. Override with a mirror when GitHub is slow or
 # unreachable, e.g. BUN_DOWNLOAD_BASE=https://registry.npmmirror.com/-/binary/bun
 BUN_DOWNLOAD_BASE="${BUN_DOWNLOAD_BASE:-https://github.com/oven-sh/bun/releases/download}"

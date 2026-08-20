@@ -696,7 +696,7 @@ echo ""
 function createDockerFiles(config: ServerBuildConfig): void {
   const { outputDir, version } = config;
 
-  const dockerfile = `FROM oven/bun:1.3-slim
+  const dockerfile = `FROM oven/bun:1.4-slim
 
 WORKDIR /app
 
