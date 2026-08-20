@@ -63,6 +63,7 @@ import { kimiCodingProvider } from '@earendil-works/pi-ai/providers/kimi-coding'
 import { openrouterProvider } from '@earendil-works/pi-ai/providers/openrouter';
 import { anthropicProvider } from '@earendil-works/pi-ai/providers/anthropic';
 import { githubCopilotProvider } from '@earendil-works/pi-ai/providers/github-copilot';
+import { radiusProvider } from '@earendil-works/pi-ai/providers/radius';
 
 // Provider-id → SDK OAuth refresh. The provider modules only lazily load
 // their OAuth flows (lazyOAuth), so this table is cheap at import time.
@@ -72,6 +73,7 @@ const PI_SUBSCRIPTION_OAUTH_REFRESH: Record<string, OAuthAuth['refresh'] | undef
   openrouter: openrouterProvider().auth.oauth?.refresh,
   anthropic: anthropicProvider().auth.oauth?.refresh,
   'github-copilot': githubCopilotProvider().auth.oauth?.refresh,
+  radius: radiusProvider().auth.oauth?.refresh,
 };
 
 // Session-scoped tool callbacks (for SubmitPlan, source auth, etc.)
@@ -169,6 +171,38 @@ function mapBrowserToolErrorCode(code: string): string | null {
     default:
       return null;
   }
+}
+
+/**
+ * Build the provider-native credential shape for an OAuth-authenticated
+ * connection, or null when no access token is available.
+ *
+ * The Pi SDK's providers resolve stored credentials provider-aware-ly:
+ * - `openai-codex` (ChatGPT Plus) is OAuth-only (`auth.oauth`, no
+ *   `auth.apiKey`) — an `api_key` entry fails auth resolution with
+ *   "No API key found for openai-codex". Must pass `type: 'oauth'`.
+ * - `github-copilot` needs the full OAuth credential so the SDK can derive
+ *   the API endpoint from the Copilot token's proxy-ep field.
+ * - Every other provider accepts the bearer token as `type: 'api_key'`.
+ */
+export function buildPiAuthCredential(
+  piAuthProvider: string,
+  oauth: { accessToken?: string; refreshToken?: string; expiresAt?: number } | null | undefined,
+): { type: 'api_key'; key: string } | { type: 'oauth'; access: string; refresh: string; expires: number } | null {
+  if (!oauth?.accessToken) return null;
+  // Copilot: pass full OAuth credential so the Pi SDK can derive the correct
+  // API endpoint from the Copilot token's proxy-ep field. The refresh token is
+  // the GitHub access token used to obtain fresh Copilot tokens (~1h expiry).
+  if (piAuthProvider === 'github-copilot' && oauth.refreshToken) {
+    return { type: 'oauth', access: oauth.accessToken, refresh: oauth.refreshToken, expires: oauth.expiresAt ?? 0 };
+  }
+  // ChatGPT Plus (openai-codex): the Pi SDK provider is OAuth-only — the
+  // bearer JWT must arrive as `type: 'oauth'` or auth resolution fails.
+  if (piAuthProvider === 'openai-codex') {
+    return { type: 'oauth', access: oauth.accessToken, refresh: oauth.refreshToken ?? '', expires: oauth.expiresAt ?? 0 };
+  }
+  // Other OAuth providers: pass as api_key (bearer token).
+  return { type: 'api_key', key: oauth.accessToken };
 }
 
 /**
@@ -639,10 +673,15 @@ export class PiAgent extends BaseAgent {
    * Returns a provider-aware credential object for the subprocess,
    * or null if no piAuthProvider is configured (falls back to legacy getApiKey).
    *
-   * OAuth tokens from Craft (Claude Max, ChatGPT Plus, Copilot) are passed as
-   * api_key type because they function as bearer tokens that the Pi SDK's provider
-   * modules use directly. The OAuth exchange happens on the Craft side; by the time
-   * it reaches Pi, it's just an access token.
+   * OAuth tokens from Craft (Claude Max, ChatGPT Plus, Copilot) function as
+   * bearer tokens that the Pi SDK's provider modules use directly. The OAuth
+   * exchange happens on the Craft side; by the time it reaches Pi, it's just
+   * an access token.
+   *
+   * Provider-native shape matters: the Pi SDK's `openai-codex` provider is
+   * OAuth-only (`auth.oauth`, no `auth.apiKey`), so its credential must be
+   * passed as `type: 'oauth'` — an `api_key` entry fails provider-aware auth
+   * resolution with "No API key found for openai-codex" (SDK 0.84+).
    */
   private async getPiAuth(): Promise<{
     provider: string;
@@ -660,29 +699,10 @@ export class PiAgent extends BaseAgent {
 
       if (this.config.authType === 'oauth') {
         const oauth = await credentialManager.getLlmOAuth(slug);
-        if (oauth?.accessToken) {
-          // Copilot: pass full OAuth credential so the Pi SDK can derive the
-          // correct API endpoint from the Copilot token's proxy-ep field.
-          // The refresh token is the GitHub access token used to obtain fresh
-          // Copilot tokens when they expire (~1 hour).
-          if (piAuthProvider === 'github-copilot' && oauth.refreshToken) {
-            this.debug(`Retrieved Copilot OAuth credential for Pi provider: ${piAuthProvider}`);
-            return {
-              provider: piAuthProvider,
-              credential: {
-                type: 'oauth',
-                access: oauth.accessToken,
-                refresh: oauth.refreshToken,
-                expires: oauth.expiresAt ?? 0,
-              },
-            };
-          }
-          // Other OAuth providers: pass as api_key (bearer token)
-          this.debug(`Retrieved OAuth access token for Pi provider: ${piAuthProvider}`);
-          return {
-            provider: piAuthProvider,
-            credential: { type: 'api_key', key: oauth.accessToken },
-          };
+        const credential = buildPiAuthCredential(piAuthProvider, oauth);
+        if (credential) {
+          this.debug(`Retrieved OAuth credential for Pi provider: ${piAuthProvider}`);
+          return { provider: piAuthProvider, credential };
         }
       } else if (this.config.authType === 'iam_credentials') {
         // AWS IAM credentials — pass structured fields so the subprocess can
