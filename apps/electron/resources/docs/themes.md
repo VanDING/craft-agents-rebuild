@@ -4,7 +4,7 @@ This guide explains how to customize the visual theme of Craft Agent.
 
 ## Overview
 
-Craft Agent uses a 6-color theme system with support for both app-level defaults and per-workspace overrides.
+Craft Agent uses a semantic-token theme engine with support for app-level defaults and per-workspace overrides. The product ships with one default theme containing both light and dark variants; additional themes are JSON files.
 
 ### Theme Hierarchy
 
@@ -42,7 +42,7 @@ Workspace theme preferences are stored in the workspace config:
 
 When `colorTheme` is omitted or undefined, the workspace inherits the app default.
 
-## 6-Color System
+## Core Color System
 
 | Color | Purpose | Usage |
 |-------|---------|-------|
@@ -91,6 +91,8 @@ This allows partial dark mode customization - only override what needs to differ
 
 Preset themes are complete theme packages stored at `~/.craft-agent/themes/`. Each preset is a JSON file with theme colors and metadata.
 
+Craft Agent does not include a visual theme editor. Create or edit these JSON files directly, then select the theme in Settings → Appearance.
+
 ### Preset Theme Schema
 
 ```json
@@ -108,6 +110,19 @@ Preset themes are complete theme packages stored at `~/.craft-agent/themes/`. Ea
   "info": "oklch(0.78 0.14 70)",
   "success": "oklch(0.72 0.18 145)",
   "destructive": "oklch(0.65 0.22 28)",
+
+  "depth": "elevated",
+  "shadowColor": "#000000",
+  "shadowStrength": 0.12,
+  "radius": "8px",
+  "borderWidth": "1px",
+  "borderStyle": "solid",
+  "fontSize": "15px",
+  "lineHeight": 1.5,
+  "letterSpacing": "0em",
+  "iconStrokeWidth": 2,
+  "iconStrokeLinecap": "round",
+  "density": "comfortable",
 
   "shikiTheme": {
     "light": "github-light",
@@ -127,6 +142,27 @@ Preset themes are complete theme packages stored at `~/.craft-agent/themes/`. Ea
 | `source` | URL to original theme |
 | `supportedModes` | Array of `"light"`, `"dark"`, or both |
 | `shikiTheme` | Syntax highlighting theme (light/dark variants) |
+
+### Visual Style Fields
+
+| Field | Purpose | Values / examples |
+|-------|---------|-------------------|
+| `depth` | High-level material preset | `flat`, `elevated`, `neon`, `glass`, `raised` |
+| `shadowColor` | Shadow or glow color | Any safe CSS color |
+| `shadowStrength` | Shadow intensity | Number from `0` to `1` |
+| `glassBlur` | Blur used by `depth: glass` | `20px` |
+| `radius` | Base semantic corner radius | `8px`, `0px` |
+| `borderWidth` | Default semantic border width | `1px`, `2px` |
+| `borderStyle` | Default border style | `solid`, `dashed`, `dotted`, `double` |
+| `fontSans` / `fontSerif` / `fontMono` | CSS font stacks | `Inter, sans-serif` |
+| `fontSize` | Root UI font size | `15px` |
+| `letterSpacing` | Global UI tracking | `0.01em` |
+| `lineHeight` | Global base line height | `1.5` |
+| `iconStrokeWidth` | Lucide icon line weight | `0.5`–`4` |
+| `iconStrokeLinecap` | Lucide line cap | `butt`, `round`, `square` |
+| `density` | Global spacing scale | `compact`, `comfortable`, `cozy` |
+
+Semantic colors such as `secondary`, `muted`, `card`, `border`, `ring`, and `userMessageBubble` may also be set explicitly. When omitted, the default CSS derivation remains active.
 
 ### Installing Preset Themes
 

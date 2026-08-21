@@ -89,7 +89,7 @@ export const DOCS: Record<DocFeature, DocInfo> = {
     path: '/go-further/themes',
     title: 'Themes',
     summary:
-      'Customize the visual appearance with a 6-color system. Override specific colors in theme.json or install preset themes for complete visual styles.',
+      'Customize the complete visual style with semantic colors, depth, shape, typography, icons, and density tokens defined in theme JSON files.',
   },
   'app-settings': {
     path: '/reference/config/config-file',
