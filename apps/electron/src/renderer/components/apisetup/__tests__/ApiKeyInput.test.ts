@@ -2,7 +2,6 @@ import { describe, expect, it } from 'bun:test'
 import {
   resolveCustomEndpointPayload,
   resolvePiAuthProviderForSubmit,
-  resolvePresetStateForBaseUrlChange,
 } from '../submit-helpers'
 import { pickTierDefaults, resolveTierModels } from '../tier-models'
 
@@ -61,44 +60,6 @@ describe('resolvePiAuthProviderForSubmit', () => {
   })
 })
 
-describe('resolvePresetStateForBaseUrlChange', () => {
-  it('updates the remembered provider when the typed URL matches a known preset', () => {
-    expect(resolvePresetStateForBaseUrlChange({
-      matchedPreset: 'openrouter',
-      activePreset: 'custom',
-      activePresetHasEmptyUrl: true,
-      lastNonCustomPreset: 'anthropic',
-    })).toEqual({
-      activePreset: 'openrouter',
-      lastNonCustomPreset: 'openrouter',
-    })
-  })
-
-  it('preserves provider routing when editing a provider with an empty default URL', () => {
-    expect(resolvePresetStateForBaseUrlChange({
-      matchedPreset: 'custom',
-      activePreset: 'azure-openai-responses',
-      activePresetHasEmptyUrl: true,
-      lastNonCustomPreset: 'azure-openai-responses',
-    })).toEqual({
-      activePreset: 'azure-openai-responses',
-      lastNonCustomPreset: 'azure-openai-responses',
-    })
-  })
-
-  it('falls back to custom while keeping the most recent matched provider', () => {
-    expect(resolvePresetStateForBaseUrlChange({
-      matchedPreset: 'custom',
-      activePreset: 'openrouter',
-      activePresetHasEmptyUrl: false,
-      lastNonCustomPreset: 'openrouter',
-    })).toEqual({
-      activePreset: 'custom',
-      lastNonCustomPreset: 'openrouter',
-    })
-  })
-})
-
 describe('resolveCustomEndpointPayload', () => {
   const BRANDED = new Set(['manifest'])
 
@@ -125,6 +86,19 @@ describe('resolveCustomEndpointPayload', () => {
     })).toEqual({
       customEndpoint: { api: 'anthropic-messages' },
       piAuthProvider: 'anthropic',
+    })
+  })
+
+  it('routes openai-responses through the openai provider (Responses adapter)', () => {
+    expect(resolveCustomEndpointPayload({
+      activePreset: 'custom',
+      baseUrl: 'https://api.deepseek.com',
+      customApi: 'openai-responses',
+      brandedOpenAiCompatPresets: BRANDED,
+      fallbackPiAuthProvider: undefined,
+    })).toEqual({
+      customEndpoint: { api: 'openai-responses' },
+      piAuthProvider: 'openai',
     })
   })
 

@@ -24,33 +24,9 @@ export function resolvePiAuthProviderForSubmit(
   return PI_AUTH_PROVIDER_ALIASES[activePreset] ?? activePreset
 }
 
-export function resolvePresetStateForBaseUrlChange(params: {
-  matchedPreset: PresetKey
-  activePreset: PresetKey
-  activePresetHasEmptyUrl: boolean
-  lastNonCustomPreset: PresetKey | null
-}): { activePreset: PresetKey; lastNonCustomPreset: PresetKey | null } {
-  const { matchedPreset, activePreset, activePresetHasEmptyUrl, lastNonCustomPreset } = params
-
-  if (matchedPreset !== 'custom') {
-    return {
-      activePreset: matchedPreset,
-      lastNonCustomPreset: matchedPreset,
-    }
-  }
-
-  if (activePresetHasEmptyUrl) {
-    return {
-      activePreset,
-      lastNonCustomPreset,
-    }
-  }
-
-  return {
-    activePreset: 'custom',
-    lastNonCustomPreset,
-  }
-}
+// NOTE: resolvePresetStateForBaseUrlChange was removed — typing a URL no
+// longer auto-switches the preset (a known endpoint like https://api.deepseek.com
+// can pair with any protocol), so preset selection is fully explicit.
 
 /**
  * Resolve the customEndpoint + piAuthProvider payload at submit time.

@@ -4,6 +4,8 @@ This file accumulates release notes for the next unreleased version. PRs that ad
 
 ## Features
 
+- **OpenAI Responses protocol for custom endpoints** — the custom-endpoint protocol picker now offers "OpenAI Responses" alongside Chat Completions and Anthropic Messages. Third-party APIs that implement the Responses format (e.g. DeepSeek's `https://api.deepseek.com`) route through the Pi SDK's Responses adapter. Configured as `customEndpoint.api = 'openai-responses'`; the SDK side needed no changes — its built-in adapter registry already knew the protocol.
+
 ## Improvements
 
 - **Upgrade to Bun 1.4** — the bundled runtime (pi-agent-server subprocess), build tooling, and CI now use Bun 1.4.0 (Rust rewrite, +1,517 Node.js compatibility tests, up to 5× lower idle CPU, up to 35% lower memory usage). Pins updated across build scripts, Docker images, and GitHub Actions.

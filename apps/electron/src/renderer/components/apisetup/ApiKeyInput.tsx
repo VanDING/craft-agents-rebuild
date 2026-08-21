@@ -27,7 +27,6 @@ import { pickTierDefaults, resolveTierModels, type PiModelInfo } from "./tier-mo
 import {
   resolveCustomEndpointPayload,
   resolvePiAuthProviderForSubmit,
-  resolvePresetStateForBaseUrlChange,
   type PresetKey,
 } from "./submit-helpers"
 
@@ -291,6 +290,10 @@ export function ApiKeyInput({
       setLastNonCustomPreset(preset.key)
     }
     if (preset.key === 'custom') {
+      // Custom starts empty — the user types the endpoint themselves. Typing a
+      // URL never auto-switches the preset (see handleBaseUrlChange), so a
+      // known endpoint like https://api.deepseek.com pairs freely with any
+      // protocol chosen below.
       setBaseUrl('')
     } else {
       setBaseUrl(preset.url)
@@ -316,31 +319,11 @@ export function ApiKeyInput({
   }
 
   const handleBaseUrlChange = (value: string) => {
+    // Typing a URL never auto-switches the preset: known endpoints (e.g.
+    // https://api.deepseek.com) can be paired with any protocol (Chat
+    // Completions or Responses), so preset selection stays fully explicit.
     setBaseUrl(value)
-    const presetKey = getPresetForUrl(value, presets)
-    const currentPresetObj = presets.find(p => p.key === activePreset)
-    const nextPresetState = resolvePresetStateForBaseUrlChange({
-      matchedPreset: presetKey,
-      activePreset,
-      activePresetHasEmptyUrl: currentPresetObj?.url === '',
-      lastNonCustomPreset,
-    })
-    setActivePreset(nextPresetState.activePreset)
-    setLastNonCustomPreset(nextPresetState.lastNonCustomPreset)
     setModelError(null)
-    if (!connectionDefaultModel.trim()) {
-      if (presetKey === 'ollama') {
-        setConnectionDefaultModel('qwen3-coder')
-      } else if (presetKey === 'manifest') {
-        setConnectionDefaultModel('auto')
-      } else if (presetKey === 'minimax' || presetKey === 'minimax-cn') {
-        setConnectionDefaultModel(COMPAT_MINIMAX_DEFAULTS)
-      } else if (presetKey === 'kimi-coding') {
-        setConnectionDefaultModel(COMPAT_KIMI_DEFAULTS)
-      } else if (presetKey === 'openrouter' || presetKey === 'vercel-ai-gateway' || presetKey === 'custom') {
-        setConnectionDefaultModel(providerType === 'openai' ? COMPAT_OPENAI_DEFAULTS : COMPAT_ANTHROPIC_DEFAULTS)
-      }
-    }
   }
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -535,6 +518,7 @@ export function ApiKeyInput({
           )}>
             {([
               { value: 'openai-completions' as const, label: 'OpenAI Compatible' },
+              { value: 'openai-responses' as const, label: 'OpenAI Responses' },
               { value: 'anthropic-messages' as const, label: 'Anthropic Compatible' },
             ]).map(({ value, label }) => (
               <button
