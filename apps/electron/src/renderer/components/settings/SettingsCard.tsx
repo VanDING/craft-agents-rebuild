@@ -32,7 +32,7 @@ export function SettingsCard({ children, className, divided = true }: SettingsCa
   return (
     <div
       className={cn(
-        'rounded-xl bg-background shadow-minimal overflow-hidden',
+        'rounded-xl bg-card text-card-foreground shadow-minimal overflow-hidden',
         className
       )}
     >

@@ -11,6 +11,7 @@ This file accumulates release notes for the next unreleased version. PRs that ad
 - **Upgrade to Bun 1.4** — the bundled runtime (pi-agent-server subprocess), build tooling, and CI now use Bun 1.4.0 (Rust rewrite, +1,517 Node.js compatibility tests, up to 5× lower idle CPU, up to 35% lower memory usage). Pins updated across build scripts, Docker images, and GitHub Actions.
 - **Theme files can now control complete visual styles** — the theme schema now covers semantic surfaces, depth presets, shadows, radii, borders, typography, Lucide stroke style, and interface density. Themes remain JSON-driven and use the existing Appearance selector; no in-app theme editor was added.
 - **Cyberpunk Neon and Neo Brutalism themes** — two new themes demonstrate the semantic engine beyond color swaps: one uses compact square geometry and cyan neon glow; the other uses heavy borders, saturated paper colors, and zero-blur offset shadows in both light and dark modes.
+- **Core surfaces now consume theme semantics** — the app shell, navigator, content panels, cards, controls, and composer now use theme-defined surfaces, radii, depth, and typography so high-character themes no longer stop at color substitution.
 
 ## Bug Fixes
 

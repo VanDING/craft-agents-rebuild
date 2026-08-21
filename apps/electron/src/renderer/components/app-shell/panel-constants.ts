@@ -7,10 +7,10 @@ export const PANEL_GAP = 6
 export const PANEL_EDGE_INSET = 6
 
 /** Corner radius for panel edges touching the window boundary (macOS native corners → larger) */
-export const RADIUS_EDGE = isMac ? 14 : 8
+export const RADIUS_EDGE = `var(--theme-panel-radius, ${isMac ? 14 : 8}px)`
 
 /** Corner radius for interior corners between panels */
-export const RADIUS_INNER = 10
+export const RADIUS_INNER = 'var(--theme-panel-radius, 10px)'
 
 /** Minimum width for any content panel */
 export const PANEL_MIN_WIDTH = 440

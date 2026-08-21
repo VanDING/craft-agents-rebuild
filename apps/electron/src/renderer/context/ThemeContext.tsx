@@ -287,8 +287,15 @@ export function ThemeProvider({
   useEffect(() => {
     const root = document.documentElement
 
-    // Apply font
-    if (font === 'inter') {
+    // Presets that declare typography own the font stack. The app-level font
+    // preference remains the fallback for the default theme and color-only
+    // third-party themes.
+    const effectiveThemeFont = isDark
+      ? (resolvedTheme.dark?.fontSans ?? resolvedTheme.fontSans)
+      : resolvedTheme.fontSans
+    const themeOwnsTypography = effectiveColorTheme !== 'default' && !!effectiveThemeFont
+
+    if (font === 'inter' && !themeOwnsTypography) {
       root.dataset.font = 'inter'
     } else {
       delete root.dataset.font
@@ -303,7 +310,7 @@ export function ThemeProvider({
 
     // Always set theme override for semi-transparent background (vibrancy effect)
     root.dataset.themeOverride = 'true'
-  }, [effectiveColorTheme, font])
+  }, [effectiveColorTheme, font, isDark, resolvedTheme.dark?.fontSans, resolvedTheme.fontSans])
 
   // Apply dark/light class and theme-specific DOM attributes
   // This runs when preset loads or mode changes

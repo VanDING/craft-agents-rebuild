@@ -70,7 +70,7 @@ export function SettingsSegmentedControl<T extends string = string>({
               'flex items-center gap-1.5 rounded-lg transition-all',
               size === 'sm' ? 'px-2 py-1 text-xs' : 'px-3 py-1.5 text-sm',
               isSelected
-                ? 'bg-background shadow-minimal'
+                ? 'bg-secondary text-secondary-foreground shadow-minimal'
                 : 'bg-transparent hover:bg-foreground/5'
             )}
           >
@@ -78,7 +78,7 @@ export function SettingsSegmentedControl<T extends string = string>({
               <span
                 className={cn(
                   'w-4 h-4',
-                  isSelected ? 'text-foreground' : 'text-muted-foreground'
+                  isSelected ? 'text-secondary-foreground' : 'text-muted-foreground'
                 )}
               >
                 {option.icon}
@@ -86,7 +86,7 @@ export function SettingsSegmentedControl<T extends string = string>({
             )}
             <span
               className={cn(
-                isSelected ? 'text-foreground' : 'text-muted-foreground'
+                isSelected ? 'text-secondary-foreground' : 'text-muted-foreground'
               )}
             >
               {option.label}

@@ -26,6 +26,7 @@ describe('themeToCSS', () => {
     expect(css).toContain('--secondary: #eeeeee;');
     expect(css).toContain('--border: #cccccc;');
     expect(css).toContain('--theme-radius: 12px;');
+    expect(css).toContain('--theme-panel-radius: 12px;');
     expect(css).toContain('--theme-border-width: 2px;');
     expect(css).toContain('--theme-border-style: dashed;');
     expect(css).toContain('--font-sans: Inter, sans-serif;');

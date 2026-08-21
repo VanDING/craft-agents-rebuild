@@ -405,7 +405,13 @@ export function themeToCSS(theme: ThemeOverrides, isDark: boolean = false): stri
   vars.push(`--popover-solid: ${colors.popoverSolid || colors.popover || bg};`);
 
   // L2/L4/L5/L6 direct tokens
-  if (colors.radius) vars.push(`--theme-radius: ${colors.radius};`);
+  if (colors.radius) {
+    vars.push(`--theme-radius: ${colors.radius};`);
+    // App shell panels historically use platform-specific fixed radii. This
+    // custom-only variable lets preset themes own those corners while the
+    // default theme keeps its existing platform fallback.
+    vars.push(`--theme-panel-radius: ${colors.radius};`);
+  }
   if (colors.borderWidth) vars.push(`--theme-border-width: ${colors.borderWidth};`);
   if (colors.borderStyle) vars.push(`--theme-border-style: ${colors.borderStyle};`);
   if (colors.fontSans) vars.push(`--font-sans: ${colors.fontSans};`);

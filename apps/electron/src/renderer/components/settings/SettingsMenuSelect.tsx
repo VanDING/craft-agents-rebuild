@@ -114,8 +114,8 @@ export function SettingsMenuSelect({
           type="button"
           className={cn(
             'inline-flex items-center h-8 px-3 gap-1 text-sm rounded-lg',
-            'bg-background shadow-minimal',
-            'hover:bg-foreground/[0.02] transition-colors',
+            'bg-input shadow-minimal',
+            'hover:bg-input/80 transition-colors',
             'disabled:cursor-not-allowed disabled:opacity-50',
             isOpen && 'bg-foreground/[0.02]',
             className

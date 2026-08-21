@@ -171,6 +171,8 @@
   --muted-foreground: var(--foreground-50);
   --card: var(--background);
   --card-foreground: var(--foreground);
+  --paper: var(--background);
+  --navigator: var(--background);
   --popover: var(--background);
   --popover-foreground: var(--foreground);
   --border: oklch(from var(--foreground) l c h / 0.05);
@@ -307,6 +309,8 @@
   --muted-foreground: var(--foreground-50);
   --card: var(--background);
   --card-foreground: var(--foreground);
+  --paper: var(--background);
+  --navigator: var(--background);
   --popover: var(--background);
   --popover-foreground: var(--foreground);
   --border: oklch(from var(--foreground) l c h / 0.05);
@@ -435,6 +439,8 @@ html[data-font="inter"] {
   /* === LEGACY COMPATIBILITY === */
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
+  --color-paper: var(--paper);
+  --color-navigator: var(--navigator);
   --color-popover: var(--popover);
   --color-popover-foreground: var(--popover-foreground);
   --color-secondary: var(--secondary);
@@ -684,6 +690,10 @@ html[data-font="inter"] {
       rgba(0, 0, 0, calc(var(--shadow-blur-opacity) * 0.33)) 0px 24px 24px 4px;
   }
 
+  html[data-theme] .shadow-panel-focused {
+    box-shadow: var(--shadow-strong, var(--shadow-modal-small));
+  }
+
   /* Gradient border: lighter at top, stronger at bottom */
   .shadow-panel-focused::before {
     content: '';
@@ -709,6 +719,14 @@ html[data-font="inter"] {
   .shadow-panel-focused > * {
     position: relative;
     z-index: 2;
+  }
+
+  /* Non-default material depths provide their own border/shadow language. */
+  html[data-theme-depth="flat"] .shadow-panel-focused::before,
+  html[data-theme-depth="neon"] .shadow-panel-focused::before,
+  html[data-theme-depth="glass"] .shadow-panel-focused::before,
+  html[data-theme-depth="raised"] .shadow-panel-focused::before {
+    display: none;
   }
 
   .shadow-modal-small {

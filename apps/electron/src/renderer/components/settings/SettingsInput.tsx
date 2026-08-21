@@ -93,7 +93,7 @@ export function SettingsInput({
       )}
       <div className="flex gap-2">
         <div className={cn(
-          'relative flex-1 rounded-md shadow-minimal has-[:focus-visible]:bg-background',
+          'relative flex-1 rounded-md bg-input shadow-minimal',
           error && 'ring-1 ring-destructive'
         )}>
           <Input
@@ -106,7 +106,7 @@ export function SettingsInput({
             onBlur={onBlur}
             onKeyDown={onKeyDown}
             className={cn(
-              'bg-muted/50 border-0 shadow-none focus-visible:ring-0 focus-visible:outline-none focus-visible:bg-transparent',
+              'bg-transparent border-0 shadow-none focus-visible:ring-0 focus-visible:outline-none',
               isPassword && 'pr-10'
             )}
           />
@@ -193,7 +193,7 @@ export function SettingsInputRow({
         {error && <p className={cn('text-sm text-destructive', settingsUI.labelDescriptionGap)}>{error}</p>}
       </div>
       <div data-layout="settings-control" className={cn(
-        'ml-4 shrink-0 rounded-md shadow-minimal has-[:focus-visible]:bg-background',
+        'ml-4 shrink-0 rounded-md bg-input shadow-minimal',
         error && 'ring-1 ring-destructive'
       )}>
         <Input
@@ -203,7 +203,7 @@ export function SettingsInputRow({
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
           disabled={disabled}
-          className="w-[200px] bg-muted/50 border-0 shadow-none focus-visible:ring-0 focus-visible:outline-none focus-visible:bg-transparent"
+          className="w-[200px] bg-transparent border-0 shadow-none focus-visible:ring-0 focus-visible:outline-none"
         />
       </div>
     </div>
@@ -272,7 +272,7 @@ export function SettingsSecretInput({
         </div>
       )}
       <div className={cn(
-        'relative rounded-md shadow-minimal bg-muted/50 has-[:focus-visible]:bg-background',
+        'relative rounded-md shadow-minimal bg-input',
         error && 'ring-1 ring-destructive'
       )}>
         <Input

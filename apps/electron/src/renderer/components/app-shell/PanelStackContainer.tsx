@@ -142,7 +142,7 @@ export function PanelStackContainer({
               data-panel-role="navigator"
               className={cn(
                 'h-full w-full overflow-hidden relative',
-                'bg-background shadow-middle',
+                'bg-paper shadow-middle',
               )}
               style={{
                 // Compact mode runs flush to the viewport floor — no rounded bottom.
@@ -234,7 +234,7 @@ export function PanelStackContainer({
           transition={transition}
           className={cn(
             'h-full overflow-hidden relative shrink-0 z-[2]',
-            'bg-background shadow-middle',
+            'bg-paper shadow-middle',
           )}
           style={{
             borderTopLeftRadius: RADIUS_INNER,

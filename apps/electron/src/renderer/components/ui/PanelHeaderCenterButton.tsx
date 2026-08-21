@@ -19,7 +19,7 @@ export const PanelHeaderCenterButton = forwardRef<HTMLButtonElement, PanelHeader
         aria-label={props['aria-label'] ?? tooltip}
         className={cn(
           "panel-header-btn inline-flex items-center justify-center",
-          "p-1.5 shrink-0 rounded-[6px] titlebar-no-drag",
+          "p-1.5 shrink-0 rounded-md titlebar-no-drag",
           "bg-background shadow-minimal",
           "opacity-70 hover:opacity-100",
           "transition-opacity focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",

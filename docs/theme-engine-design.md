@@ -2,7 +2,7 @@
 
 - 作者：Craft Agent（与 Captain 协作）
 - 日期：2026-08-20
-- 状态：实现完成（自动化验证通过，待用户应用内视觉验收）
+- 状态：实现完成（核心语义表面补齐，自动化验证通过，待用户应用内视觉复验）
 - 配套演示：`docs/theme-engine-demo-5-themes.html`（五套主题全维度对比）
 
 ---
@@ -141,7 +141,7 @@ raised     硬抬升：零模糊纯色偏移硬影（Neo-Brutalism）
 | M2 | 扩展 `themeToCSS`：语义 token + depth 展开 | 低-中 | 完成 |
 | M3 | 使用不随产品发布的测试夹具验证五种 depth | 低 | 完成 |
 | M4 | 复用现有主题选择 UI，不开发编辑器 | — | 无新增开发 |
-| M5 | 最小接入 radius/shadow/font/border/icon/density 全局入口 | 中 | 完成，待视觉回归 |
+| M5 | 最小接入 radius/shadow/font/border/icon/density 全局入口 | 中 | 完成；应用外壳、面板、卡片与输入基元已消费语义 token，待视觉复验 |
 | M6 | 仅保留默认 light/dark，完成类型与构建验证 | 中 | 完成，待用户视觉验收 |
 | M7 | 基于演示设计赛博朋克与粗野主义正式主题 | 低 | 完成，待用户视觉验收 |
 

@@ -136,7 +136,7 @@ export function PanelSlot({
         className={cn(
           'h-full overflow-hidden relative @container/panel',
           !isOnly && isFocusedPanel ? 'shadow-panel-focused z-[1]' : 'shadow-middle z-0',
-          'bg-foreground-2',
+          'bg-paper',
         )}
         style={{
           // Expanded into the fullscreen overlay: hide the slot (keep DOM state
