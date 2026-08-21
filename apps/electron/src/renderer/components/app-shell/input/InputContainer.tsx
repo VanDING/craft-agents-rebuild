@@ -253,7 +253,7 @@ export function InputContainer({
           className="absolute top-0 left-0 right-0 invisible pointer-events-none"
           aria-hidden="true"
         >
-          <div className="rounded-lg bg-input overflow-hidden">
+          <div className="theme-composer-surface rounded-lg overflow-hidden">
             {renderContent(true)}
           </div>
         </div>
@@ -262,9 +262,8 @@ export function InputContainer({
       {/* Visible animated container */}
       <motion.div
         className={cn(
-          "input-container relative rounded-xl overflow-hidden transition-colors",
-          isFocusedPanel ? "shadow-middle" : "shadow-minimal",
-          "bg-input"
+          "input-container theme-composer-surface relative rounded-xl overflow-hidden transition-colors",
+          isFocusedPanel ? "shadow-middle" : "shadow-minimal"
         )}
         style={{
           height: heightMotionValue,

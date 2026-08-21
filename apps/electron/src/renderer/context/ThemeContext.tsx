@@ -87,6 +87,26 @@ const BUNDLED_THEMES = new Map<string, ThemeFile>(
   })
 )
 
+/** Resolve any browser-supported CSS color to the RGBA syntax accepted by
+ * Electron's Window Controls Overlay. The title bar behind the controls uses
+ * a 50% theme wash over Windows Mica/Acrylic, so the native overlay must use
+ * the same alpha instead of painting an opaque rectangle. */
+function toNativeOverlayColor(value: string, fallback: string, opacity: number): string {
+  const color = typeof CSS !== 'undefined' && CSS.supports('color', value) ? value : fallback
+  const canvas = document.createElement('canvas')
+  canvas.width = 1
+  canvas.height = 1
+  const context = canvas.getContext('2d')
+  if (!context) return fallback
+
+  context.clearRect(0, 0, 1, 1)
+  context.fillStyle = color
+  context.fillRect(0, 0, 1, 1)
+  const [red, green, blue, alpha] = context.getImageData(0, 0, 1, 1).data
+  const resolvedAlpha = Math.round((alpha / 255) * opacity * 1000) / 1000
+  return `rgba(${red}, ${green}, ${blue}, ${resolvedAlpha})`
+}
+
 interface ThemeProviderProps {
   children: ReactNode
   defaultMode?: ThemeMode
@@ -402,8 +422,18 @@ export function ThemeProvider({
     const effectiveTheme = isDark && resolvedTheme.dark
       ? { ...resolvedTheme, ...resolvedTheme.dark }
       : resolvedTheme
-    const color = effectiveTheme.background ?? (isDark ? '#1e1d21' : '#faf9fb')
-    const symbolColor = effectiveTheme.foreground ?? (isDark ? '#f5f5f7' : '#1a1625')
+    const fallbackBackground = isDark ? '#1e1d21' : '#faf9fb'
+    const fallbackForeground = isDark ? '#f5f5f7' : '#1a1625'
+    const color = toNativeOverlayColor(
+      effectiveTheme.background ?? fallbackBackground,
+      fallbackBackground,
+      0.5
+    )
+    const symbolColor = toNativeOverlayColor(
+      effectiveTheme.foreground ?? fallbackForeground,
+      fallbackForeground,
+      1
+    )
 
     void setTitleBarOverlay({ color, symbolColor, height: 48 }).catch(() => {})
   }, [resolvedTheme, isDark])

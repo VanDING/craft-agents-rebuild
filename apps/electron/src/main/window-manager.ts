@@ -223,7 +223,9 @@ export class WindowManager {
     const isMac = process.platform === 'darwin'
     const isWindows = process.platform === 'win32'
     const windowsBackgroundMaterial = getWindowsBackgroundMaterial()
-    const initialTitleBarColor = nativeTheme.shouldUseDarkColors ? '#1e1d21' : '#faf9fb'
+    const initialTitleBarColor = nativeTheme.shouldUseDarkColors
+      ? 'rgba(30, 29, 33, 0.5)'
+      : 'rgba(250, 249, 251, 0.5)'
     const initialTitleBarSymbolColor = nativeTheme.shouldUseDarkColors ? '#f5f5f7' : '#1a1625'
 
     const window = new BrowserWindow({

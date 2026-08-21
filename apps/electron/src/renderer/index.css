@@ -837,6 +837,21 @@ html[data-scenic] .fullscreen-overlay-background {
   -webkit-backdrop-filter: blur(24px);
 }
 
+/* The default composer historically uses the canvas surface. Keep that visual
+   contract while allowing named themes to opt into their dedicated input
+   surface token. Generic form controls continue to use --input everywhere. */
+.theme-composer-surface {
+  background-color: var(--background);
+}
+
+html[data-theme] .theme-composer-surface {
+  background-color: var(--input);
+}
+
+html[data-scenic] .input-container.theme-composer-surface {
+  background-color: rgba(0, 0, 0, 0.15);
+}
+
 /* depth:glass also works for solid themes; popovers stay on --popover-solid. */
 html[data-theme-depth="glass"] .shadow-middle,
 html[data-theme-depth="glass"] .shadow-strong,

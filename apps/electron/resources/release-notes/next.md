@@ -12,11 +12,12 @@ This file accumulates release notes for the next unreleased version. PRs that ad
 - **Theme files can now control complete visual styles** — the theme schema now covers semantic surfaces, depth presets, shadows, radii, borders, typography, Lucide stroke style, and interface density. Themes remain JSON-driven and use the existing Appearance selector; no in-app theme editor was added.
 - **Cyberpunk Neon and Neo Brutalism themes** — two new themes demonstrate the semantic engine beyond color swaps: one uses compact square geometry and cyan neon glow; the other uses heavy borders, saturated paper colors, and zero-blur offset shadows in both light and dark modes.
 - **Core surfaces now consume theme semantics** — the app shell, navigator, content panels, cards, controls, and composer now use theme-defined surfaces, radii, depth, and typography so high-character themes no longer stop at color substitution.
-- **Theme-aware Windows title bar** — Windows now keeps its native minimize, maximize, and close controls inside the app's existing draggable top bar. The overlay background and glyph colors follow the effective app, workspace, or preview theme instead of remaining a separate system-colored strip.
-- **Cabinet theme collection** — ten MIT-licensed non-default designs from Cabinet were adapted to Craft's semantic theme schema: Warm, Brutalism, Synthwave, Cyberpunk, Techno, Polar, Pixel, Geek, Afrofuturism, and Sumi-e. Craft's own default, Cyberpunk Neon, and Neo Brutalism presets remain distinct.
+- **Theme-aware Windows title bar** — Windows now keeps its native minimize, maximize, and close controls inside the app's existing draggable top bar. The translucent overlay background and glyph colors follow the effective app, workspace, or preview theme without masking Mica/Acrylic behind a separate opaque strip.
+- **Cabinet theme collection** — four selected MIT-licensed designs from Cabinet were adapted to Craft's semantic theme schema: Warm, Techno, Geek, and Sumi-e. Craft's own default, Cyberpunk Neon, and Neo Brutalism presets remain distinct.
 
 ## Bug Fixes
 
+- **Default composer surface restored** — the default theme again uses the original canvas-colored composer instead of the darker generic form-input token; named themes can still provide a dedicated composer surface.
 - **Fix ChatGPT Plus (OAuth) chat failing with "No API key found for openai-codex"** — the ChatGPT OAuth bearer token was passed to the Pi SDK as an `api_key` credential, but the SDK's `openai-codex` provider is OAuth-only and rejected it. It now arrives as a full `oauth` credential (access + refresh + expiry), matching what the SDK's provider-aware auth resolution expects.
 
 ## Breaking Changes

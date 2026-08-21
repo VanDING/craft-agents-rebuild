@@ -96,7 +96,7 @@ raised     硬抬升：零模糊纯色偏移硬影（Neo-Brutalism）
 
 - `default.json` 作为 light/dark 基线；`cyberpunk-neon.json` 与 `neo-brutalism.json` 是首批基于新引擎设计的正式主题。
 - 历史 14 个非默认内置主题直接删除，不迁移、不改造。
-- 后续按同一语义 schema 移植 Cabinet 的 10 套非默认设计，保留其 MIT 来源信息；Cabinet 的基础 light/dark 不重复引入，Cyberpunk/Brutalism 作为独立变体而非覆盖首批正式主题。
+- 后续按同一语义 schema 移植 Cabinet 中筛选后的 Warm、Techno、Geek、Sumi-e 四套非默认设计，保留其 MIT 来源信息；Cabinet 的基础 light/dark 不重复引入。
 - 新增 token 保持可选；缺省时由默认 CSS token 提供稳定回退，便于逐步设计新主题。
 - `depth: glass` 可让已接入的表面使用 blur，但 `popoverSolid` 始终保持不透明。
 - 客户端只负责选择和应用主题；主题制作通过 JSON 文件完成，不提供可视化编辑器。
