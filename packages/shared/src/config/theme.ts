@@ -307,10 +307,10 @@ function depthToCSS(
       break;
     case 'raised':
       vars.push(
-        `--shadow-minimal: 2px 2px 0 ${color};`,
-        `--shadow-middle: 4px 4px 0 ${color};`,
-        `--shadow-strong: 6px 6px 0 ${color};`,
-        `--shadow-modal-small: 8px 8px 0 ${color};`
+        `--shadow-minimal: 0 0 0 var(--theme-border-width) ${border}, 3px 3px 0 ${color};`,
+        `--shadow-middle: 0 0 0 var(--theme-border-width) ${border}, 4px 4px 0 ${color};`,
+        `--shadow-strong: 0 0 0 var(--theme-border-width) ${border}, 6px 6px 0 ${color};`,
+        `--shadow-modal-small: 0 0 0 var(--theme-border-width) ${border}, 8px 8px 0 ${color};`
       );
       break;
     case 'elevated':
@@ -359,9 +359,21 @@ export function themeToCSS(theme: ThemeOverrides, isDark: boolean = false): stri
       vars.push(`--accent-rgb: ${rgbValues};`);
     }
   }
-  if (colors.info) vars.push(`--info: ${colors.info};`);
-  if (colors.success) vars.push(`--success: ${colors.success};`);
-  if (colors.destructive) vars.push(`--destructive: ${colors.destructive};`);
+  if (colors.info) {
+    vars.push(`--info: ${colors.info};`);
+    const rgbValues = hexToRgbValues(colors.info);
+    if (rgbValues) vars.push(`--info-rgb: ${rgbValues};`);
+  }
+  if (colors.success) {
+    vars.push(`--success: ${colors.success};`);
+    const rgbValues = hexToRgbValues(colors.success);
+    if (rgbValues) vars.push(`--success-rgb: ${rgbValues};`);
+  }
+  if (colors.destructive) {
+    vars.push(`--destructive: ${colors.destructive};`);
+    const rgbValues = hexToRgbValues(colors.destructive);
+    if (rgbValues) vars.push(`--destructive-rgb: ${rgbValues};`);
+  }
 
   const semanticColorVars: [keyof ThemeColors, string][] = [
     ['backgroundElevated', '--background-elevated'],

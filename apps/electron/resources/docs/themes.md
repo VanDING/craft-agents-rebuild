@@ -4,7 +4,15 @@ This guide explains how to customize the visual theme of Craft Agent.
 
 ## Overview
 
-Craft Agent uses a semantic-token theme engine with support for app-level defaults and per-workspace overrides. The product ships with one default theme containing both light and dark variants; additional themes are JSON files.
+Craft Agent uses a semantic-token theme engine with support for app-level defaults and per-workspace overrides. The product ships with a default light/dark baseline plus Cyberpunk Neon and Neo Brutalism; additional themes are JSON files.
+
+### Bundled Themes
+
+| ID | Modes | Character |
+|----|-------|-----------|
+| `default` | Light + dark | Restrained neutral baseline |
+| `cyberpunk-neon` | Dark | Cyan neon glow, magenta focus, square compact geometry |
+| `neo-brutalism` | Light + dark | Heavy borders, hard offset shadows, saturated warm accents |
 
 ### Theme Hierarchy
 
@@ -35,7 +43,7 @@ Workspace theme preferences are stored in the workspace config:
   "id": "ws_abc123",
   "name": "My Project",
   "defaults": {
-    "colorTheme": "nord"
+    "colorTheme": "cyberpunk-neon"
   }
 }
 ```
@@ -97,11 +105,10 @@ Craft Agent does not include a visual theme editor. Create or edit these JSON fi
 
 ```json
 {
-  "name": "Dracula",
-  "description": "A dark theme with vibrant colors",
-  "author": "Zeno Rocha",
+  "name": "Custom Theme",
+  "description": "A complete semantic-token theme",
+  "author": "Your Name",
   "license": "MIT",
-  "source": "https://draculatheme.com",
   "supportedModes": ["dark"],
 
   "background": "oklch(0.22 0.02 280)",
@@ -125,8 +132,7 @@ Craft Agent does not include a visual theme editor. Create or edit these JSON fi
   "density": "comfortable",
 
   "shikiTheme": {
-    "light": "github-light",
-    "dark": "dracula"
+    "dark": "tokyo-night"
   }
 }
 ```

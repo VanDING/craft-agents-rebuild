@@ -58,6 +58,25 @@ describe('themeToCSS', () => {
     );
   });
 
+  test('raised depth combines a hard border ring with zero-blur offset shadows', () => {
+    const css = themeToCSS({ depth: 'raised', borderWidth: '2px', shadowColor: '#111111' });
+    expect(css).toContain(
+      '--shadow-minimal: 0 0 0 var(--theme-border-width) var(--border), 3px 3px 0 var(--theme-shadow-color);'
+    );
+  });
+
+  test('emits RGB helpers for status colors used by tinted shadows and toasts', () => {
+    const css = themeToCSS({
+      info: '#ffd60a',
+      success: '#00ff9f',
+      destructive: '#ff2a6d',
+    });
+
+    expect(css).toContain('--info-rgb: 255, 214, 10;');
+    expect(css).toContain('--success-rgb: 0, 255, 159;');
+    expect(css).toContain('--destructive-rgb: 255, 42, 109;');
+  });
+
   test('dark mode overrides visual tokens without losing light defaults', () => {
     const theme: ThemeOverrides = {
       background: '#ffffff',

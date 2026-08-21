@@ -10,6 +10,7 @@ This file accumulates release notes for the next unreleased version. PRs that ad
 
 - **Upgrade to Bun 1.4** — the bundled runtime (pi-agent-server subprocess), build tooling, and CI now use Bun 1.4.0 (Rust rewrite, +1,517 Node.js compatibility tests, up to 5× lower idle CPU, up to 35% lower memory usage). Pins updated across build scripts, Docker images, and GitHub Actions.
 - **Theme files can now control complete visual styles** — the theme schema now covers semantic surfaces, depth presets, shadows, radii, borders, typography, Lucide stroke style, and interface density. Themes remain JSON-driven and use the existing Appearance selector; no in-app theme editor was added.
+- **Cyberpunk Neon and Neo Brutalism themes** — two new themes demonstrate the semantic engine beyond color swaps: one uses compact square geometry and cyan neon glow; the other uses heavy borders, saturated paper colors, and zero-blur offset shadows in both light and dark modes.
 
 ## Bug Fixes
 
@@ -17,4 +18,4 @@ This file accumulates release notes for the next unreleased version. PRs that ad
 
 ## Breaking Changes
 
-- **Legacy bundled themes removed** — Craft Agent now ships only the default light/dark theme baseline. The 14 historical color-only presets were removed so future themes can be designed against the completed semantic-token engine.
+- **Legacy bundled themes replaced** — the 14 historical color-only presets were removed. The bundle now contains the default light/dark baseline plus Cyberpunk Neon and Neo Brutalism, both designed for the completed semantic-token engine.
