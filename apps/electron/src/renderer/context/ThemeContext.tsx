@@ -344,7 +344,13 @@ export function ThemeProvider({
       root.style.removeProperty('--background-image')
     }
 
-  }, [presetTheme, resolvedMode, systemPreference, isScenic, resolvedTheme, isDarkFromMode])
+    // Depth is a theme-file concern, not an editable client preference.
+    // The attribute is only used to opt known surfaces into glass blur.
+    root.dataset.themeDepth = (isDark && resolvedTheme.dark?.depth)
+      ? resolvedTheme.dark.depth
+      : (resolvedTheme.depth ?? 'elevated')
+
+  }, [presetTheme, resolvedMode, systemPreference, isScenic, resolvedTheme, isDarkFromMode, isDark])
 
   // Inject CSS variables
   useEffect(() => {

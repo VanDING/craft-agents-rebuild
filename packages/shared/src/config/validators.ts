@@ -1531,40 +1531,65 @@ export function isValidPermissionsFile(filePath: string): boolean {
 // Theme Validators
 // ============================================================
 
-const CSSColorSchema = z.string().min(1);
+const SafeCSSValueSchema = z.string().trim().min(1).refine(
+  (value) => !/[;{}]/.test(value),
+  'CSS values cannot contain semicolons or braces'
+);
+const CSSColorSchema = SafeCSSValueSchema;
 
-const ThemeDarkOverrideSchema = z.object({
+const ThemeVisualTokenFields = {
+  // Core and semantic colors
   background: CSSColorSchema.optional(),
   foreground: CSSColorSchema.optional(),
   accent: CSSColorSchema.optional(),
   info: CSSColorSchema.optional(),
   success: CSSColorSchema.optional(),
   destructive: CSSColorSchema.optional(),
+  backgroundElevated: CSSColorSchema.optional(),
+  foregroundDimmed: CSSColorSchema.optional(),
+  secondary: CSSColorSchema.optional(),
+  secondaryForeground: CSSColorSchema.optional(),
+  muted: CSSColorSchema.optional(),
+  mutedForeground: CSSColorSchema.optional(),
+  card: CSSColorSchema.optional(),
+  cardForeground: CSSColorSchema.optional(),
+  popoverForeground: CSSColorSchema.optional(),
+  border: CSSColorSchema.optional(),
+  ring: CSSColorSchema.optional(),
+  userMessageBubble: CSSColorSchema.optional(),
+  // Surfaces
   paper: CSSColorSchema.optional(),
   navigator: CSSColorSchema.optional(),
   input: CSSColorSchema.optional(),
   popover: CSSColorSchema.optional(),
   popoverSolid: CSSColorSchema.optional(),
-}).strict();
+  // Material / shape / typography / icons / density
+  depth: z.enum(['flat', 'elevated', 'neon', 'glass', 'raised']).optional(),
+  shadowColor: CSSColorSchema.optional(),
+  shadowStrength: z.number().min(0).max(1).optional(),
+  glassBlur: SafeCSSValueSchema.optional(),
+  radius: SafeCSSValueSchema.optional(),
+  borderWidth: SafeCSSValueSchema.optional(),
+  borderStyle: z.enum(['solid', 'dashed', 'dotted', 'double']).optional(),
+  fontSans: SafeCSSValueSchema.optional(),
+  fontSerif: SafeCSSValueSchema.optional(),
+  fontMono: SafeCSSValueSchema.optional(),
+  fontSize: SafeCSSValueSchema.optional(),
+  letterSpacing: SafeCSSValueSchema.optional(),
+  lineHeight: z.union([SafeCSSValueSchema, z.number().positive()]).optional(),
+  iconStrokeWidth: z.number().min(0.5).max(4).optional(),
+  iconStrokeLinecap: z.enum(['butt', 'round', 'square']).optional(),
+  density: z.enum(['compact', 'comfortable', 'cozy']).optional(),
+} as const;
+
+const ThemeDarkOverrideSchema = z.object(ThemeVisualTokenFields).strict();
 
 /**
  * Zod schema for app-level theme override files (~/.craft-agent/theme.json).
  * Allows partial overrides but rejects unknown keys.
  */
 export const ThemeOverrideSchema = z.object({
-  // Semantic colors
-  background: CSSColorSchema.optional(),
-  foreground: CSSColorSchema.optional(),
-  accent: CSSColorSchema.optional(),
-  info: CSSColorSchema.optional(),
-  success: CSSColorSchema.optional(),
-  destructive: CSSColorSchema.optional(),
-  // Surface colors
-  paper: CSSColorSchema.optional(),
-  navigator: CSSColorSchema.optional(),
-  input: CSSColorSchema.optional(),
-  popover: CSSColorSchema.optional(),
-  popoverSolid: CSSColorSchema.optional(),
+  ...ThemeVisualTokenFields,
   // Scenic mode
   mode: z.enum(['solid', 'scenic']).optional(),
   backgroundImage: z.string().optional(),
@@ -1594,24 +1619,12 @@ export const PresetThemeSchema = z.object({
   license: z.string().optional(),
   source: z.string().optional(),
   supportedModes: z.array(z.enum(['light', 'dark'])).optional(),
-  // Semantic colors
-  background: CSSColorSchema.optional(),
-  foreground: CSSColorSchema.optional(),
-  accent: CSSColorSchema.optional(),
-  info: CSSColorSchema.optional(),
-  success: CSSColorSchema.optional(),
-  destructive: CSSColorSchema.optional(),
-  // Surface colors
-  paper: CSSColorSchema.optional(),
-  navigator: CSSColorSchema.optional(),
-  input: CSSColorSchema.optional(),
-  popover: CSSColorSchema.optional(),
-  popoverSolid: CSSColorSchema.optional(),
+  ...ThemeVisualTokenFields,
   // Scenic mode
   mode: z.enum(['solid', 'scenic']).optional(),
   backgroundImage: z.string().optional(),
   // Dark mode overrides
-  dark: z.object({}).passthrough().optional(),
+  dark: ThemeDarkOverrideSchema.optional(),
   // Shiki theme for syntax highlighting
   shikiTheme: z.object({
     light: z.string().optional(),

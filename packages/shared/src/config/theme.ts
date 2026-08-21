@@ -19,6 +19,14 @@
  */
 export type CSSColor = string;
 
+/** CSS length/value strings are passed through to CSS custom properties. */
+export type CSSValue = string;
+
+export type ThemeDepth = 'flat' | 'elevated' | 'neon' | 'glass' | 'raised';
+export type ThemeDensity = 'compact' | 'comfortable' | 'cozy';
+export type ThemeBorderStyle = 'solid' | 'dashed' | 'dotted' | 'double';
+export type ThemeIconStrokeLinecap = 'butt' | 'round' | 'square';
+
 /**
  * Core theme colors (6-color semantic system)
  */
@@ -29,6 +37,21 @@ export interface ThemeColors {
   info?: CSSColor; // Amber (Ask mode, warnings)
   success?: CSSColor; // Green
   destructive?: CSSColor; // Red
+
+  // Optional semantic layer overrides. When omitted, index.css derives them
+  // from background + foreground exactly as it does today.
+  backgroundElevated?: CSSColor;
+  foregroundDimmed?: CSSColor;
+  secondary?: CSSColor;
+  secondaryForeground?: CSSColor;
+  muted?: CSSColor;
+  mutedForeground?: CSSColor;
+  card?: CSSColor;
+  cardForeground?: CSSColor;
+  popoverForeground?: CSSColor;
+  border?: CSSColor;
+  ring?: CSSColor;
+  userMessageBubble?: CSSColor;
 }
 
 /**
@@ -44,6 +67,38 @@ export interface SurfaceColors {
 }
 
 /**
+ * Visual tokens beyond color. These are deliberately file-driven: the app
+ * selects a theme, but does not expose a theme editor.
+ */
+export interface ThemeStyleTokens {
+  // High-level material preset. themeToCSS expands this into low-level tokens.
+  depth?: ThemeDepth;
+  shadowColor?: CSSColor;
+  shadowStrength?: number;
+  glassBlur?: CSSValue;
+
+  // Shape
+  radius?: CSSValue;
+  borderWidth?: CSSValue;
+  borderStyle?: ThemeBorderStyle;
+
+  // Typography
+  fontSans?: CSSValue;
+  fontSerif?: CSSValue;
+  fontMono?: CSSValue;
+  fontSize?: CSSValue;
+  letterSpacing?: CSSValue;
+  lineHeight?: CSSValue | number;
+
+  // Icon style (same icon set; no asset replacement)
+  iconStrokeWidth?: number;
+  iconStrokeLinecap?: ThemeIconStrokeLinecap;
+
+  // Global spacing scale
+  density?: ThemeDensity;
+}
+
+/**
  * Theme mode - solid (default) or scenic (background image with glass panels)
  */
 export type ThemeMode = 'solid' | 'scenic';
@@ -52,9 +107,9 @@ export type ThemeMode = 'solid' | 'scenic';
  * Theme overrides - light mode default, optional dark overrides
  * App-level only (no workspace cascading)
  */
-export interface ThemeOverrides extends ThemeColors, SurfaceColors {
+export interface ThemeOverrides extends ThemeColors, SurfaceColors, ThemeStyleTokens {
   // Optional dark mode overrides (includes both semantic and surface colors)
-  dark?: ThemeColors & SurfaceColors;
+  dark?: ThemeColors & SurfaceColors & ThemeStyleTokens;
 
   /**
    * Theme mode: 'solid' (default) or 'scenic'
@@ -81,6 +136,18 @@ const COLOR_KEYS: (keyof ThemeColors)[] = [
   'info',
   'success',
   'destructive',
+  'backgroundElevated',
+  'foregroundDimmed',
+  'secondary',
+  'secondaryForeground',
+  'muted',
+  'mutedForeground',
+  'card',
+  'cardForeground',
+  'popoverForeground',
+  'border',
+  'ring',
+  'userMessageBubble',
 ];
 
 const SURFACE_KEYS: (keyof SurfaceColors)[] = [
@@ -91,8 +158,27 @@ const SURFACE_KEYS: (keyof SurfaceColors)[] = [
   'popoverSolid',
 ];
 
-// Combined keys for merging (all color properties)
-const ALL_COLOR_KEYS = [...COLOR_KEYS, ...SURFACE_KEYS] as const;
+const STYLE_KEYS: (keyof ThemeStyleTokens)[] = [
+  'depth',
+  'shadowColor',
+  'shadowStrength',
+  'glassBlur',
+  'radius',
+  'borderWidth',
+  'borderStyle',
+  'fontSans',
+  'fontSerif',
+  'fontMono',
+  'fontSize',
+  'letterSpacing',
+  'lineHeight',
+  'iconStrokeWidth',
+  'iconStrokeLinecap',
+  'density',
+];
+
+// Combined keys for merging (all themeable visual properties)
+const ALL_THEME_KEYS = [...COLOR_KEYS, ...SURFACE_KEYS, ...STYLE_KEYS] as const;
 
 function mergeThemes(
   base: ThemeOverrides | undefined,
@@ -103,10 +189,10 @@ function mergeThemes(
 
   const result: ThemeOverrides = { ...base };
 
-  // Merge top-level color properties (semantic + surface)
-  for (const key of ALL_COLOR_KEYS) {
+  // Merge top-level visual properties.
+  for (const key of ALL_THEME_KEYS) {
     if (override[key] !== undefined) {
-      result[key] = override[key];
+      Object.assign(result, { [key]: override[key] });
     }
   }
 
@@ -118,9 +204,9 @@ function mergeThemes(
   // Deep merge dark overrides
   if (override.dark) {
     result.dark = { ...base.dark };
-    for (const key of ALL_COLOR_KEYS) {
+    for (const key of ALL_THEME_KEYS) {
       if (override.dark[key] !== undefined) {
-        result.dark![key] = override.dark[key];
+        Object.assign(result.dark, { [key]: override.dark[key] });
       }
     }
   }
@@ -169,6 +255,78 @@ function hexToRgbValues(hex: string, darkenFactor: number = 1): string | null {
   return `${r}, ${g}, ${b}`;
 }
 
+const DENSITY_SPACING: Record<ThemeDensity, string> = {
+  compact: '0.21875rem',
+  comfortable: '0.25rem',
+  cozy: '0.28125rem',
+};
+
+function depthToCSS(
+  depth: ThemeDepth,
+  shadowColor: CSSColor,
+  shadowStrength: number,
+  glassBlur: CSSValue
+): string[] {
+  const strength = Math.max(0, Math.min(1, shadowStrength));
+  const soft = Math.round(strength * 100);
+  const faint = Math.round(strength * 55);
+  const color = 'var(--theme-shadow-color)';
+  const border = 'var(--border)';
+
+  const vars = [
+    `--theme-depth: ${depth};`,
+    `--theme-shadow-color: ${shadowColor};`,
+    `--theme-shadow-strength: ${strength};`,
+    `--theme-backdrop-blur: ${depth === 'glass' ? glassBlur : '0px'};`,
+  ];
+
+  switch (depth) {
+    case 'flat':
+      vars.push(
+        `--shadow-minimal: 0 0 0 var(--theme-border-width) ${border};`,
+        `--shadow-middle: 0 0 0 var(--theme-border-width) ${border};`,
+        `--shadow-strong: 0 0 0 var(--theme-border-width) ${border};`,
+        `--shadow-modal-small: 0 0 0 var(--theme-border-width) ${border};`
+      );
+      break;
+    case 'neon':
+      vars.push(
+        `--shadow-minimal: 0 0 0 var(--theme-border-width) ${border}, 0 0 10px color-mix(in srgb, ${color} ${faint}%, transparent);`,
+        `--shadow-middle: 0 0 0 var(--theme-border-width) ${border}, 0 0 18px color-mix(in srgb, ${color} ${soft}%, transparent);`,
+        `--shadow-strong: 0 0 0 var(--theme-border-width) ${border}, 0 0 30px color-mix(in srgb, ${color} ${soft}%, transparent);`,
+        `--shadow-modal-small: 0 0 0 var(--theme-border-width) ${border}, 0 0 36px color-mix(in srgb, ${color} ${soft}%, transparent);`
+      );
+      break;
+    case 'glass':
+      vars.push(
+        `--shadow-minimal: 0 0 0 var(--theme-border-width) color-mix(in srgb, white 20%, ${border}), 0 8px 24px color-mix(in srgb, ${color} ${faint}%, transparent);`,
+        `--shadow-middle: 0 0 0 var(--theme-border-width) color-mix(in srgb, white 24%, ${border}), 0 12px 32px color-mix(in srgb, ${color} ${soft}%, transparent);`,
+        `--shadow-strong: 0 0 0 var(--theme-border-width) color-mix(in srgb, white 28%, ${border}), 0 20px 48px color-mix(in srgb, ${color} ${soft}%, transparent);`,
+        `--shadow-modal-small: 0 0 0 var(--theme-border-width) color-mix(in srgb, white 28%, ${border}), 0 24px 64px color-mix(in srgb, ${color} ${soft}%, transparent);`
+      );
+      break;
+    case 'raised':
+      vars.push(
+        `--shadow-minimal: 2px 2px 0 ${color};`,
+        `--shadow-middle: 4px 4px 0 ${color};`,
+        `--shadow-strong: 6px 6px 0 ${color};`,
+        `--shadow-modal-small: 8px 8px 0 ${color};`
+      );
+      break;
+    case 'elevated':
+    default:
+      vars.push(
+        `--shadow-minimal: 0 0 0 var(--theme-border-width) ${border}, 0 1px 2px color-mix(in srgb, ${color} ${faint}%, transparent), 0 3px 6px color-mix(in srgb, ${color} ${faint}%, transparent);`,
+        `--shadow-middle: 0 0 0 var(--theme-border-width) ${border}, 0 4px 12px color-mix(in srgb, ${color} ${soft}%, transparent);`,
+        `--shadow-strong: 0 0 0 var(--theme-border-width) ${border}, 0 12px 32px color-mix(in srgb, ${color} ${soft}%, transparent);`,
+        `--shadow-modal-small: 0 0 0 var(--theme-border-width) ${border}, 0 18px 48px color-mix(in srgb, ${color} ${soft}%, transparent);`
+      );
+      break;
+  }
+
+  return vars;
+}
+
 /**
  * Generate CSS variable declarations from theme
  * @param theme - Resolved theme object
@@ -179,7 +337,7 @@ export function themeToCSS(theme: ThemeOverrides, isDark: boolean = false): stri
   const vars: string[] = [];
 
   // Get effective colors (merge dark overrides if in dark mode)
-  const colors: ThemeColors & SurfaceColors =
+  const colors: ThemeColors & SurfaceColors & ThemeStyleTokens =
     isDark && theme.dark ? { ...theme, ...theme.dark } : theme;
 
   // Semantic color variables
@@ -205,6 +363,24 @@ export function themeToCSS(theme: ThemeOverrides, isDark: boolean = false): stri
   if (colors.success) vars.push(`--success: ${colors.success};`);
   if (colors.destructive) vars.push(`--destructive: ${colors.destructive};`);
 
+  const semanticColorVars: [keyof ThemeColors, string][] = [
+    ['backgroundElevated', '--background-elevated'],
+    ['foregroundDimmed', '--foreground-dimmed'],
+    ['secondary', '--secondary'],
+    ['secondaryForeground', '--secondary-foreground'],
+    ['muted', '--muted'],
+    ['mutedForeground', '--muted-foreground'],
+    ['card', '--card'],
+    ['cardForeground', '--card-foreground'],
+    ['popoverForeground', '--popover-foreground'],
+    ['border', '--border'],
+    ['ring', '--ring'],
+    ['userMessageBubble', '--user-message-bubble'],
+  ];
+  for (const [key, cssVar] of semanticColorVars) {
+    if (colors[key]) vars.push(`${cssVar}: ${colors[key]};`);
+  }
+
   // Surface color variables (fall back to background if not set)
   // These enable fine-grained control over specific UI regions
   const bg = colors.background || 'var(--background)';
@@ -215,6 +391,27 @@ export function themeToCSS(theme: ThemeOverrides, isDark: boolean = false): stri
   // popoverSolid: guaranteed 100% opaque for scenic mode popovers
   // Falls back to popover, then background (should always be solid in scenic themes)
   vars.push(`--popover-solid: ${colors.popoverSolid || colors.popover || bg};`);
+
+  // L2/L4/L5/L6 direct tokens
+  if (colors.radius) vars.push(`--theme-radius: ${colors.radius};`);
+  if (colors.borderWidth) vars.push(`--theme-border-width: ${colors.borderWidth};`);
+  if (colors.borderStyle) vars.push(`--theme-border-style: ${colors.borderStyle};`);
+  if (colors.fontSans) vars.push(`--font-sans: ${colors.fontSans};`);
+  if (colors.fontSerif) vars.push(`--font-serif: ${colors.fontSerif};`);
+  if (colors.fontMono) vars.push(`--font-mono: ${colors.fontMono};`);
+  if (colors.fontSize) vars.push(`--font-size-base: ${colors.fontSize};`);
+  if (colors.letterSpacing) vars.push(`--tracking-normal: ${colors.letterSpacing};`);
+  if (colors.lineHeight !== undefined) vars.push(`--line-height-base: ${colors.lineHeight};`);
+  if (colors.iconStrokeWidth !== undefined) vars.push(`--icon-stroke-width: ${colors.iconStrokeWidth};`);
+  if (colors.iconStrokeLinecap) vars.push(`--icon-stroke-linecap: ${colors.iconStrokeLinecap};`);
+  if (colors.density) vars.push(`--spacing: ${DENSITY_SPACING[colors.density]};`);
+
+  // L3 high-level depth expansion. Defaults match the existing restrained UI.
+  const depth = colors.depth || 'elevated';
+  const shadowColor = colors.shadowColor || 'black';
+  const shadowStrength = colors.shadowStrength ?? (isDark ? 0.18 : 0.1);
+  const glassBlur = colors.glassBlur || '20px';
+  vars.push(...depthToCSS(depth, shadowColor, shadowStrength, glassBlur));
 
   // Theme mode (background image is set directly on document.documentElement.style
   // to avoid style sheet size limits with large data URLs)
@@ -252,6 +449,18 @@ export const DEFAULT_THEME: ThemeOverrides = {
   info: 'oklch(0.75 0.16 70)',
   success: 'oklch(0.55 0.17 145)',
   destructive: 'oklch(0.58 0.24 28)',
+  depth: 'elevated',
+  shadowColor: '#17131f',
+  shadowStrength: 0.1,
+  radius: '8px',
+  borderWidth: '1px',
+  borderStyle: 'solid',
+  fontSize: '15px',
+  lineHeight: 1.5,
+  letterSpacing: '0em',
+  iconStrokeWidth: 2,
+  iconStrokeLinecap: 'round',
+  density: 'comfortable',
   dark: {
     background: 'oklch(0.145 0.015 270)',
     foreground: 'oklch(0.95 0.01 270)',
@@ -259,6 +468,8 @@ export const DEFAULT_THEME: ThemeOverrides = {
     info: 'oklch(0.78 0.14 70)',
     success: 'oklch(0.60 0.17 145)',
     destructive: 'oklch(0.65 0.22 28)',
+    shadowColor: '#000000',
+    shadowStrength: 0.18,
   },
 };
 

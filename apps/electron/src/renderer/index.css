@@ -201,7 +201,15 @@
 
   /* Layout */
   --font-size-base: 15px;
-  --radius: 0rem;
+  --line-height-base: 1.5;
+  --theme-radius: 0.5rem;
+  --radius: var(--theme-radius);
+  --theme-border-width: 1px;
+  --theme-border-style: solid;
+  --theme-depth: elevated;
+  --theme-shadow-color: black;
+  --theme-shadow-strength: 0.1;
+  --theme-backdrop-blur: 0px;
   --spacing: 0.25rem;
   --tracking-normal: 0em;
 
@@ -444,6 +452,17 @@ html[data-font="inter"] {
   --font-mono: var(--font-mono);
   --font-serif: var(--font-serif);
 
+  /* Theme-driven Tailwind shape scale. Arbitrary radii remain intentionally
+     untouched; semantic rounded-* utilities follow the selected theme. */
+  --radius-sm: calc(var(--theme-radius) * 0.5);
+  --radius-md: calc(var(--theme-radius) * 0.75);
+  --radius-lg: var(--theme-radius);
+  --radius-xl: calc(var(--theme-radius) * 1.5);
+  --radius-2xl: calc(var(--theme-radius) * 2);
+  --radius-3xl: calc(var(--theme-radius) * 3);
+  --radius-4xl: calc(var(--theme-radius) * 4);
+  --default-border-width: var(--theme-border-width);
+
   /* === Z-INDEX SCALE === */
   --z-index-base: var(--z-base);
   --z-index-local: var(--z-local);
@@ -485,6 +504,7 @@ html[data-font="inter"] {
   * {
     box-sizing: border-box;
     border-color: var(--border);
+    border-style: var(--theme-border-style);
   }
 
   html {
@@ -498,10 +518,18 @@ html[data-font="inter"] {
 
   body {
     font-family: var(--font-default);
+    line-height: var(--line-height-base);
+    letter-spacing: var(--tracking-normal);
     background: transparent;
     color: var(--foreground);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Lucide remains the single icon set; themes may only tune its line style. */
+  .lucide {
+    stroke-width: var(--icon-stroke-width);
+    stroke-linecap: var(--icon-stroke-linecap);
   }
 
   /* Scrollbar styling */
@@ -612,13 +640,7 @@ html[data-font="inter"] {
   }
 
   .shadow-middle {
-    box-shadow:
-      rgba(0, 0, 0, 0) 0px 0px 0px 0px,
-      rgba(0, 0, 0, 0) 0px 0px 0px 0px,
-      rgba(var(--foreground-rgb), 0.06) 0px 0px 0px 1px,
-      rgba(0, 0, 0, var(--shadow-blur-opacity)) 0px 1px 1px -0.5px,
-      rgba(0, 0, 0, var(--shadow-blur-opacity)) 0px 3px 3px -1.5px,
-      rgba(0, 0, 0, var(--shadow-blur-opacity)) 0px 6px 6px -3px;
+    box-shadow: var(--shadow-middle, var(--shadow-minimal));
   }
 
   /* Tinted shadow using CSS variable - use with style={{ '--shadow-color': 'r, g, b' }} */
@@ -646,15 +668,7 @@ html[data-font="inter"] {
   }
 
   .shadow-strong {
-    box-shadow:
-      rgba(0, 0, 0, 0) 0px 0px 0px 0px,
-      rgba(0, 0, 0, 0) 0px 0px 0px 0px,
-      rgba(var(--foreground-rgb), 0.06) 0px 0px 0px 1px,
-      rgba(0, 0, 0, var(--shadow-blur-opacity)) 0px 1px 1px -0.5px,
-      rgba(0, 0, 0, var(--shadow-blur-opacity)) 0px 3px 3px -1.5px,
-      rgba(0, 0, 0, var(--shadow-blur-opacity)) 0px 6px 6px -3px,
-      rgba(0, 0, 0, calc(var(--shadow-blur-opacity) * 0.67)) 0px 12px 12px -6px,
-      rgba(0, 0, 0, calc(var(--shadow-blur-opacity) * 0.67)) 0px 24px 24px -12px;
+    box-shadow: var(--shadow-strong, var(--shadow-modal-small));
   }
 
   .shadow-panel-focused {
@@ -712,19 +726,11 @@ html[data-font="inter"] {
      - No visible border
   ============================================================================= */
   .popover-styled {
-    background: var(--background);
+    background: var(--popover-solid, var(--background));
     color: var(--foreground);
-    border-radius: 8px;
+    border-radius: var(--theme-radius);
     border: none;
-    box-shadow:
-      rgba(0, 0, 0, 0) 0px 0px 0px 0px,
-      rgba(0, 0, 0, 0) 0px 0px 0px 0px,
-      rgba(var(--foreground-rgb), 0.06) 0px 0px 0px 1px,
-      rgba(0, 0, 0, calc(var(--shadow-blur-opacity) * 0.67)) 0px 1px 1px -0.5px,
-      rgba(0, 0, 0, calc(var(--shadow-blur-opacity) * 0.67)) 0px 3px 3px 0px,
-      rgba(0, 0, 0, calc(var(--shadow-blur-opacity) * 0.33)) 0px 6px 6px 0px,
-      rgba(0, 0, 0, calc(var(--shadow-blur-opacity) * 0.33)) 0px 12px 12px 0px,
-      rgba(0, 0, 0, calc(var(--shadow-blur-opacity) * 0.33)) 0px 24px 24px 0px;
+    box-shadow: var(--shadow-modal-small);
   }
 }
 
@@ -811,6 +817,14 @@ html[data-scenic] .popover-styled {
 html[data-scenic] .fullscreen-overlay-background {
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
+}
+
+/* depth:glass also works for solid themes; popovers stay on --popover-solid. */
+html[data-theme-depth="glass"] .shadow-middle,
+html[data-theme-depth="glass"] .shadow-strong,
+html[data-theme-depth="glass"] .popover-styled {
+  backdrop-filter: blur(var(--theme-backdrop-blur));
+  -webkit-backdrop-filter: blur(var(--theme-backdrop-blur));
 }
 
 html[data-scenic]:not(.dark) .fullscreen-overlay-background {
