@@ -13,7 +13,7 @@ import { Tooltip, TooltipTrigger, TooltipContent } from "@craft-agent/ui"
 import { PanelLeftRounded } from "../icons/PanelLeftRounded"
 import { TopBarButton } from "../ui/TopBarButton"
 import { cn } from "@/lib/utils"
-import { isMac, isWebUI } from "@/lib/platform"
+import { isMac, isWebUI, isWindows } from "@/lib/platform"
 import { useActionLabel } from "@/actions"
 import {
   DropdownMenu,
@@ -172,7 +172,14 @@ export function TopBar({
   return (
     <div
       className="fixed top-0 left-0 right-0 z-panel titlebar-drag-region"
-      style={{ height: 'var(--topbar-height)' }}
+      style={{
+        height: 'var(--topbar-height)',
+        ...(isWindows && !isWebUI ? {
+          left: 'env(titlebar-area-x, 0px)',
+          right: 'auto',
+          width: 'env(titlebar-area-width, 100%)',
+        } : {}),
+      }}
     >
       <div className="flex h-full w-full items-center justify-between gap-2">
       {/* === LEFT: Sidebar + Menu + Navigation + Workspace === */}

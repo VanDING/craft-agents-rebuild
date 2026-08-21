@@ -10,6 +10,7 @@ export const GUI_HANDLED_CHANNELS = [
   RPC_CHANNELS.window.CONFIRM_CLOSE,
   RPC_CHANNELS.window.CANCEL_CLOSE,
   RPC_CHANNELS.window.SET_TRAFFIC_LIGHTS,
+  RPC_CHANNELS.window.SET_TITLE_BAR_OVERLAY,
 ] as const
 
 /**
@@ -135,5 +136,12 @@ export function registerWorkspaceGuiHandlers(server: RpcServer, deps: HandlerDep
   server.handle(RPC_CHANNELS.window.SET_TRAFFIC_LIGHTS, (ctx, visible: boolean) => {
     if (!windowManager) return
     windowManager.setTrafficLightsVisible(ctx.webContentsId!, visible)
+  })
+
+  // Keep native Windows window controls while letting the active app theme
+  // own the title-bar background and symbol colors.
+  server.handle(RPC_CHANNELS.window.SET_TITLE_BAR_OVERLAY, (ctx, options: { color: string; symbolColor: string; height: number }) => {
+    if (!windowManager) return
+    windowManager.setTitleBarOverlay(ctx.webContentsId!, options)
   })
 }

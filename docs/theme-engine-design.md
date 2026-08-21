@@ -96,6 +96,7 @@ raised     硬抬升：零模糊纯色偏移硬影（Neo-Brutalism）
 
 - `default.json` 作为 light/dark 基线；`cyberpunk-neon.json` 与 `neo-brutalism.json` 是首批基于新引擎设计的正式主题。
 - 历史 14 个非默认内置主题直接删除，不迁移、不改造。
+- 后续按同一语义 schema 移植 Cabinet 的 10 套非默认设计，保留其 MIT 来源信息；Cabinet 的基础 light/dark 不重复引入，Cyberpunk/Brutalism 作为独立变体而非覆盖首批正式主题。
 - 新增 token 保持可选；缺省时由默认 CSS token 提供稳定回退，便于逐步设计新主题。
 - `depth: glass` 可让已接入的表面使用 blur，但 `popoverSolid` 始终保持不透明。
 - 客户端只负责选择和应用主题；主题制作通过 JSON 文件完成，不提供可视化编辑器。
@@ -144,6 +145,7 @@ raised     硬抬升：零模糊纯色偏移硬影（Neo-Brutalism）
 | M5 | 最小接入 radius/shadow/font/border/icon/density 全局入口 | 中 | 完成；应用外壳、面板、卡片与输入基元已消费语义 token，待视觉复验 |
 | M6 | 仅保留默认 light/dark，完成类型与构建验证 | 中 | 完成，待用户视觉验收 |
 | M7 | 基于演示设计赛博朋克与粗野主义正式主题 | 低 | 完成，待用户视觉验收 |
+| M8 | 收敛赛博参数、接入 Windows Controls Overlay、移植 Cabinet 主题集 | 中 | 完成，待用户视觉验收 |
 
 **实施原则**：只接入已有全局消费点，不做全组件样式重写；固定数值的特殊组件保持原样。正式主题以独立 JSON 文件迭代，不向客户端加入主题编辑器。
 

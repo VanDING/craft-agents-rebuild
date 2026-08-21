@@ -341,6 +341,7 @@ const EXPECTED_CHANNELS: string[] = [
   "window:getWorkspace",
   "window:openSessionInNewWindow",
   "window:openWorkspace",
+  "window:setTitleBarOverlay",
   "window:setTrafficLights",
   "window:switchWorkspace",
   "workspace:getPermissions",

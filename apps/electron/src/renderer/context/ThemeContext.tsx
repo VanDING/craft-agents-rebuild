@@ -392,6 +392,22 @@ export function ThemeProvider({
     }
   }, [effectiveColorTheme, presetTheme, resolvedTheme, isDark])
 
+  // Windows uses native min/max/close buttons over the renderer-owned top bar.
+  // Keep their background and glyph colors aligned with the resolved theme,
+  // including temporary theme previews and dark-only presets.
+  useEffect(() => {
+    const setTitleBarOverlay = window.electronAPI?.setTitleBarOverlay
+    if (!setTitleBarOverlay) return
+
+    const effectiveTheme = isDark && resolvedTheme.dark
+      ? { ...resolvedTheme, ...resolvedTheme.dark }
+      : resolvedTheme
+    const color = effectiveTheme.background ?? (isDark ? '#1e1d21' : '#faf9fb')
+    const symbolColor = effectiveTheme.foreground ?? (isDark ? '#f5f5f7' : '#1a1625')
+
+    void setTitleBarOverlay({ color, symbolColor, height: 48 }).catch(() => {})
+  }, [resolvedTheme, isDark])
+
   // === System preference listener ===
   useEffect(() => {
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')

@@ -223,6 +223,8 @@ export class WindowManager {
     const isMac = process.platform === 'darwin'
     const isWindows = process.platform === 'win32'
     const windowsBackgroundMaterial = getWindowsBackgroundMaterial()
+    const initialTitleBarColor = nativeTheme.shouldUseDarkColors ? '#1e1d21' : '#faf9fb'
+    const initialTitleBarSymbolColor = nativeTheme.shouldUseDarkColors ? '#f5f5f7' : '#1a1625'
 
     const window = new BrowserWindow({
       width: windowWidth,
@@ -242,6 +244,12 @@ export class WindowManager {
       // Windows: use native frame with Mica/Acrylic transparency (Windows 10/11)
       ...(isWindows && {
         frame: true, // Keep native frame for better UX
+        titleBarStyle: 'hidden',
+        titleBarOverlay: {
+          color: initialTitleBarColor,
+          symbolColor: initialTitleBarSymbolColor,
+          height: 48,
+        },
         autoHideMenuBar: true, // Menu is null on Windows, this is just for safety
         // Note: Don't use transparent:true with backgroundMaterial - it hides the window frame
         ...(windowsBackgroundMaterial && {
@@ -755,5 +763,34 @@ export class WindowManager {
         managed.window.setWindowButtonPosition({ x: 18, y: 19 })
       }
     }
+  }
+
+  /**
+   * Update the native Windows controls overlay to match the renderer theme.
+   * The renderer supplies resolved solid colors; inputs are bounded before
+   * crossing into Electron's native title-bar API.
+   */
+  setTitleBarOverlay(
+    webContentsId: number,
+    options: { color: string; symbolColor: string; height: number }
+  ): void {
+    if (process.platform !== 'win32') return
+
+    const managed = this.windows.get(webContentsId)
+    if (!managed || managed.window.isDestroyed()) return
+
+    const isSafeColor = (value: unknown): value is string =>
+      typeof value === 'string' && value.length > 0 && value.length <= 96
+    if (!isSafeColor(options.color) || !isSafeColor(options.symbolColor)) return
+
+    const height = Number.isFinite(options.height)
+      ? Math.max(32, Math.min(64, Math.round(options.height)))
+      : 48
+
+    managed.window.setTitleBarOverlay({
+      color: options.color,
+      symbolColor: options.symbolColor,
+      height,
+    })
   }
 }

@@ -89,6 +89,7 @@ export const RPC_CHANNELS = {
     CONFIRM_CLOSE: 'window:confirmClose',
     CANCEL_CLOSE: 'window:cancelClose',
     SET_TRAFFIC_LIGHTS: 'window:setTrafficLights',
+    SET_TITLE_BAR_OVERLAY: 'window:setTitleBarOverlay',
     FOCUS_STATE: 'window:focusState',
     GET_FOCUS_STATE: 'window:getFocusState',
   },

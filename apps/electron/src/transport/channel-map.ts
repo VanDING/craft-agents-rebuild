@@ -80,6 +80,7 @@ export const CHANNEL_MAP = {
   cancelCloseWindow: invoke(RPC_CHANNELS.window.CANCEL_CLOSE),
   onCloseRequested: listener(RPC_CHANNELS.window.CLOSE_REQUESTED),
   setTrafficLightsVisible: invoke(RPC_CHANNELS.window.SET_TRAFFIC_LIGHTS),
+  setTitleBarOverlay: invoke(RPC_CHANNELS.window.SET_TITLE_BAR_OVERLAY),
 
   // File operations
   readFile: invoke(RPC_CHANNELS.file.READ),
