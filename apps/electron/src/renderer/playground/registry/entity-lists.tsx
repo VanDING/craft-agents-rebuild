@@ -299,8 +299,8 @@ function SessionEntityListPreview({
                         key={i}
                         className="shrink-0 h-[18px] max-w-[120px] px-1.5 text-[10px] font-medium rounded flex items-center whitespace-nowrap"
                         style={{
-                          backgroundColor: 'rgba(var(--foreground-rgb), 0.05)',
-                          color: 'rgba(var(--foreground-rgb), 0.8)',
+                          backgroundColor: 'color-mix(in srgb, var(--foreground) 5%, transparent)',
+                          color: 'color-mix(in srgb, var(--foreground) 80%, transparent)',
                         }}
                       >
                         {label}

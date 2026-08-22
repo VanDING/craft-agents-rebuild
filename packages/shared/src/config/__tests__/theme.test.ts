@@ -1,5 +1,14 @@
 import { describe, expect, test } from 'bun:test';
-import { themeToCSS, type ThemeOverrides } from '../theme.ts';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import {
+  BACKGROUND_HEX,
+  DEFAULT_THEME_FILE,
+  resolveTheme,
+  resolveThemeMode,
+  themeToCSS,
+  type ThemeOverrides,
+} from '../theme.ts';
 import { validateThemeContent, validateThemeOverrideContent } from '../validators.ts';
 
 describe('themeToCSS', () => {
@@ -35,7 +44,11 @@ describe('themeToCSS', () => {
     expect(css).toContain('--line-height-base: 1.6;');
     expect(css).toContain('--icon-stroke-width: 1.5;');
     expect(css).toContain('--icon-stroke-linecap: square;');
-    expect(css).toContain('--spacing: 0.21875rem;');
+    expect(css).toContain('--theme-density: compact;');
+    expect(css).toContain('--theme-density-scale: 0.875;');
+    expect(css).toContain('--theme-row-padding-y: 0.625rem;');
+    expect(css).toContain('--theme-menu-item-padding-y: 0.25rem;');
+    expect(css).not.toContain('--spacing:');
   });
 
   test('expands each high-level depth preset', () => {
@@ -62,20 +75,31 @@ describe('themeToCSS', () => {
   test('raised depth combines a hard border ring with zero-blur offset shadows', () => {
     const css = themeToCSS({ depth: 'raised', borderWidth: '2px', shadowColor: '#111111' });
     expect(css).toContain(
-      '--shadow-minimal: 0 0 0 var(--theme-border-width) var(--border), 3px 3px 0 var(--theme-shadow-color);'
+      '--shadow-minimal: 0 0 0 var(--theme-border-width) var(--border), 3px 3px 0 color-mix(in srgb, var(--theme-shadow-color) 10%, transparent);'
     );
   });
 
-  test('emits RGB helpers for status colors used by tinted shadows and toasts', () => {
+  test('keeps status colors in their original CSS syntax without parallel RGB channels', () => {
     const css = themeToCSS({
-      info: '#ffd60a',
-      success: '#00ff9f',
-      destructive: '#ff2a6d',
+      info: 'oklch(0.8 0.15 90)',
+      success: 'hsl(150 80% 40%)',
+      destructive: 'rebeccapurple',
     });
 
-    expect(css).toContain('--info-rgb: 255, 214, 10;');
-    expect(css).toContain('--success-rgb: 0, 255, 159;');
-    expect(css).toContain('--destructive-rgb: 255, 42, 109;');
+    expect(css).toContain('--info: oklch(0.8 0.15 90);');
+    expect(css).toContain('--success: hsl(150 80% 40%);');
+    expect(css).toContain('--destructive: rebeccapurple;');
+    expect(css).not.toContain('-rgb:');
+  });
+
+  test('leaves omitted surfaces and material tokens on the static Default baseline', () => {
+    const css = themeToCSS({ accent: '#3366ff' });
+
+    expect(css).toContain('--accent: #3366ff;');
+    expect(css).not.toContain('--paper:');
+    expect(css).not.toContain('--input:');
+    expect(css).not.toContain('--theme-depth:');
+    expect(css).not.toContain('--shadow-minimal:');
   });
 
   test('dark mode overrides visual tokens without losing light defaults', () => {
@@ -96,6 +120,60 @@ describe('themeToCSS', () => {
     expect(darkCSS).toContain('--theme-radius: 2px;');
     expect(darkCSS).toContain('--theme-depth: neon;');
     expect(darkCSS).toContain('--theme-shadow-color: #00ffff;');
+  });
+});
+
+describe('theme resolution', () => {
+  test('deeply overlays a user theme onto the canonical default', () => {
+    const resolved = resolveTheme({
+      accent: '#123456',
+      dark: { accent: '#abcdef' },
+    });
+
+    expect(resolved.background).toBe(DEFAULT_THEME_FILE.background);
+    expect(resolved.accent).toBe('#123456');
+    expect(resolved.dark?.background).toBe(DEFAULT_THEME_FILE.dark?.background);
+    expect(resolved.dark?.accent).toBe('#abcdef');
+  });
+
+  test('normalizes both light-only and dark-only themes', () => {
+    expect(resolveThemeMode({ supportedModes: ['light'] }, 'dark')).toBe('light');
+    expect(resolveThemeMode({ supportedModes: ['dark'] }, 'light')).toBe('dark');
+    expect(resolveThemeMode({ supportedModes: ['light', 'dark'] }, 'dark')).toBe('dark');
+    expect(resolveThemeMode({ mode: 'scenic' }, 'light')).toBe('dark');
+  });
+
+  test('keeps the bundled default resource synchronized with the canonical snapshot', () => {
+    const resourcePath = resolve(
+      import.meta.dir,
+      '../../../../../apps/electron/resources/themes/default.json'
+    );
+    const resourceTheme = JSON.parse(readFileSync(resourcePath, 'utf-8'));
+    expect(resourceTheme).toEqual(DEFAULT_THEME_FILE);
+  });
+
+  test('keeps Electron startup backgrounds aligned with the Default CSS colors', () => {
+    // Chromium canvas conversion of the canonical OKLCH backgrounds. These
+    // values are used where Electron accepts a hex color but not CSS OKLCH.
+    expect(BACKGROUND_HEX).toEqual({ light: '#f7f8fa', dark: '#080a10' });
+  });
+
+  test('keeps static CSS fallbacks synchronized with the canonical base colors', () => {
+    const electronCSS = readFileSync(resolve(
+      import.meta.dir,
+      '../../../../../apps/electron/src/renderer/index.css'
+    ), 'utf-8');
+    const sharedUICSS = readFileSync(resolve(
+      import.meta.dir,
+      '../../../../ui/src/styles/index.css'
+    ), 'utf-8');
+
+    for (const css of [electronCSS, sharedUICSS]) {
+      for (const key of ['background', 'foreground', 'accent', 'info', 'success', 'destructive'] as const) {
+        expect(css).toContain(`--${key}: ${DEFAULT_THEME_FILE[key]};`);
+        expect(css).toContain(`--${key}: ${DEFAULT_THEME_FILE.dark?.[key]};`);
+      }
+    }
   });
 });
 
@@ -124,5 +202,12 @@ describe('theme validation', () => {
     expect(validateThemeOverrideContent(JSON.stringify({ depth: 'animated' })).valid).toBe(false);
     expect(validateThemeOverrideContent(JSON.stringify({ radius: '8px; color: red' })).valid).toBe(false);
     expect(validateThemeOverrideContent(JSON.stringify({ shadowStrength: 2 })).valid).toBe(false);
+  });
+
+  test('rejects unknown preset fields and ambiguous supported modes', () => {
+    const base = { name: 'Strict fixture', accent: '#6633ff' };
+    expect(validateThemeContent(JSON.stringify({ ...base, typoToken: '#fff' })).valid).toBe(false);
+    expect(validateThemeContent(JSON.stringify({ ...base, supportedModes: [] })).valid).toBe(false);
+    expect(validateThemeContent(JSON.stringify({ ...base, supportedModes: ['dark', 'dark'] })).valid).toBe(false);
   });
 });

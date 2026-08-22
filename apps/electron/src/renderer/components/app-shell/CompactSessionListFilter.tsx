@@ -188,7 +188,7 @@ export function CompactSessionListFilter({
           )}
           style={
             hasUserFilter
-              ? ({ '--shadow-color': 'var(--accent-rgb)' } as React.CSSProperties)
+              ? ({ '--shadow-color': 'var(--accent)' } as React.CSSProperties)
               : undefined
           }
         />
@@ -428,7 +428,7 @@ function FilterRow({
           )}
           style={
             mode === 'exclude'
-              ? ({ '--shadow-color': 'var(--destructive-rgb)' } as React.CSSProperties)
+              ? ({ '--shadow-color': 'var(--destructive)' } as React.CSSProperties)
               : undefined
           }
           aria-label={mode === 'include' ? 'Switch to exclude' : 'Switch to include'}

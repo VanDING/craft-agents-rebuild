@@ -339,7 +339,6 @@ export const stripMcpMetadata = stripToolMetadata;
  * - skills/{slug}/SKILL.md
  * - statuses/config.json
  * - permissions.json
- * - theme.json
  * - tool-icons/tool-icons.json
  *
  * @param toolName - 'Write' or 'Edit'

@@ -1041,6 +1041,7 @@
   "settings.appearance.font": "字体",
   "settings.appearance.fontInter": "Inter",
   "settings.appearance.fontSystem": "系统",
+  "settings.appearance.fontTheme": "主题",
   "settings.appearance.iconHeader": "图标",
   "settings.appearance.interface": "界面",
   "settings.appearance.kanbanBoard": "看板",

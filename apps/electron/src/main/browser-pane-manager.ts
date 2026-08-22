@@ -18,7 +18,16 @@ import {
   type BrowserEmptyStateLaunchResult,
   type BrowserInstanceInfo,
 } from '../shared/types'
-import { DEFAULT_THEME, loadAppTheme, getAllowRemoteEvaluate } from '@craft-agent/shared/config'
+import {
+  DEFAULT_THEME,
+  getAllowRemoteEvaluate,
+  getThemePreferences,
+  getWorkspaceByNameOrId,
+  loadPresetTheme,
+  resolveTheme,
+  resolveThemeMode,
+} from '@craft-agent/shared/config'
+import { getWorkspaceColorTheme } from '@craft-agent/shared/workspaces'
 import { CodedError } from '@craft-agent/shared/protocol'
 import { getBrowserLiveFxCornerRadii } from '../shared/browser-live-fx'
 import type {
@@ -1919,14 +1928,28 @@ export class BrowserPaneManager implements IBrowserPaneManager {
     this.updateNativeOverlayState(instance)
   }
 
+  /** Refresh live native browser overlays after a preference or theme-file change. */
+  refreshThemeVisuals(): void {
+    for (const instance of this.instances.values()) {
+      this.updateNativeOverlayState(instance)
+    }
+  }
+
   /** Resolve the app's current accent color as a concrete CSS value (not a var reference). */
-  private getResolvedAccentColor(): string {
-    const isDark = nativeTheme.shouldUseDarkColors
-    const userTheme = loadAppTheme()
-    const accent = isDark
-      ? (userTheme?.dark?.accent ?? userTheme?.accent ?? DEFAULT_THEME.dark!.accent!)
-      : (userTheme?.accent ?? DEFAULT_THEME.accent!)
-    return accent
+  private getResolvedAccentColor(instance: BrowserInstance): string {
+    const preferences = getThemePreferences()
+    const workspace = instance.workspaceId ? getWorkspaceByNameOrId(instance.workspaceId) : null
+    const workspaceTheme = workspace ? getWorkspaceColorTheme(workspace.rootPath) : undefined
+    const themeId = workspaceTheme ?? preferences.colorTheme
+    const preset = loadPresetTheme(themeId) ?? loadPresetTheme('default')!
+    const requestedMode = preferences.mode === 'system'
+      ? (nativeTheme.shouldUseDarkColors ? 'dark' : 'light')
+      : preferences.mode
+    const mode = resolveThemeMode(preset.theme, requestedMode)
+    const resolved = resolveTheme(preset.theme)
+    return mode === 'dark'
+      ? (resolved.dark?.accent ?? resolved.accent ?? DEFAULT_THEME.dark!.accent!)
+      : (resolved.accent ?? DEFAULT_THEME.accent!)
   }
 
   private async loadNativeOverlayPage(instance: BrowserInstance): Promise<void> {
@@ -2041,7 +2064,7 @@ export class BrowserPaneManager implements IBrowserPaneManager {
 
     if (agentActive) {
       const label = this.getAgentControlLabel(control)
-      const accent = this.getResolvedAccentColor()
+      const accent = this.getResolvedAccentColor(instance)
 
       void instance.nativeOverlayView.webContents.executeJavaScript(`(() => {
         const overlay = document.getElementById('overlay');

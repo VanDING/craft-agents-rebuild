@@ -1041,6 +1041,7 @@
   "settings.appearance.font": "Betűtípus",
   "settings.appearance.fontInter": "Inter",
   "settings.appearance.fontSystem": "Rendszer",
+  "settings.appearance.fontTheme": "Téma",
   "settings.appearance.iconHeader": "Ikon",
   "settings.appearance.interface": "Felület",
   "settings.appearance.kanbanBoard": "Kanban tábla",

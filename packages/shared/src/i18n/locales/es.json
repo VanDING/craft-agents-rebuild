@@ -1041,6 +1041,7 @@
   "settings.appearance.font": "Fuente",
   "settings.appearance.fontInter": "Inter",
   "settings.appearance.fontSystem": "Sistema",
+  "settings.appearance.fontTheme": "Tema",
   "settings.appearance.iconHeader": "Icono",
   "settings.appearance.interface": "Interfaz",
   "settings.appearance.kanbanBoard": "Tablero Kanban",

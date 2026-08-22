@@ -1041,6 +1041,7 @@
   "settings.appearance.font": "フォント",
   "settings.appearance.fontInter": "Inter",
   "settings.appearance.fontSystem": "システム",
+  "settings.appearance.fontTheme": "テーマ",
   "settings.appearance.iconHeader": "アイコン",
   "settings.appearance.interface": "インターフェース",
   "settings.appearance.kanbanBoard": "カンバンボード",

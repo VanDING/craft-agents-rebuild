@@ -15,16 +15,27 @@ function useAccentColor(): string {
   const [color, setColor] = useState(FALLBACK_COLOR)
 
   useEffect(() => {
-    // --accent-rgb is pre-computed as "R, G, B" integers — no oklch resolution needed
-    const raw = getComputedStyle(document.documentElement).getPropertyValue('--accent-rgb').trim()
-    if (!raw) return
-    const parts = raw.split(',').map((s) => Number(s.trim()))
-    if (parts.length !== 3 || parts.some(isNaN)) return
-    const r = parts[0]!
-    const g = parts[1]!
-    const b = parts[2]!
-    if (isGreyscale(r, g, b)) return // keep blue fallback for greyscale accents
-    setColor(rgbToHex(r, g, b))
+    const updateAccent = () => {
+      const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()
+      if (!accent || (typeof CSS !== 'undefined' && !CSS.supports('color', accent))) return
+
+      const canvas = document.createElement('canvas')
+      canvas.width = 1
+      canvas.height = 1
+      const context = canvas.getContext('2d')
+      if (!context) return
+      context.fillStyle = accent
+      context.fillRect(0, 0, 1, 1)
+      const pixel = context.getImageData(0, 0, 1, 1).data
+      const r = pixel[0] ?? 0
+      const g = pixel[1] ?? 0
+      const b = pixel[2] ?? 0
+      setColor(isGreyscale(r, g, b) ? FALLBACK_COLOR : rgbToHex(r, g, b))
+    }
+
+    updateAccent()
+    window.addEventListener('craft-theme-change', updateAccent)
+    return () => window.removeEventListener('craft-theme-change', updateAccent)
   }, [])
 
   return color

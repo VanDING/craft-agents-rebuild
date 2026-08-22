@@ -914,7 +914,7 @@ function ActivityRow({ activity, onOpenDetails, isLastChild, sessionFolderPath, 
         <TreeViewConnector depth={depth} isLastChild={isLastChild} />
         <div
           className={cn(
-            "group/row flex items-center gap-2 py-0.5 text-foreground/75 flex-1 min-w-0",
+            "group/row flex items-center gap-2 py-[var(--theme-activity-row-padding-y)] text-foreground/75 flex-1 min-w-0",
             SIZE_CONFIG.fontSize
           )}
           onClick={onOpenDetails && isComplete ? onOpenDetails : undefined}
@@ -963,7 +963,7 @@ function ActivityRow({ activity, onOpenDetails, isLastChild, sessionFolderPath, 
         <TreeViewConnector depth={depth} isLastChild={isLastChild} />
         <div
           className={cn(
-            "flex items-center gap-2 py-0.5 text-muted-foreground flex-1 min-w-0",
+            "flex items-center gap-2 py-[var(--theme-activity-row-padding-y)] text-muted-foreground flex-1 min-w-0",
             SIZE_CONFIG.fontSize
           )}
         >
@@ -1028,7 +1028,7 @@ function ActivityRow({ activity, onOpenDetails, isLastChild, sessionFolderPath, 
       <TreeViewConnector depth={depth} isLastChild={isLastChild} />
       <div
         className={cn(
-          "group/row flex items-center gap-2 py-0.5 text-muted-foreground flex-1 min-w-0",
+          "group/row flex items-center gap-2 py-[var(--theme-activity-row-padding-y)] text-muted-foreground flex-1 min-w-0",
           SIZE_CONFIG.fontSize
         )}
         onClick={onOpenDetails && isComplete ? onOpenDetails : undefined}
@@ -1044,7 +1044,7 @@ function ActivityRow({ activity, onOpenDetails, isLastChild, sessionFolderPath, 
                 <TooltipTrigger asChild>
                   <span
                     className="px-1.5 py-0.5 bg-[color-mix(in_oklab,var(--destructive)_4%,var(--background))] shadow-tinted rounded-[4px] text-[10px] text-destructive font-medium cursor-default shrink-0"
-                    style={{ '--shadow-color': 'var(--destructive-rgb)' } as React.CSSProperties}
+                    style={{ '--shadow-color': 'var(--destructive)' } as React.CSSProperties}
                   >
                     {i18n.t('common.error')}
                   </span>
@@ -1094,13 +1094,13 @@ function ActivityRow({ activity, onOpenDetails, isLastChild, sessionFolderPath, 
             {diffStats.deletions > 0 && (
               <span
                 className="px-1.5 py-0.5 bg-[color-mix(in_oklab,var(--destructive)_5%,var(--background))] shadow-tinted rounded-[4px] text-destructive"
-                style={{ '--shadow-color': 'var(--destructive-rgb)' } as React.CSSProperties}
+                style={{ '--shadow-color': 'var(--destructive)' } as React.CSSProperties}
               >{diffStats.deletions}</span>
             )}
             {diffStats.additions > 0 && (
               <span
                 className="px-1.5 py-0.5 bg-[color-mix(in_oklab,var(--success)_5%,var(--background))] shadow-tinted rounded-[4px] text-success"
-                style={{ '--shadow-color': 'var(--success-rgb)' } as React.CSSProperties}
+                style={{ '--shadow-color': 'var(--success)' } as React.CSSProperties}
               >{diffStats.additions}</span>
             )}
             {/* Filename badge - supports both Claude Code and Codex formats */}
@@ -1142,7 +1142,7 @@ function ActivityRow({ activity, onOpenDetails, isLastChild, sessionFolderPath, 
             <TooltipTrigger asChild>
               <span
                 className="px-1.5 py-0.5 bg-[color-mix(in_oklab,var(--destructive)_4%,var(--background))] shadow-tinted rounded-[4px] text-[10px] text-destructive font-medium cursor-default shrink-0"
-                style={{ '--shadow-color': 'var(--destructive-rgb)' } as React.CSSProperties}
+                style={{ '--shadow-color': 'var(--destructive)' } as React.CSSProperties}
               >
                 Error
               </span>
@@ -1264,7 +1264,7 @@ function ActivityGroupRow({ group, expandedGroups: externalExpandedGroups, onExp
       {/* Task header row - no left padding, chevron aligned with activity row icons */}
       <div
         className={cn(
-          "group/row flex items-center gap-2 py-0.5 rounded-md cursor-pointer text-muted-foreground",
+          "group/row flex items-center gap-2 py-[var(--theme-activity-row-padding-y)] rounded-md cursor-pointer text-muted-foreground",
           "hover:text-foreground transition-colors",
           SIZE_CONFIG.fontSize
         )}
@@ -1520,7 +1520,7 @@ function createAnnotationIndexBadge(index: number): HTMLSpanElement {
   chip.style.lineHeight = '15px'
   chip.style.textAlign = 'center'
   chip.classList.add('shadow-tinted')
-  chip.style.setProperty('--shadow-color', 'var(--info-rgb)')
+  chip.style.setProperty('--shadow-color', 'var(--info)')
   chip.style.pointerEvents = 'none'
   chip.style.userSelect = 'none'
   return chip
@@ -2703,7 +2703,7 @@ function TodoRow({ todo }: { todo: TodoItem }) {
 
   return (
     <div className={cn(
-      "flex items-center gap-2 py-0.5 text-muted-foreground",
+      "flex items-center gap-2 py-[var(--theme-activity-row-padding-y)] text-muted-foreground",
       SIZE_CONFIG.fontSize,
       todo.status === 'completed' && "opacity-50"
     )}>
@@ -3111,7 +3111,7 @@ export const TurnCard = React.memo(function TurnCard({
                         duration: 0.3,
                         ease: "easeOut"
                       }}
-                      className={cn("flex items-center gap-2 py-0.5 text-muted-foreground/70", SIZE_CONFIG.fontSize)}
+                      className={cn("flex items-center gap-2 py-[var(--theme-activity-row-padding-y)] text-muted-foreground/70", SIZE_CONFIG.fontSize)}
                     >
                       <Spinner className={SIZE_CONFIG.spinnerSize} />
                       <span>{isBuffering ? 'Preparing response...' : 'Thinking...'}</span>

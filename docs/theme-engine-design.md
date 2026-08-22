@@ -9,7 +9,7 @@
 
 ## 0. TL;DR（一句话）
 
-保留自研，不引入主题框架；把现有"6 色 + 双锚点派生"升级为 **语义 token 分层 + 一个高阶 `--depth` 深度维度**，覆盖 **L1 色彩 / L2 形状 / L3 材质 / L4 排版 / L5 图标 / L6 密度** 六层自由度，让"换 token 换风格"成立。产品保留含 light/dark 的默认主题，并以赛博朋克和粗野主义作为首批正式主题。
+保留自研，不引入主题框架；把现有"6 色 + 双锚点派生"升级为 **语义 token 分层 + 一个高阶 `--depth` 深度维度**，覆盖 **L1 色彩 / L2 形状 / L3 材质 / L4 排版 / L5 图标 / L6 密度** 六层自由度，让"换 token 换风格"成立。产品只内置含 light/dark 的 `default`；其他主题全部从用户目录 `~/.craft-agent/themes/` 读取。
 
 **边界红线：L7 动效、L8 语气（界面文案）、整套图标替换 不纳入主题引擎** —— 主题只管视觉 token，不管内容与文案。
 
@@ -23,6 +23,7 @@
 
 ### 2.1 现状事实
 - 语义 schema（`packages/shared/src/config/theme.ts`）：**6 色** `background/foreground/accent/info/success/destructive` + **5 面** `paper/navigator/input/popover/popoverSolid` + `dark` 覆盖 + scenic。
+- `navigator` 是显式 opt-in 表面：Default 与未声明该 token 的用户主题保留 macOS 原生透明侧边栏；只有主题文件明确声明时才铺设侧边栏背景。
 - `themeToCSS` 产出约 **14 个 CSS 变量** 注入 `:root`。
 - index.css 有 **207 个 token**，约 **70 处** `color-mix(...)`/`oklch(from ...)` 派生。
 - 派生**全部锚定 `--foreground` + `--background` 双根原色**（`--foreground-dimmed`/`-2..95`、`--secondary`、`--muted`、`--border`、`--ring`、`--card`、`--background-elevated`、气泡色…）。
@@ -41,6 +42,22 @@
 
 ### 2.3 定位
 本质 = **缺中间语义层 token + 派生策略单一 + 风格参数（radius/shadow/font）不可主题化**。
+
+### 2.4 运行时架构问题（本轮深入审计）
+
+除 token 覆盖不足外，旧实现还存在九类结构性问题：
+
+1. **来源混杂**：资源目录、启动时复制到用户目录的预设、`theme.json` 覆盖和渲染器内置 glob 同时参与解析，无法判断最终真值来自哪里。
+2. **用户目录被产品管理**：启动时会补写或“修复”命名主题，用户文件与发布资产之间没有清晰所有权边界。
+3. **偏好双写**：模式和字体只在 localStorage，颜色主题在 `config.json`，跨窗口广播又是第三条路径，容易启动闪烁和状态分叉。
+4. **异步竞态**：快速切换 workspace 或主题时，较慢的旧请求可能覆盖新选择；加载失败时旧 CSS 还可能继续显示，却标成新主题。
+5. **监听器重复**：每个 workspace 的 `ConfigWatcher` 都监听全局主题目录，打开的 workspace 越多，重复文件事件与广播越多。
+6. **颜色格式被暗中限制**：引擎宣称支持任意 CSS 色，却只为 Hex 生成 `--*-rgb`，相关阴影和透明色消费者因此对 OKLCH/HSL 行为不一致。
+7. **密度改错层级**：主题直接覆盖 Tailwind 的全局 `--spacing`，会连带改变图标、位移、宽高和结构性面板间距，而不只是内容密度。
+8. **多套静态颜色**：Default 常量、资源 JSON、两份根 CSS、代码编辑器和 Electron 启动背景各自维护颜色，已经出现彼此不一致。
+9. **文件边界过宽**：主题 ID、JSON 大小、未知字段、背景图片路径/协议/类型缺少统一约束，既影响稳定性也扩大了本地文件读取边界。
+
+对应原则是：**单一内置源、用户目录归用户、单一持久化快照、单一全局监听器、显式加载状态、语义 token 消费、严格文件边界**。
 
 ## 3. 为什么不用现成主题框架（实证结论）
 
@@ -94,12 +111,33 @@ raised     硬抬升：零模糊纯色偏移硬影（Neo-Brutalism）
 
 ### 4.3 默认基线与主题文件
 
-- `default.json` 作为 light/dark 基线；`cyberpunk-neon.json` 与 `neo-brutalism.json` 是首批基于新引擎设计的正式主题。
-- 历史 14 个非默认内置主题直接删除，不迁移、不改造。
-- 后续按同一语义 schema 移植 Cabinet 中筛选后的 Warm、Techno、Geek、Sumi-e 四套非默认设计，保留其 MIT 来源信息；Cabinet 的基础 light/dark 不重复引入。
+- `DEFAULT_THEME_FILE` 是运行时唯一的 Default 快照，`resources/themes/default.json` 是随应用交付的同步资源；自动化测试要求二者完全一致。
+- 历史非默认内置主题和相关许可证资源从产品包移除；不会在启动时重新复制到用户目录。
+- `~/.craft-agent/themes/*.json` 是所有非默认主题的唯一来源。该目录不会被应用播种、覆盖、重置或清理；旧版本已经留下的主题文件继续作为普通用户主题使用。
+- `default` 是大小写不敏感的保留 ID，用户的 `default.json` 不参与列表和解析，不能遮蔽内置回退。
+- 配套 HTML 中的赛博朋克、玻璃、粗野主义等只作为能力验证样例，不是产品内置主题。
 - 新增 token 保持可选；缺省时由默认 CSS token 提供稳定回退，便于逐步设计新主题。
 - `depth: glass` 可让已接入的表面使用 blur，但 `popoverSolid` 始终保持不透明。
 - 客户端只负责选择和应用主题；主题制作通过 JSON 文件完成，不提供可视化编辑器。
+
+### 4.4 确定性的解析与状态流
+
+```text
+config.json 偏好 + workspace 可选主题 ID
+                    ↓
+       Default（内置）或用户 JSON（磁盘）
+                    ↓ 严格校验、路径约束
+          在 Default 上做深层语义合并
+                    ↓ 规范化 light/dark/scenic
+       单一已应用快照 → DOM / Shiki / 原生浏览器叠层
+```
+
+- `config.json` 原子保存 `themeMode`、`colorTheme`、`themeFont`；localStorage 只作为带版本的首屏缓存，旧缓存会一次性迁移。
+- workspace 只保存一个可选主题 ID；缺省即继承 app 选择，不再形成另一套主题内容级联。
+- 渲染器区分 requested/applied theme，并显式维护 loading/ready/error。只在 loading 期间保留 last-good；终态失败会原子切到 Default 并清除自定义 CSS。
+- 一个 app-scoped watcher 监听用户主题目录并广播文件 ID；不存在每 workspace 重复监听。
+- 主窗口、代码编辑器、Shiki、Windows 标题栏和原生浏览器叠层都从同一解析结果或主题 CSS token 取值。
+- 本地背景图必须留在主题目录内，仅允许 PNG/JPEG/GIF/WebP 且不超过 20 MiB；JSON 不超过 256 KiB；远程图只允许 HTTP(S)。
 
 ## 5. 边界：哪些"不做"（重要澄清）
 
@@ -138,16 +176,24 @@ raised     硬抬升：零模糊纯色偏移硬影（Neo-Brutalism）
 | 里程碑 | 内容 | 工作量 | 风险 |
 |---|---|---|---|
 | M0 | 冻结覆盖 token 清单（六层 + depth 枚举） | — | 完成 |
-| M1 | 扩展 `ThemeFile` 与 Zod schema | 低 | 完成 |
-| M2 | 扩展 `themeToCSS`：语义 token + depth 展开 | 低-中 | 完成 |
-| M3 | 使用不随产品发布的测试夹具验证五种 depth | 低 | 完成 |
-| M4 | 复用现有主题选择 UI，不开发编辑器 | — | 无新增开发 |
-| M5 | 最小接入 radius/shadow/font/border/icon/density 全局入口 | 中 | 完成；应用外壳、面板、卡片与输入基元已消费语义 token，待视觉复验 |
-| M6 | 仅保留默认 light/dark，完成类型与构建验证 | 中 | 完成，待用户视觉验收 |
-| M7 | 基于演示设计赛博朋克与粗野主义正式主题 | 低 | 完成，待用户视觉验收 |
-| M8 | 收敛赛博参数、接入 Windows Controls Overlay、移植 Cabinet 主题集 | 中 | 完成，待用户视觉验收 |
+| M1 | 修复 New Session 与标题栏的结构性间距 | 低 | 完成，待应用内视觉复验 |
+| M2 | 收敛来源：只内置 Default，其他主题只读用户目录 | 中 | 完成 |
+| M3 | 偏好收敛到 `config.json`，迁移旧 renderer 缓存 | 中 | 完成 |
+| M4 | 引入 requested/applied 快照、竞态隔离和失败回退 | 中 | 完成 |
+| M5 | 严格 schema、ID、文件大小、路径与图片协议边界 | 中 | 完成 |
+| M6 | 移除 Hex-only RGB 旁路；改用原生 CSS 色与语义密度 token | 中 | 完成 |
+| M7 | 单例目录监听及 DOM/Shiki/原生浏览器视觉同步 | 中 | 完成 |
+| M8 | 文档、IPC 精确映射、存储隔离和静态快照测试 | 中 | 完成，待应用内视觉复验 |
 
-**实施原则**：只接入已有全局消费点，不做全组件样式重写；固定数值的特殊组件保持原样。正式主题以独立 JSON 文件迭代，不向客户端加入主题编辑器。
+**实施原则**：优先接入已有全局消费点，不做无目的的全组件样式重写；结构性布局不受主题密度影响。非默认主题以用户目录中的独立 JSON 文件迭代，不向客户端加入主题编辑器。
+
+### 后续可选优化（不阻塞本轮）
+
+1. 在 Appearance 中增加只读的校验诊断（文件名、字段路径、错误原因），但仍不做主题编辑器。
+2. 对超大 scenic 图片增加异步解码/缩略缓存，减少首次切换主题时的主进程同步读取时间。
+3. 增加 WCAG/APCA 对比度审计命令，作为主题作者工具，不在运行时擅自改色。
+4. 按真实使用频率继续把列表、表格和表单的纵向 padding 接入语义密度 token；固定标题栏、安全区和拖拽命中区保持不变。
+5. 下一次破坏性协议升级时移除仅为旧客户端保留的 `getAppTheme`、`broadcastThemePreferences` 等兼容 IPC。
 
 ## 8. git 安排
 

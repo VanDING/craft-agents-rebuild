@@ -53,5 +53,5 @@
 
   --dsw-static-blue-500: oklch(0.6 0.15 250);
 
-  --dsw-shadow-lv2: 0 2px 8px rgba(var(--foreground-rgb), 0.12);
+  --dsw-shadow-lv2: 0 2px 8px color-mix(in srgb, var(--foreground) 12%, transparent);
 }

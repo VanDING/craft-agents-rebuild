@@ -1041,6 +1041,7 @@
   "settings.appearance.font": "Czcionka",
   "settings.appearance.fontInter": "Inter",
   "settings.appearance.fontSystem": "System",
+  "settings.appearance.fontTheme": "Motyw",
   "settings.appearance.iconHeader": "Ikona",
   "settings.appearance.interface": "Interfejs",
   "settings.appearance.kanbanBoard": "Tablica Kanban",

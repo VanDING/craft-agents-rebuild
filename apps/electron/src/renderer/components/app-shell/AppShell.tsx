@@ -204,7 +204,7 @@ function FilterModeBadge({ mode }: { mode: FilterMode }) {
           ? "bg-background text-foreground shadow-minimal"
           : "bg-destructive/10 text-destructive shadow-tinted",
       )}
-      style={mode === 'exclude' ? { '--shadow-color': 'var(--destructive-rgb)' } as React.CSSProperties : undefined}
+      style={mode === 'exclude' ? { '--shadow-color': 'var(--destructive)' } as React.CSSProperties : undefined}
     >
       {mode === 'include' ? <Check className="!h-2.5 !w-2.5" /> : <X className="!h-2.5 !w-2.5" />}
     </span>
@@ -579,7 +579,12 @@ function AppShellContent({
   const resizeHandleRef = React.useRef<HTMLDivElement>(null)
   const sessionListHandleRef = React.useRef<HTMLDivElement>(null)
   const [session, setSession] = useSession()
-  const { resolvedMode, isDark, setMode } = useTheme()
+  const { resolvedMode, isDark, setMode, presetTheme } = useTheme()
+  const hasThemedNavigatorSurface = presetTheme !== null && (
+    isDark
+      ? (presetTheme.dark?.navigator ?? presetTheme.navigator) !== undefined
+      : presetTheme.navigator !== undefined
+  )
   const { canGoBack, canGoForward, goBack, goForward, navigateToSource, navigateToSession } = useNavigation()
 
   // Double-Esc interrupt feature: first Esc shows warning, second Esc interrupts
@@ -2482,7 +2487,10 @@ function AppShellContent({
             <div
               ref={sidebarRef}
               style={{ width: sidebarWidth }}
-              className="h-full font-sans relative bg-navigator"
+              className={cn(
+                "h-full font-sans relative",
+                hasThemedNavigatorSurface && "bg-navigator",
+              )}
               data-focus-zone="sidebar"
               tabIndex={sidebarFocused ? 0 : -1}
               onKeyDown={handleSidebarKeyDown}
@@ -2491,7 +2499,10 @@ function AppShellContent({
               {/* Sidebar Top Section */}
               <div className="flex-1 flex flex-col min-h-0">
                 {/* New Session Button - Gmail-style, with context menu for "Open in New Window" */}
-                <div className="px-2 pb-2 shrink-0">
+                <div
+                  className="px-2 pb-2 shrink-0"
+                  style={{ paddingTop: PANEL_EDGE_INSET }}
+                >
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <div>
@@ -2833,7 +2844,7 @@ function AppShellContent({
                         <HeaderIconButton
                           icon={<ListFilter className="h-4 w-4" />}
                           className={(listFilter.size > 0 || labelFilter.size > 0 || projectFilter.size > 0) ? "bg-accent/5 text-accent rounded-[8px] shadow-tinted" : "rounded-[8px]"}
-                          style={(listFilter.size > 0 || labelFilter.size > 0 || projectFilter.size > 0) ? { '--shadow-color': 'var(--accent-rgb)' } as React.CSSProperties : undefined}
+                          style={(listFilter.size > 0 || labelFilter.size > 0 || projectFilter.size > 0) ? { '--shadow-color': 'var(--accent)' } as React.CSSProperties : undefined}
                         />
                       </DropdownMenuTrigger>
                       <StyledDropdownMenuContent

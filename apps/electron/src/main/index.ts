@@ -104,7 +104,7 @@ import { getDefaultWorkspacesDir } from '@craft-agent/shared/workspaces'
 import { initializeDocs } from '@craft-agent/shared/docs'
 import { initializeReleaseNotes } from '@craft-agent/shared/release-notes'
 import { ensureDefaultPermissions } from '@craft-agent/shared/agent/permissions-config'
-import { ensureToolIcons, ensurePresetThemes } from '@craft-agent/shared/config'
+import { ensureToolIcons, initializeThemeStorage } from '@craft-agent/shared/config'
 import { setBundledAssetsRoot } from '@craft-agent/shared/utils'
 import { initializeBackendHostRuntime } from '@craft-agent/shared/agent/backend'
 import { setPowerShellValidatorRoot } from '@craft-agent/shared/agent'
@@ -440,8 +440,9 @@ app.whenReady().then(async () => {
   // Seed tool icons to ~/.craft-agent/tool-icons/ (copies bundled SVGs on first run)
   ensureToolIcons()
 
-  // Seed preset themes to ~/.craft-agent/themes/ (copies bundled theme JSONs on first run)
-  ensurePresetThemes()
+  // Initialize the user-owned theme directory and migrate the deprecated
+  // theme.json override without copying or overwriting any user themes.
+  initializeThemeStorage()
 
   // Register thumbnail:// protocol handler (scheme was registered earlier, before app.whenReady)
   registerThumbnailHandler()

@@ -4,9 +4,9 @@
  * App-level theme system with preset themes.
  * Light mode is default, with optional dark mode overrides.
  *
- * Storage locations:
- * - App override:   ~/.craft-agent/theme.json
- * - Preset themes:  ~/.craft-agent/themes/*.json
+ * Theme sources:
+ * - Built in:       `default` only
+ * - User themes:    ~/.craft-agent/themes/*.json
  */
 
 /**
@@ -26,6 +26,28 @@ export type ThemeDepth = 'flat' | 'elevated' | 'neon' | 'glass' | 'raised';
 export type ThemeDensity = 'compact' | 'comfortable' | 'cozy';
 export type ThemeBorderStyle = 'solid' | 'dashed' | 'dotted' | 'double';
 export type ThemeIconStrokeLinecap = 'butt' | 'round' | 'square';
+export type ThemePreferenceMode = 'light' | 'dark' | 'system';
+export type ThemeFontPreference = 'theme' | 'inter' | 'system';
+
+/** Durable app-level theme preferences stored in config.json. */
+export interface ThemePreferences {
+  mode: ThemePreferenceMode;
+  colorTheme: string;
+  font: ThemeFontPreference;
+}
+
+export const DEFAULT_THEME_PREFERENCES: ThemePreferences = {
+  mode: 'system',
+  colorTheme: 'default',
+  font: 'theme',
+};
+
+const USER_THEME_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/;
+
+/** Whether a filename stem is a safe, non-reserved user theme ID. */
+export function isValidUserThemeId(id: string): boolean {
+  return id.toLowerCase() !== 'default' && USER_THEME_ID_PATTERN.test(id);
+}
 
 /**
  * Core theme colors (6-color semantic system)
@@ -55,12 +77,13 @@ export interface ThemeColors {
 }
 
 /**
- * Surface colors for specific UI regions
- * All optional - fall back to `background` if not set
+ * Surface colors for specific UI regions.
+ * All are optional. The native sidebar stays transparent unless `navigator`
+ * is explicitly authored; other surfaces retain their CSS-level fallbacks.
  */
 export interface SurfaceColors {
   paper?: CSSColor; // AI messages, cards, elevated content
-  navigator?: CSSColor; // Left sidebar background
+  navigator?: CSSColor; // Opt-in left sidebar background
   input?: CSSColor; // Input field background
   popover?: CSSColor; // Dropdowns, modals, context menus (always solid, no transparency)
   popoverSolid?: CSSColor; // Guaranteed 100% opaque popover bg (required for scenic mode)
@@ -201,12 +224,18 @@ function mergeThemes(
   if (override.backgroundImage !== undefined)
     result.backgroundImage = override.backgroundImage;
 
-  // Deep merge dark overrides
-  if (override.dark) {
-    result.dark = { ...base.dark };
-    for (const key of ALL_THEME_KEYS) {
-      if (override.dark[key] !== undefined) {
-        Object.assign(result.dark, { [key]: override.dark[key] });
+  // Build the dark variant from four layers. Top-level user tokens are the
+  // shared base for both modes; `dark` only contains differences. This also
+  // makes dark-only themes that put their palette at the top level work as
+  // authored instead of inheriting Default's dark colors over it.
+  if (base.dark || override.dark) {
+    result.dark = {};
+    for (const source of [base, base.dark, override, override.dark]) {
+      if (!source) continue;
+      for (const key of ALL_THEME_KEYS) {
+        if (source[key] !== undefined) {
+          Object.assign(result.dark, { [key]: source[key] });
+        }
       }
     }
   }
@@ -221,44 +250,39 @@ function mergeThemes(
 export function resolveTheme(
   app?: ThemeOverrides
 ): ThemeOverrides {
-  return mergeThemes(undefined, app) || {};
+  return mergeThemes(DEFAULT_THEME, app);
 }
 
-/**
- * Convert hex color to RGB values string (e.g., "255, 128, 0")
- * Optionally darkens the color by a factor (0-1, where 0.7 = 70% brightness)
- * Returns null if not a valid hex color
- */
-function hexToRgbValues(hex: string, darkenFactor: number = 1): string | null {
-  let r: number, g: number, b: number;
+const DENSITY_SCALE: Record<ThemeDensity, number> = {
+  compact: 0.875,
+  comfortable: 1,
+  cozy: 1.125,
+};
 
-  // Match 6 digit hex colors
-  const match = hex.match(/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i);
-  if (match) {
-    r = parseInt(match[1]!, 16);
-    g = parseInt(match[2]!, 16);
-    b = parseInt(match[3]!, 16);
-  } else {
-    // Try 3-digit hex
-    const shortMatch = hex.match(/^#?([a-f\d])([a-f\d])([a-f\d])$/i);
-    if (!shortMatch) return null;
-    r = parseInt(shortMatch[1]! + shortMatch[1]!, 16);
-    g = parseInt(shortMatch[2]! + shortMatch[2]!, 16);
-    b = parseInt(shortMatch[3]! + shortMatch[3]!, 16);
-  }
-
-  // Apply darkening factor
-  r = Math.round(r * darkenFactor);
-  g = Math.round(g * darkenFactor);
-  b = Math.round(b * darkenFactor);
-
-  return `${r}, ${g}, ${b}`;
-}
-
-const DENSITY_SPACING: Record<ThemeDensity, string> = {
-  compact: '0.21875rem',
-  comfortable: '0.25rem',
-  cozy: '0.28125rem',
+const DENSITY_TOKENS: Record<ThemeDensity, {
+  rowPaddingY: CSSValue;
+  menuItemPaddingY: CSSValue;
+  settingsRowPaddingY: CSSValue;
+  activityRowPaddingY: CSSValue;
+}> = {
+  compact: {
+    rowPaddingY: '0.625rem',
+    menuItemPaddingY: '0.25rem',
+    settingsRowPaddingY: '0.75rem',
+    activityRowPaddingY: '0.0625rem',
+  },
+  comfortable: {
+    rowPaddingY: '0.75rem',
+    menuItemPaddingY: '0.375rem',
+    settingsRowPaddingY: '0.875rem',
+    activityRowPaddingY: '0.125rem',
+  },
+  cozy: {
+    rowPaddingY: '0.875rem',
+    menuItemPaddingY: '0.5rem',
+    settingsRowPaddingY: '1rem',
+    activityRowPaddingY: '0.1875rem',
+  },
 };
 
 function depthToCSS(
@@ -306,11 +330,13 @@ function depthToCSS(
       );
       break;
     case 'raised':
+      // Raised themes use a hard-edged shadow, but still honor the declared
+      // strength instead of turning the shadow color fully opaque.
       vars.push(
-        `--shadow-minimal: 0 0 0 var(--theme-border-width) ${border}, 3px 3px 0 ${color};`,
-        `--shadow-middle: 0 0 0 var(--theme-border-width) ${border}, 4px 4px 0 ${color};`,
-        `--shadow-strong: 0 0 0 var(--theme-border-width) ${border}, 6px 6px 0 ${color};`,
-        `--shadow-modal-small: 0 0 0 var(--theme-border-width) ${border}, 8px 8px 0 ${color};`
+        `--shadow-minimal: 0 0 0 var(--theme-border-width) ${border}, 3px 3px 0 color-mix(in srgb, ${color} ${soft}%, transparent);`,
+        `--shadow-middle: 0 0 0 var(--theme-border-width) ${border}, 4px 4px 0 color-mix(in srgb, ${color} ${soft}%, transparent);`,
+        `--shadow-strong: 0 0 0 var(--theme-border-width) ${border}, 6px 6px 0 color-mix(in srgb, ${color} ${soft}%, transparent);`,
+        `--shadow-modal-small: 0 0 0 var(--theme-border-width) ${border}, 8px 8px 0 color-mix(in srgb, ${color} ${soft}%, transparent);`
       );
       break;
     case 'elevated':
@@ -344,36 +370,13 @@ export function themeToCSS(theme: ThemeOverrides, isDark: boolean = false): stri
   if (colors.background) vars.push(`--background: ${colors.background};`);
   if (colors.foreground) {
     vars.push(`--foreground: ${colors.foreground};`);
-    // Also output RGB version for shadow borders (only works with hex colors)
-    const rgbValues = hexToRgbValues(colors.foreground);
-    if (rgbValues) {
-      vars.push(`--foreground-rgb: ${rgbValues};`);
-    }
   }
   if (colors.accent) {
     vars.push(`--accent: ${colors.accent};`);
-    // Also output darkened RGB version for shadow-tinted (only works with hex colors)
-    // Use 70% brightness for a proper shadow effect
-    const rgbValues = hexToRgbValues(colors.accent, 0.7);
-    if (rgbValues) {
-      vars.push(`--accent-rgb: ${rgbValues};`);
-    }
   }
-  if (colors.info) {
-    vars.push(`--info: ${colors.info};`);
-    const rgbValues = hexToRgbValues(colors.info);
-    if (rgbValues) vars.push(`--info-rgb: ${rgbValues};`);
-  }
-  if (colors.success) {
-    vars.push(`--success: ${colors.success};`);
-    const rgbValues = hexToRgbValues(colors.success);
-    if (rgbValues) vars.push(`--success-rgb: ${rgbValues};`);
-  }
-  if (colors.destructive) {
-    vars.push(`--destructive: ${colors.destructive};`);
-    const rgbValues = hexToRgbValues(colors.destructive);
-    if (rgbValues) vars.push(`--destructive-rgb: ${rgbValues};`);
-  }
+  if (colors.info) vars.push(`--info: ${colors.info};`);
+  if (colors.success) vars.push(`--success: ${colors.success};`);
+  if (colors.destructive) vars.push(`--destructive: ${colors.destructive};`);
 
   const semanticColorVars: [keyof ThemeColors, string][] = [
     ['backgroundElevated', '--background-elevated'],
@@ -393,16 +396,14 @@ export function themeToCSS(theme: ThemeOverrides, isDark: boolean = false): stri
     if (colors[key]) vars.push(`${cssVar}: ${colors[key]};`);
   }
 
-  // Surface color variables (fall back to background if not set)
-  // These enable fine-grained control over specific UI regions
-  const bg = colors.background || 'var(--background)';
-  vars.push(`--paper: ${colors.paper || bg};`);
-  vars.push(`--navigator: ${colors.navigator || bg};`);
-  vars.push(`--input: ${colors.input || bg};`);
-  vars.push(`--popover: ${colors.popover || bg};`);
-  // popoverSolid: guaranteed 100% opaque for scenic mode popovers
-  // Falls back to popover, then background (should always be solid in scenic themes)
-  vars.push(`--popover-solid: ${colors.popoverSolid || colors.popover || bg};`);
+  // Emit only authored surface overrides. The static Default declarations are
+  // expressions based on --background/--foreground, so omitted surfaces keep
+  // deriving from the active palette instead of being flattened to background.
+  if (colors.paper) vars.push(`--paper: ${colors.paper};`);
+  if (colors.navigator) vars.push(`--navigator: ${colors.navigator};`);
+  if (colors.input) vars.push(`--input: ${colors.input};`);
+  if (colors.popover) vars.push(`--popover: ${colors.popover};`);
+  if (colors.popoverSolid) vars.push(`--popover-solid: ${colors.popoverSolid};`);
 
   // L2/L4/L5/L6 direct tokens
   if (colors.radius) {
@@ -422,14 +423,33 @@ export function themeToCSS(theme: ThemeOverrides, isDark: boolean = false): stri
   if (colors.lineHeight !== undefined) vars.push(`--line-height-base: ${colors.lineHeight};`);
   if (colors.iconStrokeWidth !== undefined) vars.push(`--icon-stroke-width: ${colors.iconStrokeWidth};`);
   if (colors.iconStrokeLinecap) vars.push(`--icon-stroke-linecap: ${colors.iconStrokeLinecap};`);
-  if (colors.density) vars.push(`--spacing: ${DENSITY_SPACING[colors.density]};`);
+  if (colors.density) {
+    // Do not mutate Tailwind's global --spacing foundation: doing so also
+    // resizes icons, hit targets, widths and transforms. Components that opt
+    // into semantic density can consume these dedicated theme variables.
+    const density = DENSITY_TOKENS[colors.density];
+    vars.push(`--theme-density: ${colors.density};`);
+    vars.push(`--theme-density-scale: ${DENSITY_SCALE[colors.density]};`);
+    vars.push(`--theme-row-padding-y: ${density.rowPaddingY};`);
+    vars.push(`--theme-menu-item-padding-y: ${density.menuItemPaddingY};`);
+    vars.push(`--theme-settings-row-padding-y: ${density.settingsRowPaddingY};`);
+    vars.push(`--theme-activity-row-padding-y: ${density.activityRowPaddingY};`);
+  }
 
-  // L3 high-level depth expansion. Defaults match the existing restrained UI.
-  const depth = colors.depth || 'elevated';
-  const shadowColor = colors.shadowColor || 'black';
-  const shadowStrength = colors.shadowStrength ?? (isDark ? 0.18 : 0.1);
-  const glassBlur = colors.glassBlur || '20px';
-  vars.push(...depthToCSS(depth, shadowColor, shadowStrength, glassBlur));
+  // Expand the high-level depth model only when the file authors at least one
+  // depth/material token. A color-only partial theme should inherit the exact
+  // built-in shadow baseline rather than silently replacing it.
+  const ownsDepth = colors.depth !== undefined
+    || colors.shadowColor !== undefined
+    || colors.shadowStrength !== undefined
+    || colors.glassBlur !== undefined;
+  if (ownsDepth) {
+    const depth = colors.depth || 'elevated';
+    const shadowColor = colors.shadowColor || 'black';
+    const shadowStrength = colors.shadowStrength ?? (isDark ? 0.18 : 0.1);
+    const glassBlur = colors.glassBlur || '20px';
+    vars.push(...depthToCSS(depth, shadowColor, shadowStrength, glassBlur));
+  }
 
   // Theme mode (background image is set directly on document.documentElement.style
   // to avoid style sheet size limits with large data URLs)
@@ -445,8 +465,8 @@ export function themeToCSS(theme: ThemeOverrides, isDark: boolean = false): stri
  * that visually match the DEFAULT_THEME oklch colors.
  */
 export const BACKGROUND_HEX = {
-  light: '#faf9fb', // matches oklch(0.98 0.003 265)
-  dark: '#302f33', // matches oklch(0.2 0.005 270)
+  light: '#f7f8fa', // sRGB rendering of oklch(0.98 0.003 265)
+  dark: '#080a10', // sRGB rendering of oklch(0.145 0.015 270)
 } as const;
 
 /**
@@ -463,7 +483,7 @@ export function getBackgroundColor(isDark: boolean): string {
 export const DEFAULT_THEME: ThemeOverrides = {
   background: 'oklch(0.98 0.003 265)',
   foreground: 'oklch(0.185 0.01 270)',
-  accent: 'oklch(0.58 0.22 293)',
+  accent: 'oklch(0.62 0.13 293)',
   info: 'oklch(0.75 0.16 70)',
   success: 'oklch(0.55 0.17 145)',
   destructive: 'oklch(0.58 0.24 28)',
@@ -508,7 +528,7 @@ export interface ShikiThemeConfig {
  * Used for preset themes stored as JSON files
  */
 export interface ThemeFile extends ThemeOverrides {
-  name?: string;
+  name: string;
   description?: string;
   author?: string;
   license?: string;
@@ -522,8 +542,42 @@ export interface ThemeFile extends ThemeOverrides {
  */
 export interface PresetTheme {
   id: string; // filename without .json (e.g., 'dracula')
-  path: string; // full path to theme.json
+  path: string; // full path to the user theme file, or builtin:default
   theme: ThemeFile; // parsed theme data
+}
+
+/** Lightweight metadata returned when listing user themes. */
+export interface ThemeSummary {
+  id: string;
+  name: string;
+  description?: string;
+  author?: string;
+  supportedModes?: ('light' | 'dark')[];
+}
+
+/** The immutable built-in theme. All other themes come from the user directory. */
+export const DEFAULT_THEME_FILE: ThemeFile = {
+  name: 'Default',
+  description: 'Clean purple-tinted neutral theme',
+  author: 'Craft Agent',
+  license: 'MIT',
+  supportedModes: ['light', 'dark'],
+  shikiTheme: {
+    light: 'github-light',
+    dark: 'github-dark',
+  },
+  ...DEFAULT_THEME,
+};
+
+/** Resolve the actual visual mode supported by a theme. */
+export function resolveThemeMode(
+  theme: Pick<ThemeFile, 'mode' | 'supportedModes'> | undefined,
+  requestedMode: 'light' | 'dark'
+): 'light' | 'dark' {
+  if (theme?.mode === 'scenic') return 'dark';
+  const supportedModes = theme?.supportedModes;
+  if (supportedModes?.length === 1) return supportedModes[0]!;
+  return requestedMode;
 }
 
 /**

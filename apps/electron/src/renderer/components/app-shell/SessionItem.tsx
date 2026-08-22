@@ -254,7 +254,7 @@ export function SessionItem({
               : "bg-yellow-300/10 border border-yellow-600/20 text-yellow-800"
           )}
           style={{
-            '--shadow-color': isSelected ? '234, 179, 8' : '133, 77, 14',
+            '--shadow-color': isSelected ? 'rgb(234, 179, 8)' : 'rgb(133, 77, 14)',
           } as React.CSSProperties}
           title={`Matches found (${nextHotkey} next, ${prevHotkey} prev)`}
         >

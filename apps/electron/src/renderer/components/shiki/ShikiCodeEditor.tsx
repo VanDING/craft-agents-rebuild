@@ -72,7 +72,7 @@ export function ShikiCodeEditor({
   className,
   placeholder,
 }: ShikiCodeEditorProps) {
-  const { isDark, shikiTheme } = useTheme()
+  const { shikiTheme } = useTheme()
   const hasCalledReady = useRef(false)
   const [highlightedCode, setHighlightedCode] = useState<string>('')
 
@@ -161,10 +161,10 @@ export function ShikiCodeEditor({
     return highlightedCode || code
   }, [resolvedLang, theme, highlight, highlightedCode])
 
-  // Background color (must match CSS --background values)
-  const backgroundColor = isDark ? '#302f33' : '#faf9fb'
-  const textColor = isDark ? '#d4d4d4' : '#1f1f1f'
-  const placeholderColor = isDark ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.3)'
+  // Use resolved theme tokens instead of a second hard-coded default palette.
+  const backgroundColor = 'var(--background)'
+  const textColor = 'var(--foreground)'
+  const placeholderColor = 'color-mix(in srgb, var(--foreground) 30%, transparent)'
 
   return (
     <div

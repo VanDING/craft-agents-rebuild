@@ -168,6 +168,9 @@ export interface IBrowserPaneManager {
     options?: { workspaceId?: string | null },
   ): void
 
+  /** Re-resolve theme-dependent native overlay colors, when hosted locally. */
+  refreshThemeVisuals?(): void
+
   // -- Instance management -------------------------------------------------
 
   /** Create a browser instance for a session (optionally shown) */

@@ -21,6 +21,8 @@ export const CORE_HANDLED_CHANNELS = [
   RPC_CHANNELS.theme.GET_APP,
   RPC_CHANNELS.theme.GET_PRESETS,
   RPC_CHANNELS.theme.LOAD_PRESET,
+  RPC_CHANNELS.theme.GET_PREFERENCES,
+  RPC_CHANNELS.theme.SET_PREFERENCES,
   RPC_CHANNELS.theme.GET_COLOR_THEME,
   RPC_CHANNELS.theme.SET_COLOR_THEME,
   RPC_CHANNELS.theme.BROADCAST_PREFERENCES,
@@ -76,7 +78,8 @@ export function registerWorkspaceCoreHandlers(server: RpcServer, deps: HandlerDe
   // Get workspace ID for the calling window
   server.handle(RPC_CHANNELS.window.GET_WORKSPACE, (ctx) => {
     const workspaceId = ctx.workspaceId ?? windowManager?.getWorkspaceForWindow(ctx.webContentsId!)
-    // Set up ConfigWatcher for live updates (labels, statuses, sources, themes)
+    // Set up the workspace-scoped watcher (global user themes have one watcher
+    // owned by SessionManager).
     if (workspaceId) {
       const workspace = getWorkspaceByNameOrId(workspaceId)
       if (workspace) {
@@ -302,7 +305,7 @@ export function registerWorkspaceCoreHandlers(server: RpcServer, deps: HandlerDe
     return loadAppTheme()
   })
 
-  // Preset themes (app-level)
+  // User themes (app-level; Default is returned directly by LOAD_PRESET)
   server.handle(RPC_CHANNELS.theme.GET_PRESETS, async () => {
     const { loadPresetThemes } = await import('@craft-agent/shared/config/storage')
     return loadPresetThemes()
@@ -313,19 +316,38 @@ export function registerWorkspaceCoreHandlers(server: RpcServer, deps: HandlerDe
     return loadPresetTheme(themeId)
   })
 
+  server.handle(RPC_CHANNELS.theme.GET_PREFERENCES, async () => {
+    const { getThemePreferences } = await import('@craft-agent/shared/config/storage')
+    return getThemePreferences()
+  })
+
+  server.handle(RPC_CHANNELS.theme.SET_PREFERENCES, async (_ctx, preferences: import('@craft-agent/shared/config').ThemePreferences) => {
+    const { setThemePreferences } = await import('@craft-agent/shared/config/storage')
+    const persisted = setThemePreferences(preferences)
+    deps.browserPaneManager?.refreshThemeVisuals?.()
+    pushTyped(server, RPC_CHANNELS.theme.PREFERENCES_CHANGED, { to: 'all' }, persisted)
+    return persisted
+  })
+
   server.handle(RPC_CHANNELS.theme.GET_COLOR_THEME, async () => {
     const { getColorTheme } = await import('@craft-agent/shared/config/storage')
     return getColorTheme()
   })
 
   server.handle(RPC_CHANNELS.theme.SET_COLOR_THEME, async (_ctx, themeId: string) => {
-    const { setColorTheme } = await import('@craft-agent/shared/config/storage')
+    const { getThemePreferences, setColorTheme } = await import('@craft-agent/shared/config/storage')
     setColorTheme(themeId)
+    deps.browserPaneManager?.refreshThemeVisuals?.()
+    pushTyped(server, RPC_CHANNELS.theme.PREFERENCES_CHANGED, { to: 'all' }, getThemePreferences())
   })
 
-  // Broadcast theme preferences to all other windows (for cross-window sync)
-  server.handle(RPC_CHANNELS.theme.BROADCAST_PREFERENCES, async (ctx, preferences: { mode: string; colorTheme: string; font: string }) => {
-    pushTyped(server, RPC_CHANNELS.theme.PREFERENCES_CHANGED, { to: 'all' }, preferences)
+  // Backward-compatible alias for older clients; persistence and broadcast now
+  // happen together so config.json remains authoritative.
+  server.handle(RPC_CHANNELS.theme.BROADCAST_PREFERENCES, async (_ctx, preferences: import('@craft-agent/shared/config').ThemePreferences) => {
+    const { setThemePreferences } = await import('@craft-agent/shared/config/storage')
+    const persisted = setThemePreferences(preferences)
+    deps.browserPaneManager?.refreshThemeVisuals?.()
+    pushTyped(server, RPC_CHANNELS.theme.PREFERENCES_CHANGED, { to: 'all' }, persisted)
   })
 
   // Workspace-level theme overrides
@@ -340,11 +362,14 @@ export function registerWorkspaceCoreHandlers(server: RpcServer, deps: HandlerDe
 
   server.handle(RPC_CHANNELS.theme.SET_WORKSPACE_COLOR_THEME, async (_ctx, workspaceId: string, themeId: string | null) => {
     const { getWorkspaces } = await import('@craft-agent/shared/config/storage')
-    const { setWorkspaceColorTheme } = await import('@craft-agent/shared/workspaces/storage')
+    const { getWorkspaceColorTheme, setWorkspaceColorTheme } = await import('@craft-agent/shared/workspaces/storage')
     const workspaces = getWorkspaces()
     const workspace = workspaces.find(w => w.id === workspaceId)
     if (!workspace) return
     setWorkspaceColorTheme(workspace.rootPath, themeId ?? undefined)
+    const persistedThemeId = getWorkspaceColorTheme(workspace.rootPath) ?? null
+    deps.browserPaneManager?.refreshThemeVisuals?.()
+    pushTyped(server, RPC_CHANNELS.theme.WORKSPACE_THEME_CHANGED, { to: 'all' }, { workspaceId, themeId: persistedThemeId })
   })
 
   server.handle(RPC_CHANNELS.theme.GET_ALL_WORKSPACE_THEMES, async () => {
@@ -359,7 +384,8 @@ export function registerWorkspaceCoreHandlers(server: RpcServer, deps: HandlerDe
   })
 
   // Broadcast workspace theme change to all other windows (for cross-window sync)
-  server.handle(RPC_CHANNELS.theme.BROADCAST_WORKSPACE_THEME, async (ctx, workspaceId: string, themeId: string | null) => {
+  server.handle(RPC_CHANNELS.theme.BROADCAST_WORKSPACE_THEME, async (_ctx, workspaceId: string, themeId: string | null) => {
+    deps.browserPaneManager?.refreshThemeVisuals?.()
     pushTyped(server, RPC_CHANNELS.theme.WORKSPACE_THEME_CHANGED, { to: 'all' }, { workspaceId, themeId })
   })
 

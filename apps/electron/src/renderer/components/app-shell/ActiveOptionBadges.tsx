@@ -201,7 +201,7 @@ export function ActiveOptionBadges({
               // shadow-minimal replicated as drop-shadow (traces masked alpha, no clipping).
               // Ring uses higher blur+opacity for visible border feel (hard 1px ring can't be replicated exactly).
               // Blur shadows use reduced blur+opacity to stay tight (accounting for no negative spread in drop-shadow).
-              filter: 'drop-shadow(0px 0px 0.5px rgba(var(--foreground-rgb), 0.3)) drop-shadow(0px 1px 0.1px rgba(0,0,0,0.04)) drop-shadow(0px 3px 0.2px rgba(0,0,0,0.03))',
+              filter: 'drop-shadow(0px 0px 0.5px color-mix(in srgb, var(--foreground) 30%, transparent)) drop-shadow(0px 1px 0.1px rgba(0,0,0,0.04)) drop-shadow(0px 3px 0.2px rgba(0,0,0,0.03))',
             }}
           >
             <div
@@ -468,15 +468,15 @@ function PermissionModeDropdown({ permissionMode, onPermissionModeChange, sessio
   const modeStyles: Record<PermissionMode, { className: string; shadowVar: string }> = {
     'safe': {
       className: 'bg-foreground/5 text-foreground/60',
-      shadowVar: 'var(--foreground-rgb)',
+      shadowVar: 'var(--foreground)',
     },
     'ask': {
       className: 'bg-info/10 text-info',
-      shadowVar: 'var(--info-rgb)',
+      shadowVar: 'var(--info)',
     },
     'allow-all': {
       className: 'bg-accent/5 text-accent',
-      shadowVar: 'var(--accent-rgb)',
+      shadowVar: 'var(--accent)',
     },
   }
   const currentStyle = modeStyles[optimisticMode]
@@ -524,4 +524,3 @@ function PermissionModeDropdown({ permissionMode, onPermissionModeChange, sessio
     </Popover>
   )
 }
-

@@ -1041,6 +1041,7 @@
   "settings.appearance.font": "Font",
   "settings.appearance.fontInter": "Inter",
   "settings.appearance.fontSystem": "System",
+  "settings.appearance.fontTheme": "Theme",
   "settings.appearance.iconHeader": "Icon",
   "settings.appearance.interface": "Interface",
   "settings.appearance.kanbanBoard": "Kanban board",

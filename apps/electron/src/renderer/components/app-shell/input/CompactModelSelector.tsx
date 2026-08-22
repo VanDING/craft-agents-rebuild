@@ -179,7 +179,7 @@ export function CompactModelSelector({
               ? 'bg-destructive/10 text-destructive'
               : 'bg-foreground/5 text-foreground/70',
           )}
-          style={{ '--shadow-color': 'var(--foreground-rgb)' } as React.CSSProperties}
+          style={{ '--shadow-color': 'var(--foreground)' } as React.CSSProperties}
         >
           {connectionUnavailable ? (
             <>

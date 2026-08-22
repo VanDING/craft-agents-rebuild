@@ -1,5 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync, statSync, readdirSync } from 'fs';
-import { join, dirname, basename } from 'path';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync, statSync, readdirSync, realpathSync } from 'fs';
+import { join, dirname, basename, resolve, relative, isAbsolute } from 'path';
 import { getCredentialManager } from '../credentials/index.ts';
 import { getOrCreateLatestSession, type SessionConfig } from '../sessions/index.ts';
 import {
@@ -14,7 +14,7 @@ import { extractWorkspaceSlugFromPath } from '../utils/workspace-slug.ts';
 import { initializeDocs } from '../docs/index.ts';
 import { expandPath, toPortablePath, getBundledAssetsDir } from '../utils/paths.ts';
 import { debug } from '../utils/debug.ts';
-import { readJsonFileSync } from '../utils/files.ts';
+import { atomicWriteFileSync, readJsonFileSync, safeJsonParse } from '../utils/files.ts';
 import { CONFIG_DIR } from './paths.ts';
 import type { StoredAttachment, StoredMessage } from '@craft-agent/core/types';
 import type { Plan } from '../agent/plan-types.ts';
@@ -23,7 +23,7 @@ import type { ThinkingLevel } from '../agent/thinking-levels.ts';
 import { isValidThinkingLevel, normalizeThinkingLevel } from '../agent/thinking-levels.ts';
 import { parsePermissionMode, PERMISSION_MODE_ORDER } from '../agent/mode-types.ts';
 import { type ConfigDefaults } from './config-defaults-schema.ts';
-import { isValidThemeFile } from './validators.ts';
+import { PresetThemeSchema, ThemeOverrideSchema } from './validators.ts';
 
 // Re-export CONFIG_DIR for convenience (centralized in paths.ts)
 export { CONFIG_DIR } from './paths.ts';
@@ -65,6 +65,8 @@ export interface StoredConfig {
   notificationsEnabled?: boolean;  // Desktop notifications for task completion (default: true)
   // Appearance
   colorTheme?: string;  // ID of selected preset theme (e.g., 'dracula', 'nord'). Default: 'default'
+  themeMode?: 'light' | 'dark' | 'system';
+  themeFont?: 'theme' | 'inter' | 'system';
   // Auto-update
   dismissedUpdateVersion?: string;  // Version that user dismissed (skip notifications for this version)
   // Input settings
@@ -105,7 +107,7 @@ let configDefaultsSynced = false;
 /**
  * Sync config-defaults.json from bundled assets.
  * Always writes on launch to ensure defaults are up-to-date with the running version.
- * Follows the same pattern as docs, themes, and other bundled assets.
+ * Follows the same pattern as docs and other sync-enabled bundled assets.
  *
  * Source of truth: apps/electron/resources/config-defaults.json
  */
@@ -201,7 +203,7 @@ export function loadConfigDefaults(): ConfigDefaults {
 
 /**
  * Ensure config-defaults.json exists and is up-to-date.
- * Syncs from bundled assets on every launch (like docs, themes, permissions).
+ * Syncs from bundled assets on every launch (like docs and permissions).
  */
 export function ensureConfigDefaults(): void {
   syncConfigDefaults();
@@ -1215,46 +1217,57 @@ export function getAllSessionDrafts(): Record<string, SessionDraft> {
 // Theme Storage (App-level only)
 // ============================================
 
-import type { ThemeOverrides, ThemeFile, PresetTheme } from './theme.ts';
+import {
+  DEFAULT_THEME_FILE,
+  DEFAULT_THEME_PREFERENCES,
+  isValidUserThemeId,
+  resolveTheme,
+  type ThemeOverrides,
+  type ThemeFile,
+  type PresetTheme,
+  type ThemePreferences,
+  type ThemeSummary,
+} from './theme.ts';
 
 const APP_THEME_FILE = join(CONFIG_DIR, 'theme.json');
 const APP_THEMES_DIR = join(CONFIG_DIR, 'themes');
 
-/**
- * Get the path to the app-level theme override file (~/.craft-agent/theme.json).
- */
+/** @deprecated Kept so older tooling can locate the legacy file. */
 export function getAppThemePath(): string {
   return APP_THEME_FILE;
 }
 
-// Track if preset themes have been synced this session (prevents re-init on hot reload)
-let presetsInitialized = false;
+const LEGACY_THEME_MIGRATION_MARKER = join(APP_THEMES_DIR, '.legacy-theme-json-migrated');
+const MAX_THEME_FILE_BYTES = 256 * 1024;
+const MAX_THEME_BACKGROUND_BYTES = 20 * 1024 * 1024;
+const THEME_BACKGROUND_MIME_TYPES: Record<string, string> = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  webp: 'image/webp',
+};
 
 /**
  * Get the app-level themes directory.
- * Preset themes are stored at ~/.craft-agent/themes/
+ * User themes are stored at ~/.craft-agent/themes/
  */
 export function getAppThemesDir(): string {
   return APP_THEMES_DIR;
 }
 
-/**
- * Load app-level theme overrides
- */
+/** @deprecated Runtime theme resolution no longer consumes theme.json. */
 export function loadAppTheme(): ThemeOverrides | null {
   try {
-    if (!existsSync(APP_THEME_FILE)) {
-      return null;
-    }
-    return readJsonFileSync<ThemeOverrides>(APP_THEME_FILE);
+    if (!existsSync(APP_THEME_FILE)) return null;
+    const parsed = ThemeOverrideSchema.safeParse(safeJsonParse(readFileSync(APP_THEME_FILE, 'utf-8')));
+    return parsed.success ? parsed.data : null;
   } catch {
     return null;
   }
 }
 
-/**
- * Save app-level theme overrides
- */
+/** @deprecated Write a user theme in ~/.craft-agent/themes instead. */
 export function saveAppTheme(theme: ThemeOverrides): void {
   ensureConfigDir();
   writeFileSync(APP_THEME_FILE, JSON.stringify(theme, null, 2), 'utf-8');
@@ -1262,117 +1275,125 @@ export function saveAppTheme(theme: ThemeOverrides): void {
 
 
 // ============================================
-// Preset Themes (app-level)
+// User Themes (app-level)
 // ============================================
 
+/** Ensure the user-owned theme directory exists; never seed bundled presets. */
+export function ensureUserThemesDir(): void {
+  if (!existsSync(APP_THEMES_DIR)) {
+    mkdirSync(APP_THEMES_DIR, { recursive: true });
+  }
+}
+
 /**
- * Sync bundled preset themes to disk on launch.
- * Preserves user customizations:
- * - If file doesn't exist → copy from bundle
- * - If file exists but is invalid/corrupt → copy from bundle (auto-heal)
- * - If file exists and is valid → skip (preserve user changes)
- *
- * User-created custom theme files (with non-bundled filenames) are untouched.
- * User color overrides live in theme.json (separate file) and are never touched.
+ * Non-destructively migrate the deprecated theme.json override into a complete
+ * user theme. A marker prevents duplicate migrations and the source is retained.
  */
+export function migrateLegacyAppTheme(): string | null {
+  ensureUserThemesDir();
+  if (!existsSync(APP_THEME_FILE) || existsSync(LEGACY_THEME_MIGRATION_MARKER)) return null;
+
+  try {
+    const parsed = ThemeOverrideSchema.safeParse(safeJsonParse(readFileSync(APP_THEME_FILE, 'utf-8')));
+    if (!parsed.success) {
+      debug('[ThemeStorage] Legacy theme.json is invalid; leaving it untouched');
+      return null;
+    }
+
+    let suffix = 0;
+    let id = 'migrated-custom';
+    let destination = join(APP_THEMES_DIR, `${id}.json`);
+    while (existsSync(destination)) {
+      suffix += 1;
+      id = `migrated-custom-${suffix}`;
+      destination = join(APP_THEMES_DIR, `${id}.json`);
+    }
+
+    const migrated: ThemeFile = {
+      name: 'Migrated Custom Theme',
+      description: 'Migrated from the deprecated ~/.craft-agent/theme.json override.',
+      ...resolveTheme(parsed.data),
+    };
+    atomicWriteFileSync(destination, `${JSON.stringify(migrated, null, 2)}\n`);
+    atomicWriteFileSync(LEGACY_THEME_MIGRATION_MARKER, `${id}\n`);
+    debug(`[ThemeStorage] Migrated legacy theme.json to themes/${id}.json`);
+    return id;
+  } catch (error) {
+    debug('[ThemeStorage] Failed to migrate legacy theme.json', error);
+    return null;
+  }
+}
+
+/** Initialize theme storage once during application startup. */
+export function initializeThemeStorage(): void {
+  ensureUserThemesDir();
+  migrateLegacyAppTheme();
+}
+
+export { isValidUserThemeId } from './theme.ts';
+
+function isPathWithin(parentDir: string, candidatePath: string): boolean {
+  const child = relative(parentDir, candidatePath);
+  return child !== '' && child !== '..' && !child.startsWith('../') && !child.startsWith('..\\') && !isAbsolute(child);
+}
+
+function readValidatedThemeFile(path: string, id: string): ThemeFile | null {
+  try {
+    if (statSync(path).size > MAX_THEME_FILE_BYTES) {
+      debug(`[ThemeStorage] Ignoring theme "${id}" because its JSON exceeds 256 KiB`);
+      return null;
+    }
+    const parsed = PresetThemeSchema.safeParse(safeJsonParse(readFileSync(path, 'utf-8')));
+    if (!parsed.success) {
+      debug(`[ThemeStorage] Ignoring invalid theme "${id}"`, parsed.error.issues);
+      return null;
+    }
+    return parsed.data as ThemeFile;
+  } catch (error) {
+    debug(`[ThemeStorage] Failed to load theme "${id}"`, error);
+    return null;
+  }
+}
+
+/** @deprecated Use initializeThemeStorage(). */
 export function ensurePresetThemes(): void {
-  // Skip if already initialized this session (prevents re-init on hot reload)
-  if (presetsInitialized) {
-    return;
-  }
-  presetsInitialized = true;
-
-  const themesDir = getAppThemesDir();
-
-  // Create themes directory if it doesn't exist
-  if (!existsSync(themesDir)) {
-    mkdirSync(themesDir, { recursive: true });
-  }
-
-  // Resolve bundled themes directory via shared asset resolver
-  const bundledThemesDir = getBundledAssetsDir('themes');
-  if (!bundledThemesDir) {
-    return;
-  }
-
-  // Copy bundled preset themes to disk, preserving user customizations.
-  // - If file doesn't exist → copy from bundle
-  // - If file exists but is invalid/corrupt → copy from bundle (auto-heal)
-  // - If file exists and is valid → skip (preserve user changes)
-  try {
-    const bundledFiles = readdirSync(bundledThemesDir).filter(f => f.endsWith('.json'));
-    for (const file of bundledFiles) {
-      const srcPath = join(bundledThemesDir, file);
-      const destPath = join(themesDir, file);
-
-      // Skip if file exists and is valid (preserve user customizations)
-      if (existsSync(destPath) && isValidThemeFile(destPath)) {
-        continue;
-      }
-
-      // Copy from bundle (new file or auto-heal corrupt file)
-      const content = readFileSync(srcPath, 'utf-8');
-      writeFileSync(destPath, content, 'utf-8');
-    }
-  } catch {
-    // Ignore errors - themes are optional
-  }
+  initializeThemeStorage();
 }
 
 /**
- * Load all preset themes from app themes directory.
- * Returns array of PresetTheme objects sorted by name.
+ * List valid user themes without resolving heavyweight background assets.
  */
-export function loadPresetThemes(): PresetTheme[] {
-  ensurePresetThemes();
-
-  const themesDir = getAppThemesDir();
-  if (!existsSync(themesDir)) {
-    return [];
-  }
-
-  const themes: PresetTheme[] = [];
+export function loadPresetThemes(): ThemeSummary[] {
+  ensureUserThemesDir();
+  const themes: ThemeSummary[] = [];
 
   try {
-    const files = readdirSync(themesDir).filter(f => f.endsWith('.json'));
-    for (const file of files) {
-      const id = file.replace('.json', '');
-      const path = join(themesDir, file);
+    const themesRoot = realpathSync(APP_THEMES_DIR);
+    for (const file of readdirSync(APP_THEMES_DIR).filter((entry) => entry.endsWith('.json'))) {
+      const id = file.slice(0, -'.json'.length);
+      if (!isValidUserThemeId(id)) continue;
+      const path = join(APP_THEMES_DIR, file);
       try {
-        const theme = readJsonFileSync<ThemeFile>(path);
-        // Resolve relative backgroundImage paths to file:// URLs
-        const resolvedTheme = resolveThemeBackgroundImage(theme, path);
-        themes.push({ id, path, theme: resolvedTheme });
-      } catch {
-        // Skip invalid theme files
+        const realThemePath = realpathSync(path);
+        if (!isPathWithin(themesRoot, realThemePath)) continue;
+        const theme = readValidatedThemeFile(realThemePath, id);
+        if (!theme) continue;
+        themes.push({
+          id,
+          name: theme.name,
+          description: theme.description,
+          author: theme.author,
+          supportedModes: theme.supportedModes,
+        });
+      } catch (error) {
+        debug(`[ThemeStorage] Failed to inspect theme "${id}"`, error);
       }
     }
   } catch {
     return [];
   }
 
-  // Sort by name (default first, then alphabetically)
-  return themes.sort((a, b) => {
-    if (a.id === 'default') return -1;
-    if (b.id === 'default') return 1;
-    return (a.theme.name || a.id).localeCompare(b.theme.name || b.id);
-  });
-}
-
-/**
- * Get MIME type from file extension for data URL encoding.
- */
-function getMimeType(filePath: string): string {
-  const ext = filePath.toLowerCase().split('.').pop();
-  switch (ext) {
-    case 'png': return 'image/png';
-    case 'jpg':
-    case 'jpeg': return 'image/jpeg';
-    case 'gif': return 'image/gif';
-    case 'webp': return 'image/webp';
-    case 'svg': return 'image/svg+xml';
-    default: return 'application/octet-stream';
-  }
+  return themes.sort((a, b) => a.name.localeCompare(b.name));
 }
 
 /**
@@ -1388,27 +1409,52 @@ function resolveThemeBackgroundImage(theme: ThemeFile, themePath: string): Theme
     return theme;
   }
 
-  // Check if it's already an absolute URL (has protocol like http://, https://, data:)
-  const hasProtocol = /^[a-z][a-z0-9+.-]*:/i.test(theme.backgroundImage);
+  // Preserve explicit HTTP(S) URLs. Other URL schemes are rejected; local
+  // assets are validated and confined to the user themes directory below.
+  const hasProtocol = !isAbsolute(theme.backgroundImage)
+    && /^[a-z][a-z0-9+.-]*:/i.test(theme.backgroundImage);
   if (hasProtocol) {
-    return theme;
+    try {
+      const protocol = new URL(theme.backgroundImage).protocol;
+      if (protocol === 'https:' || protocol === 'http:') return theme;
+    } catch {
+      // Invalid URL falls through to the warning below.
+    }
+    console.warn(`Unsupported theme background URL: ${theme.backgroundImage}`);
+    return { ...theme, backgroundImage: undefined };
   }
 
-  // It's a relative path - resolve it relative to the theme's directory
   const themeDir = dirname(themePath);
-  const absoluteImagePath = join(themeDir, theme.backgroundImage);
+  const absoluteImagePath = resolve(themeDir, theme.backgroundImage);
 
   // Read the file and convert to data URL so renderer can use it
   // (file:// URLs are blocked in renderer when running on localhost)
   try {
     if (!existsSync(absoluteImagePath)) {
       console.warn(`Theme background image not found: ${absoluteImagePath}`);
-      return theme;
+      return { ...theme, backgroundImage: undefined };
     }
 
-    const imageBuffer = readFileSync(absoluteImagePath);
+    const themesRoot = realpathSync(APP_THEMES_DIR);
+    const realImagePath = realpathSync(absoluteImagePath);
+    if (!isPathWithin(themesRoot, realImagePath)) {
+      console.warn(`Theme background image must stay inside ${APP_THEMES_DIR}`);
+      return { ...theme, backgroundImage: undefined };
+    }
+
+    const extension = realImagePath.toLowerCase().split('.').pop() ?? '';
+    const mimeType = THEME_BACKGROUND_MIME_TYPES[extension];
+    if (!mimeType) {
+      console.warn(`Unsupported theme background image type: ${realImagePath}`);
+      return { ...theme, backgroundImage: undefined };
+    }
+    if (statSync(realImagePath).size > MAX_THEME_BACKGROUND_BYTES) {
+      console.warn(`Theme background image exceeds 20 MiB: ${realImagePath}`);
+      return { ...theme, backgroundImage: undefined };
+    }
+
+    const imageBuffer = readFileSync(realImagePath);
     const base64 = imageBuffer.toString('base64');
-    const mimeType = getMimeType(absoluteImagePath);
     const dataUrl = `data:${mimeType};base64,${base64}`;
 
     return {
@@ -1417,7 +1463,7 @@ function resolveThemeBackgroundImage(theme: ThemeFile, themePath: string): Theme
     };
   } catch (error) {
     console.warn(`Failed to read theme background image: ${absoluteImagePath}`, error);
-    return theme;
+    return { ...theme, backgroundImage: undefined };
   }
 }
 
@@ -1426,61 +1472,42 @@ function resolveThemeBackgroundImage(theme: ThemeFile, themePath: string): Theme
  * @param id - Theme ID (filename without .json)
  */
 export function loadPresetTheme(id: string): PresetTheme | null {
-  const themesDir = getAppThemesDir();
-  const path = join(themesDir, `${id}.json`);
+  if (id === 'default') {
+    return { id, path: 'builtin:default', theme: DEFAULT_THEME_FILE };
+  }
+  if (!isValidUserThemeId(id)) return null;
+
+  ensureUserThemesDir();
+  const path = join(APP_THEMES_DIR, `${id}.json`);
 
   if (!existsSync(path)) {
     return null;
   }
 
   try {
-    const theme = readJsonFileSync<ThemeFile>(path);
-    // Resolve relative backgroundImage paths to file:// URLs
-    const resolvedTheme = resolveThemeBackgroundImage(theme, path);
-    return { id, path, theme: resolvedTheme };
+    const themesRoot = realpathSync(APP_THEMES_DIR);
+    const realThemePath = realpathSync(path);
+    if (!isPathWithin(themesRoot, realThemePath)) return null;
+    const theme = readValidatedThemeFile(realThemePath, id);
+    if (!theme) return null;
+    return { id, path, theme: resolveThemeBackgroundImage(theme, realThemePath) };
   } catch {
     return null;
   }
 }
 
 /**
- * Get the path to the app-level preset themes directory.
+ * Get the path to the app-level user themes directory.
  */
 export function getPresetThemesDir(): string {
   return getAppThemesDir();
 }
 
 /**
- * Reset a preset theme to its bundled default.
- * Copies the bundled version over the user's version.
- * Resolves bundled path automatically via getBundledAssetsDir('themes').
- * @param id - Theme ID to reset
+ * User themes have no bundled copy to reset to; default is immutable.
  */
-export function resetPresetTheme(id: string): boolean {
-  // Resolve bundled themes directory via shared asset resolver
-  const bundledThemesDir = getBundledAssetsDir('themes');
-  if (!bundledThemesDir) {
-    return false;
-  }
-
-  const bundledPath = join(bundledThemesDir, `${id}.json`);
-  const themesDir = getAppThemesDir();
-  const destPath = join(themesDir, `${id}.json`);
-
-  if (!existsSync(bundledPath)) {
-    return false;
-  }
-
-  try {
-    const content = readFileSync(bundledPath, 'utf-8');
-    if (!existsSync(themesDir)) {
-      mkdirSync(themesDir, { recursive: true });
-    }
-    writeFileSync(destPath, content, 'utf-8');
-    return true;
-  } catch {
-    return false;
-  }
+export function resetPresetTheme(_id: string): boolean {
+  return false;
 }
 
 // ============================================
@@ -1491,23 +1518,56 @@ export function resetPresetTheme(id: string): boolean {
  * Get the currently selected color theme ID.
  * Returns 'default' if not set.
  */
-export function getColorTheme(): string {
+function normalizeThemeSelectionId(value: unknown): string {
+  if (value === 'default') return 'default';
+  return typeof value === 'string' && isValidUserThemeId(value) ? value : 'default';
+}
+
+/** Load the authoritative app-level theme preferences from config.json. */
+export function getThemePreferences(): ThemePreferences {
   const config = loadStoredConfig();
-  if (config?.colorTheme !== undefined) {
-    return config.colorTheme;
-  }
-  const defaults = loadConfigDefaults();
-  return defaults.defaults.colorTheme;
+  const configuredDefault = loadConfigDefaults().defaults.colorTheme;
+  return {
+    mode: config?.themeMode === 'light' || config?.themeMode === 'dark' || config?.themeMode === 'system'
+      ? config.themeMode
+      : DEFAULT_THEME_PREFERENCES.mode,
+    colorTheme: normalizeThemeSelectionId(config?.colorTheme ?? configuredDefault),
+    font: config?.themeFont === 'theme' || config?.themeFont === 'inter' || config?.themeFont === 'system'
+      ? config.themeFont
+      : DEFAULT_THEME_PREFERENCES.font,
+  };
+}
+
+/** Persist all theme preferences as one atomic config update. */
+export function setThemePreferences(preferences: ThemePreferences): ThemePreferences {
+  const normalized: ThemePreferences = {
+    mode: preferences.mode === 'light' || preferences.mode === 'dark' || preferences.mode === 'system'
+      ? preferences.mode
+      : DEFAULT_THEME_PREFERENCES.mode,
+    colorTheme: normalizeThemeSelectionId(preferences.colorTheme),
+    font: preferences.font === 'theme' || preferences.font === 'inter' || preferences.font === 'system'
+      ? preferences.font
+      : DEFAULT_THEME_PREFERENCES.font,
+  };
+
+  const config = loadStoredConfig();
+  if (!config) return normalized;
+  config.themeMode = normalized.mode;
+  config.colorTheme = normalized.colorTheme;
+  config.themeFont = normalized.font;
+  saveConfig(config);
+  return normalized;
+}
+
+export function getColorTheme(): string {
+  return getThemePreferences().colorTheme;
 }
 
 /**
  * Set the color theme ID.
  */
 export function setColorTheme(themeId: string): void {
-  const config = loadStoredConfig();
-  if (!config) return;
-  config.colorTheme = themeId;
-  saveConfig(config);
+  setThemePreferences({ ...getThemePreferences(), colorTheme: themeId });
 }
 
 // ============================================

@@ -321,8 +321,6 @@ Manage app-level and workspace-level theme settings.
 - `craft-agent theme get-preset <id>`
 - `craft-agent theme set-color-theme <id>`
 - `craft-agent theme set-workspace-color-theme <id|default>`
-- `craft-agent theme set-override --json '{...}'`
-- `craft-agent theme reset-override`
 
 ### Examples
 
@@ -330,7 +328,7 @@ Manage app-level and workspace-level theme settings.
 # Inspect current theme state
 craft-agent theme get
 
-# Validate app override file
+# Validate all user theme files
 craft-agent theme validate
 
 # Validate one preset file
@@ -350,19 +348,14 @@ craft-agent theme set-workspace-color-theme dracula
 
 # Clear workspace override (inherit app default)
 craft-agent theme set-workspace-color-theme default
-
-# Replace app-level theme.json override
-craft-agent theme set-override --json '{"accent":"oklch(0.62 0.21 293)","dark":{"accent":"oklch(0.68 0.21 293)"}}'
-
-# Remove app-level override file
-craft-agent theme reset-override
 ```
 
 ### Notes
-- `set-color-theme` and `set-workspace-color-theme` require an existing preset ID (`default` is always valid).
-- `set-override` validates `theme.json` shape before writing.
+- `default` is the only built-in theme and its ID is reserved.
+- All other themes are user-owned JSON files in `~/.craft-agent/themes/`.
+- `set-color-theme` and `set-workspace-color-theme` require an existing user theme ID (`default` is always valid).
 - Workspace override is stored in `workspace/config.json` under `defaults.colorTheme`.
-- App override is stored in `~/.craft-agent/theme.json`.
+- The deprecated `~/.craft-agent/theme.json` override is migrated once and is not part of runtime resolution.
 <!-- cli:theme:end -->
 
 ---

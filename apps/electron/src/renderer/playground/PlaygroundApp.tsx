@@ -10,7 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import type { PresetTheme } from '@config/theme'
+import type { ThemeSummary } from '@config/theme'
 import { ThemeToggle } from './ThemeToggle'
 import { Sidebar } from './Sidebar'
 import { ComponentPreview } from './ComponentPreview'
@@ -22,20 +22,6 @@ const VARIANTS_SIDEBAR_KEY = 'playground-variants-sidebar-open'
 
 const FALLBACK_THEME_OPTIONS = [
   { value: 'default', label: 'Default' },
-  { value: 'catppuccin', label: 'Catppuccin' },
-  { value: 'dracula', label: 'Dracula' },
-  { value: 'ghostty', label: 'Ghostty' },
-  { value: 'github', label: 'GitHub' },
-  { value: 'gruvbox', label: 'Gruvbox' },
-  { value: 'haze', label: 'Haze' },
-  { value: 'night-owl', label: 'Night Owl' },
-  { value: 'nord', label: 'Nord' },
-  { value: 'one-dark-pro', label: 'One Dark Pro' },
-  { value: 'pierre', label: 'Pierre' },
-  { value: 'rose-pine', label: 'Rosé Pine' },
-  { value: 'solarized', label: 'Solarized' },
-  { value: 'tokyo-night', label: 'Tokyo Night' },
-  { value: 'vitesse', label: 'Vitesse' },
 ] as const
 
 export function PlaygroundApp() {
@@ -48,7 +34,7 @@ export function PlaygroundApp() {
     setPreviewColorTheme,
     activeWorkspaceId,
   } = useTheme()
-  const [presetThemes, setPresetThemes] = React.useState<PresetTheme[]>([])
+  const [presetThemes, setPresetThemes] = React.useState<ThemeSummary[]>([])
   const [selectedId, setSelectedId] = React.useState<string | null>(() => {
     // Try to restore from localStorage
     try {
@@ -94,12 +80,16 @@ export function PlaygroundApp() {
     }
 
     void loadThemes()
+    const cleanup = window.electronAPI?.onUserThemesChanged?.(() => {
+      void loadThemes()
+    })
+    return cleanup
   }, [])
 
   const themeOptions = React.useMemo(() => {
     const loadedOptions = presetThemes.map(theme => ({
       value: theme.id,
-      label: theme.theme.name || theme.id,
+      label: theme.name || theme.id,
     }))
 
     const merged = new Map<string, string>()

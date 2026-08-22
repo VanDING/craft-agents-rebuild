@@ -1470,7 +1470,7 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
                           className="max-w-sm rounded-[8px] border border-destructive/20 px-4 py-3 text-center shadow-tinted"
                           style={{
                             backgroundColor: 'oklch(from var(--destructive) l c h / 0.03)',
-                            '--shadow-color': 'var(--destructive-rgb)',
+                            '--shadow-color': 'var(--destructive)',
                           } as React.CSSProperties}
                         >
                           <AlertTriangle className="mx-auto mb-2 h-4 w-4 text-destructive/70" />
@@ -1941,7 +1941,7 @@ function ErrorMessage({ message, onOpenUrl, sessionId, onRetry }: { message: Mes
         className="max-w-[80%] shadow-tinted rounded-[8px] pl-5 pr-4 pt-2 pb-2.5 break-words"
         style={{
           backgroundColor: 'oklch(from var(--destructive) l c h / 0.03)',
-          '--shadow-color': 'var(--destructive-rgb)',
+          '--shadow-color': 'var(--destructive)',
         } as React.CSSProperties}
       >
         <div className="text-xs text-destructive/50 mb-0.5 font-semibold">

@@ -54,8 +54,8 @@ export function EntityListLabelBadge({ label, rawValue, sessionLabels, onLabelsC
           backgroundColor: `color-mix(in srgb, ${color} 6%, transparent)`,
           color: `color-mix(in srgb, ${color} 75%, var(--foreground))`,
         } : {
-          backgroundColor: 'rgba(var(--foreground-rgb), 0.05)',
-          color: 'rgba(var(--foreground-rgb), 0.8)',
+          backgroundColor: 'color-mix(in srgb, var(--foreground) 5%, transparent)',
+          color: 'color-mix(in srgb, var(--foreground) 80%, transparent)',
         }}
       >
         <span className="truncate min-w-0">{label.name}</span>

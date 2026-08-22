@@ -11,6 +11,8 @@ export * from './validators.ts';
 export * from './cli-domains.ts';
 export {
   ConfigWatcher,
+  UserThemeWatcher,
   createConfigWatcher,
   type ConfigWatcherCallbacks,
+  type UserThemeWatcherCallbacks,
 } from './watcher.ts';

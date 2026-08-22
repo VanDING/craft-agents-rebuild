@@ -43,7 +43,7 @@ import { setProjectColorTreatment, useProjectColorTreatment } from '@/hooks/useP
 import { PROJECT_COLOR_PALETTE, type ProjectColorTreatment } from '@/utils/project-colors'
 import { Info_DataTable, SortableHeader } from '@/components/info/Info_DataTable'
 import { Info_Badge } from '@/components/info/Info_Badge'
-import type { PresetTheme } from '@config/theme'
+import type { ThemeSummary } from '@config/theme'
 
 export const meta: DetailsPageMeta = {
   navigator: 'settings',
@@ -119,7 +119,7 @@ export default function AppearanceSettingsPage() {
     activeWorkspaceId,
     setWorkspaceColorTheme,
     themeLoadError,
-    themeResolvedFrom,
+    themePreferenceError,
   } = useTheme()
   const { workspaces, sessionStatuses } = useAppShellContext()
 
@@ -127,7 +127,7 @@ export default function AppearanceSettingsPage() {
   const workspaceIconMap = useWorkspaceIcons(workspaces)
 
   // Preset themes for the color theme dropdown
-  const [presetThemes, setPresetThemes] = useState<PresetTheme[]>([])
+  const [presetThemes, setPresetThemes] = useState<ThemeSummary[]>([])
 
   // Per-workspace theme overrides (workspaceId -> themeId or undefined)
   const [workspaceThemes, setWorkspaceThemes] = useState<Record<string, string | undefined>>({})
@@ -228,7 +228,11 @@ export default function AppearanceSettingsPage() {
         setPresetThemes([])
       }
     }
-    loadThemes()
+    void loadThemes()
+    const cleanup = window.electronAPI?.onUserThemesChanged?.(() => {
+      void loadThemes()
+    })
+    return cleanup
   }, [])
 
   // Load workspace themes on mount
@@ -294,7 +298,7 @@ export default function AppearanceSettingsPage() {
       .filter(t => t.id !== 'default')
       .map(t => ({
         value: t.id,
-        label: t.theme.name || t.id,
+        label: t.name || t.id,
       })),
   ], [presetThemes, t])
 
@@ -302,7 +306,7 @@ export default function AppearanceSettingsPage() {
   const appDefaultLabel = useMemo(() => {
     if (colorTheme === 'default') return null
     const preset = presetThemes.find(t => t.id === colorTheme)
-    return preset?.theme.name || colorTheme
+    return preset?.name || colorTheme
   }, [colorTheme, presetThemes])
 
   return (
@@ -342,6 +346,7 @@ export default function AppearanceSettingsPage() {
                       value={font}
                       onValueChange={setFont}
                       options={[
+                        { value: 'theme', label: t("settings.appearance.fontTheme") },
                         { value: 'inter', label: t("settings.appearance.fontInter") },
                         { value: 'system', label: t("settings.appearance.fontSystem") },
                       ]}
@@ -367,7 +372,12 @@ export default function AppearanceSettingsPage() {
                 </SettingsCard>
                 {themeLoadError && (
                   <p className="mt-2 text-xs text-info">
-                    {t("settings.appearance.themeWarning")} {themeLoadError} ({themeResolvedFrom === 'fallback' ? t("settings.appearance.usingBundledFallback") : t("settings.appearance.usingDefaultTheme")})
+                    {t("settings.appearance.themeWarning")} {themeLoadError} ({t("settings.appearance.usingDefaultTheme")})
+                  </p>
+                )}
+                {themePreferenceError && (
+                  <p className="mt-2 text-xs text-destructive">
+                    {themePreferenceError}
                   </p>
                 )}
               </SettingsSection>
@@ -422,7 +432,7 @@ export default function AppearanceSettingsPage() {
                                 .filter(t => t.id !== 'default')
                                 .map(t => ({
                                   value: t.id,
-                                  label: t.theme.name || t.id,
+                                  label: t.name || t.id,
                                 })),
                             ]}
                           />

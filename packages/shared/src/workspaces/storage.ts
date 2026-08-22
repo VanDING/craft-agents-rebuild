@@ -23,6 +23,7 @@ import { atomicWriteFileSync, readJsonFileSync } from '../utils/files.ts';
 import { getDefaultStatusConfig, saveStatusConfig, ensureDefaultIconFiles } from '../statuses/storage.ts';
 import { getDefaultLabelConfig, saveLabelConfig } from '../labels/storage.ts';
 import { loadConfigDefaults } from '../config/storage.ts';
+import { isValidUserThemeId } from '../config/theme.ts';
 import { parsePermissionMode, PERMISSION_MODE_ORDER } from '../agent/mode-types.ts';
 import { normalizeThinkingLevel } from '../agent/thinking-levels.ts';
 import type {
@@ -428,7 +429,9 @@ export function discoverWorkspacesInDefaultLocation(): string[] {
  */
 export function getWorkspaceColorTheme(rootPath: string): string | undefined {
   const config = loadWorkspaceConfig(rootPath);
-  return config?.defaults?.colorTheme;
+  const themeId = config?.defaults?.colorTheme;
+  if (!themeId || themeId === 'default') return undefined;
+  return isValidUserThemeId(themeId) ? themeId : undefined;
 }
 
 /**
@@ -442,13 +445,10 @@ export function setWorkspaceColorTheme(rootPath: string, themeId: string | undef
   const config = loadWorkspaceConfig(rootPath);
   if (!config) return;
 
-  // Validate theme ID if provided (skip for undefined = inherit default)
-  // Only allow alphanumeric characters, hyphens, and underscores (max 64 chars)
-  if (themeId && themeId !== 'default') {
-    if (!/^[a-zA-Z0-9_-]{1,64}$/.test(themeId)) {
-      console.warn(`[workspace-storage] Invalid theme ID rejected: ${themeId}`);
-      return;
-    }
+  const normalizedThemeId = themeId === 'default' ? undefined : themeId;
+  if (normalizedThemeId && !isValidUserThemeId(normalizedThemeId)) {
+    console.warn(`[workspace-storage] Invalid theme ID rejected: ${normalizedThemeId}`);
+    return;
   }
 
   // Initialize defaults if not present
@@ -456,8 +456,8 @@ export function setWorkspaceColorTheme(rootPath: string, themeId: string | undef
     config.defaults = {};
   }
 
-  if (themeId) {
-    config.defaults.colorTheme = themeId;
+  if (normalizedThemeId) {
+    config.defaults.colorTheme = normalizedThemeId;
   } else {
     delete config.defaults.colorTheme;
   }

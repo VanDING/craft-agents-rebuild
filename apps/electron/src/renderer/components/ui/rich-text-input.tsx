@@ -719,8 +719,11 @@ export const RichTextInput = React.forwardRef<RichTextInputHandle, RichTextInput
       // Get selection color from CSS variable (accent with transparency)
       const getSelectionColor = () => {
         const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()
-        // Return accent color with 40% opacity
-        return accent ? `oklch(${accent.replace('oklch(', '').replace(')', '')} / 0.4)` : 'rgba(99, 102, 241, 0.4)'
+        // color-mix accepts every supported CSS color syntax (hex, rgb, hsl,
+        // oklch and named colors) without parsing token serialization in JS.
+        return accent
+          ? `color-mix(in srgb, ${accent} 40%, transparent)`
+          : 'rgba(99, 102, 241, 0.4)'
       }
 
       const handleSelectionChange = () => {

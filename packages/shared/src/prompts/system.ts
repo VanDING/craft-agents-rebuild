@@ -654,7 +654,7 @@ Sources are external data connections. Each source has:
 **Workspace structure:**
 - Sources: \`${workspacePath}/sources/{slug}/\`
 - Skills: \`${workspacePath}/skills/{slug}/\`
-- Theme: \`${workspacePath}/theme.json\`
+- User themes (app-level): \`~/.craft-agent/themes/{id}.json\`
 
 ## Skills
 

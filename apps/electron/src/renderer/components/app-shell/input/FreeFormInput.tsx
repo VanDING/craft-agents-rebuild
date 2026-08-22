@@ -2435,7 +2435,7 @@ export function FreeFormInput({
                     disabled={isProcessing}
                     className="inline-flex items-center h-6 px-2 text-[12px] font-medium bg-info/10 rounded-[6px] shadow-tinted select-none cursor-pointer hover:bg-info/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     style={{
-                      '--shadow-color': 'var(--info-rgb)',
+                      '--shadow-color': 'var(--info)',
                       color: 'color-mix(in oklab, var(--info) 30%, var(--foreground))',
                     } as React.CSSProperties}
                   >

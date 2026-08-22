@@ -86,7 +86,7 @@ export function ToolbarStatusSlot({
             "pointer-events-auto",
           )}
           style={{
-            '--shadow-color': 'var(--info-rgb)',
+            '--shadow-color': 'var(--info)',
             backgroundColor: 'color-mix(in srgb, var(--info) 10%, var(--background))',
             color: 'color-mix(in oklab, var(--info) 30%, var(--foreground))',
           } as React.CSSProperties}

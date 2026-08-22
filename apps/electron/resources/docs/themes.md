@@ -4,24 +4,26 @@ This guide explains how to customize the visual theme of Craft Agent.
 
 ## Overview
 
-Craft Agent uses a semantic-token theme engine with support for app-level defaults and per-workspace overrides. The product ships with a default light/dark baseline plus Cyberpunk Neon and Neo Brutalism; additional themes are JSON files.
+Craft Agent uses a semantic-token theme engine with app-level preferences and per-workspace theme selection. The application contains one immutable built-in theme, `default`. Every other theme is a user-owned JSON file.
 
-### Bundled Themes
+### Built-in Theme
 
 | ID | Modes | Character |
 |----|-------|-----------|
 | `default` | Light + dark | Restrained neutral baseline |
-| `cyberpunk-neon` | Dark | Cyan neon glow, magenta focus, square compact geometry |
-| `neo-brutalism` | Light + dark | Heavy borders, hard offset shadows, saturated warm accents |
 
 ### Theme Hierarchy
 
-1. **App default**: Selected in Settings → Appearance → Default Theme
-2. **Workspace override**: Per-workspace theme in Settings → Appearance → Workspace Themes
-3. **Preset themes**: `~/.craft-agent/themes/{name}.json` - Complete theme packages
-4. **Theme overrides**: `~/.craft-agent/theme.json` - Override specific colors (app-level)
+1. **App selection**: Selected in Settings → Appearance → Default Theme
+2. **Workspace selection**: Optional per-workspace theme ID in Settings → Appearance → Workspace Themes
+3. **Built-in source**: The reserved `default` theme
+4. **User source**: `~/.craft-agent/themes/{id}.json`
 
-Workspaces without a custom theme inherit the app default. All settings are optional - the app has sensible built-in defaults.
+Workspaces without a selection override inherit the app selection. User theme files may be partial; omitted visual tokens inherit from `default`.
+
+The themes directory is never seeded, overwritten, reset, or cleaned by the application. Files copied there by older versions remain ordinary user themes. The deprecated `~/.craft-agent/theme.json` file is migrated once to `themes/migrated-custom.json` (or a non-conflicting suffixed name), while the original file is retained and no longer participates in rendering.
+
+App-level selection preferences are stored together in `~/.craft-agent/config.json` as `themeMode`, `colorTheme`, and `themeFont`. A versioned renderer cache is used only to avoid a startup flash; `config.json` remains authoritative.
 
 ## Workspace Themes
 
@@ -71,21 +73,6 @@ Any valid CSS color format is supported:
 - **Named**: `purple`, `rebeccapurple`
 
 **Recommendation**: Use OKLCH for perceptually uniform colors that look consistent across light/dark modes.
-
-## Theme Override File
-
-Create `~/.craft-agent/theme.json` to override specific colors:
-
-```json
-{
-  "accent": "oklch(0.58 0.22 293)",
-  "dark": {
-    "accent": "oklch(0.65 0.22 293)"
-  }
-}
-```
-
-All fields are optional. Only specify colors you want to override.
 
 ## Dark Mode
 
@@ -166,15 +153,19 @@ Craft Agent does not include a visual theme editor. Create or edit these JSON fi
 | `lineHeight` | Global base line height | `1.5` |
 | `iconStrokeWidth` | Lucide icon line weight | `0.5`–`4` |
 | `iconStrokeLinecap` | Lucide line cap | `butt`, `round`, `square` |
-| `density` | Global spacing scale | `compact`, `comfortable`, `cozy` |
+| `density` | Semantic row, menu, settings, and activity spacing; structural panel insets remain fixed | `compact`, `comfortable`, `cozy` |
 
 Semantic colors such as `secondary`, `muted`, `card`, `border`, `ring`, and `userMessageBubble` may also be set explicitly. When omitted, the default CSS derivation remains active.
+
+The Appearance font control has explicit precedence: **Theme** uses `fontSans` from the active theme (falling back to the system stack), while **Inter** and **System** override the theme-authored UI font.
 
 ### Installing Preset Themes
 
 1. Download or create a theme JSON file
-2. Save it to `~/.craft-agent/themes/{name}.json`
+2. Save it to `~/.craft-agent/themes/{id}.json` using an ASCII letter/number ID with dots, underscores, or hyphens
 3. Select the theme in Settings → Appearance
+
+The ID `default` is reserved. A user file named `default.json` is ignored so the built-in fallback cannot be shadowed.
 
 ## Scenic Mode
 
@@ -184,6 +175,7 @@ Scenic mode displays a full-window background image with glass-style panels. Thi
 
 ```json
 {
+  "name": "Mountain Glass",
   "mode": "scenic",
   "backgroundImage": "mountains.jpg",
 
@@ -199,7 +191,7 @@ Scenic mode displays a full-window background image with glass-style panels. Thi
 | Property | Description |
 |----------|-------------|
 | `mode` | Set to `"scenic"` (default is `"solid"`) |
-| `backgroundImage` | Image filename (relative to theme file) or URL |
+| `backgroundImage` | Image filename relative to the theme file, or an explicit HTTP(S) URL |
 
 ### Surface Colors for Glass Panels
 
@@ -208,7 +200,7 @@ Scenic mode benefits from semi-transparent surface colors:
 | Color | Purpose |
 |-------|---------|
 | `paper` | AI messages, cards, elevated content |
-| `navigator` | Left sidebar background |
+| `navigator` | Optional left sidebar background; when omitted, the native transparent sidebar is preserved |
 | `input` | Input field background |
 | `popover` | Dropdowns, modals, context menus |
 | `popoverSolid` | Guaranteed 100% opaque popover background |
@@ -222,7 +214,7 @@ The built-in default theme uses OKLCH colors optimized for accessibility:
 **Light Mode:**
 - Background: `oklch(0.98 0.003 265)` - Very light gray with slight purple tint
 - Foreground: `oklch(0.185 0.01 270)` - Near-black for high contrast
-- Accent: `oklch(0.58 0.22 293)` - Vibrant purple
+- Accent: `oklch(0.62 0.13 293)` - Restrained purple
 - Info: `oklch(0.75 0.16 70)` - Warm amber
 - Success: `oklch(0.55 0.17 145)` - Clear green
 - Destructive: `oklch(0.58 0.24 28)` - Alert red
@@ -237,6 +229,7 @@ The built-in default theme uses OKLCH colors optimized for accessibility:
 ### Minimal: Just change accent color
 ```json
 {
+  "name": "Blue Accent",
   "accent": "#3b82f6"
 }
 ```
@@ -244,6 +237,7 @@ The built-in default theme uses OKLCH colors optimized for accessibility:
 ### Custom brand colors
 ```json
 {
+  "name": "Brand",
   "accent": "oklch(0.55 0.25 250)",
   "info": "oklch(0.70 0.15 200)",
   "dark": {
@@ -256,6 +250,7 @@ The built-in default theme uses OKLCH colors optimized for accessibility:
 ### High contrast theme
 ```json
 {
+  "name": "High Contrast",
   "background": "#ffffff",
   "foreground": "#000000",
   "dark": {
@@ -267,12 +262,12 @@ The built-in default theme uses OKLCH colors optimized for accessibility:
 
 ## Live Updates
 
-Theme changes are applied immediately - no restart needed. Edit theme.json and the UI updates automatically.
+Theme changes are applied immediately without restarting. Adding, editing, renaming, or deleting a valid JSON file under `~/.craft-agent/themes/` updates the list. If the active file becomes missing or invalid, the UI atomically falls back to `default`; it does not retain stale colors.
 
 ## Creating a Theme
 
-1. Create `~/.craft-agent/theme.json` for overrides or `~/.craft-agent/themes/{name}.json` for a preset
-2. Add only the colors you want to customize
+1. Create `~/.craft-agent/themes/{id}.json`
+2. Add a non-empty `name` and the colors or visual tokens you want to customize
 3. Optionally add `dark` overrides for dark mode
 
 **Tips:**
@@ -280,12 +275,13 @@ Theme changes are applied immediately - no restart needed. Edit theme.json and t
 - Use OKLCH for predictable color behavior
 - Test in both light and dark modes
 - Keep contrast ratios accessible (foreground vs background)
+- Keep the JSON file under 256 KiB; use a separate local image instead of embedding image data
 
 ## Troubleshooting
 
 **Theme not applying:**
 - Verify JSON syntax is valid
-- Check file is in correct location (`~/.craft-agent/theme.json` for overrides, `~/.craft-agent/themes/` for presets)
+- Check that the file is directly under `~/.craft-agent/themes/` and its filename is a valid theme ID
 - Ensure color values are valid CSS colors
 
 **Colors look wrong in dark mode:**
@@ -295,8 +291,8 @@ Theme changes are applied immediately - no restart needed. Edit theme.json and t
 
 **Background image not showing:**
 - Ensure `mode` is set to `"scenic"`
-- Check image path is relative to theme file or a valid URL
-- Verify image file exists and is readable
+- Check image path is relative to the theme file or a valid HTTP(S) URL
+- Verify a local image stays inside `~/.craft-agent/themes/`, is PNG/JPEG/GIF/WebP, is readable, and is at most 20 MiB
 
 ## OKLCH Color Reference
 

@@ -36,14 +36,14 @@ const MESSAGE_STYLES: Record<SystemMessageType, {
     // Uses -text variant (mixed with foreground) for better text contrast
     className: 'text-[var(--destructive-text)] shadow-tinted',
     useTintedShadow: true,
-    shadowColor: 'var(--destructive-rgb)',
+    shadowColor: 'var(--destructive)',
     bgStyle: { backgroundColor: 'oklch(from var(--destructive) l c h / 0.03)' },
   },
   warning: {
     // Uses -text variant (mixed with foreground) for better text contrast
     className: 'text-[var(--info-text)] shadow-tinted',
     useTintedShadow: true,
-    shadowColor: 'var(--info-rgb)',
+    shadowColor: 'var(--info)',
     bgStyle: { backgroundColor: 'oklch(from var(--info) l c h / 0.03)' },
   },
   info: {

@@ -77,16 +77,15 @@ const POLICIES: Record<CliDomainNamespace, CliDomainPolicy> = {
   theme: {
     namespace: 'theme',
     helpCommand: 'craft-agent theme --help',
-    workspacePathScopes: ['config.json', 'theme.json', 'themes/*.json'],
+    workspacePathScopes: ['config.json'],
     readActions: ['get', 'validate', 'list-presets', 'get-preset'],
     quickExamples: [
       'craft-agent theme get',
       'craft-agent theme list-presets',
       'craft-agent theme set-color-theme nord',
       'craft-agent theme set-workspace-color-theme default',
-      'craft-agent theme set-override --json "{\"accent\":\"#3b82f6\"}"',
     ],
-    bashGuardPaths: ['config.json', 'theme.json', 'themes/*.json'],
+    bashGuardPaths: ['config.json'],
   },
 }
 

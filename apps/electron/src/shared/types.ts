@@ -562,8 +562,10 @@ export interface ElectronAPI {
 
   // Theme (app-level default)
   getAppTheme(): Promise<import('@config/theme').ThemeOverrides | null>
-  loadPresetThemes(): Promise<import('@config/theme').PresetTheme[]>
+  loadPresetThemes(): Promise<import('@config/theme').ThemeSummary[]>
   loadPresetTheme(themeId: string): Promise<import('@config/theme').PresetTheme | null>
+  getThemePreferences(): Promise<import('@config/theme').ThemePreferences>
+  setThemePreferences(preferences: import('@config/theme').ThemePreferences): Promise<import('@config/theme').ThemePreferences>
   getColorTheme(): Promise<string>
   setColorTheme(themeId: string): Promise<void>
   getWorkspaceColorTheme(workspaceId: string): Promise<string | null>
@@ -572,6 +574,7 @@ export interface ElectronAPI {
 
   // Theme change listeners
   onAppThemeChange(callback: (theme: import('@config/theme').ThemeOverrides | null) => void): () => void
+  onUserThemesChanged(callback: (data: { themeId: string }) => void): () => void
 
   // Logo URL resolution
   getLogoUrl(serviceUrl: string, provider?: string): Promise<string | null>
@@ -625,8 +628,8 @@ export interface ElectronAPI {
   onNotificationNavigate(callback: (data: { workspaceId: string; sessionId: string }) => void): () => void
 
   // Theme preferences sync across windows
-  broadcastThemePreferences(preferences: { mode: string; colorTheme: string; font: string }): Promise<void>
-  onThemePreferencesChange(callback: (preferences: { mode: string; colorTheme: string; font: string }) => void): () => void
+  broadcastThemePreferences(preferences: import('@config/theme').ThemePreferences): Promise<void>
+  onThemePreferencesChange(callback: (preferences: import('@config/theme').ThemePreferences) => void): () => void
 
   // Workspace theme sync across windows
   broadcastWorkspaceThemeChange(workspaceId: string, themeId: string | null): Promise<void>

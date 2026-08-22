@@ -24,6 +24,8 @@ export {
   // Config operations
   loadWorkspaceConfig,
   saveWorkspaceConfig,
+  getWorkspaceColorTheme,
+  setWorkspaceColorTheme,
   // Load operations
   loadWorkspace,
   getWorkspaceSummary,

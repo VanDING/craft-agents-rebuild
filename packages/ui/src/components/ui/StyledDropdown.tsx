@@ -147,7 +147,7 @@ export const StyledDropdownMenuItem = React.forwardRef<
     ref={ref}
     className={cn(
       // shadcn base layer
-      'relative flex cursor-default items-center gap-2 px-2 py-1.5 text-sm outline-hidden select-none',
+      'relative flex cursor-default items-center gap-2 px-2 py-[var(--theme-menu-item-padding-y)] text-sm outline-hidden select-none',
       '[&_svg]:pointer-events-none [&_svg]:shrink-0',
       'data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
       // styled additions

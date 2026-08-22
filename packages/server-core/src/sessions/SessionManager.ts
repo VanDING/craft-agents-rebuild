@@ -34,6 +34,7 @@ import {
   migrateLegacyCredentials,
   migrateLegacyLlmConnectionsConfig,
   migrateOrphanedDefaultConnections,
+  initializeThemeStorage,
   MODEL_REGISTRY,
   type Workspace,
   type WorkspaceInfo,
@@ -76,7 +77,7 @@ import {
 import { loadWorkspaceSources, loadAllSources, getSourcesBySlugs, isSourceUsable, type LoadedSource, type McpServerConfig, getSourcesNeedingAuth, getSourceCredentialManager, getSourceServerBuilder, type SourceWithCredential, isApiOAuthProvider, hasRenewEndpoint, SERVER_BUILD_ERRORS, TokenRefreshManager, createTokenGetter } from '@craft-agent/shared/sources'
 import { listTaskSlugs, parseTaskSpec, uniqueTaskSlug } from '@craft-agent/shared/tasks'
 import { createTaskFromSpec, resolveCreateTaskProjectId } from '../tasks'
-import { ConfigWatcher, type ConfigWatcherCallbacks } from '@craft-agent/shared/config'
+import { ConfigWatcher, UserThemeWatcher, type ConfigWatcherCallbacks } from '@craft-agent/shared/config'
 import { toolMetadataStore, getLastApiError } from '@craft-agent/shared/interceptor'
 import { isParentTaskTool } from '@craft-agent/shared/utils/toolNames'
 import { restoreFiles } from '@craft-agent/shared/utils/bundle-files'
@@ -1129,6 +1130,8 @@ export class SessionManager implements ISessionManager {
   private deltaFlushTimers: Map<string, NodeJS.Timeout> = new Map()
   // Config watchers for live updates (sources, etc.) - one per workspace
   private configWatchers: Map<string, ConfigWatcher> = new Map()
+  // App-scoped watcher: exactly one regardless of workspace count.
+  private userThemeWatcher: UserThemeWatcher | null = null
   // Automation systems for workspace event automations - one per workspace (includes scheduler, diffing, and handlers)
   private automationSystems: Map<string, AutomationSystem> = new Map()
   // Pending credential request resolvers (keyed by requestId)
@@ -1545,10 +1548,6 @@ export class SessionManager implements ISessionManager {
         sessionLog.info(`LLM connections changed in ${workspaceId}`)
         this.broadcastLlmConnectionsChanged()
       },
-      onAppThemeChange: (theme) => {
-        sessionLog.info(`App theme changed`)
-        this.broadcastAppThemeChanged(theme)
-      },
       onDefaultPermissionsChange: () => {
         sessionLog.info('Default permissions changed')
         this.broadcastDefaultPermissionsChanged()
@@ -1725,10 +1724,11 @@ export class SessionManager implements ISessionManager {
     this.eventSink(RPC_CHANNELS.automations.CHANGED, { to: 'workspace', workspaceId }, workspaceId)
   }
 
-  private broadcastAppThemeChanged(theme: import('@craft-agent/shared/config').ThemeOverrides | null): void {
+  private broadcastUserThemesChanged(themeId: string): void {
+    this.browserPaneManager?.refreshThemeVisuals?.()
     if (!this.eventSink) return
-    sessionLog.info(`Broadcasting app theme changed`)
-    this.eventSink(RPC_CHANNELS.theme.APP_CHANGED, { to: 'all' }, theme)
+    sessionLog.info(`Broadcasting user theme change: ${themeId}`)
+    this.eventSink(RPC_CHANNELS.theme.USER_THEMES_CHANGED, { to: 'all' }, { themeId })
   }
 
   private broadcastLlmConnectionsChanged(): void {
@@ -1818,6 +1818,12 @@ export class SessionManager implements ISessionManager {
 
   async initialize(): Promise<void> {
     try {
+      initializeThemeStorage()
+      this.userThemeWatcher ??= new UserThemeWatcher({
+        onThemeChange: (themeId) => this.broadcastUserThemesChanged(themeId),
+      })
+      this.userThemeWatcher.start()
+
       // Backfill missing `models` arrays on existing LLM connections
       migrateLegacyLlmConnectionsConfig()
 
@@ -8884,6 +8890,9 @@ export class SessionManager implements ISessionManager {
       sessionLog.info(`Stopped config watcher for ${path}`)
     }
     this.configWatchers.clear()
+
+    this.userThemeWatcher?.stop()
+    this.userThemeWatcher = null
 
     // Dispose all AutomationSystems (includes scheduler, handlers, and event loggers)
     for (const [workspacePath, automationSystem] of this.automationSystems) {

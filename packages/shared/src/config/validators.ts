@@ -103,6 +103,9 @@ export const StoredConfigSchema = z.object({
   llmConnections: z.array(LlmConnectionSchema).optional(),
   defaultLlmConnection: z.string().optional(),
   defaultThinkingLevel: z.enum([...THINKING_LEVEL_IDS, 'think'] as [string, ...string[]]).transform(v => v === 'think' ? 'medium' : v).optional(),
+  colorTheme: z.string().min(1).optional(),
+  themeMode: z.enum(['light', 'dark', 'system']).optional(),
+  themeFont: z.enum(['theme', 'inter', 'system']).optional(),
   // Note: tokenDisplay, showCost, cumulativeUsage, defaultPermissionMode removed
   // Permission mode and cyclable modes are now per-workspace in workspace config.json
 });
@@ -1583,6 +1586,18 @@ const ThemeVisualTokenFields = {
 } as const;
 
 const ThemeDarkOverrideSchema = z.object(ThemeVisualTokenFields).strict();
+const ThemeBackgroundImageSchema = z.string()
+  .min(1, 'backgroundImage cannot be empty')
+  .max(4096, 'backgroundImage must be a local path or URL, not embedded image data')
+  .refine((value) => !value.includes('\0'), {
+    message: 'backgroundImage cannot contain null bytes',
+  });
+const SupportedThemeModesSchema = z.array(z.enum(['light', 'dark']))
+  .min(1, 'supportedModes must include light, dark, or both')
+  .max(2)
+  .refine((modes) => new Set(modes).size === modes.length, {
+    message: 'supportedModes cannot contain duplicates',
+  });
 
 /**
  * Zod schema for app-level theme override files (~/.craft-agent/theme.json).
@@ -1592,7 +1607,7 @@ export const ThemeOverrideSchema = z.object({
   ...ThemeVisualTokenFields,
   // Scenic mode
   mode: z.enum(['solid', 'scenic']).optional(),
-  backgroundImage: z.string().optional(),
+  backgroundImage: ThemeBackgroundImageSchema.optional(),
   // Dark mode overrides
   dark: ThemeDarkOverrideSchema.optional(),
 }).strict()
@@ -1618,19 +1633,19 @@ export const PresetThemeSchema = z.object({
   author: z.string().optional(),
   license: z.string().optional(),
   source: z.string().optional(),
-  supportedModes: z.array(z.enum(['light', 'dark'])).optional(),
+  supportedModes: SupportedThemeModesSchema.optional(),
   ...ThemeVisualTokenFields,
   // Scenic mode
   mode: z.enum(['solid', 'scenic']).optional(),
-  backgroundImage: z.string().optional(),
+  backgroundImage: ThemeBackgroundImageSchema.optional(),
   // Dark mode overrides
   dark: ThemeDarkOverrideSchema.optional(),
   // Shiki theme for syntax highlighting
   shikiTheme: z.object({
     light: z.string().optional(),
     dark: z.string().optional(),
-  }).optional(),
-}).refine(
+  }).strict().optional(),
+}).strict().refine(
   (data) => {
     const colorProps = ['background', 'foreground', 'accent', 'info', 'success', 'destructive'];
     return colorProps.some(prop => prop in data);

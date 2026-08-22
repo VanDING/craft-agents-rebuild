@@ -7,8 +7,6 @@
  * Watched paths:
  * - ~/.craft-agent/config.json - Main app configuration
  * - ~/.craft-agent/preferences.json - User preferences
- * - ~/.craft-agent/theme.json - App-level theme overrides
- * - ~/.craft-agent/themes/*.json - Preset theme files (app-level)
  * - ~/.craft-agent/workspaces/{slug}/ - Workspace directory (recursive)
  *   - sources/{slug}/config.json, guide.md, permissions.json
  *   - skills/{slug}/SKILL.md, icon.*
@@ -52,8 +50,7 @@ import {
 import { readSessionHeader } from '../sessions/jsonl.ts';
 import type { SessionHeader } from '../sessions/types.ts';
 import { AUTOMATIONS_CONFIG_FILE } from '../automations/constants.ts';
-import { loadAppTheme, loadPresetThemes, loadPresetTheme, getAppThemesDir } from './storage.ts';
-import type { ThemeOverrides, PresetTheme } from './theme.ts';
+import { ensureUserThemesDir, getAppThemesDir, isValidUserThemeId } from './storage.ts';
 
 // ============================================================
 // Active Watcher Registry (duplicate detection)
@@ -157,14 +154,6 @@ export interface ConfigWatcherCallbacks {
   /** Called when a session's JSONL header is modified externally (labels, name, flags, etc.) */
   onSessionMetadataChange?: (sessionId: string, header: SessionHeader) => void;
 
-  // Theme callbacks (app-level only)
-  /** Called when app-level theme.json changes */
-  onAppThemeChange?: (theme: ThemeOverrides | null) => void;
-  /** Called when a preset theme file changes (null if deleted) */
-  onPresetThemeChange?: (themeId: string, theme: PresetTheme | null) => void;
-  /** Called when the preset themes list changes (add/remove files) */
-  onPresetThemesListChange?: (themes: PresetTheme[]) => void;
-
   // Error callbacks
   /** Called when a validation error occurs */
   onValidationError?: (file: string, result: ValidationResult) => void;
@@ -210,7 +199,6 @@ export class ConfigWatcher {
   // Track known items for detecting adds/removes
   private knownSources: Set<string> = new Set();
   private knownSkills: Set<string> = new Set();
-  private knownThemes: Set<string> = new Set();
 
   // Track LLM connections for change detection (JSON string for deep comparison)
   private lastLlmConnectionsHash: string = '';
@@ -279,23 +267,16 @@ export class ConfigWatcher {
     this.watchWorkspaceDir();
     span.mark('watchWorkspaceDir');
 
-    // Watch app-level themes directory
-    this.watchAppThemesDir();
-    span.mark('watchAppThemesDir');
-
     // Watch app-level permissions directory
     this.watchAppPermissionsDir();
     span.mark('watchAppPermissionsDir');
 
-    // Initial scan to populate known sources, skills, and themes
+    // Initial scan to populate known sources and skills
     this.scanSources();
     span.mark('scanSources');
 
     this.scanSkills();
     span.mark('scanSkills');
-
-    this.scanAppThemes();
-    span.mark('scanAppThemes');
 
     // Initialize LLM connections hash for change detection
     this.initLlmConnectionsHash();
@@ -354,7 +335,6 @@ export class ConfigWatcher {
 
     this.knownSources.clear();
     this.knownSkills.clear();
-    this.knownThemes.clear();
 
     debug('[ConfigWatcher] Stopped');
   }
@@ -369,7 +349,7 @@ export class ConfigWatcher {
     }
 
     try {
-      // Watch the config directory for changes to config.json, preferences.json, and theme.json
+      // Watch the config directory for app configuration and preferences.
       const watcher = watch(CONFIG_DIR, (eventType, filename) => {
         if (!filename) return;
 
@@ -377,8 +357,6 @@ export class ConfigWatcher {
           this.debounce('config.json', () => this.handleConfigChange());
         } else if (filename === 'preferences.json') {
           this.debounce('preferences.json', () => this.handlePreferencesChange());
-        } else if (filename === 'theme.json') {
-          this.debounce('app-theme', () => this.handleAppThemeChange());
         }
       });
 
@@ -968,48 +946,6 @@ export class ConfigWatcher {
     }
   }
 
-  // ============================================================
-  // Theme Handlers (App-Level)
-  // ============================================================
-
-  /**
-   * Handle app-level theme.json change
-   */
-  private handleAppThemeChange(): void {
-    debug('[ConfigWatcher] App theme.json changed');
-    const theme = loadAppTheme();
-    this.callbacks.onAppThemeChange?.(theme);
-  }
-
-  /**
-   * Watch app-level themes directory (~/.craft-agent/themes/)
-   */
-  private watchAppThemesDir(): void {
-    const themesDir = getAppThemesDir();
-
-    // Create themes directory if it doesn't exist
-    if (!existsSync(themesDir)) {
-      mkdirSync(themesDir, { recursive: true });
-    }
-
-    try {
-      const watcher = watch(themesDir, (eventType, filename) => {
-        if (!filename) return;
-
-        // Only handle .json files
-        if (filename.endsWith('.json')) {
-          const themeId = filename.replace('.json', '');
-          this.debounce(`preset-theme:${themeId}`, () => this.handlePresetThemeChange(themeId));
-        }
-      });
-
-      this.watchers.push(watcher);
-      debug('[ConfigWatcher] Watching app themes directory:', themesDir);
-    } catch (error) {
-      debug('[ConfigWatcher] Error watching app themes directory:', error);
-    }
-  }
-
   /**
    * Watch app-level permissions directory (~/.craft-agent/permissions/)
    * Watches for changes to default.json which contains the default read-only patterns
@@ -1052,63 +988,55 @@ export class ConfigWatcher {
     this.callbacks.onDefaultPermissionsChange?.();
   }
 
-  /**
-   * Scan app-level themes directory to populate known themes
-   */
-  private scanAppThemes(): void {
+}
+
+/** Change event emitted by the singleton user-theme directory watcher. */
+export interface UserThemeWatcherCallbacks {
+  onThemeChange: (themeId: string) => void;
+}
+
+/**
+ * App-scoped watcher for ~/.craft-agent/themes. It is intentionally separate
+ * from ConfigWatcher so opening more workspaces never duplicates global fs
+ * watchers or broadcasts.
+ */
+export class UserThemeWatcher {
+  private watcher: FSWatcher | null = null;
+  private debounceTimers = new Map<string, NodeJS.Timeout>();
+
+  constructor(private readonly callbacks: UserThemeWatcherCallbacks) {}
+
+  start(): void {
+    if (this.watcher) return;
+    ensureUserThemesDir();
     const themesDir = getAppThemesDir();
 
-    if (!existsSync(themesDir)) {
-      return;
-    }
-
     try {
-      const files = readdirSync(themesDir).filter(f => f.endsWith('.json'));
+      this.watcher = watch(themesDir, (_eventType, filename) => {
+        if (!filename) return;
+        const file = String(filename);
+        if (!file.endsWith('.json')) return;
+        const themeId = file.slice(0, -'.json'.length);
+        if (!isValidUserThemeId(themeId)) return;
 
-      for (const file of files) {
-        const themeId = file.replace('.json', '');
-        this.knownThemes.add(themeId);
-      }
-
-      debug('[ConfigWatcher] Known themes:', Array.from(this.knownThemes));
+        const existing = this.debounceTimers.get(themeId);
+        if (existing) clearTimeout(existing);
+        this.debounceTimers.set(themeId, setTimeout(() => {
+          this.debounceTimers.delete(themeId);
+          this.callbacks.onThemeChange(themeId);
+        }, DEBOUNCE_MS));
+      });
+      debug('[UserThemeWatcher] Watching:', themesDir);
     } catch (error) {
-      debug('[ConfigWatcher] Error scanning themes:', error);
+      debug('[UserThemeWatcher] Failed to watch themes directory:', error);
     }
   }
 
-  /**
-   * Handle preset theme file change (app-level)
-   */
-  private handlePresetThemeChange(themeId: string): void {
-    debug('[ConfigWatcher] Preset theme changed:', themeId);
-
-    const themesDir = getAppThemesDir();
-    const themePath = join(themesDir, `${themeId}.json`);
-
-    if (!existsSync(themePath)) {
-      // Theme was deleted
-      if (this.knownThemes.has(themeId)) {
-        this.knownThemes.delete(themeId);
-        this.callbacks.onPresetThemeChange?.(themeId, null);
-
-        // Also notify list change
-        const allThemes = loadPresetThemes();
-        this.callbacks.onPresetThemesListChange?.(allThemes);
-      }
-      return;
-    }
-
-    // Theme was added or modified
-    if (!this.knownThemes.has(themeId)) {
-      this.knownThemes.add(themeId);
-    }
-
-    const theme = loadPresetTheme(themeId);
-    this.callbacks.onPresetThemeChange?.(themeId, theme);
-
-    // Also notify list change in case name changed (affects sorting)
-    const allThemes = loadPresetThemes();
-    this.callbacks.onPresetThemesListChange?.(allThemes);
+  stop(): void {
+    this.watcher?.close();
+    this.watcher = null;
+    for (const timer of this.debounceTimers.values()) clearTimeout(timer);
+    this.debounceTimers.clear();
   }
 }
 

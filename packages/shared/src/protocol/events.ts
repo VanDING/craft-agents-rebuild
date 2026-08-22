@@ -3,7 +3,7 @@
  * Keys are channel string literals, values are argument tuples.
  */
 
-import type { ThemeOverrides } from '../config/index'
+import type { ThemeOverrides, ThemePreferences } from '../config/index'
 import type { LoadedSource } from '../sources/types'
 import type { LoadedSkill } from '../skills/types'
 import type { LoadedProject } from '../projects/types'
@@ -38,7 +38,8 @@ export interface BroadcastEventMap {
   // Theme broadcasts (global)
   [RPC_CHANNELS.theme.APP_CHANGED]: [theme: ThemeOverrides | null]
   [RPC_CHANNELS.theme.SYSTEM_CHANGED]: [isDark: boolean]
-  [RPC_CHANNELS.theme.PREFERENCES_CHANGED]: [preferences: { mode: string; colorTheme: string; font: string }]
+  [RPC_CHANNELS.theme.PREFERENCES_CHANGED]: [preferences: ThemePreferences]
+  [RPC_CHANNELS.theme.USER_THEMES_CHANGED]: [data: { themeId: string }]
   [RPC_CHANNELS.theme.WORKSPACE_THEME_CHANGED]: [data: { workspaceId: string; themeId: string | null }]
 
   // Update broadcasts (global)
