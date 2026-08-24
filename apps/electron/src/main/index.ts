@@ -415,7 +415,7 @@ app.whenReady().then(async () => {
   // (docs, permissions, themes, tool-icons resolve via getBundledAssetsDir)
   setBundledAssetsRoot(__dirname)
 
-  // Initialize backend runtime bootstrapping (Codex vendor root, Claude SDK runtime paths).
+  // Initialize backend runtime bootstrapping for the embedded Pi agent.
   initializeBackendHostRuntime({
     hostRuntime: {
       appRootPath: app.isPackaged ? app.getAppPath() : process.cwd(),

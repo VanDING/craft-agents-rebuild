@@ -622,17 +622,23 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
     return count
   }, [])
 
+  // Single O(n log n) grouping pass shared by rendering, pagination and search.
+  // Streaming updates replace the messages array, so this remains fresh without
+  // recomputing the same turn model three times in one render.
+  const allTurns = React.useMemo(() => {
+    if (!session) return []
+    return groupMessagesByTurn(session.messages, { isSessionProcessing: session.isProcessing })
+  }, [session?.messages, session?.isProcessing])
+
   // Find ALL individual match occurrences (not just turns)
   // Returns array with unique matchId for each occurrence
   const matchingOccurrences = useMemo(() => {
-    if (!searchQuery.trim() || !session?.messages) return []
-    const startTime = performance.now()
+    if (!searchQuery.trim()) return []
     const query = searchQuery.toLowerCase()
-    const turns = groupMessagesByTurn(session.messages, { isSessionProcessing: session.isProcessing })
     const matches: { matchId: string; turnId: string; turnIndex: number; matchIndexInTurn: number }[] = []
 
-    for (let turnIndex = 0; turnIndex < turns.length; turnIndex++) {
-      const turn = turns[turnIndex]
+    for (let turnIndex = 0; turnIndex < allTurns.length; turnIndex++) {
+      const turn = allTurns[turnIndex]
       let textContent = ''
       let turnId = ''
 
@@ -669,7 +675,7 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
       }
     }
     return matches
-  }, [searchQuery, session?.messages, session?.isProcessing, countOccurrences])
+  }, [searchQuery, allTurns, countOccurrences])
 
   // Auto-expand pagination when search is active to show all matching turns
   // This ensures match count is stable and all matches are highlightable from the start
@@ -681,7 +687,7 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
       (min, m) => m.turnIndex < min ? m.turnIndex : min,
       matchingOccurrences[0]!.turnIndex
     )
-    const totalTurns = groupMessagesByTurn(session?.messages || [], { isSessionProcessing: session?.isProcessing }).length
+    const totalTurns = allTurns.length
 
     // Calculate how many turns we need to show to include all matches
     // totalTurns - visibleTurnCount = startIndex, so we need visibleTurnCount = totalTurns - earliestMatchTurnIndex + buffer
@@ -690,7 +696,7 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
     if (requiredVisibleCount > visibleTurnCount) {
       setVisibleTurnCount(requiredVisibleCount)
     }
-  }, [isSearchActive, matchingOccurrences, session?.messages, session?.isProcessing, visibleTurnCount])
+  }, [isSearchActive, matchingOccurrences, allTurns.length, visibleTurnCount])
 
   // Extract unique turn IDs that have matches (for highlighting)
   const matchingTurnIds = useMemo(() => {
@@ -1333,12 +1339,6 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
     }
     return undefined
   }, [pendingPermission, pendingCredential])
-
-  // Memoize turn grouping - avoids O(n) iteration on every render/keystroke
-  const allTurns = React.useMemo(() => {
-    if (!session) return []
-    return groupMessagesByTurn(session.messages, { isSessionProcessing: session.isProcessing })
-  }, [session?.messages, session?.isProcessing])
 
   // Keep ref in sync for scroll handler
   totalTurnCountRef.current = allTurns.length

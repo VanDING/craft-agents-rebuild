@@ -361,10 +361,20 @@ export function groupMessagesByTurn(messages: Message[], options: GroupTurnsOpti
   // must reach the model (they drive a turn) but must never render as a bubble —
   // e.g. the WS2 background-task-completion nudge that wakes an idle session. The
   // assistant response they trigger has its own turnId and still renders normally.
-  const visibleMessages = messages.filter(m => !m.hidden)
-  // Sort by timestamp for correct chronological order
-  // This ensures correct turn grouping even if messages are added out of order during streaming
-  const sortedMessages = [...visibleMessages].sort((a, b) => a.timestamp - b.timestamp)
+  const visibleMessages: Message[] = []
+  let isChronological = true
+  let previousTimestamp = Number.NEGATIVE_INFINITY
+  for (const message of messages) {
+    if (message.hidden) continue
+    if (message.timestamp < previousTimestamp) isChronological = false
+    previousTimestamp = message.timestamp
+    visibleMessages.push(message)
+  }
+  // Live sessions are already monotonic. Only pay O(n log n) when a restored
+  // or concurrently-buffered transcript is actually out of order.
+  const sortedMessages = isChronological
+    ? visibleMessages
+    : visibleMessages.sort((a, b) => a.timestamp - b.timestamp)
 
   const turns: Turn[] = []
   let currentTurn: AssistantTurn | null = null

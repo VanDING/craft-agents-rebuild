@@ -5,6 +5,8 @@ export function clearBlockAnnotationMarkers(root: HTMLElement): void {
   const blocks = root.querySelectorAll<HTMLElement>('[data-ca-block-annotated="true"]')
   blocks.forEach((block) => {
     block.removeAttribute('data-ca-block-annotated')
+    // Imperative annotation cleanup cannot be expressed as a utility class.
+    // eslint-disable-next-line craft-styles/no-nonstandard-shadows
     block.style.boxShadow = ''
     block.style.backgroundColor = ''
   })
@@ -27,5 +29,7 @@ export function applyBlockAnnotationMarker(root: HTMLElement, annotation: Annota
 
   target.setAttribute('data-ca-block-annotated', 'true')
   target.style.backgroundColor = annotationColorToCss(annotation.style?.color)
+  // The marker is attached to rendered markdown nodes outside React's class tree.
+  // eslint-disable-next-line craft-styles/no-nonstandard-shadows
   target.style.boxShadow = 'inset 0 0 0 1px color-mix(in srgb, var(--info) 22%, transparent)'
 }

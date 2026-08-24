@@ -75,6 +75,11 @@ mock.module('@craft-agent/shared/config', () => ({
     start() {}
     stop() {}
   },
+  UserThemeWatcher: class UserThemeWatcher {
+    constructor(..._args: unknown[]) {}
+    start() {}
+    stop() {}
+  },
   migrateLegacyCredentials: async () => {},
   migrateLegacyLlmConnectionsConfig: async () => {},
   migrateOrphanedDefaultConnections: async () => {},
@@ -96,6 +101,8 @@ mock.module('@craft-agent/shared/config', () => ({
   getSummarizationModel: () => 'claude-haiku-4-5-20251001',
   ensureConfigDir: () => {},
   ensureConfigDefaults: () => {},
+  ensureToolIcons: () => {},
+  initializeThemeStorage: () => {},
   addWorkspace: async () => null,
   getAllSessionDrafts: () => [],
   getGitBashPath: () => null,
@@ -135,8 +142,6 @@ mock.module('@craft-agent/shared/agent', () => ({
   cleanupModeState: () => {},
   getPermissionMode: () => 'ask',
   registerSessionScopedToolCallbacks: () => {},
-  cleanupSessionScopedTools: () => {},
-  getSessionScopedTools: () => [],
   normalizeCanonicalBrowserToolName: (name: string) => name,
 }))
 

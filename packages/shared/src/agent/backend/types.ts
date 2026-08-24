@@ -308,7 +308,7 @@ export type AgentMcpServerConfig =
       type: 'http' | 'sse';
       url: string;
       headers?: Record<string, string>;
-      /** Environment variable name containing bearer token (Codex-specific) */
+      /** Environment variable name containing a bearer token. */
       bearerTokenEnvVar?: string;
     }
   | {
@@ -317,9 +317,9 @@ export type AgentMcpServerConfig =
       args?: string[];
       /** Environment variables to set (literal values) */
       env?: Record<string, string>;
-      /** Environment variable names to forward from parent process (Codex-specific) */
+      /** Environment variable names to forward from the parent process. */
       envVars?: string[];
-      /** Working directory for the server process (Codex-specific) */
+      /** Working directory for the server process. */
       cwd?: string;
     };
 
@@ -327,7 +327,7 @@ export type AgentMcpServerConfig =
  * Core backend interface - all AI providers must implement this.
  *
  * The interface is designed to:
- * 1. Abstract provider differences (Claude SDK vs OpenAI Responses API)
+ * 1. Keep the host independent from the embedded backend implementation
  * 2. Enable the facade pattern in CraftAgent
  * 3. Support streaming via AsyncGenerator
  * 4. Allow capability-based UI adaptation
@@ -465,6 +465,9 @@ export interface AgentBackend {
    * session manager should fall back to an idle restart.
    */
   updateRuntimeConfig?(update: BackendRuntimeUpdate): Promise<boolean>;
+
+  /** Apply the global browser-tool gate without interrupting an active turn. */
+  updateBrowserToolEnabled?(enabled: boolean): void;
 
   /**
    * Dispose resources before an idle backend restart. Backends with subprocesses

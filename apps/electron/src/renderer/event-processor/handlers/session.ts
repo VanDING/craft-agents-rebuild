@@ -544,7 +544,7 @@ export function handleUserMessage(
 
     // Update existing message — clear isPending, set isQueued based on status.
     //
-    // - 'queued'     → isQueued = true  (Claude path: backend queued for re-send)
+    // - 'queued'     → isQueued = true  (backend queued for re-send)
     // - 'processing' → isQueued = false (queued message is now actually running)
     // - 'accepted'   → isQueued = false (Pi steer path: agent has the message)
     //
@@ -1081,4 +1081,3 @@ export function handleUsageUpdate(
     effects: [],
   }
 }
-

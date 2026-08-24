@@ -113,8 +113,7 @@ unzip -o "$TEMP_DIR/${BUN_DOWNLOAD}.zip" -d "$TEMP_DIR"
 cp "$TEMP_DIR/${BUN_DOWNLOAD}/bun" "$ELECTRON_DIR/vendor/bun/"
 chmod +x "$ELECTRON_DIR/vendor/bun/bun"
 
-# 4. Copy ripgrep (search service binary; the Claude SDK that used to carry
-#    it is gone since the single-Pi-backend migration).
+# 4. Copy the search service's ripgrep binary directly.
 #    @vscode/ripgrep >= 1.15 ships the binary in a platform package.
 RG_SOURCE="$ROOT_DIR/node_modules/@vscode/ripgrep"
 require_path "$RG_SOURCE" "@vscode/ripgrep" "Run 'bun install' and 'bun pm trust @vscode/ripgrep' first."

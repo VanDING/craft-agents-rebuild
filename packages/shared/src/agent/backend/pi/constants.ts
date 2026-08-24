@@ -33,6 +33,8 @@ export const THINKING_TO_PI: Record<ThinkingLevel, PiThinkingLevel> = {
  */
 export const PI_TOOL_NAME_MAP: Record<string, string> = {
   bash: 'Bash',
+  // Use the existing terminal permission/UI pipeline for Pi's native Windows shell.
+  powershell: 'Bash',
   read: 'Read',
   write: 'Write',
   edit: 'Edit',

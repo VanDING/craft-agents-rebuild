@@ -124,9 +124,7 @@ unzip -o "$TEMP_DIR/${BUN_DOWNLOAD}.zip" -d "$TEMP_DIR"
 cp "$TEMP_DIR/${BUN_DOWNLOAD}/bun" "$ELECTRON_DIR/vendor/bun/"
 chmod +x "$ELECTRON_DIR/vendor/bun/bun"
 
-# 4. Copy ripgrep (search service binary; was previously bundled inside the
-#    Claude SDK at vendor/ripgrep/ — the SDK itself is gone since the
-#    single-Pi-backend migration, ripgrep remains a real dependency).
+# 4. Copy the search service's ripgrep binary directly.
 #    @vscode/ripgrep >= 1.15 ships the binary in a platform package
 #    (@vscode/ripgrep-darwin-<arch>), declared as an optionalDependency of the
 #    main package and resolved by lib/index.js at runtime; older versions

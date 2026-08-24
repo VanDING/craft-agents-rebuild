@@ -2,11 +2,10 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 /**
- * Read the SDK plugin name from .claude-plugin/plugin.json.
+ * Read the compatibility plugin name from .claude-plugin/plugin.json.
  *
- * The Claude SDK identifies plugins by the `name` field in this manifest,
- * NOT by path.basename() of the plugin directory. All skill qualification
- * and system prompt references must use this name to match what the SDK expects.
+ * Existing workspaces use the `name` field as their stable skill namespace;
+ * do not derive it from path.basename(), which can change when a folder moves.
  *
  * @returns The plugin name, or null if the manifest doesn't exist or is unreadable
  */
@@ -25,9 +24,9 @@ export function readPluginName(workspaceRootPath: string): string | null {
 export { extractWorkspaceSlugFromPath } from './workspace-slug.ts';
 
 /**
- * Extract workspace slug for SDK skill qualification.
+ * Extract workspace slug for skill qualification.
  *
- * Reads the actual plugin name from .claude-plugin/plugin.json (which is what the SDK uses),
+ * Reads the stable plugin name from .claude-plugin/plugin.json,
  * falling back to the last path component of the root path.
  *
  * NOTE: Requires Node.js (fs/path). For browser contexts, use extractWorkspaceSlugFromPath

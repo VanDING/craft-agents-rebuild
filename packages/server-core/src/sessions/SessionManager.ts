@@ -770,6 +770,14 @@ interface ManagedSession {
   previousPermissionMode?: PermissionMode
   /** Centralized MCP client pool for this session's source connections */
   mcpPool?: McpClientPool
+  /** Runtime source objects cached until source selection/config/credentials change. */
+  sourceRuntime?: {
+    mcpServers: Awaited<ReturnType<typeof buildServersFromSources>>['mcpServers']
+    apiServers: Awaited<ReturnType<typeof buildServersFromSources>>['apiServers']
+    intendedSlugs: string[]
+  }
+  /** Agent instance that has already received sourceRuntime. */
+  sourceRuntimeAppliedTo?: AgentInstance
   /** HTTP MCP server exposing pool tools to external SDK subprocesses */
   poolServer?: McpPoolServer
   // SDK session ID for conversation continuity
@@ -1882,6 +1890,8 @@ export class SessionManager implements ISessionManager {
     await applyBridgeUpdates(managed.agent, sessionPath, enabledSources, mcpServers, managed.id, workspaceRootPath, 'source reload', managed.poolServer?.url)
 
     await managed.agent.setSourceServers(mcpServers, apiServers, intendedSlugs)
+    managed.sourceRuntime = { mcpServers, apiServers, intendedSlugs }
+    managed.sourceRuntimeAppliedTo = managed.agent
 
     sessionLog.info(`Sources reloaded for session ${managed.id}: ${Object.keys(mcpServers).length} MCP, ${Object.keys(apiServers).length} API`)
   }
@@ -3292,6 +3302,17 @@ export class SessionManager implements ISessionManager {
   }
 
   /**
+   * Push the global browser-tool gate into every live Pi subprocess. Pi defers
+   * rebuilding a busy session until its next prompt, so active work is not cut
+   * off when the setting changes.
+   */
+  refreshBrowserToolAvailability(enabled: boolean): void {
+    for (const managed of this.sessions.values()) {
+      managed.agent?.updateBrowserToolEnabled?.(enabled)
+    }
+  }
+
+  /**
    * Get or create agent for a session (lazy loading)
    * Creates the appropriate backend agent based on LLM connection.
    *
@@ -3373,6 +3394,12 @@ export class SessionManager implements ISessionManager {
 
       // Build server configs for enabled sources
       const { mcpServers, apiServers } = await buildServersFromSources(enabledSources, sessionPath, managed.tokenRefreshManager)
+      managed.sourceRuntime = {
+        mcpServers,
+        apiServers,
+        intendedSlugs: enabledSources.map(source => source.config.slug),
+      }
+      managed.sourceRuntimeAppliedTo = undefined
 
       // Create centralized MCP client pool (all backends use it)
       managed.mcpPool = new McpClientPool({ debug: (msg) => sessionLog.debug(msg), workspaceRootPath: managed.workspace.rootPath, sessionPath })
@@ -3537,7 +3564,7 @@ export class SessionManager implements ISessionManager {
         mcpPool: managed.mcpPool,
         poolServerUrl,
         envOverrides,
-        // Claude-specific
+        // Shared backend runtime options
         isHeadless: !AGENT_FLAGS.defaultModesEnabled,
         skipConfigWatcher: true, // Server owns workspace-level ConfigWatcher — don't duplicate in agents
         automationSystem: this.automationSystems.get(managed.workspace.rootPath),
@@ -5227,6 +5254,8 @@ export class SessionManager implements ISessionManager {
 
     // Store the selection
     managed.enabledSourceSlugs = sourceSlugs
+    managed.sourceRuntime = undefined
+    managed.sourceRuntimeAppliedTo = undefined
 
     // If agent exists, build and apply servers immediately
     if (managed.agent) {
@@ -5250,6 +5279,8 @@ export class SessionManager implements ISessionManager {
       await applyBridgeUpdates(managed.agent, sessionPath, usableSources, mcpServers, managed.id, workspaceRootPath, 'source config change', managed.poolServer?.url)
 
       await managed.agent.setSourceServers(mcpServers, apiServers, intendedSlugs)
+      managed.sourceRuntime = { mcpServers, apiServers, intendedSlugs }
+      managed.sourceRuntimeAppliedTo = managed.agent
 
       sessionLog.info(`Applied ${Object.keys(mcpServers).length} MCP + ${Object.keys(apiServers).length} API sources to active agent (${allSources.length} total)`)
     }
@@ -6268,6 +6299,10 @@ export class SessionManager implements ISessionManager {
     const workspaceRootPath = managed.workspace.rootPath
     const enabledSlugs = managed.enabledSourceSlugs ?? []
     const hasSources = enabledSlugs.length > 0
+    const agentWasWarm = Boolean(managed.agent)
+    sendSpan.setMetadata('agentState', agentWasWarm ? 'warm' : 'cold')
+    sendSpan.setMetadata('enabledSourceCount', enabledSlugs.length)
+    sendSpan.setMetadata('messageCount', managed.messages.length)
 
     // Load enabled sources up-front so we can refresh tokens BEFORE getOrCreateAgent
     // runs its internal cold-session build. Otherwise that build sees stale tokens
@@ -6278,11 +6313,15 @@ export class SessionManager implements ISessionManager {
       : []
 
     if (hasSources && managed.tokenRefreshManager) {
-      const refreshResult = await refreshExpiredCredentials(sources, managed.tokenRefreshManager)
+    const refreshResult = await refreshExpiredCredentials(sources, managed.tokenRefreshManager)
       if (refreshResult.failedSources.length > 0) {
         sessionLog.warn('[OAuth] Some sources failed token refresh:', refreshResult.failedSources.map(f => f.slug))
+        managed.sourceRuntime = undefined
+        managed.sourceRuntimeAppliedTo = undefined
       }
       if (refreshResult.refreshedCount > 0) {
+        managed.sourceRuntime = undefined
+        managed.sourceRuntimeAppliedTo = undefined
         sendSpan.mark('oauth.refreshed')
       }
     }
@@ -6301,22 +6340,36 @@ export class SessionManager implements ISessionManager {
     // Apply source servers if any are enabled
     if (hasSources) {
       const sessionPath = getSessionStoragePath(workspaceRootPath, sessionId)
-      // Single fresh build — tokens already refreshed above.
-      const { mcpServers, apiServers, errors } = await buildServersFromSources(sources, sessionPath, managed.tokenRefreshManager, agent.getSummarizeCallback())
-      if (errors.length > 0) {
-        sessionLog.warn(`Source build errors:`, errors)
+      let runtime = managed.sourceRuntime
+      if (!runtime) {
+        // Tokens were refreshed before this point, so the cached runtime never
+        // captures stale credentials.
+        const built = await buildServersFromSources(sources, sessionPath, managed.tokenRefreshManager, agent.getSummarizeCallback())
+        if (built.errors.length > 0) {
+          sessionLog.warn(`Source build errors:`, built.errors)
+        }
+        const usableSources = sources.filter(isSourceUsable)
+        runtime = {
+          mcpServers: built.mcpServers,
+          apiServers: built.apiServers,
+          intendedSlugs: usableSources.map(s => s.config.slug),
+        }
+        managed.sourceRuntime = runtime
+        sendSpan.mark('servers.built')
+      } else {
+        sendSpan.mark('servers.cache_hit')
       }
 
-      const mcpCount = Object.keys(mcpServers).length
-      const apiCount = Object.keys(apiServers).length
-      if (mcpCount > 0 || apiCount > 0 || enabledSlugs.length > 0) {
+      if (managed.sourceRuntimeAppliedTo !== agent) {
         const usableSources = sources.filter(isSourceUsable)
-        const intendedSlugs = usableSources.map(s => s.config.slug)
-        await agent.setSourceServers(mcpServers, apiServers, intendedSlugs)
-        await applyBridgeUpdates(agent, sessionPath, usableSources, mcpServers, sessionId, workspaceRootPath, 'send message', managed.poolServer?.url)
-        sessionLog.info(`Applied ${mcpCount} MCP + ${apiCount} API sources to session ${sessionId} (${allSources.length} total)`)
+        await agent.setSourceServers(runtime.mcpServers, runtime.apiServers, runtime.intendedSlugs)
+        await applyBridgeUpdates(agent, sessionPath, usableSources, runtime.mcpServers, sessionId, workspaceRootPath, 'send message', managed.poolServer?.url)
+        managed.sourceRuntimeAppliedTo = agent
+        sessionLog.info(`Applied ${Object.keys(runtime.mcpServers).length} MCP + ${Object.keys(runtime.apiServers).length} API sources to session ${sessionId} (${allSources.length} total)`)
+        sendSpan.mark('servers.applied')
+      } else {
+        sendSpan.mark('servers.already_applied')
       }
-      sendSpan.mark('servers.applied')
     }
 
     try {
@@ -6376,7 +6429,23 @@ export class SessionManager implements ISessionManager {
       const chatIterator = agent.chat(effectiveMessage, modelInputAttachments.attachments)
       sessionLog.info('Got chat iterator, starting iteration...')
 
+      let sawFirstEvent = false
+      let sawFirstResponse = false
+      let sawFirstTool = false
+
       for await (const event of chatIterator) {
+        if (!sawFirstEvent) {
+          sawFirstEvent = true
+          sendSpan.mark('chat.first_event')
+        }
+        if (!sawFirstResponse && (event.type === 'text_delta' || event.type === 'text_complete')) {
+          sawFirstResponse = true
+          sendSpan.mark('chat.first_response')
+        }
+        if (!sawFirstTool && event.type === 'tool_start') {
+          sawFirstTool = true
+          sendSpan.mark('chat.first_tool')
+        }
         // Log events (skip noisy text_delta)
         if (event.type !== 'text_delta') {
           if (event.type === 'tool_start') {
@@ -7820,6 +7889,8 @@ export class SessionManager implements ISessionManager {
           usage: event.usage,
           requestSeq: event.requestSeq,
           promptSnapshot: event.promptSnapshot,
+          assistantMetrics: event.assistantMetrics,
+          outputBlocks: event.outputBlocks,
         }
         managed.messages.push(assistantMessage)
         managed.streamingText = ''
@@ -7851,7 +7922,7 @@ export class SessionManager implements ISessionManager {
           }
         }
 
-        this.sendEvent({ type: 'text_complete', sessionId, text: event.text, isIntermediate: event.isIntermediate, turnId: event.turnId, parentToolUseId: event.parentToolUseId, timestamp: assistantMessage.timestamp, messageId: assistantMessage.id, usage: event.usage, requestSeq: event.requestSeq, promptSnapshot: event.promptSnapshot }, workspaceId)
+        this.sendEvent({ type: 'text_complete', sessionId, text: event.text, isIntermediate: event.isIntermediate, turnId: event.turnId, parentToolUseId: event.parentToolUseId, timestamp: assistantMessage.timestamp, messageId: assistantMessage.id, usage: event.usage, requestSeq: event.requestSeq, promptSnapshot: event.promptSnapshot, assistantMetrics: event.assistantMetrics, outputBlocks: event.outputBlocks }, workspaceId)
 
         // Persist session after complete message to prevent data loss on quit
         this.persistSession(managed)
@@ -8012,6 +8083,13 @@ export class SessionManager implements ISessionManager {
       case 'tool_result': {
         // toolName comes directly from CraftAgent (resolved via ToolIndex)
         const toolName = event.toolName || 'unknown'
+        if (event.durationMs !== undefined) {
+          perf.record('agent.tool.roundTrip', event.durationMs, {
+            sessionId,
+            toolName,
+            isError: event.isError,
+          })
+        }
 
         // Format absolute paths to relative paths for better readability
         const rawFormattedResult = event.result ? formatPathsToRelative(event.result) : ''

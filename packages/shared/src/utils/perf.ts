@@ -28,7 +28,7 @@
 import { isDebugEnabled } from './debug.ts';
 
 // Performance metrics storage
-interface PerfMetric {
+export interface PerfMetric {
   name: string;
   startTime: number;
   endTime?: number;
@@ -212,6 +212,24 @@ export function start(
     logMetric(metric);
     return duration;
   };
+}
+
+/** Record a duration measured by another process or event source. */
+export function record(
+  name: string,
+  durationMs: number,
+  metadata?: Record<string, unknown>,
+): void {
+  if (!Number.isFinite(durationMs) || durationMs < 0) return;
+  const endTime = performance.now();
+  logMetric({
+    name,
+    startTime: endTime - durationMs,
+    endTime,
+    duration: durationMs,
+    marks: [],
+    metadata,
+  });
 }
 
 /**
@@ -402,6 +420,7 @@ export function formatStatsSummary(): string {
 // Export a default object for convenient namespaced usage
 export const perf = {
   start,
+  record,
   measure,
   measureSync,
   span,

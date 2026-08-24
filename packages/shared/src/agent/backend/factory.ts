@@ -137,8 +137,7 @@ export function createBackendFromResolvedContext(args: {
 
 /**
  * Initialize backend host runtime wiring once at app startup.
- * Keeps runtime/bootstrap details (Claude SDK executable, Pi interceptor bundle)
- * behind backend internals.
+ * Keeps Pi runtime/bootstrap details behind backend internals.
  */
 export function initializeBackendHostRuntime(args: {
   hostRuntime: BackendHostRuntimeContext;

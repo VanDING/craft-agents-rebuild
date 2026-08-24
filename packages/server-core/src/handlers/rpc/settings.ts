@@ -343,6 +343,7 @@ export function registerSettingsHandlers(server: RpcServer, deps: HandlerDeps): 
   server.handle(RPC_CHANNELS.tools.SET_BROWSER_TOOL_ENABLED, async (_ctx, enabled: boolean) => {
     const { setBrowserToolEnabled } = await import('@craft-agent/shared/config/storage')
     setBrowserToolEnabled(enabled)
+    deps.sessionManager.refreshBrowserToolAvailability(enabled)
   })
 
   // ============================================================

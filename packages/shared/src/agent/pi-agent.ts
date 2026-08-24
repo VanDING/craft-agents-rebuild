@@ -83,13 +83,12 @@ import {
   unregisterSessionScopedToolCallbacks,
   setLastPlanFilePath,
   getSessionScopedToolCallbacks,
-  cleanupSessionScopedTools,
   clearPlanFileState,
 } from './session-scoped-tools.ts';
 import { attachSessionSelfManagementBindings } from './session-self-management-bindings.ts';
 
 // Session tool proxy definitions (for registering with subprocess)
-import { getSessionToolProxyDefs, SESSION_TOOL_NAMES } from './backend/pi/session-tool-defs.ts';
+import { getSessionToolProxyDefs, SESSION_TOOL_NAMES, type SessionToolProxyDef } from './backend/pi/session-tool-defs.ts';
 
 // Session tool registry (for executing proxy tool calls)
 import {
@@ -103,7 +102,7 @@ import { getPermissionModeDiagnostics, cleanupModeState } from './mode-manager.t
 // call_llm pre-execution pipeline
 
 // McpClientPool for source tool proxying (centralized pool from main process)
-import type { McpClientPool } from '../mcp/mcp-pool.ts';
+import type { McpClientPool, ProxyToolDef } from '../mcp/mcp-pool.ts';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 // Path utilities
@@ -243,6 +242,11 @@ export class PiAgent extends BaseAgent {
 
   // Event queue for streaming (AsyncGenerator pattern over subprocess JSONL)
   private eventQueue = new EventQueue();
+
+  // Full proxy-tool synchronization state. Keeping a signature here prevents
+  // identical per-message source refreshes from forcing a Pi session rebuild.
+  private sessionProxyToolDefs: SessionToolProxyDef[] = [];
+  private syncedProxyToolsSignature: string | null = null;
 
   // Error deduplication — suppress identical consecutive errors after a threshold
   // to prevent a broken subprocess from flooding the user's session.
@@ -419,17 +423,6 @@ export class PiAgent extends BaseAgent {
       this.adapter.setSessionDir(join(config.workspace.rootPath, 'sessions', config.session.id));
     }
 
-    // Wire the adapter's async overflow fallback into the event queue. The
-    // fallback fires when the SDK doesn't emit a compaction_start after a
-    // held overflow agent_end (e.g. _overflowRecoveryAttempted was already
-    // true). It runs outside adaptEvent() so it can't yield through the
-    // generator — instead, it calls these callbacks to enqueue the buffered
-    // error and terminate the iterator.
-    this.adapter.setOverflowFallbackHandlers(
-      (event) => this.eventQueue.enqueue(event),
-      () => this.eventQueue.complete(),
-    );
-
     if (!config.isHeadless) {
       this.startConfigWatcher();
     }
@@ -548,6 +541,7 @@ export class PiAgent extends BaseAgent {
     });
 
     this.subprocess = child;
+    this.syncedProxyToolsSignature = null;
 
     // Set up readline for JSONL parsing from stdout
     this.readline = createInterface({
@@ -643,29 +637,26 @@ export class PiAgent extends BaseAgent {
       }
     }
 
-    this.send({
-      type: 'register_tools',
-      tools: sessionToolDefs,
-    });
-    this.debug(`Registered ${sessionToolDefs.length} session tools with subprocess`);
-
-    // If pool has source tools, register them with the subprocess.
-    this.registerPoolToolsWithSubprocess();
+    this.sessionProxyToolDefs = sessionToolDefs;
+    this.syncProxyToolsWithSubprocess();
   }
 
   /**
    * Send pool's proxy tool defs to subprocess for model visibility.
    */
-  private registerPoolToolsWithSubprocess(): void {
-    if (!this.mcpPool) return;
-    const proxyDefs = this.mcpPool.getProxyToolDefs();
-    if (proxyDefs.length > 0) {
-      this.send({
-        type: 'register_tools',
-        tools: proxyDefs,
-      });
-      this.debug(`Registered ${proxyDefs.length} MCP source tools from pool with subprocess`);
+  private syncProxyToolsWithSubprocess(): void {
+    if (!this.subprocess) return;
+    const sourceToolDefs: ProxyToolDef[] = this.mcpPool?.getProxyToolDefs() ?? [];
+    const allToolDefs = [...this.sessionProxyToolDefs, ...sourceToolDefs];
+    const signature = JSON.stringify(allToolDefs);
+    if (signature === this.syncedProxyToolsSignature) {
+      this.debug(`Proxy tools unchanged; skipped subprocess sync (${allToolDefs.length} tools)`);
+      return;
     }
+
+    this.send({ type: 'sync_tools', tools: allToolDefs });
+    this.syncedProxyToolsSignature = signature;
+    this.debug(`Synced ${this.sessionProxyToolDefs.length} session + ${sourceToolDefs.length} source tools with subprocess`);
   }
 
   /**
@@ -1133,7 +1124,7 @@ export class PiAgent extends BaseAgent {
           });
         }
 
-        // Note: The subprocess should follow this with a synthetic agent_end event
+        // Note: The subprocess should follow this with a synthetic agent_settled event
         // which will call eventQueue.complete(). If it doesn't, handleSubprocessExit()
         // will complete the queue when the process exits.
         break;
@@ -1218,13 +1209,10 @@ export class PiAgent extends BaseAgent {
       this.eventQueue.enqueue(agentEvent);
     }
 
-    // Turn-completion is now adapter-driven so overflow recovery can hold the
-    // queue open across the SDK's compaction → agent.continue() sequence
-    // (see PiEventAdapter overflow state machine). The adapter returns true
-    // when the queue should terminate — either on a normal agent_end with no
-    // recovery in flight, or on a compaction_end failure that drains a held
-    // overflow.
-    if (this.adapter.shouldCompleteQueue(eventType === 'agent_end')) {
+    // `agent_end` is only one Pi loop and may be followed by retry,
+    // compaction recovery or an extension-queued continuation. Close Craft's
+    // iterator only when Pi reports that the entire run has settled.
+    if (this.adapter.shouldCompleteQueue(eventType === 'agent_settled')) {
       this.eventQueue.complete();
     }
   }
@@ -1795,6 +1783,7 @@ export class PiAgent extends BaseAgent {
     this.readline = null;
     this.resetSubprocessErrorDedup();
     this.subprocessReady = null;
+    this.syncedProxyToolsSignature = null;
     this.subprocessReadyResolve = null;
 
     // If we were processing, emit error + complete
@@ -2159,8 +2148,7 @@ export class PiAgent extends BaseAgent {
       // System prompt carries only stable context (issue #862): the system block
       // is pi-ai's cache prefix before all history, so anything volatile here
       // re-stamps the prefix every turn and drops cacheRead to 0. Volatile blocks
-      // ride the user-message tail instead — exactly as the Claude path already
-      // does (buildTextPrompt / buildSDKUserMessage append context to the tail).
+      // ride the user-message tail instead.
       const fullSystemPrompt = [
         systemPrompt,
         ...stableParts,
@@ -2324,6 +2312,11 @@ export class PiAgent extends BaseAgent {
     }
   }
 
+  updateBrowserToolEnabled(enabled: boolean): void {
+    if (!this.subprocess) return;
+    this.send({ type: 'set_browser_tool_enabled', enabled });
+  }
+
   // ============================================================
   // Source / MCP Integration
   // ============================================================
@@ -2339,7 +2332,7 @@ export class PiAgent extends BaseAgent {
     await super.setSourceServers(mcpServers, apiServers, intendedSlugs);
 
     // Register pool's proxy tool defs with subprocess so the model can call them.
-    this.registerPoolToolsWithSubprocess();
+    this.syncProxyToolsWithSubprocess();
   }
 
   // ============================================================
@@ -2451,11 +2444,9 @@ export class PiAgent extends BaseAgent {
     // Unregister session-scoped tool callbacks
     if (this.config.session?.id) {
       unregisterSessionScopedToolCallbacks(this.config.session.id);
-      // M-14: release all per-session state on teardown so a closed session does
-      // not leak modeManager entries (states/callbacks/subscribers), the
-      // session-scoped tool cache, or the last-submitted plan file path.
+      // Release all per-session state on teardown so a closed session does not
+      // leak mode-manager entries, callbacks, or plan-file state.
       cleanupModeState(this.config.session.id);
-      cleanupSessionScopedTools(this.config.session.id);
       clearPlanFileState(this.config.session.id);
     }
 
@@ -2534,6 +2525,7 @@ export class PiAgent extends BaseAgent {
       this.subprocess = null;
     }
     this.subprocessReady = null;
+    this.syncedProxyToolsSignature = null;
     this.subprocessReadyResolve = null;
     this.callbackPort = 0;
     this.preToolMetadataByCallId.clear();
@@ -2567,12 +2559,12 @@ export class PiAgent extends BaseAgent {
     }
 
     this.subprocessReady = null;
+    this.syncedProxyToolsSignature = null;
     this.subprocessReadyResolve = null;
     this.callbackPort = 0;
     this.preToolMetadataByCallId.clear();
 
-    // Clear any in-flight overflow-recovery state so a stale fallback timer
-    // doesn't fire on a torn-down adapter.
+    // Clear any in-flight overflow-recovery state on the torn-down adapter.
     this.adapter.resetOverflowState();
   }
 
@@ -2764,5 +2756,3 @@ export class PiAgent extends BaseAgent {
     this.onDebug?.(`[pi] ${message}`);
   }
 }
-
-

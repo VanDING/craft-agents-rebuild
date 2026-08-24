@@ -58,12 +58,12 @@ import { PrerequisiteManager } from './core/prerequisite-manager.ts';
 
 // Automation system for agent events
 import type { AutomationSystem } from '../automations/automation-system.ts';
-import type { AgentEvent as AutomationAgentEvent, SdkAutomationInput } from '../automations/types.ts';
+import type { AgentEvent as AutomationAgentEvent, AgentAutomationInput } from '../automations/types.ts';
 import { getSessionPlansPath, getSessionDataPath, getSessionPath } from '../sessions/storage.ts';
 import { getMiniAgentSystemPrompt } from '../prompts/system.ts';
 import { buildTitlePrompt, buildRegenerateTitlePrompt, validateTitle } from '../utils/title-generator.ts';
 
-// Skill extraction for Codex/Copilot backends (Claude uses native SDK Skill tool)
+// Skill and mention extraction shared by the embedded Pi backend.
 import { parseMentions, resolveSkillMentions, resolveSourceMentions, resolveFileMentions } from '../mentions/index.ts';
 import { loadAllSkills } from '../skills/storage.ts';
 
@@ -73,7 +73,7 @@ import { loadAllSkills } from '../skills/storage.ts';
 
 /**
  * Mini agent configuration - shared across all backends.
- * Centralized here to avoid duplication between Claude/Codex agents.
+ * Centralized here for the primary agent and lightweight completion flows.
  */
 export interface MiniAgentConfig {
   /** Whether mini agent mode is enabled */
@@ -206,8 +206,7 @@ export abstract class BaseAgent implements AgentBackend {
   // + forceAbort + auto_retry pipeline used for tool-call errors).
   //
   // When a session-scoped tool (source_test) successfully activates a new source
-  // mid-turn, the Claude SDK's mcpServers is already frozen for the current query
-  // (and Pi's tool registry is only refreshed between turns). The only way to
+  // mid-turn, Pi's tool registry is fixed for the current run. The only way to
   // expose the new tools is to end the current turn and auto-resend the user's
   // original message with a "[{slug} activated]" suffix — same as what happens
   // when a model directly calls an unknown tool on an inactive source.
@@ -392,7 +391,7 @@ export abstract class BaseAgent implements AgentBackend {
    *
    * @param signal - Optional AbortSignal for cancelling automation execution on abort
    */
-  protected async emitAutomationEvent(event: AutomationAgentEvent, input: SdkAutomationInput, signal?: AbortSignal): Promise<void> {
+  protected async emitAutomationEvent(event: AutomationAgentEvent, input: AgentAutomationInput, signal?: AbortSignal): Promise<void> {
     try {
       await this.automationSystem?.executeAgentEvent(event, input, signal);
     } catch (err) {
@@ -410,7 +409,7 @@ export abstract class BaseAgent implements AgentBackend {
    * WHY THIS IS ON BaseAgent:
    * -------------------------
    * Session tools execute in the main process; the Pi subprocess receives them
-   * as proxy tool definitions via register_tools.
+   * as proxy tool definitions via the Pi subprocess tool synchronizer.
    *
    * PiAgent detects session MCP tool completions from its own event stream and
    * calls THIS shared method to fire the appropriate callback.
@@ -1109,7 +1108,7 @@ ${formattedMessages}
   /**
    * Run a simple text completion using the agent's auth infrastructure.
    * No tools, no system prompt - just text in → text out.
-   * Each backend implements using its own SDK (Claude SDK query() or Codex app-server).
+   * The backend implements this using its own lightweight completion path.
    *
    * @param prompt - The prompt to send
    * @returns The model's response text, or null if completion fails

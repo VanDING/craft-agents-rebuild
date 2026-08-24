@@ -33,7 +33,7 @@ import { getSessionsToRefreshAfterStaleReconnect } from './lib/reconnect-recover
 import { formatSessionLoadFailure, shouldTreatSessionLoadFailureAsTransportFallback } from './lib/session-load'
 import { extractWorkspaceSlugFromPath } from '@craft-agent/shared/utils/workspace-slug'
 import { DEFAULT_THINKING_LEVEL } from '@craft-agent/shared/agent/thinking-levels'
-import { initRendererPerf } from './lib/perf'
+import { initRendererPerf, rendererPerf } from './lib/perf'
 import {
   initializeSessionsAtom,
   addSessionAtom,
@@ -964,6 +964,15 @@ export default function App() {
       }
 
       const agentEvent = event as unknown as AgentEvent
+      const eventReceivedAt = performance.now()
+      const recordEventPerformance = () => {
+        rendererPerf.recordSample('agentEvent.process', performance.now() - eventReceivedAt)
+        if (event.type === 'text_delta' || event.type === 'text_complete') {
+          requestAnimationFrame(() => {
+            rendererPerf.recordSample('stream.eventToPaint', performance.now() - eventReceivedAt)
+          })
+        }
+      }
 
       // Track activity for stale session watchdog
       trackSessionActivity(sessionId)
@@ -1042,6 +1051,7 @@ export default function App() {
           }
         }
 
+        recordEventPerformance()
         return
       }
 
@@ -1068,6 +1078,7 @@ export default function App() {
       const newMetaMap = new Map(metaMap)
       newMetaMap.set(sessionId, extractSessionMeta(updatedSession))
       store.set(sessionMetaMapAtom, newMetaMap)
+      recordEventPerformance()
     })
 
     return cleanup

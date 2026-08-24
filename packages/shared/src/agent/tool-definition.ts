@@ -7,7 +7,6 @@ import type { ZodRawShape } from 'zod/v4';
 
 // ToolResult — 与 Pi SDK 的 CallToolResult 兼容
 export interface ToolResult {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   content: any[];
   isError?: boolean;
 }

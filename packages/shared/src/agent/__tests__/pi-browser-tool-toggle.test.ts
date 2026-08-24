@@ -3,7 +3,7 @@
  *
  * Verifies that when `getBrowserToolEnabled()` returns false, the Pi backend
  * excludes `mcp__session__browser_tool` from the session via the SDK's
- * `excludeTools` denylist — matching Claude's existing gate.
+ * `excludeTools` denylist.
  *
  * The gate spans two sides: `PiAgent` (main process) sends
  * `browserToolEnabled` in the init message, and the pi-agent-server
@@ -29,6 +29,12 @@ describe('pi-agent browser_tool toggle (contract)', () => {
   it('sends browserToolEnabled in the init message', () => {
     // The init payload must carry the toggle so the subprocess can gate the tool.
     expect(piAgentSource).toContain('browserToolEnabled: getBrowserToolEnabled()')
+  })
+
+  it('pushes live setting changes without interrupting the active turn', () => {
+    expect(piAgentSource).toContain("type: 'set_browser_tool_enabled', enabled")
+    expect(serverSource).toContain("case 'set_browser_tool_enabled':")
+    expect(serverSource).toContain('if (piSession) toolsChanged = true')
   })
 
   it('no longer filters the tool manually in the main process', () => {

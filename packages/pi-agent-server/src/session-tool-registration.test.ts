@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import {
   createReadToolDefinition,
   createBashToolDefinition,
+  createPowerShellToolDefinition,
   createEditToolDefinition,
   createWriteToolDefinition,
   createGrepToolDefinition,
@@ -15,7 +16,7 @@ import { createWebFetchTool } from './tools/web-fetch.ts';
 import type { WebSearchProvider } from './tools/search/types.ts';
 
 /**
- * Regression contract for Pi SDK 0.70.0 tool registration.
+ * Regression contract for Pi SDK tool registration.
  *
  * Pre-fix bug (PR #330): subprocess passed `tools: AgentTool[]` to
  * `createAgentSession`. Pi SDK 0.70.0 redefined `CreateAgentSessionOptions.tools`
@@ -84,9 +85,15 @@ describe('Pi subprocess tool shape contract', () => {
     expect(new Set(names).size).toBe(names.length); // no duplicates
     expect(names).toEqual(['read', 'bash', 'edit', 'write', 'grep', 'find', 'ls']);
   });
+
+  it('Pi 0.84.3 exposes a valid native PowerShell tool for Windows', () => {
+    const tool = createPowerShellToolDefinition('/tmp');
+    assertValidToolDefinition(tool);
+    expect(tool.name).toBe('powershell');
+  });
 });
 
-describe('Pi SDK 0.70.0 CreateAgentSessionOptions contract', () => {
+describe('Pi SDK CreateAgentSessionOptions contract', () => {
   it('`tools` field is typed as string[] (name allowlist, not objects)', () => {
     // Compile-time proof. If Pi SDK ever changes this back to accept tool
     // objects, the line below will become a type error and this test will

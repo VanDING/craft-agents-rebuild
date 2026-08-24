@@ -33,7 +33,6 @@ export function createInProcessMcpServer(options: {
       tool.name,
       {
         description: tool.description,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         inputSchema: tool.inputSchema as any,
         ...(tool.annotations?.readOnlyHint ? { annotations: { readOnlyHint: true } } : {}),
       },

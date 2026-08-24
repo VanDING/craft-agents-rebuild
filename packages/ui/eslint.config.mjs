@@ -3,9 +3,10 @@
  *
  * Uses flat config format (ESLint 9+).
  * Enforces use of StyledDropdown wrappers instead of raw Radix primitives.
+ * Parser: @babel/eslint-parser (TypeScript 7 compatible).
  */
 
-import tsParser from '@typescript-eslint/parser'
+import babelParser from '@babel/eslint-parser'
 import noHardcodedZIndex from './eslint-rules/no-hardcoded-z-index.cjs'
 import noFloatingZTokensInIsland from './eslint-rules/no-floating-z-tokens-in-island.cjs'
 import noNonstandardShadows from './eslint-rules/no-nonstandard-shadows.cjs'
@@ -23,12 +24,14 @@ export default [
   {
     files: ['src/**/*.{ts,tsx}'],
     languageOptions: {
-      parser: tsParser,
+      parser: babelParser,
       parserOptions: {
         ecmaVersion: 'latest',
         sourceType: 'module',
-        ecmaFeatures: {
-          jsx: true,
+        ecmaFeatures: { jsx: true },
+        requireConfigFile: false,
+        babelOptions: {
+          presets: ['@babel/preset-typescript', '@babel/preset-react'],
         },
       },
     },

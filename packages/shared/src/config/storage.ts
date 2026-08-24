@@ -165,15 +165,15 @@ function syncConfigDefaults(): void {
 }
 
 /**
- * Load config defaults from ~/.craft-agent/config-defaults.json
- * This file is synced from bundled assets on every launch.
+ * Load config defaults from ~/.craft-agent/config-defaults.json.
+ * Desktop startup syncs this file from bundled assets. Library consumers,
+ * tests and standalone servers may call this before that startup boundary, so
+ * use the in-code defaults instead of coupling core behavior to a home file.
  */
 export function loadConfigDefaults(): ConfigDefaults {
-  if (!existsSync(CONFIG_DEFAULTS_FILE)) {
-    throw new Error('config-defaults.json not found at ' + CONFIG_DEFAULTS_FILE + '. Ensure ensureConfigDir() was called at startup.');
-  }
-
-  const defaults = readJsonFileSync<ConfigDefaults>(CONFIG_DEFAULTS_FILE);
+  const defaults = existsSync(CONFIG_DEFAULTS_FILE)
+    ? readJsonFileSync<ConfigDefaults>(CONFIG_DEFAULTS_FILE)
+    : structuredClone(FALLBACK_CONFIG_DEFAULTS);
 
   const parsedPermissionMode =
     typeof defaults.workspaceDefaults?.permissionMode === 'string'
@@ -514,10 +514,6 @@ export function setBrowserToolEnabled(enabled: boolean): void {
   if (!config) return;
   config.browserToolEnabled = enabled;
   saveConfig(config);
-
-  // Clear session tool caches so all sessions pick up the change immediately.
-  // Lazy import to avoid circular dependency (storage ← session-scoped-tools ← storage).
-  import('../agent/session-scoped-tools.ts').then(m => m.invalidateAllSessionToolsCaches()).catch(() => {});
 }
 
 /**

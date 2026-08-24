@@ -20,6 +20,7 @@ import { createInterface } from 'node:readline';
 import { join } from 'node:path';
 import { mkdirSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { homedir } from 'node:os';
+import { Type } from '@sinclair/typebox';
 
 // Pi SDK
 import {
@@ -29,6 +30,7 @@ import {
   ModelRuntime,
   createReadToolDefinition,
   createBashToolDefinition,
+  createPowerShellToolDefinition,
   createEditToolDefinition,
   createWriteToolDefinition,
   createGrepToolDefinition,
@@ -100,6 +102,7 @@ import { createSearchTool } from './tools/search/create-search-tool.ts';
 import { allowCraftMetadataProperties, stripCraftMetadata } from './craft-metadata-schema.ts';
 import { createCraftResourceLoader, setCraftSystemPrompt } from './craft-resource-loader.ts';
 import { guardCallbackToken } from './callback-auth.ts';
+import { proxyToolDefinitionsChanged } from './proxy-tool-sync.ts';
 import {
   hasSupportedBaseUrlScheme,
   isLocalhostUrl,
@@ -162,7 +165,7 @@ interface RuntimeConfigUpdateMessage {
 type InboundMessage =
   | InitMessage
   | { type: 'prompt'; id: string; message: string; systemPrompt: string; images?: Array<{ type: 'image'; data: string; mimeType: string }> }
-  | { type: 'register_tools'; tools: ProxyToolDef[] }
+  | { type: 'sync_tools'; tools: ProxyToolDef[] }
   | { type: 'tool_execute_response'; requestId: string; result: { content: string; isError: boolean } }
   | { type: 'pre_tool_use_response'; requestId: string; action: 'allow' | 'block' | 'modify'; input?: Record<string, unknown>; reason?: string }
   | { type: 'abort' }
@@ -173,6 +176,7 @@ type InboundMessage =
   | { type: 'set_thinking_level'; level: string }
   | { type: 'compact'; id: string; customInstructions?: string }
   | { type: 'set_auto_compaction'; id: string; enabled: boolean }
+  | { type: 'set_browser_tool_enabled'; enabled: boolean }
   | RuntimeConfigUpdateMessage
   | { type: 'steer'; message: string }
   | { type: 'token_update'; piAuth: { provider: string; credential: PiCredential } }
@@ -209,7 +213,19 @@ interface TrajectoryEventAttachments {
   promptSnapshot?: string;
 }
 
-type OutboundAgentEvent = AgentSessionEvent | (EnrichedToolExecutionStartEvent & TrajectoryEventAttachments);
+interface SettledUsageAttachments {
+  /** Authoritative current-context occupancy reported by Pi after the run settles. */
+  contextUsage?: {
+    tokens: number | null;
+    contextWindow: number;
+    percent: number | null;
+  };
+}
+
+type OutboundAgentEvent =
+  | AgentSessionEvent
+  | (EnrichedToolExecutionStartEvent & TrajectoryEventAttachments)
+  | (Extract<AgentSessionEvent, { type: 'agent_settled' }> & SettledUsageAttachments);
 
 /** Messages to main process (stdout) */
 interface OutboundReady { type: 'ready'; sessionId: string | null; callbackPort: number; callbackToken: string }
@@ -667,7 +683,9 @@ async function ensureSession(): Promise<AgentSession> {
   //     then `.has(name)` returns false for every string lookup → zero tools active.
   const builtinDefs = [
     createReadToolDefinition(cwd),
-    createBashToolDefinition(cwd),
+    process.platform === 'win32'
+      ? createPowerShellToolDefinition(cwd)
+      : createBashToolDefinition(cwd),
     createEditToolDefinition(cwd),
     createWriteToolDefinition(cwd),
     createGrepToolDefinition(cwd),
@@ -675,9 +693,14 @@ async function ensureSession(): Promise<AgentSession> {
     createLsToolDefinition(cwd),
   ];
   const proxyTools = buildProxyTools();
-  const wrappedAll = wrapToolsWithHooks([...builtinDefs, ...webTools, ...proxyTools]);
+  // report_progress is local, read-only and intentionally bypasses the
+  // permission handshake: it is a presentation channel, not an external action.
+  const wrappedAll = [
+    ...wrapToolsWithHooks([...builtinDefs, ...webTools, ...proxyTools]),
+    createReportProgressTool(),
+  ];
   const toolAllowlist = wrappedAll.map(t => t.name);
-  debugLog(`Session tools: ${builtinDefs.length} builtin + ${webTools.length} web + ${proxyTools.length} proxy = ${wrappedAll.length} total`);
+  debugLog(`Session tools: ${builtinDefs.length} builtin + ${webTools.length} web + ${proxyTools.length} proxy + 1 progress = ${wrappedAll.length} total`);
 
   // Build session options
   const sessionOptions: CreateAgentSessionOptions = {
@@ -987,6 +1010,33 @@ function buildProxyTools(): ToolDefinition<any, any>[] {
   }));
 }
 
+/**
+ * A first-class progress channel for agentic runs.
+ *
+ * Pi treats a prose-only assistant message as the end of an agent loop. Models
+ * should use this tool when they need to surface an update and then keep
+ * working: the tool call keeps the native Pi loop alive, while the main-process
+ * event adapter renders `message` as intermediate assistant text.
+ */
+function createReportProgressTool(): ToolDefinition<any, any> {
+  return {
+    name: 'report_progress',
+    label: 'Report progress',
+    description: 'Show a brief progress update to the user without ending the current task. Call this only when work remains, then continue immediately with the next tool or action.',
+    promptSnippet: 'Report visible progress without ending the active task.',
+    parameters: Type.Object({
+      message: Type.String({ description: 'A concise, user-facing progress update.' }),
+    }),
+    execute: async () => ({
+      content: [{
+        type: 'text',
+        text: 'Progress delivered. Continue the task immediately; do not wait for a user reply.',
+      }],
+      details: undefined,
+    }),
+  };
+}
+
 // ============================================================
 // LLM Query (ephemeral session for call_llm + mini completions)
 // ============================================================
@@ -1109,7 +1159,7 @@ async function queryLlm(request: LLMQueryRequest): Promise<LLMQueryResult> {
             .join('');
         }
       }
-      if (event.type === 'agent_end') {
+      if (event.type === 'agent_settled') {
         completionResolve();
       }
     });
@@ -1363,6 +1413,15 @@ function handleSessionEvent(event: AgentSessionEvent): void {
     } as unknown as OutboundAgentEvent;
   }
 
+  if (event.type === 'agent_settled' && piSession) {
+    // Pi's value accounts for compaction and cached conversation state. Forward
+    // it instead of estimating current context from the last provider response.
+    forwardedEvent = {
+      ...event,
+      contextUsage: piSession.getContextUsage(),
+    } as OutboundAgentEvent;
+  }
+
   // Forward all events to main process
   send({ type: 'event', event: forwardedEvent });
 }
@@ -1495,27 +1554,40 @@ async function handlePrompt(msg: Extract<InboundMessage, { type: 'prompt' }>): P
 
     debugLog(`Prompt failed: ${errorMsg}`);
     send({ type: 'error', message: errorMsg, code: 'prompt_error' });
-    // Send synthetic agent_end so the main process event queue unblocks.
-    // willRetry: false — this is the terminal error path, no retry follows.
-    send({ type: 'event', event: { type: 'agent_end', messages: [], willRetry: false } });
+    // Prompt failed before Pi could establish a normal run, so synthesize the
+    // same terminal boundary the SDK guarantees for started runs.
+    send({ type: 'event', event: { type: 'agent_settled' } });
   }
 }
 
-function handleRegisterTools(msg: Extract<InboundMessage, { type: 'register_tools' }>): void {
-  // Merge: replace existing tools by name, add new ones
-  const incoming = new Map(msg.tools.map(t => [t.name, t]));
-  proxyToolDefs = [
-    ...proxyToolDefs.filter(t => !incoming.has(t.name)),
-    ...msg.tools,
-  ];
-  debugLog(`Registered ${msg.tools.length} proxy tools (total: ${proxyToolDefs.length}): ${msg.tools.map(t => t.name).join(', ')}`);
+function handleSyncTools(msg: Extract<InboundMessage, { type: 'sync_tools' }>): void {
+  if (!proxyToolDefinitionsChanged(proxyToolDefs, msg.tools)) {
+    debugLog(`Proxy tool sync unchanged (${msg.tools.length} tools)`);
+    return;
+  }
 
-  // If session exists, mark for recreation on next prompt.
-  // Don't dispose mid-generation — the flag is checked in handlePrompt().
+  // Replace the full proxy set so removed/disabled source tools cannot remain
+  // visible in a resumed Pi session.
+  proxyToolDefs = msg.tools;
+  debugLog(`Synced ${proxyToolDefs.length} proxy tools: ${proxyToolDefs.map(t => t.name).join(', ')}`);
+
+  // Pi registers custom tool definitions at construction time. Recreate only
+  // after a real definition change, never for an identical per-turn sync.
   if (piSession) {
     toolsChanged = true;
-    debugLog('Proxy tools changed — session will be recreated on next prompt');
+    debugLog('Proxy tool definitions changed — session will be recreated on next prompt');
   }
+}
+
+function handleSetBrowserToolEnabled(
+  msg: Extract<InboundMessage, { type: 'set_browser_tool_enabled' }>,
+): void {
+  if (!initConfig || initConfig.browserToolEnabled === msg.enabled) return;
+  initConfig.browserToolEnabled = msg.enabled;
+  // Built-in denylisting is fixed at AgentSession construction. Defer the
+  // rebuild to the next prompt so an in-flight turn is never interrupted.
+  if (piSession) toolsChanged = true;
+  debugLog(`Browser tool ${msg.enabled ? 'enabled' : 'disabled'}; session refresh queued`);
 }
 
 function handleToolExecuteResponse(msg: Extract<InboundMessage, { type: 'tool_execute_response' }>): void {
@@ -1815,8 +1887,8 @@ async function processMessage(msg: InboundMessage): Promise<void> {
       await handlePrompt(msg);
       break;
 
-    case 'register_tools':
-      handleRegisterTools(msg);
+    case 'sync_tools':
+      handleSyncTools(msg);
       break;
 
     case 'tool_execute_response':
@@ -1857,6 +1929,10 @@ async function processMessage(msg: InboundMessage): Promise<void> {
 
     case 'set_auto_compaction':
       await handleSetAutoCompaction(msg);
+      break;
+
+    case 'set_browser_tool_enabled':
+      handleSetBrowserToolEnabled(msg);
       break;
 
     case 'update_runtime_config':

@@ -1,281 +1,97 @@
 # Craft Agents Electron App
 
-The primary desktop interface for Craft Agents, built with Electron + React. Provides a multi-session inbox with chat interface for interacting with Claude via Craft workspaces.
+The primary desktop client for Craft Agents. It provides the multi-session workspace, Content Workbench, browser integration, local capability dispatch, and renderer for the single Pi agent backend.
 
-## Quick Start
+## Quick start
+
+From the repository root:
 
 ```bash
-# From the project root
-bun run electron:build   # Build the app
-bun run electron:start   # Build and run
+bun install
+bun run electron:dev       # development with renderer HMR
+bun run electron:build     # production bundles and resources
+bun run electron:start     # build and launch
 ```
 
-## Architecture
+Use Bun 1.4.0, as pinned by the root `packageManager` field and build scripts.
 
+## Runtime architecture
+
+```text
+renderer (React)
+    │ preload context bridge / RPC events
+Electron main process
+    │ packages/server-core SessionManager
+    │ packages/shared PiAgent
+    └─ JSONL stdio → bundled pi-agent-server → Pi SDK 0.84.3
 ```
+
+The main-process bundle does not contain an AI SDK. `packages/pi-agent-server` is built separately with Bun and staged under `resources/pi-agent-server`; this keeps provider and agent failures isolated from Electron.
+
+Credentials are resolved by the shared credential manager and sent to the subprocess as provider-aware `piAuth` data. OAuth refreshes are delivered with `token_update`. Provider secrets are not read from ambient `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN` variables.
+
+Session lifecycle and source management live in `packages/server-core`; tool permissions and event adaptation live in `packages/shared`; React components shared with web surfaces live in `packages/ui`.
+
+## Directory map
+
+```text
 apps/electron/
-├── src/
-│   ├── main/              # Electron main process
-│   │   ├── index.ts       # Window creation, app lifecycle
-│   │   ├── ipc.ts         # IPC handler registration
-│   │   ├── menu.ts        # Application menu (File, Edit, View, Help)
-│   │   ├── sessions.ts    # Session management, CraftAgent integration
-│   │   ├── deep-link.ts   # Deep link URL parsing and handling
-│   │   ├── agent-service.ts # Agent listing, caching, auth checking
-│   │   └── sources-service.ts # Source and authentication service
-│   ├── preload/           # Context bridge (main ↔ renderer)
-│   │   └── index.ts       # Exposes electronAPI to renderer
-│   ├── renderer/          # React UI
-│   │   ├── App.tsx        # Main app, event handling
-│   │   ├── components/
-│   │   │   ├── chat/      # Chat UI (ChatInput, ChatDisplay)
-│   │   │   ├── markdown/  # Markdown renderer with Shiki
-│   │   │   └── ui/        # shadcn/ui components (incl. source-avatar.tsx)
-│   │   ├── contexts/
-│   │   │   └── NavigationContext.tsx  # Type-safe routing and navigation
-│   │   ├── lib/
-│   │   │   └── navigate.ts  # Global navigate() function
-│   │   ├── hooks/
-│   │   │   └── useAgentState.ts  # Agent activation state machine
-│   │   └── playground/    # Component development playground
-│   └── shared/
-│       ├── types.ts       # Shared TypeScript interfaces
-│       ├── routes.ts      # Type-safe route definitions
-│       └── route-parser.ts # Route string parsing
-├── dist/                  # Build output
-└── resources/             # App icons
+├── src/main/       Electron lifecycle, windows, local capabilities
+├── src/preload/    renderer-safe context bridge
+├── src/renderer/   React app, event processing, workbench panels
+├── src/shared/     desktop transport and route types
+├── resources/      bundled docs, defaults, icons, release notes
+├── scripts/        platform packaging helpers
+└── electron-builder.yml
 ```
 
-## Key Learnings & Gotchas
+`resources/AGENTS.md` defines the rules for bundled resources. In particular, user-visible changes go to `resources/release-notes/next.md`; versioned release-note files are release-owned history.
 
-### 1. Pi Agent Subprocess Bundling
-
-The Electron app spawns `packages/pi-agent-server` (a Bun-compiled JS bundle) as a
-JSONL-over-stdio subprocess. `scripts/build/common.ts` stages the interceptor bundle and
-`pi-agent-server` into the packaged resources. The Pi SDK
-(`@earendil-works/pi-coding-agent`) is bundled into the pi-agent-server build output —
-no Claude native binary is staged.
-
-### 2. Authentication Setup (CRITICAL)
-
-Agent credentials are **not** injected via `process.env` (no
-`CLAUDE_CODE_OAUTH_TOKEN` / `ANTHROPIC_API_KEY` dance). `PiAgent`
-(`packages/shared/src/agent/pi-agent.ts`) resolves the active connection's
-credential through the credential manager (`getCredentialManager()` — OAuth
-tokens, API keys, or AWS IAM) and builds a provider-aware `piAuth` object.
-That object is sent to the pi-agent-server subprocess inside the JSONL `init`
-command; the server pre-loads it into an in-memory credential store that backs
-the Pi SDK's `ModelRuntime`. Expired OAuth tokens are refreshed and pushed at
-runtime via `token_update` JSONL messages.
-
-The only env-var injection at spawn is AWS Bedrock (`AWS_*`), scoped to the
-subprocess env — the SDK itself never reads `ANTHROPIC_API_KEY` for provider
-auth. (`ANTHROPIC_API_KEY` / `CLAUDE_CODE_OAUTH_TOKEN` are blocked from spawned
-MCP subprocess envs — `BLOCKED_ENV_VARS` in `packages/shared/src/mcp/client.ts`.)
-
-### 3. AgentEvent Type Mismatches
-
-The `AgentEvent` types from `CraftAgent` use different property names than you might expect:
-
-| Event Type | Wrong | Correct |
-|------------|-------|---------|
-| `text_delta` | `event.delta` | `event.text` |
-| `error` | `event.error` | `event.message` |
-| `tool_result` | `event.toolName` | Only has `event.toolUseId` |
-
-**Solution for tool_result:** Track `toolUseId → toolName` mapping from `tool_start` events:
-```typescript
-interface ManagedSession {
-  // ...
-  pendingTools: Map<string, string>  // toolUseId -> toolName
-}
-
-// In tool_start handler:
-managed.pendingTools.set(event.toolUseId, event.toolName)
-
-// In tool_result handler:
-const toolName = managed.pendingTools.get(event.toolUseId) || 'unknown'
-managed.pendingTools.delete(event.toolUseId)
-```
-
-### 4. CraftAgent Constructor
-
-`CraftAgent` expects the full `Workspace` object, not just the ID:
-
-```typescript
-// Wrong:
-new CraftAgent({ workspaceId: workspace.id, model })
-
-// Correct:
-new CraftAgent({ workspace, model })
-```
-
-### 5. esbuild Configuration
-
-Only `electron` is externalized:
-
-```json
-"electron:build:main": "esbuild ... --external:electron"
-```
-
-The main-process bundle contains **no AI SDK**: the Pi SDK
-(`@earendil-works/pi-coding-agent`) lives entirely inside the pi-agent-server
-bundle, which is built separately with `bun build` and spawned as a subprocess
-(see #1). The main bundle does alias grammY's bundled polyfills
-(`node-fetch@2` + `abort-controller@3`) to native Node shims — otherwise
-esbuild renames the polyfill's `class AbortSignal` and breaks node-fetch@2's
-`constructor.name` check, failing every Telegram API call.
-
-## Environment Variables
-
-### Gmail OAuth (via 1Password CLI)
-
-Gmail OAuth credentials are synced from 1Password to a local `.env` file.
-
-**One-time setup:**
-```bash
-# 1. Install 1Password CLI
-brew install 1password-cli
-
-# 2. Enable CLI integration: 1Password app → Settings → Developer → CLI Integration
-
-# 3. Sync secrets (requires Touch ID once)
-bun run sync-secrets
-```
-
-**That's it!** Now `bun run electron:dev` and `bun run electron:start` work without prompts.
-
-**How it works:**
-- `.env.1password` contains `op://` references to the `Dev_Craft_Agents` vault
-- `bun run sync-secrets` resolves references → writes `.env` (gitignored)
-- Secrets are baked into the build at compile time via esbuild `--define` flags
-
-**Creating your own OAuth credentials:**
-1. Go to [Google Cloud Console](https://console.cloud.google.com/) → APIs & Services → Credentials
-2. Create OAuth Client ID (Desktop app type)
-3. Enable required scopes in OAuth consent screen:
-   - `https://www.googleapis.com/auth/gmail.readonly`
-   - `https://www.googleapis.com/auth/userinfo.email`
-
-## Build Process
+## Build and verification
 
 ```bash
-bun run electron:build:main      # Bundle main process (esbuild)
-bun run electron:build:preload   # Bundle preload script (esbuild)
-bun run electron:build:renderer  # Bundle React app (Vite)
-bun run electron:build:resources # Copy icons
-bun run electron:build           # All of the above
+bun run typecheck:electron
+bun run electron:build:main
+bun run electron:build:preload
+bun run electron:build:renderer
+bun run electron:build:resources
+bun run electron:build:assets
+bun run electron:build
 ```
 
-## macOS Liquid Glass Icon
+The platform packaging commands are `electron:dist:mac`, `electron:dist:win`, and `electron:dist:linux`. Packaged builds must contain both the Pi server bundle and the pinned Bun runtime.
 
-The app includes a pre-compiled `Assets.car` for macOS 26+ Liquid Glass icons. This enables the layered glass effect on macOS Tahoe. On older macOS versions, the app falls back to `icon.icns`.
+## Event contract
 
-**Regenerating after icon changes:**
+Desktop code consumes the canonical `AgentEvent` protocol:
 
-If you modify `resources/icon.icon`, regenerate the Assets.car:
+- `text_delta.text` contains streaming text.
+- `error.message` contains plain backend errors.
+- `tool_start` establishes the `toolUseId → toolName` mapping used by later results.
+- `agent_settled` is adapted to the terminal `complete` event; `agent_end` is not terminal.
+- `report_progress` is rendered as intermediate text while the Pi loop continues.
 
-```bash
-cd apps/electron
-xcrun actool "resources/icon.icon" --compile "resources" \
-  --app-icon AppIcon --minimum-deployment-target 26.0 \
-  --platform macosx --output-partial-info-plist /dev/null
-```
+Do not introduce a second provider-specific event path in Electron. Normalize backend data at the shared adapter boundary.
 
-> **Note:** This requires macOS 26 with Xcode 26 (macOS 26 SDK). The pre-compiled Assets.car is committed to the repo so CI builds work without the SDK.
+## Performance diagnostics
+
+Main-process spans record cold/warm agent state, first event/response/tool, and tool round trips. The renderer records event processing and stream-to-paint samples with p50/p95 summaries through `src/renderer/lib/perf.ts`.
+
+When investigating perceived stalls, distinguish:
+
+1. cold subprocess/session startup;
+2. provider first-token latency;
+3. tool round-trip latency;
+4. main-process event handling;
+5. renderer paint latency.
+
+This avoids attributing network or model latency to the desktop renderer.
 
 ## Debugging
 
-Enable console logging by checking the terminal where you ran `electron:start`. Key log prefixes:
-- `[SessionManager]` - Session lifecycle, auth setup
-- `[IPC]` - Inter-process communication
+- Run `bun run server:build:subprocess` after Pi server changes.
+- Run `bun run typecheck:all` before packaging.
+- Main-process and subprocess logs identify session lifecycle, auth refresh, tool sync, and process exits.
+- If a packaged session stays on “thinking,” verify `resources/pi-agent-server/index.js` and the platform Bun executable exist in the unpacked app.
 
-DevTools opens automatically (configured in `index.ts`). Remove `mainWindow.webContents.openDevTools()` for production.
-
-## Current Limitations
-
-1. **In development only** - No electron-builder config for distribution
-
-## Implemented Features
-
-- **Session persistence** - Sessions, messages, and names are saved to disk
-- **File attachments** - Attach images, PDFs, and code files to messages
-- **AI-generated titles** - Sessions get automatic titles after first exchange
-- **Subagent support** - Load and apply agent definitions from Craft documents
-- **Shell integration** - Open URLs in browser, open files in default apps
-- **Permission modes** - Three-level permission system (Explore, Ask to Edit, Auto)
-- **Background tasks** - Run long-running tasks in background with progress tracking
-- **Multi-file diff** - VS Code-style window for viewing all file changes in a turn
-- **Dynamic statuses** - Workspace-customizable session workflow states
-- **Theme system** - Cascading themes (app → workspace → agent)
-- **Agent state machine** - useAgentState hook manages activation flow
-- **Application menu** - Standard macOS/Windows menus with keyboard shortcuts
-- **Component playground** - Development tool for testing UI components in isolation
-- **Type-safe navigation** - Unified routing system for tabs, actions, and deep links
-
-## Navigation System
-
-The app uses a type-safe routing system for all internal navigation and deep links.
-
-### Quick Start
-
-```typescript
-import { navigate, routes } from '@/lib/navigate'
-
-// Tab routes
-navigate(routes.tab.settings())           // Open settings
-navigate(routes.tab.chat('session123'))   // Open chat
-navigate(routes.tab.agentInfo('claude'))  // Open agent info
-
-// Action routes
-navigate(routes.action.newChat({ agentId: 'claude' }))  // New chat with agent
-navigate(routes.action.deleteSession('id'))             // Delete session
-
-// Sidebar routes
-navigate(routes.sidebar.inbox())          // Show inbox
-navigate(routes.sidebar.flagged())        // Show flagged
-```
-
-### Deep Links
-
-External apps can navigate using `craftagents://` URLs:
-
-```
-craftagents://settings
-craftagents://allSessions/session/session123
-craftagents://sources/source/github
-craftagents://action/new-chat
-craftagents://workspace/{id}/allSessions/session/abc123
-```
-
-See `CLAUDE.md` for complete route reference.
-
-## File Overview
-
-| File | Purpose |
-|------|---------|
-| `main/index.ts` | App entry, window creation |
-| `main/sessions.ts` | CraftAgent wrapper, event processing, source integration |
-| `main/ipc.ts` | IPC channel handlers (sessions, files, shell) |
-| `main/menu.ts` | Application menu (File, Edit, View, Help) |
-| `main/deep-link.ts` | Deep link URL parsing and handling |
-| `main/sources-service.ts` | Source loading and authentication service |
-| `preload/index.ts` | Context bridge API |
-| `renderer/App.tsx` | React root, state management |
-| `renderer/contexts/NavigationContext.tsx` | Type-safe routing and navigation handler |
-| `renderer/lib/navigate.ts` | Global navigate() function |
-| `renderer/hooks/useAgentState.ts` | Agent activation state machine (IPC-based) |
-| `renderer/hooks/useBackgroundTasks.ts` | Background task tracking |
-| `renderer/hooks/useStatuses.ts` | Workspace status configuration |
-| `renderer/hooks/useTheme.ts` | Cascading theme resolution |
-| `renderer/components/chat/Chat.tsx` | Main chat layout with resizable panels |
-| `renderer/components/chat/ChatInput.tsx` | Message input with file attachments |
-| `renderer/components/chat/ChatDisplay.tsx` | Message list with markdown rendering |
-| `renderer/components/app-shell/input/structured/PermissionRequest.tsx` | Bash command approval UI |
-| `renderer/components/chat/SessionList.tsx` | Session sidebar with rename support |
-| `renderer/components/chat/AttachmentPreview.tsx` | File attachment bubbles |
-| `renderer/components/ui/source-avatar.tsx` | Unified source icon component |
-| `renderer/playground/` | Component development playground |
-| `shared/types.ts` | IPC channels, Message/Session/FileAttachment types |
-| `shared/routes.ts` | Type-safe route definitions and builders |
-| `shared/route-parser.ts` | Route string parsing utilities |
+For the complete backend contract, see [`docs/pi-kernel.md`](../../docs/pi-kernel.md).

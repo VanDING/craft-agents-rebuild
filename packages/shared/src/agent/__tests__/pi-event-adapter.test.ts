@@ -4,7 +4,7 @@
  * Tests the Pi SDK AgentEvent / AgentSessionEvent → Craft AgentEvent conversion.
  * Each test provides mock Pi SDK event objects and verifies the AgentEvents produced.
  */
-import { describe, it, expect, beforeEach, afterEach, jest } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -43,10 +43,58 @@ describe('PiEventAdapter', () => {
       expect(events).toHaveLength(0);
     });
 
-    it('should emit complete for agent_end', () => {
+    it('should wait for agent_settled before emitting complete', () => {
       const events = collect(adapter.adaptEvent({ type: 'agent_end' } as any));
-      expect(events).toHaveLength(1);
-      expect(events[0]).toMatchObject({ type: 'complete' });
+      expect(events).toHaveLength(0);
+      expect(adapter.shouldCompleteQueue(false)).toBe(false);
+
+      const settledEvents = collect(adapter.adaptEvent({ type: 'agent_settled' } as any));
+      expect(settledEvents).toMatchObject([{ type: 'complete' }]);
+      expect(adapter.shouldCompleteQueue(true)).toBe(true);
+    });
+
+    it('should forward Pi context usage at the settled boundary', () => {
+      const events = collect(adapter.adaptEvent({
+        type: 'agent_settled',
+        contextUsage: { tokens: 42_000, contextWindow: 200_000, percent: 21 },
+      } as any));
+
+      expect(events).toEqual([
+        { type: 'usage_update', usage: { inputTokens: 42_000, contextWindow: 200_000 } },
+        { type: 'complete' },
+      ]);
+    });
+
+    it('should preserve settled context usage in the terminal complete event', () => {
+      collect(adapter.adaptEvent({
+        type: 'message_end',
+        message: {
+          role: 'assistant',
+          stopReason: 'stop',
+          content: 'Done',
+          usage: {
+            input: 80_000,
+            output: 500,
+            cacheRead: 10_000,
+            cacheWrite: 1_000,
+            cost: { total: 0.25 },
+          },
+        },
+      } as any));
+
+      const events = collect(adapter.adaptEvent({
+        type: 'agent_settled',
+        contextUsage: { tokens: 42_000, contextWindow: 200_000, percent: 21 },
+      } as any));
+
+      expect(events.at(-1)).toMatchObject({
+        type: 'complete',
+        usage: {
+          inputTokens: 42_000,
+          outputTokens: 500,
+          contextWindow: 200_000,
+        },
+      });
     });
   });
 
@@ -626,6 +674,31 @@ describe('PiEventAdapter', () => {
   // ============================================================
 
   describe('tool events', () => {
+    it('renders report_progress as intermediate text and suppresses its internal tool result', () => {
+      collect(adapter.adaptEvent({ type: 'turn_start' } as any));
+      const startEvents = collect(adapter.adaptEvent({
+        type: 'tool_execution_start',
+        toolCallId: 'progress-1',
+        toolName: 'report_progress',
+        args: { message: 'I found the cause; now I am applying the fix.' },
+      } as any));
+
+      expect(startEvents).toMatchObject([{
+        type: 'text_complete',
+        text: 'I found the cause; now I am applying the fix.',
+        isIntermediate: true,
+      }]);
+
+      const endEvents = collect(adapter.adaptEvent({
+        type: 'tool_execution_end',
+        toolCallId: 'progress-1',
+        toolName: 'report_progress',
+        result: { content: [{ type: 'text', text: 'Progress delivered.' }] },
+        isError: false,
+      } as any));
+      expect(endEvents).toHaveLength(0);
+    });
+
     it('should emit tool_start for tool_execution_start', () => {
       collect(adapter.adaptEvent({ type: 'turn_start' } as any));
       const events = collect(adapter.adaptEvent({
@@ -1196,15 +1269,13 @@ describe('PiEventAdapter', () => {
   });
 
   // ============================================================
-  // Overflow recovery state machine
+  // Overflow recovery at Pi's settled boundary
   // ============================================================
   //
   // The Pi SDK's _checkCompaction fires _runAutoCompaction("overflow", true)
   // on context_length_exceeded, then agent.continue() to retry. The recovered
-  // turn arrives AFTER the original agent_end. The adapter holds the queue
-  // open across this flow so the recovered response reaches the UI; if
-  // recovery fails or no compaction events arrive, the held error is
-  // surfaced and the queue terminates. See plans/fix-pi-gpt-compaction.md.
+  // turn arrives AFTER the original agent_end. Pi 0.84.3 emits agent_settled
+  // only after that recovery/retry/continuation work has finished.
 
   describe('overflow recovery', () => {
     const overflowMessage = {
@@ -1223,10 +1294,10 @@ describe('PiEventAdapter', () => {
       } as any));
       expect(errEvents).toHaveLength(0);
 
-      // 2. Original agent_end — held, no complete yielded, queue stays open.
+      // 2. Original agent_end — one loop ended, but the run is not settled.
       const heldAgentEnd = collect(adapter.adaptEvent({ type: 'agent_end' } as any));
       expect(heldAgentEnd).toHaveLength(0);
-      expect(adapter.shouldCompleteQueue(true)).toBe(false);
+      expect(adapter.shouldCompleteQueue(false)).toBe(false);
 
       // 3. compaction_start — structured event + status surfaces.
       const startEvents = collect(adapter.adaptEvent({ type: 'compaction_start' } as any));
@@ -1243,7 +1314,7 @@ describe('PiEventAdapter', () => {
       expect(endEvents[1]).toMatchObject({ type: 'info', message: 'Compacted context to fit within limits' });
       expect(adapter.shouldCompleteQueue(false)).toBe(false);
 
-      // 5. Recovered text + final agent_end — text_complete + complete arrive.
+      // 5. Recovered text + final agent_end still do not complete Craft.
       const recoveredText = collect(adapter.adaptEvent({
         type: 'message_end',
         message: { role: 'assistant', stopReason: 'stop', content: 'Recovered answer' },
@@ -1251,16 +1322,20 @@ describe('PiEventAdapter', () => {
       expect(recoveredText).toMatchObject([{ type: 'text_complete', text: 'Recovered answer' }]);
 
       const finalAgentEnd = collect(adapter.adaptEvent({ type: 'agent_end' } as any));
-      expect(finalAgentEnd).toMatchObject([{ type: 'complete' }]);
+      expect(finalAgentEnd).toHaveLength(0);
+      expect(adapter.shouldCompleteQueue(false)).toBe(false);
+
+      const settledEvents = collect(adapter.adaptEvent({ type: 'agent_settled' } as any));
+      expect(settledEvents).toMatchObject([{ type: 'complete' }]);
       expect(adapter.shouldCompleteQueue(true)).toBe(true);
 
       // The original context_length_exceeded never reached the UI.
-      const allYields = [...errEvents, ...heldAgentEnd, ...startEvents, ...endEvents, ...recoveredText, ...finalAgentEnd];
+      const allYields = [...errEvents, ...heldAgentEnd, ...startEvents, ...endEvents, ...recoveredText, ...finalAgentEnd, ...settledEvents];
       const errorYields = allYields.filter(e => e.type === 'error' || e.type === 'typed_error');
       expect(errorYields).toHaveLength(0);
     });
 
-    it('failure path: drains held overflow with friendly error + complete', () => {
+    it('failure path reports compaction error and completes only when settled', () => {
       collect(adapter.adaptEvent({ type: 'turn_start' } as any));
 
       collect(adapter.adaptEvent({ type: 'message_end', message: overflowMessage } as any));
@@ -1274,7 +1349,7 @@ describe('PiEventAdapter', () => {
         errorMessage: 'Out of memory during summary',
       } as any));
 
-      expect(failureEvents.map(e => e.type)).toEqual(['compaction_end', 'error', 'complete']);
+      expect(failureEvents.map(e => e.type)).toEqual(['compaction_end', 'error']);
       expect(failureEvents[0]).toMatchObject({
         type: 'compaction_end',
         errorMessage: 'Out of memory during summary',
@@ -1283,35 +1358,24 @@ describe('PiEventAdapter', () => {
         type: 'error',
         message: 'Context compaction failed: Out of memory during summary',
       });
-      expect(failureEvents[2]).toEqual({ type: 'complete' });
-      // Queue should terminate even though the event wasn't agent_end.
-      expect(adapter.shouldCompleteQueue(false)).toBe(true);
-      // Only one terminal complete — subsequent calls return false.
       expect(adapter.shouldCompleteQueue(false)).toBe(false);
+
+      const settledEvents = collect(adapter.adaptEvent({ type: 'agent_settled' } as any));
+      expect(settledEvents).toEqual([{ type: 'complete' }]);
+      expect(adapter.shouldCompleteQueue(true)).toBe(true);
     });
 
-    it('skipped recovery: fallback timer drains held error after timeout', () => {
-      jest.useFakeTimers();
-      try {
-        const enqueued: any[] = [];
-        let completed = false;
-        adapter.setOverflowFallbackHandlers(
-          (event) => enqueued.push(event),
-          () => { completed = true; },
-        );
+    it('surfaces a held overflow if Pi settles without recovery events', () => {
+      collect(adapter.adaptEvent({ type: 'turn_start' } as any));
+      collect(adapter.adaptEvent({ type: 'message_end', message: overflowMessage } as any));
+      collect(adapter.adaptEvent({ type: 'agent_end' } as any));
 
-        collect(adapter.adaptEvent({ type: 'turn_start' } as any));
-        collect(adapter.adaptEvent({ type: 'message_end', message: overflowMessage } as any));
-        collect(adapter.adaptEvent({ type: 'agent_end' } as any));
-
-        // No compaction events arrive. Advance past the 5 s fallback timeout.
-        jest.advanceTimersByTime(5_000);
-
-        expect(enqueued).toEqual([{ type: 'error', message: overflowMessage.errorMessage }]);
-        expect(completed).toBe(true);
-      } finally {
-        jest.useRealTimers();
-      }
+      const settledEvents = collect(adapter.adaptEvent({ type: 'agent_settled' } as any));
+      expect(settledEvents).toEqual([
+        { type: 'error', message: overflowMessage.errorMessage },
+        { type: 'complete' },
+      ]);
+      expect(adapter.shouldCompleteQueue(true)).toBe(true);
     });
 
     it('non-overflow regression: rate-limit error preserves existing behavior', () => {
@@ -1326,45 +1390,18 @@ describe('PiEventAdapter', () => {
         },
       } as any));
 
-      // Rate-limit yields a typed_error (not held) — overflow state stays 'none'
-      // so a subsequent agent_end completes the queue normally.
+      // Rate-limit yields a typed_error immediately, while completion still
+      // waits for the SDK's terminal boundary.
       expect(events).toHaveLength(1);
       expect(events[0].type).toMatch(/^(error|typed_error)$/);
 
       const agentEndEvents = collect(adapter.adaptEvent({ type: 'agent_end' } as any));
-      expect(agentEndEvents).toMatchObject([{ type: 'complete' }]);
+      expect(agentEndEvents).toHaveLength(0);
+      expect(adapter.shouldCompleteQueue(false)).toBe(false);
+
+      const settledEvents = collect(adapter.adaptEvent({ type: 'agent_settled' } as any));
+      expect(settledEvents).toEqual([{ type: 'complete' }]);
       expect(adapter.shouldCompleteQueue(true)).toBe(true);
-    });
-
-    it('SDK race signature: friendly message instead of raw stack', () => {
-      collect(adapter.adaptEvent({ type: 'turn_start' } as any));
-      collect(adapter.adaptEvent({ type: 'message_end', message: overflowMessage } as any));
-      collect(adapter.adaptEvent({ type: 'agent_end' } as any));
-      collect(adapter.adaptEvent({ type: 'compaction_start' } as any));
-
-      const events = collect(adapter.adaptEvent({
-        type: 'compaction_end',
-        result: null,
-        aborted: false,
-        errorMessage: "Auto-compaction failed: undefined is not an object (evaluating 'this._autoCompactionAbortController.signal')",
-      } as any));
-
-      expect(events.map(e => e.type)).toEqual(['compaction_end', 'error', 'complete']);
-      expect(events[0]).toMatchObject({ type: 'compaction_end' });
-      expect(events[1]).toEqual({
-        type: 'error',
-        message: 'Auto-compaction hit a transient error. Try /compact manually.',
-      });
-      expect(events[2]).toEqual({ type: 'complete' });
-      // The raw `_autoCompactionAbortController.signal` text is not in any
-      // user-facing yield (only in the structured trajectory event's
-      // errorMessage, which the chat surface never renders).
-      const userFacingMessages = events
-        .filter(e => e.type === 'error' || e.type === 'status' || e.type === 'info')
-        .map(e => e.message ?? '')
-        .join(' ');
-      expect(userFacingMessages).not.toMatch(/_autoCompactionAbortController/);
-      expect(adapter.shouldCompleteQueue(false)).toBe(true);
     });
   });
 });

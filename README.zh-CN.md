@@ -36,10 +36,10 @@
 | 维度 | 上游（`craft-agents-oss`） | 本 fork |
 |------|---------------------------|---------|
 | AI 后台 | Claude Agent SDK **+** Pi SDK（两条路径） | **仅 Pi SDK** —— 统一路径 |
-| 后端代码 | ~7,000 行（两套实现） | ~4,500 行（-36%） |
+| 后台生命周期 | 两套事件与会话实现 | 一套 Pi 生命周期，以 `agent_settled` 为终态 |
 | 原生依赖 | 每平台 ~210 MB Claude 二进制 | 无 |
 | Provider 路径 | 两套并行实现 | 一套 —— 30+ 提供商，严格超集 |
-| React / TS / Vite / Electron | 18 / 5 / 6 / 39 | **19 / 7 / 8 / 43** |
+| 运行时工具同步 | 后台各自注册 | 增量 `sync_tools`，复用热会话 |
 
 其他值得注意的变更：
 
@@ -48,7 +48,7 @@
 - **修复 Windows 打包**（`build-win.ps1`）：PowerShell 5.1 SHA256、`@vscode/ripgrep` 二进制暂存、pi-agent-server 打包
 - **新增工具链**：共享 `tsconfig.base.json`、postinstall 依赖去重脚本（TS 7 下的 prosemirror）、内联 GitHub Copilot OAuth
 - **内容工作台** —— 面向所有 Agent 视图的通用多面板工作区（详见下文）
-- 完整迁移记录见 [`docs/single-pi-backend-migration.md`](docs/single-pi-backend-migration.md)
+- 当前内核架构与维护基线见 [`docs/pi-kernel.md`](docs/pi-kernel.md)
 
 ### 内容工作台（Content Workbench）
 
@@ -126,7 +126,6 @@ Packages（包）:
 ├── packages/pi-agent-server   — Pi SDK 子进程包装（JSONL stdio）
 ├── packages/core              — 核心类型与存储接口
 ├── packages/ui                — 共享 React 组件（shadcn/ui + Tailwind）
-├── packages/session-mcp-server — 会话级 MCP 工具
 ├── packages/session-tools-core — 共享工具定义
 ├── packages/messaging-gateway — Telegram + WhatsApp 适配器
 └── packages/messaging-whatsapp-worker — WhatsApp 子进程

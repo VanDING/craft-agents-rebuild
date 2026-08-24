@@ -4,8 +4,8 @@
  * Canonical Zod schemas, descriptions, and handler registry for all
  * session-scoped tools. Consumers derive what they need:
  *
- * - Claude SDK  → `.shape` extracts the plain `{ key: z.string() }` literal
- * - MCP / Pi    → `getToolDefsAsJsonSchema()` auto-converts to JSON Schema
+ * - Pi subprocess → `getToolDefsAsJsonSchema()` converts to JSON Schema
+ * - Main process  → the handler registry executes validated calls
  *
  * Adding a new tool: define the schema, description, handler import, and
  * one entry in SESSION_TOOL_DEFS.
@@ -666,7 +666,7 @@ export interface RegistrySessionToolDef extends SessionToolDefBase {
   handler: SessionToolHandler;
 }
 
-/** Tool executed by backend-specific adapters (Pi/Claude/session-mcp-server). */
+/** Tool executed by the Pi host adapter instead of the canonical registry. */
 export interface BackendSessionToolDef extends SessionToolDefBase {
   executionMode: 'backend';
   handler: null;
@@ -731,7 +731,7 @@ export interface SessionToolFilterOptions {
  * Return session tools with optional feature filtering.
  *
  * Callers should use this helper instead of filtering ad hoc so tool visibility
- * stays consistent across Claude, Pi, and session-mcp-server backends.
+ * stays consistent across Pi registration and main-process execution.
  */
 export function getSessionToolDefs(options?: SessionToolFilterOptions): SessionToolDef[] {
   const includeDeveloperFeedback = options?.includeDeveloperFeedback ?? true;
@@ -808,7 +808,7 @@ export function getSessionSafeBlockedToolNames(options?: SessionToolNameOptions)
 /** Set of session tool names for quick membership checks. */
 export const SESSION_TOOL_NAMES = new Set(SESSION_TOOL_DEFS.map(d => d.name));
 
-/** Session tool names that must be handled by backend-specific adapters (Pi/Claude/session-mcp-server). */
+/** Session tool names that must be handled by the Pi host adapter. */
 export const SESSION_BACKEND_TOOL_NAMES = new Set(
   SESSION_TOOL_DEFS.filter(d => d.executionMode === 'backend').map(d => d.name)
 );

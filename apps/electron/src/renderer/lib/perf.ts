@@ -33,6 +33,8 @@ const pendingSwitches = new Map<string, SessionSwitchMetric>()
 // Recent completed metrics for analysis
 const recentMetrics: SessionSwitchMetric[] = []
 const MAX_RECENT_METRICS = 50
+const recentSamples = new Map<string, number[]>()
+const MAX_RECENT_SAMPLES = 200
 
 // Debug mode detection (matches main process pattern)
 let debugMode = false
@@ -164,12 +166,43 @@ export function getSessionSwitchStats(): {
   }
 }
 
+/** Record a renderer duration that was measured outside the session-switch flow. */
+export function recordSample(name: string, durationMs: number): void {
+  if (!debugMode || !Number.isFinite(durationMs) || durationMs < 0) return
+  const samples = recentSamples.get(name) ?? []
+  samples.push(durationMs)
+  if (samples.length > MAX_RECENT_SAMPLES) samples.shift()
+  recentSamples.set(name, samples)
+}
+
+export function getSampleStats(name: string): {
+  count: number
+  avgMs: number
+  p50Ms: number
+  p95Ms: number
+  minMs: number
+  maxMs: number
+} | null {
+  const samples = recentSamples.get(name)
+  if (!samples?.length) return null
+  const sorted = [...samples].sort((a, b) => a - b)
+  return {
+    count: samples.length,
+    avgMs: samples.reduce((sum, value) => sum + value, 0) / samples.length,
+    p50Ms: sorted[Math.floor(sorted.length * 0.5)] ?? 0,
+    p95Ms: sorted[Math.floor(sorted.length * 0.95)] ?? 0,
+    minMs: sorted[0] ?? 0,
+    maxMs: sorted[sorted.length - 1] ?? 0,
+  }
+}
+
 /**
  * Clear all metrics
  */
 export function clearMetrics(): void {
   pendingSwitches.clear()
   recentMetrics.length = 0
+  recentSamples.clear()
 }
 
 // Export as namespace for convenient usage
@@ -181,6 +214,8 @@ export const rendererPerf = {
   endSessionSwitch,
   getRecentMetrics,
   getStats: getSessionSwitchStats,
+  recordSample,
+  getSampleStats,
   clear: clearMetrics,
 }
 

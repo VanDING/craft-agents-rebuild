@@ -1,5 +1,7 @@
 # Craft Agents — 全面代码审计报告 (v2, 合并版)
 
+> **历史快照（2026-08-01）**：本报告记录当时提交的审计结果，不代表当前代码状态。文中部分路径（包括 `packages/session-mcp-server`）和结论已随单 Pi 后台收敛而失效；当前内核基线请以 [`docs/pi-kernel.md`](docs/pi-kernel.md) 和现行测试为准。
+
 审计对象: `/Users/van/projects/CraftAgent`。基线 HEAD `ef67d7ac`(2026-08-01 首版审计),本版合并原 `AUDIT_REPORT.md` + `AUDIT_REVIEW.md`(对抗性审查的修正、归属裁决、方法局限全部并入),并纳入截至 `80559086` 的修复执行状态。
 
 **文档约定**: 每条发现带 `[级别] 标题 — 状态 — 归属`。状态: `OPEN`(未修)/ `FIXED <commit>` / `PARTIAL`。归属: `inherited`(上游原样/同源)/ `fork-caused`(本仓库自引入)/ `混合`(上游骨架 + fork 激活)。

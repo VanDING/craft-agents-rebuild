@@ -7,9 +7,6 @@ export * from './errors.ts';
 
 // Export session-scoped-tools - tools scoped to a specific session
 export {
-  // Session-scoped tools provider
-  getSessionScopedTools,
-  cleanupSessionScopedTools,
   // Plan file management
   getSessionPlansDir,
   getLastPlanFilePath,

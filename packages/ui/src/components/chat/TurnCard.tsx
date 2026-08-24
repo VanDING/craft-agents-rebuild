@@ -130,7 +130,7 @@ function stripMarkdown(text: string): string {
  * Uses @pierre/diffs for accurate line-by-line diff calculation.
  *
  * Supports both:
- * - Claude Code format: { file_path, old_string, new_string }
+ * - Craft canonical format: { file_path, old_string, new_string }
  * - Codex format: { changes: Array<{ path, kind, diff }> }
  *
  * @param toolName - 'Edit' or 'Write'
@@ -161,7 +161,7 @@ function computeEditWriteDiffStats(
       return { additions: totalAdditions, deletions: totalDeletions }
     }
 
-    // Claude Code format: { file_path, old_string, new_string }
+    // Craft canonical format: { file_path, old_string, new_string }
     const oldString = (toolInput.old_string as string) ?? ''
     const newString = (toolInput.new_string as string) ?? ''
     if (!oldString && !newString) return null
@@ -1105,7 +1105,7 @@ function ActivityRow({ activity, onOpenDetails, isLastChild, sessionFolderPath, 
             )}
             {/* Filename badge - supports both Claude Code and Codex formats */}
             {(() => {
-              // Claude Code format: file_path
+              // Craft canonical format: file_path
               if (typeof activity.toolInput?.file_path === 'string') {
                 return (
                   <span className="px-1.5 py-0.5 bg-background shadow-minimal rounded-[4px] text-[11px] text-foreground/70">
@@ -1486,6 +1486,8 @@ function clearAnnotationMarks(root: HTMLElement): void {
   annotatedInlineCodeNodes.forEach((codeNode) => {
     codeNode.removeAttribute('data-ca-annotation-inline-code')
     codeNode.style.backgroundColor = ''
+    // Imperative annotation cleanup cannot be expressed as a utility class.
+    // eslint-disable-next-line craft-styles/no-nonstandard-shadows
     codeNode.style.boxShadow = ''
   })
 

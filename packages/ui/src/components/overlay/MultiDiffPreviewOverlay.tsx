@@ -127,7 +127,7 @@ export function computeChangeStats(change: FileChange): { additions: number; del
     return stats || { additions: 0, deletions: 0 }
   }
 
-  // Handle Claude Code format: original/modified strings
+  // Handle the persisted Craft format: original/modified strings
   const ext = change.filePath.split('.').pop()?.toLowerCase() || ''
   const lang = LANGUAGE_MAP[ext] || 'text'
   const oldFile: FileContents = { name: change.filePath, contents: change.original, lang: lang as any }
@@ -370,7 +370,7 @@ export function MultiDiffPreviewOverlay({
                         onReady={handleDiffReady}
                       />
                     ) : (
-                      // Claude Code format: original/modified strings
+                      // Persisted Craft format: original/modified strings
                       <ShikiDiffViewer
                         original={change.original}
                         modified={change.modified}

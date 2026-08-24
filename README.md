@@ -36,10 +36,10 @@ This fork's core change is architectural: **upstream maintains two AI backends (
 | Area | Upstream (`craft-agents-oss`) | This fork |
 |------|------------------------------|-----------|
 | AI backend | Claude Agent SDK **+** Pi SDK (two paths) | **Pi SDK only** — one unified path |
-| Backend code | ~7,000 lines (two implementations) | ~4,500 lines (-36%) |
+| Backend lifecycle | Two event and session implementations | One Pi lifecycle ending at `agent_settled` |
 | Native payload | ~210 MB Claude binary per platform | None |
 | Provider path | Two parallel implementations | One — 30+ providers, strict superset |
-| React / TS / Vite / Electron | 18 / 5 / 6 / 39 | **19 / 7 / 8 / 43** |
+| Runtime tool sync | Backend-specific registration | Incremental `sync_tools` with warm-session reuse |
 
 Other notable changes:
 
@@ -48,7 +48,7 @@ Other notable changes:
 - **Fixed Windows packaging** (`build-win.ps1`): PowerShell 5.1 SHA256, `@vscode/ripgrep` binary staging, and pi-agent-server bundling
 - **New tooling**: shared `tsconfig.base.json`, a postinstall dependency-dedupe script (prosemirror under TS 7), inlined GitHub Copilot OAuth
 - **Content Workbench** — a generic multi-panel workspace for every agent view (see below)
-- Full migration record: [`docs/single-pi-backend-migration.md`](docs/single-pi-backend-migration.md)
+- Current kernel architecture and maintenance baseline: [`docs/pi-kernel.md`](docs/pi-kernel.md)
 
 ### Content Workbench
 
@@ -126,7 +126,6 @@ Packages:
 ├── packages/pi-agent-server   — Pi SDK subprocess wrapper (JSONL stdio)
 ├── packages/core              — Core types and storage interfaces
 ├── packages/ui                — Shared React components (shadcn/ui + Tailwind)
-├── packages/session-mcp-server — Session-scoped MCP tools
 ├── packages/session-tools-core — Shared tool definitions
 ├── packages/messaging-gateway — Telegram + WhatsApp adapter
 └── packages/messaging-whatsapp-worker — WhatsApp subprocess
@@ -229,6 +228,7 @@ bun run electron:dist:win   # Package installers (also :mac / :linux)
 ## Documentation & Support
 
 - [craft-cli reference](docs/cli.md) — terminal client usage, scripting patterns, TLS
+- [Pi kernel architecture](docs/pi-kernel.md) — lifecycle, tool synchronization, performance, and upgrade checks
 - [Security](SECURITY.md) — report vulnerabilities here
 - [Code of Conduct](CODE_OF_CONDUCT.md)
 
