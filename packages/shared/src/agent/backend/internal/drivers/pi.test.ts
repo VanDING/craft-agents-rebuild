@@ -19,6 +19,7 @@ describe('piDriver.buildRuntime custom endpoint models', () => {
           models: [
             { id: 'vision-model', contextWindow: 262_144, supportsImages: true },
             { id: 'text-only-model', supportsImages: false },
+            { id: 'thinking-model', supportsThinking: true, thinkingLevelMap: { max: 'max' } },
             { id: 'plain-model' },
           ],
           createdAt: Date.now(),
@@ -36,6 +37,7 @@ describe('piDriver.buildRuntime custom endpoint models', () => {
     expect(runtime.customModels).toEqual([
       { id: 'vision-model', contextWindow: 262_144, supportsImages: true },
       { id: 'text-only-model', supportsImages: false },
+      { id: 'thinking-model', supportsThinking: true, thinkingLevelMap: { max: 'max' } },
       'plain-model',
     ]);
   });

@@ -16,7 +16,6 @@ import {
   getLlmConnections,
   getLlmConnection,
   updateLlmConnection,
-  isCompatProvider,
   getModelsForProviderType,
 } from '@craft-agent/shared/config'
 import { MODEL_FETCHERS } from './registry'
@@ -62,7 +61,6 @@ class ModelRefreshService {
 
   /**
    * Internal: actual refresh logic with fallback chain.
-   * Skips compat providers (not in fetcher map).
    * Preserves user's defaultModel if still valid.
    * Updates connection.models in storage on success.
    */
@@ -70,11 +68,6 @@ class ModelRefreshService {
     const connection = getLlmConnection(slug)
     if (!connection) {
       handlerLog.warn(`Model refresh: connection not found: ${slug}`)
-      return
-    }
-
-    // Skip compat providers — users configure models manually
-    if (isCompatProvider(connection.providerType)) {
       return
     }
 
@@ -158,8 +151,6 @@ class ModelRefreshService {
     const connections = getLlmConnections()
 
     for (const conn of connections) {
-      if (isCompatProvider(conn.providerType)) continue
-
       const providerType = conn.providerType as FetchableProvider
       const fetcher = this.fetchers[providerType]
       if (!fetcher) continue
@@ -202,7 +193,7 @@ class ModelRefreshService {
 
     // Ensure periodic timer is running
     const connection = getLlmConnection(slug)
-    if (!connection || isCompatProvider(connection.providerType)) return
+    if (!connection) return
 
     const providerType = connection.providerType as FetchableProvider
     const fetcher = this.fetchers[providerType]

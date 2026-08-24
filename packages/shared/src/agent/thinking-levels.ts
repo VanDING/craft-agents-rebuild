@@ -1,7 +1,7 @@
 /**
  * Thinking Level Configuration
  *
- * Six-tier thinking system for extended reasoning:
+ * Seven-tier thinking system for extended reasoning:
  * - OFF: No extended thinking (disabled)
  * - Low: Light reasoning, faster responses
  * - Medium: Balanced speed and reasoning (default)
@@ -26,6 +26,7 @@
  */
 export const THINKING_LEVEL_IDS = [
   'off',
+  'minimal',
   'low',
   'medium',
   'high',
@@ -51,12 +52,27 @@ export interface ThinkingLevelDefinition {
  */
 export const THINKING_LEVELS: readonly ThinkingLevelDefinition[] = [
   { id: 'off', nameKey: 'thinking.off', descriptionKey: 'thinking.offDesc' },
+  { id: 'minimal', nameKey: 'thinking.minimal', descriptionKey: 'thinking.minimalDesc' },
   { id: 'low', nameKey: 'thinking.low', descriptionKey: 'thinking.lowDesc' },
   { id: 'medium', nameKey: 'thinking.medium', descriptionKey: 'thinking.mediumDesc' },
   { id: 'high', nameKey: 'thinking.high', descriptionKey: 'thinking.highDesc' },
   { id: 'xhigh', nameKey: 'thinking.xhigh', descriptionKey: 'thinking.xhighDesc' },
   { id: 'max', nameKey: 'thinking.max', descriptionKey: 'thinking.maxDesc' },
 ] as const;
+
+/** Resolve the selector options for one concrete model capability record. */
+export function getThinkingLevelsForModel(model?: {
+  supportsThinking?: boolean;
+  supportedThinkingLevels?: readonly ThinkingLevel[];
+}): readonly ThinkingLevelDefinition[] {
+  if (!model) return THINKING_LEVELS;
+  if (model.supportsThinking === false) {
+    return THINKING_LEVELS.filter(level => level.id === 'off');
+  }
+  if (!model.supportedThinkingLevels?.length) return THINKING_LEVELS;
+  const supported = new Set(model.supportedThinkingLevels);
+  return THINKING_LEVELS.filter(level => supported.has(level.id));
+}
 
 /** Default thinking level for new sessions when workspace has no default */
 export const DEFAULT_THINKING_LEVEL: ThinkingLevel = 'medium';

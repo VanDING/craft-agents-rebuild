@@ -144,7 +144,7 @@ interface InitMessage {
   branchFromSessionPath?: string;
   branchFromSdkTurnId?: string;
   customEndpoint?: { api: CustomEndpointApi; supportsImages?: boolean };
-  customModels?: Array<string | { id: string; contextWindow?: number; supportsImages?: boolean }>;
+  customModels?: Array<string | { id: string; contextWindow?: number; supportsImages?: boolean; supportsThinking?: boolean; thinkingLevelMap?: CustomEndpointModelEntry['thinkingLevelMap'] }>;
   piAuth?: { provider: string; credential: PiCredential };
   /** Whether the browser session tool is enabled (false = exclude via SDK denylist) */
   browserToolEnabled?: boolean;
@@ -158,7 +158,7 @@ interface RuntimeConfigUpdateMessage {
   authType?: string;
   baseUrl?: string;
   customEndpoint?: { api: CustomEndpointApi; supportsImages?: boolean };
-  customModels?: Array<string | { id: string; contextWindow?: number; supportsImages?: boolean }>;
+  customModels?: Array<string | { id: string; contextWindow?: number; supportsImages?: boolean; supportsThinking?: boolean; thinkingLevelMap?: CustomEndpointModelEntry['thinkingLevelMap'] }>;
 }
 
 /** Messages from main process (stdin) */
@@ -279,6 +279,11 @@ interface OutboundSetModelResult {
   model: string;
   contextWindow?: number;
 }
+interface OutboundThinkingLevelState {
+  type: 'thinking_level_state';
+  effectiveLevel: string;
+  availableLevels: string[];
+}
 interface OutboundSessionIdUpdate { type: 'session_id_update'; sessionId: string }
 interface OutboundError { type: 'error'; message: string; code?: string }
 
@@ -295,6 +300,7 @@ type OutboundMessage =
   | OutboundSetAutoCompactionResult
   | OutboundRuntimeConfigUpdateResult
   | OutboundSetModelResult
+  | OutboundThinkingLevelState
   | OutboundSessionIdUpdate
   | OutboundError;
 
@@ -313,6 +319,15 @@ let initConfig: Extract<InboundMessage, { type: 'init' }> | null = null;
 
 // Mutable state
 let currentUserMessage = '';
+
+function sendThinkingLevelState(): void {
+  if (!piSession) return;
+  send({
+    type: 'thinking_level_state',
+    effectiveLevel: piSession.thinkingLevel,
+    availableLevels: piSession.getAvailableThinkingLevels(),
+  });
+}
 
 // Pending promises for async handshakes
 const pendingPreToolUse = new Map<string, { resolve: (response: { action: string; input?: Record<string, unknown>; reason?: string }) => void }>();
@@ -800,6 +815,7 @@ async function ensureSession(): Promise<AgentSession> {
 
   // Notify main process of session ID
   send({ type: 'session_id_update', sessionId: session.sessionId });
+  sendThinkingLevelState();
 
   return session;
 }
@@ -1769,6 +1785,7 @@ async function handleUpdateRuntimeConfig(msg: RuntimeConfigUpdateMessage): Promi
 
       await piSession.setModel(piModel);
       setInterceptorApiHints(piModel as { api?: string; provider?: string; baseUrl?: string });
+      sendThinkingLevelState();
       debugLog(`[runtime_config] Updated runtime config and active model: ${piModel.provider}/${piModel.id}`);
     } else {
       debugLog('[runtime_config] Stored update; no active session/model registry yet');
@@ -1785,8 +1802,9 @@ async function handleUpdateRuntimeConfig(msg: RuntimeConfigUpdateMessage): Promi
 
 async function handleSetModel(msg: Extract<InboundMessage, { type: 'set_model' }>): Promise<void> {
   debugLog(`[set_model] Received: ${msg.model}`);
+  if (initConfig) initConfig.model = msg.model;
   if (!piSession || !piModelRegistry) {
-    debugLog(`[set_model] No active session or model registry, ignoring`);
+    debugLog(`[set_model] No active session or model registry, stored for session creation`);
     return;
   }
   let piModel = resolvePiModel(piModelRegistry, msg.model, initConfig?.piAuth?.provider, shouldPreferCustomEndpoint());
@@ -1811,6 +1829,7 @@ async function handleSetModel(msg: Extract<InboundMessage, { type: 'set_model' }
     setInterceptorApiHints(piModel as { api?: string; provider?: string; baseUrl?: string });
     const contextWindow = piSession.agent.state.model?.contextWindow;
     send({ type: 'set_model_result', model: msg.model, contextWindow });
+    sendThinkingLevelState();
     debugLog(`[set_model] Model changed to: ${msg.model} (resolved: ${piModel.provider}/${piModel.id})`);
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
@@ -1821,8 +1840,10 @@ async function handleSetModel(msg: Extract<InboundMessage, { type: 'set_model' }
 async function handleSetThinkingLevel(msg: Extract<InboundMessage, { type: 'set_thinking_level' }>): Promise<void> {
   debugLog(`[set_thinking_level] Received: ${msg.level}`);
 
+  if (initConfig) initConfig.thinkingLevel = msg.level;
+
   if (!piSession) {
-    debugLog('[set_thinking_level] No active session, ignoring');
+    debugLog('[set_thinking_level] No active session, stored for session creation');
     return;
   }
 
@@ -1834,6 +1855,7 @@ async function handleSetThinkingLevel(msg: Extract<InboundMessage, { type: 'set_
 
   try {
     piSession.setThinkingLevel(piLevel);
+    sendThinkingLevelState();
     debugLog(`[set_thinking_level] Thinking level changed to: ${msg.level} (mapped: ${piLevel})`);
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);

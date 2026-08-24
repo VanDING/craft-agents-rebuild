@@ -9,6 +9,8 @@
  * 2. The convenience exports (ANTHROPIC_MODELS, OPENAI_MODELS) auto-update
  * 3. Update llm-connections.ts if adding a new built-in connection
  */
+import type { ThinkingLevel } from '../agent/thinking-levels.ts';
+
 // Bedrock-native → bare Anthropic ID reverse mapping.
 // Single source of truth — llm-connections.ts imports it (was duplicated
 // to avoid circular imports; models.ts must stay import-free of llm-connections).
@@ -112,6 +114,10 @@ export interface ModelDefinition {
   contextWindow: number;
   /** Whether this model supports thinking/reasoning effort. Defaults to true when undefined. */
   supportsThinking?: boolean;
+  /** Thinking levels accepted by this concrete model, as reported by Pi. */
+  supportedThinkingLevels?: ThinkingLevel[];
+  /** Provider-specific Pi mapping. `null` means the level is unsupported. */
+  thinkingLevelMap?: Partial<Record<ThinkingLevel, string | null>>;
   /** Explicit per-model image input capability hint, primarily for custom endpoints. */
   supportsImages?: boolean;
 }

@@ -41,6 +41,14 @@ Pi SDK 被隔离在子进程中。主进程负责会话持久化、权限、sour
 - 浏览器工具开关会推送给所有存活的 Pi 子进程；忙碌会话在下一轮安全刷新，不中断当前工作。
 - Windows 使用 Pi 0.84.3 的原生 PowerShell 工具，仍经过 Craft 的终端权限与审计管线。
 
+## 模型发现与思考等级
+
+- 标准 Pi provider 的模型与能力来自 Pi SDK catalog；`ModelDefinition` 保留 `reasoning`、`thinkingLevelMap`、图像输入和 `getSupportedThinkingLevels()` 的结果。
+- 自定义 endpoint 保存前会依次尝试标准模型列表地址：`/models`、`/v1/models`，并兼容 Ollama 的 `/api/tags`。发现的 ID 会用 Pi catalog 补全上下文窗口和能力；端点返回的显式元数据优先。
+- 模型列表不是所有兼容协议的强制接口。发现失败时 UI 允许用户填写逗号分隔的模型 ID，持久化的手动模型不会因后台刷新失败而丢失。
+- 思考等级不是全局固定能力。界面按当前模型展示 Pi 报告的 `off / minimal / low / medium / high / xhigh / max` 子集。
+- Pi 在初始化、切换模型和修改等级后会回报实际生效等级。若请求等级不被模型支持，Pi 的 clamp 结果会回写会话和 UI，避免显示值与真实请求参数不一致。
+
 ## 性能基线
 
 当前可观测指标包括：冷/热 agent 状态、首事件、首响应、首工具、工具往返耗时、主进程事件处理、renderer 事件处理和 stream-to-paint。renderer 保存有界采样并提供 p50/p95。

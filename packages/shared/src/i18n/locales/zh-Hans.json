@@ -1714,6 +1714,8 @@
   "thinking.maxDesc": "最大努力推理",
   "thinking.medium": "中等",
   "thinking.mediumDesc": "平衡的速度和推理",
+  "thinking.minimal": "最少",
+  "thinking.minimalDesc": "以较低延迟进行最少量推理",
   "thinking.notSupported": "此模型不支持",
   "thinking.off": "无思考",
   "thinking.offDesc": "最快的响应，无推理",

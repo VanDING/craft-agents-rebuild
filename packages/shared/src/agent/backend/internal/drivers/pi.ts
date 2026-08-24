@@ -2,6 +2,7 @@ import type { ProviderDriver, DriverTestConnectionArgs } from '../driver-types.t
 import type { ModelDefinition } from '../../../../config/models.ts';
 import { getAllPiModels, getPiModelsForAuthProvider } from '../../../../config/models-pi.ts';
 import { getPiProviderBaseUrl } from '../../../../config/models-pi.ts';
+import { discoverCustomEndpointModels, parseDiscoveredModels } from './custom-model-discovery.ts';
 
 // ── Copilot model types ────────────────────────────────────────────────
 type RawCopilotModel = {
@@ -261,17 +262,63 @@ export const piDriver: ProviderDriver = {
       const supportsImages = typeof m.supportsImages === 'boolean'
         ? m.supportsImages
         : undefined;
-      if (m.contextWindow || supportsImages !== undefined) {
+      const supportsThinking = typeof m.supportsThinking === 'boolean'
+        ? m.supportsThinking
+        : undefined;
+      if (m.contextWindow || supportsImages !== undefined || supportsThinking !== undefined || m.thinkingLevelMap) {
         return {
           id: m.id,
           ...(m.contextWindow ? { contextWindow: m.contextWindow } : {}),
           ...(supportsImages !== undefined ? { supportsImages } : {}),
+          ...(supportsThinking !== undefined ? { supportsThinking } : {}),
+          ...(m.thinkingLevelMap ? { thinkingLevelMap: m.thinkingLevelMap } : {}),
         };
       }
       return m.id;
     }),
   }),
   fetchModels: async ({ connection, credentials, timeoutMs }) => {
+    // Arbitrary Pi-compatible endpoints: query their live model-list API, then
+    // enrich matching IDs with Pi's model capabilities. Existing manual models
+    // are retained as overrides/fallbacks for endpoints with incomplete lists.
+    if (connection.providerType === 'pi_compat') {
+      const baseUrl = connection.baseUrl?.trim();
+      const api = connection.customEndpoint?.api;
+      if (!baseUrl || !api) {
+        throw new Error('Custom endpoint requires both a base URL and protocol');
+      }
+
+      const knownModels = getAllPiModels();
+      let discovered: ModelDefinition[] = [];
+      try {
+        discovered = await discoverCustomEndpointModels({
+          baseUrl,
+          api,
+          apiKey: credentials.apiKey ?? credentials.oauthAccessToken,
+          timeoutMs,
+          knownModels,
+        });
+      } catch (error) {
+        if (!connection.models?.length) throw error;
+        console.warn(`[piDriver] Custom endpoint listing unavailable; enriching ${connection.models.length} configured model(s)`);
+      }
+      const merged = new Map(discovered.map(model => [model.id, model]));
+
+      for (const configured of connection.models ?? []) {
+        const id = typeof configured === 'string' ? configured : configured.id;
+        const inferred = parseDiscoveredModels({ data: [{ id }] }, knownModels)[0];
+        const existing = merged.get(id) ?? inferred;
+        if (!existing) continue;
+        merged.set(id, typeof configured === 'string'
+          ? existing
+          : { ...existing, ...configured, id });
+      }
+
+      const models = [...merged.values()];
+      if (models.length === 0) throw new Error('Custom endpoint returned no models');
+      return { models };
+    }
+
     // Copilot OAuth: fetch models directly from the Copilot API via HTTP.
     // Uses the GitHub OAuth token (our refreshToken) to exchange for a
     // Copilot API token, then queries GET /models for the live model list.

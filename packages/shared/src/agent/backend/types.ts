@@ -42,7 +42,13 @@ export interface BackendRuntimeUpdate {
     baseUrl?: string;
     piAuthProvider?: string;
     customEndpoint?: { api: string; supportsImages?: boolean };
-    customModels?: Array<string | { id: string; contextWindow?: number; supportsImages?: boolean }>;
+    customModels?: Array<string | {
+      id: string;
+      contextWindow?: number;
+      supportsImages?: boolean;
+      supportsThinking?: boolean;
+      thinkingLevelMap?: Partial<Record<ThinkingLevel, string | null>>;
+    }>;
     [key: string]: unknown;
   };
 }
@@ -182,6 +188,12 @@ export interface CoreBackendConfig {
 
   /** Initial thinking level */
   thinkingLevel?: ThinkingLevel;
+
+  /** Pi reports the model-clamped effective level after init/model/level changes. */
+  onThinkingLevelStateUpdate?: (state: {
+    effectiveLevel: ThinkingLevel;
+    availableLevels: ThinkingLevel[];
+  }) => void;
 
   /** Headless mode flag (disables interactive tools) */
   isHeadless?: boolean;

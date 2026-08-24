@@ -4,6 +4,7 @@ import { getCredentialManager } from '@craft-agent/shared/credentials'
 import { setSetupDeferred } from '@craft-agent/shared/config/storage'
 import {
   resolveSetupTestConnectionHint,
+  fetchBackendModels,
   testBackendConnection,
   validateStoredBackendConnection,
   type AgentProvider,
@@ -239,6 +240,42 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
         ...updates,
       }
 
+      if (isCompatProvider(pendingConnection.providerType) && !pendingConnection.modelSelectionMode) {
+        pendingConnection.modelSelectionMode = 'automaticallySyncedFromProvider'
+        updates.modelSelectionMode = 'automaticallySyncedFromProvider'
+      }
+
+      // Custom endpoints may expose OpenAI/Anthropic/Ollama model-list APIs.
+      // Discover before persistence so a new connection is never saved in an
+      // unusable model-less state. Manual model IDs remain the fallback for
+      // endpoints that intentionally do not implement listing.
+      if (isCompatProvider(pendingConnection.providerType) && !pendingConnection.defaultModel) {
+        const isMaskedCredential = setup.credential?.includes('••')
+        const apiKey = setup.credential && !isMaskedCredential
+          ? setup.credential
+          : await manager.getLlmApiKey(setup.slug) ?? undefined
+        try {
+          const discovered = await fetchBackendModels({
+            connection: pendingConnection,
+            credentials: { apiKey },
+            hostRuntime: buildBackendHostRuntimeContext(deps.platform),
+          })
+          if (discovered.models.length > 0) {
+            const defaultModel = discovered.serverDefault ?? discovered.models[0]!.id
+            pendingConnection.models = discovered.models
+            pendingConnection.defaultModel = defaultModel
+            pendingConnection.modelSelectionMode = 'automaticallySyncedFromProvider'
+            updates.models = discovered.models
+            updates.defaultModel = defaultModel
+            updates.modelSelectionMode = 'automaticallySyncedFromProvider'
+          }
+        } catch (error) {
+          deps.platform.logger?.warn(
+            `Custom endpoint model discovery failed for ${setup.slug}: ${error instanceof Error ? error.message : error}`,
+          )
+        }
+      }
+
       if (pendingConnection.providerType === 'pi') {
         const modelIds = (pendingConnection.models ?? []).map(m => typeof m === 'string' ? m : m.id)
         deps.platform.logger?.info('Pi setup pending connection snapshot', {
@@ -273,7 +310,10 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
       }
 
       if (isCompatProvider(pendingConnection.providerType) && !pendingConnection.defaultModel) {
-        return { success: false, error: 'Default model is required for compatible endpoints.' }
+        return {
+          success: false,
+          error: 'This endpoint does not expose a model list. Enter at least one model ID manually.',
+        }
       }
 
       if (isNewConnection) {

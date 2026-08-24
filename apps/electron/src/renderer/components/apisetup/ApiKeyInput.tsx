@@ -386,12 +386,6 @@ export function ApiKeyInput({
     const parsedModels = parseModelList(connectionDefaultModel)
 
     const isUsingDefaultEndpoint = isDefaultProviderPreset || !effectiveBaseUrl
-    const requiresModel = !isDefaultProviderPreset && !!effectiveBaseUrl
-    if (requiresModel && parsedModels.length === 0) {
-      setModelError('Default model is required for custom endpoints.')
-      return
-    }
-
     // Include custom endpoint protocol when user configured a custom base URL.
     // Branded openai-compat presets (e.g. Manifest) are pinned to openai-completions
     // and routed via the Pi SDK's openai adapter.
@@ -783,7 +777,7 @@ export function ApiKeyInput({
           <Label htmlFor="connection-default-model" className="text-muted-foreground font-normal">
             Default Model{' '}
             <span className="text-foreground/30">
-              · {!isBedrock && baseUrl.trim() ? 'required' : 'optional'}
+              · optional
             </span>
           </Label>
           <div className={cn(
@@ -808,11 +802,11 @@ export function ApiKeyInput({
             <p className="text-xs text-destructive">{modelError}</p>
           )}
           <p className="text-xs text-foreground/30">
-            Comma-separated list. The first model is the default. The last is used for summarization.
+            Models are discovered automatically when the endpoint supports listing. Enter a comma-separated list only as a fallback; the first model is the default.
           </p>
           {(activePreset === 'custom' || !activePreset) && (
             <p className="text-xs text-foreground/30">
-              Required for custom endpoints. Use the provider-specific model ID.
+              Use provider-specific model IDs when manual configuration is needed.
             </p>
           )}
         </div>

@@ -3258,11 +3258,14 @@ export class SessionManager implements ISessionManager {
             customModels: connection.models?.map(model => {
               if (typeof model === 'string') return model
               const supportsImages = typeof model.supportsImages === 'boolean' ? model.supportsImages : undefined
-              if (model.contextWindow || supportsImages !== undefined) {
+              const supportsThinking = typeof model.supportsThinking === 'boolean' ? model.supportsThinking : undefined
+              if (model.contextWindow || supportsImages !== undefined || supportsThinking !== undefined || model.thinkingLevelMap) {
                 return {
                   id: model.id,
                   ...(model.contextWindow ? { contextWindow: model.contextWindow } : {}),
                   ...(supportsImages !== undefined ? { supportsImages } : {}),
+                  ...(supportsThinking !== undefined ? { supportsThinking } : {}),
+                  ...(model.thinkingLevelMap ? { thinkingLevelMap: model.thinkingLevelMap } : {}),
                 }
               }
               return model.id
@@ -3479,6 +3482,18 @@ export class SessionManager implements ISessionManager {
         sessionPersistenceQueue.flush(managed.id)
       }
 
+      const onThinkingLevelStateUpdate = ({ effectiveLevel }: { effectiveLevel: ThinkingLevel }) => {
+        if (managed.thinkingLevel === effectiveLevel) return
+        managed.thinkingLevel = effectiveLevel
+        this.persistSession(managed)
+        this.sendEvent({
+          type: 'session_metadata_changed',
+          sessionId: managed.id,
+          changes: { thinkingLevel: effectiveLevel },
+        }, managed.workspace.id)
+        sessionLog.info(`Session ${managed.id}: Pi clamped thinking level to ${effectiveLevel}`)
+      }
+
       const getRecoveryMessages = () => {
         const relevantMessages = managed.messages
           .filter(m => m.role === 'user' || m.role === 'assistant')
@@ -3555,6 +3570,7 @@ export class SessionManager implements ISessionManager {
         onSdkSessionIdUpdate,
         onSdkSessionIdCleared,
         onBranchForkInvalidated,
+        onThinkingLevelStateUpdate,
         getRecoveryMessages,
         getBranchFallbackMessages,
         getBranchSeedMessages,

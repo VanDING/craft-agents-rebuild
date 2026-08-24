@@ -14,7 +14,9 @@
  */
 
 import { getProviders, getModels } from '@earendil-works/pi-ai/compat';
+import { getSupportedThinkingLevels } from '@earendil-works/pi-ai';
 import type { KnownProvider, Model, Api } from '@earendil-works/pi-ai';
+import type { ThinkingLevel } from '../agent/thinking-levels.ts';
 import type { ModelDefinition } from './models.ts';
 
 // ============================================
@@ -36,6 +38,11 @@ function piModelToDefinition(m: Model<Api>): ModelDefinition {
     provider: 'pi',
     contextWindow: m.contextWindow,
     supportsThinking: m.reasoning,
+    supportedThinkingLevels: getSupportedThinkingLevels(m) as ThinkingLevel[],
+    ...(m.thinkingLevelMap
+      ? { thinkingLevelMap: { ...m.thinkingLevelMap } as ModelDefinition['thinkingLevelMap'] }
+      : {}),
+    supportsImages: m.input.includes('image'),
   };
 }
 

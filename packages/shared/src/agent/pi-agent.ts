@@ -30,7 +30,7 @@ import { getBackendRuntime } from './backend/internal/driver-types.ts';
 import { SourceActivationDrainController } from './source-activation-drain.ts';
 
 import type { PermissionMode } from './mode-manager.ts';
-import type { ThinkingLevel } from './thinking-levels.ts';
+import { normalizeThinkingLevel, type ThinkingLevel } from './thinking-levels.ts';
 
 // Import models from centralized registry
 import { getModelById } from '../config/models.ts';
@@ -1028,6 +1028,10 @@ export class PiAgent extends BaseAgent {
         this.handleSetModelResult(msg);
         break;
 
+      case 'thinking_level_state':
+        this.handleThinkingLevelState(msg);
+        break;
+
       case 'session_id_update':
         // Pi session ID changed
         if (msg.sessionId) {
@@ -1771,6 +1775,17 @@ export class PiAgent extends BaseAgent {
     if (typeof contextWindow === 'number' && contextWindow > 0) {
       this.adapter.setContextWindow(contextWindow);
     }
+  }
+
+  private handleThinkingLevelState(msg: Record<string, unknown>): void {
+    const effectiveLevel = normalizeThinkingLevel(msg.effectiveLevel);
+    const availableLevels = Array.isArray(msg.availableLevels)
+      ? msg.availableLevels.map(normalizeThinkingLevel).filter((level): level is ThinkingLevel => !!level)
+      : [];
+    if (!effectiveLevel) return;
+    // Update the local cache without re-sending the same level to the subprocess.
+    super.setThinkingLevel(effectiveLevel);
+    this.config.onThinkingLevelStateUpdate?.({ effectiveLevel, availableLevels });
   }
 
   /**

@@ -71,7 +71,7 @@ import { FreeFormInputContextBadge } from './FreeFormInputContextBadge'
 import { derivePickerMode } from './picker-mode'
 import type { FileAttachment, LoadedSource, LoadedSkill } from '../../../../shared/types'
 import type { PermissionMode } from '@craft-agent/shared/agent/modes'
-import { type ThinkingLevel, THINKING_LEVELS, getThinkingLevelNameKey } from '@craft-agent/shared/agent/thinking-levels'
+import { type ThinkingLevel, getThinkingLevelNameKey, getThinkingLevelsForModel } from '@craft-agent/shared/agent/thinking-levels'
 import { useEscapeInterrupt } from '@/context/EscapeInterruptContext'
 import { hasOpenOverlay } from '@/lib/overlay-detection'
 import { ToolbarStatusSlot } from './ToolbarStatusSlot'
@@ -367,13 +367,27 @@ export function FreeFormInput({
     return connection.models || MODEL_REGISTRY
   }, [llmConnections, currentConnection, workspaceDefaultConnection, connectionUnavailable])
 
-  const availableThinkingLevels = THINKING_LEVELS
+  const currentModelDefinition = React.useMemo(() => {
+    const model = availableModels.find(m => typeof m !== 'string' && m.id === currentModel)
+    if (typeof model !== 'string' && model) return model
+    const effectiveSlug = resolveEffectiveConnectionSlug(currentConnection, workspaceDefaultConnection, llmConnections)
+    const connection = llmConnections.find(item => item.slug === effectiveSlug)
+    // A bare manual custom model has no advertised capabilities. Match the Pi
+    // runtime's conservative default instead of presenting unsupported levels.
+    return connection && isCompatProvider(connection.providerType)
+      ? { supportsThinking: false as const }
+      : undefined
+  }, [availableModels, currentModel, currentConnection, workspaceDefaultConnection, llmConnections])
+
+  const availableThinkingLevels = React.useMemo(
+    () => getThinkingLevelsForModel(currentModelDefinition),
+    [currentModelDefinition],
+  )
 
   // Disable thinking selector when the current model explicitly doesn't support it
   const thinkingDisabled = React.useMemo(() => {
-    const model = availableModels.find(m => typeof m !== 'string' && m.id === currentModel)
-    return typeof model !== 'string' && model?.supportsThinking === false
-  }, [availableModels, currentModel])
+    return currentModelDefinition?.supportsThinking === false
+  }, [currentModelDefinition])
 
   // Get display name for current model (full name, not short name)
   const currentModelDisplayName = React.useMemo(() => {

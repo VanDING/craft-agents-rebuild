@@ -21,6 +21,26 @@ function createConfig(): BackendConfig {
 }
 
 describe('PiAgent subprocess error handling', () => {
+  it('synchronizes Pi-clamped thinking state without echoing another command', () => {
+    let received: unknown
+    const config = createConfig()
+    config.onThinkingLevelStateUpdate = state => { received = state }
+    const agent = new PiAgent(config)
+
+    ;(agent as any).handleLine(JSON.stringify({
+      type: 'thinking_level_state',
+      effectiveLevel: 'high',
+      availableLevels: ['off', 'minimal', 'low', 'medium', 'high'],
+    }))
+
+    expect(agent.getThinkingLevel()).toBe('high')
+    expect(received).toEqual({
+      effectiveLevel: 'high',
+      availableLevels: ['off', 'minimal', 'low', 'medium', 'high'],
+    })
+    agent.destroy()
+  })
+
   it('maps raw HTML subprocess errors to typed proxy_error events', () => {
     const agent = new PiAgent(createConfig())
 

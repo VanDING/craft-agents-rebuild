@@ -7,6 +7,8 @@ export interface CustomEndpointModelDefaults {
 export interface CustomEndpointModelOverrides {
   contextWindow?: number
   supportsImages?: boolean
+  supportsThinking?: boolean
+  thinkingLevelMap?: Partial<Record<'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max', string | null>>
 }
 
 export interface CustomEndpointModelEntry extends CustomEndpointModelOverrides {
@@ -17,6 +19,8 @@ export type CustomEndpointModelConfig = string | {
   id: string
   contextWindow?: number
   supportsImages?: boolean
+  supportsThinking?: boolean
+  thinkingLevelMap?: CustomEndpointModelOverrides['thinkingLevelMap']
 }
 
 /** Strip bare model IDs (remove pi/ prefix if present). */
@@ -40,6 +44,8 @@ export function normalizeCustomEndpointModelEntry(model: CustomEndpointModelConf
     id: stripPiPrefix(model.id),
     ...(model.contextWindow !== undefined ? { contextWindow: model.contextWindow } : {}),
     ...(model.supportsImages !== undefined ? { supportsImages: model.supportsImages } : {}),
+    ...(model.supportsThinking !== undefined ? { supportsThinking: model.supportsThinking } : {}),
+    ...(model.thinkingLevelMap ? { thinkingLevelMap: model.thinkingLevelMap } : {}),
   }
 }
 
@@ -60,7 +66,8 @@ export function buildCustomEndpointModelDef(
   return {
     id,
     name: id,
-    reasoning: false,
+    reasoning: overrides?.supportsThinking ?? false,
+    ...(overrides?.thinkingLevelMap ? { thinkingLevelMap: overrides.thinkingLevelMap } : {}),
     input,
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextWindow: overrides?.contextWindow ?? 131_072,

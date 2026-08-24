@@ -7,8 +7,8 @@
  * has a registered fetcher — adding a new LlmProviderType without a fetcher
  * causes a type error.
  *
- * Compat providers (pi_compat) are excluded —
- * they point to arbitrary endpoints where users configure models manually.
+ * Pi-compatible endpoints participate in discovery. Their standard model-list
+ * APIs are queried when available, with persisted manual models as fallback.
  */
 
 import type { ModelDefinition } from './models';
@@ -26,9 +26,7 @@ import type { LlmProviderType, LlmConnection } from './llm-connections';
  * Adding a new LlmProviderType without updating this type
  * will cause a compile error in the fetcher registry.
  */
-export type FetchableProvider = Exclude<LlmProviderType,
-  | 'pi_compat'
->;
+export type FetchableProvider = LlmProviderType;
 
 /**
  * Result of a model fetch operation.

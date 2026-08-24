@@ -42,6 +42,18 @@ describe('normalizeCustomEndpointModelEntry', () => {
       supportsImages: true,
     })
   })
+
+  it('preserves reasoning capability metadata', () => {
+    expect(normalizeCustomEndpointModelEntry({
+      id: 'reasoner',
+      supportsThinking: true,
+      thinkingLevelMap: { xhigh: 'xhigh', max: null },
+    })).toEqual({
+      id: 'reasoner',
+      supportsThinking: true,
+      thinkingLevelMap: { xhigh: 'xhigh', max: null },
+    })
+  })
 })
 
 describe('buildCustomEndpointModelDef', () => {
@@ -64,5 +76,14 @@ describe('buildCustomEndpointModelDef', () => {
     const model = buildCustomEndpointModelDef('vision-model', undefined, { supportsImages: true, contextWindow: 262_144 })
     expect(model.input).toEqual(['text', 'image'])
     expect(model.contextWindow).toBe(262_144)
+  })
+
+  it('registers custom reasoning support and its Pi level map', () => {
+    const model = buildCustomEndpointModelDef('reasoner', undefined, {
+      supportsThinking: true,
+      thinkingLevelMap: { minimal: null, xhigh: 'xhigh' },
+    })
+    expect(model.reasoning).toBe(true)
+    expect(model.thinkingLevelMap).toEqual({ minimal: null, xhigh: 'xhigh' })
   })
 })
