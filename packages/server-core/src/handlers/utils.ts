@@ -1,4 +1,4 @@
-import { normalize, isAbsolute, sep } from 'path'
+import { basename, dirname, isAbsolute, join, normalize, sep } from 'path'
 import { homedir, tmpdir } from 'os'
 import { realpath } from 'fs/promises'
 import { getWorkspaceByNameOrId, type Workspace } from '@craft-agent/shared/config'
@@ -22,6 +22,30 @@ export function buildBackendHostRuntimeContext(platform: PlatformServices) {
     appRootPath: platform.appRootPath,
     resourcesPath: platform.resourcesPath,
     isPackaged: platform.isPackaged,
+  }
+}
+
+/**
+ * Resolve the longest existing path prefix, then append any missing tail.
+ * This preserves canonical symlink aliases even for paths that do not exist
+ * yet (for example a future file below macOS' `/tmp` → `/private/tmp`).
+ */
+async function canonicalizePath(filePath: string): Promise<string> {
+  let cursor = normalize(filePath)
+  const missingTail: string[] = []
+
+  while (true) {
+    try {
+      const resolvedPrefix = await realpath(cursor)
+      return normalize(missingTail.length > 0
+        ? join(resolvedPrefix, ...missingTail)
+        : resolvedPrefix)
+    } catch {
+      const parent = dirname(cursor)
+      if (parent === cursor) return normalize(filePath)
+      missingTail.unshift(basename(cursor))
+      cursor = parent
+    }
   }
 }
 
@@ -88,13 +112,7 @@ export async function validateFilePath(
   }
 
   // Resolve symlinks to get the real path
-  let realFilePath: string
-  try {
-    realFilePath = await realpath(normalizedPath)
-  } catch {
-    // File doesn't exist or can't be resolved - use normalized path
-    realFilePath = normalizedPath
-  }
+  const realFilePath = await canonicalizePath(normalizedPath)
 
   // Define allowed base directories
   const allowedDirs = [
@@ -103,9 +121,14 @@ export async function validateFilePath(
     ...(additionalAllowedDirs ?? []),
   ].filter(Boolean)
 
+  // Compare canonical paths on both sides. macOS exposes `/tmp` through the
+  // `/private/tmp` real path, and workspace roots may similarly be symlinked.
+  // Resolving only the file would incorrectly reject a file that is still
+  // contained by an explicitly allowed workspace root.
+  const canonicalAllowedDirs = await Promise.all(allowedDirs.map(canonicalizePath))
+
   // Check if the real path is within an allowed directory (cross-platform)
-  const isAllowed = allowedDirs.some(dir => {
-    const normalizedDir = normalize(dir)
+  const isAllowed = canonicalAllowedDirs.some(normalizedDir => {
     const normalizedReal = normalize(realFilePath)
     return normalizedReal.startsWith(normalizedDir + sep) || normalizedReal === normalizedDir
   })

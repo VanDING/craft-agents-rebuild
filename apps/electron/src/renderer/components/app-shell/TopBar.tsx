@@ -24,16 +24,10 @@ import {
 } from "@/components/ui/styled-dropdown"
 import type { SettingsMenuItem } from "../../../shared/menu-schema"
 
-import { useCallback, useEffect, useRef, useState } from "react"
-import { useAtomValue, useSetAtom } from "jotai"
+import { useEffect, useRef, useState } from "react"
 import { BrowserTabStrip } from "../browser/BrowserTabStrip"
-import { WorkbenchPanelButtons } from "./WorkbenchPanelButtons"
-import type { WorkbenchPanelKind } from "@/lib/workbench-panels"
-import { workbenchPanelKindForRoute } from "@/lib/workbench-panels"
-import { WORKBENCH_ICONS } from "./WorkbenchPanelButtons"
-import { hiddenPanelsAtom, restorePanelAtom } from "@/atoms/hidden-panels"
-import { parseRouteToNavigationState } from "../../../shared/route-parser"
-import type { ViewRoute } from "../../../shared/routes"
+import { SurfaceLauncherButtons } from "./SurfaceLauncherButtons"
+import type { SurfaceLauncherKind } from "@/lib/surface-launchers"
 import type { Workspace } from "../../../shared/types"
 import { WorkspaceSwitcher } from "./WorkspaceSwitcher"
 import { CompactWorkspaceSwitcher } from "./CompactWorkspaceSwitcher"
@@ -63,12 +57,12 @@ interface TopBarProps {
   canGoForward: boolean
   onToggleSidebar: () => void
   onToggleFocusMode: () => void
-  onAddSessionPanel: () => void
+  onNewSessionFromToolbar: () => void
   onAddBrowserPanel: () => void
   /** When true, hides controls that don't apply in compact/mobile layout */
   isCompact?: boolean
-  /** Open/focus/replace a workbench panel (already-open → focus; closed → push; Shift/Alt → replace focused) */
-  onOpenPanel?: (kind: WorkbenchPanelKind, options?: { replace?: boolean }) => void
+  /** Navigate a Primary launcher or activate/create a Workbench item. */
+  onOpenLauncher?: (kind: SurfaceLauncherKind) => void
   /** Focus an existing browser window or create a new one */
   onOpenBrowser?: () => void
   /** Toggle the navigator (session list) column visibility — decision #7 */
@@ -95,38 +89,16 @@ export function TopBar({
   canGoForward,
   onToggleSidebar,
   onToggleFocusMode,
-  onAddSessionPanel,
+  onNewSessionFromToolbar,
   onAddBrowserPanel,
   isCompact,
-  onOpenPanel,
+  onOpenLauncher,
   onOpenBrowser,
   onToggleSessionList,
 }: TopBarProps) {
   const { t } = useTranslation()
   const [maxVisibleBrowserBadges, setMaxVisibleBrowserBadges] = useState(3)
   const rightSlotRef = useRef<HTMLDivElement | null>(null)
-
-  const hiddenPanels = useAtomValue(hiddenPanelsAtom)
-  const restorePanel = useSetAtom(restorePanelAtom)
-  // The more menu exists only to restore hidden panels (no button truncation —
-  // all workbench buttons stay tiled and directly clickable).
-  const hasMoreMenu = hiddenPanels.length > 0
-
-  /** Human label for a hidden panel entry (workbench kinds + navigator pages). */
-  const hiddenPanelLabel = useCallback((route: ViewRoute): string => {
-    const kind = workbenchPanelKindForRoute(route)
-    if (kind) return t(`contentPanel.button.${kind}`)
-    const nav = parseRouteToNavigationState(route)
-    switch (nav?.navigator) {
-      case 'sources': return t('sidebar.sources')
-      case 'skills': return t('sidebar.skills')
-      case 'settings': return t('sidebar.settings')
-      case 'automations': return t('sidebar.automations')
-      case 'projects': return t('sidebar.projects')
-      default: return String(route)
-    }
-  }, [t])
-
 
   const goBackHotkey = useActionLabel('nav.goBackAlt').hotkey
   const goForwardHotkey = useActionLabel('nav.goForwardAlt').hotkey
@@ -273,40 +245,15 @@ export function TopBar({
         <div className="min-w-0">
           <BrowserTabStrip activeSessionId={activeSessionId} maxVisibleBadges={maxVisibleBrowserBadges} />
         </div>
-        {onOpenPanel && onOpenBrowser && (
-          <WorkbenchPanelButtons
-            onOpenPanel={onOpenPanel}
+        {onOpenLauncher && onOpenBrowser && (
+          <SurfaceLauncherButtons
+            onOpenLauncher={onOpenLauncher}
             onOpenBrowser={onOpenBrowser}
-            onNewSessionPanel={onAddSessionPanel}
+            onNewSession={onNewSessionFromToolbar}
             onNewBrowser={onAddBrowserPanel}
             onToggleSessionList={onToggleSessionList}
           />
         )}
-        {/* Hidden-panel restore menu — sources/skills/settings pages have no
-            top-bar button of their own, so this is their only way back. */}
-        {onOpenPanel && hasMoreMenu && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <TopBarButton aria-label={t("common.more")} className="h-[22px] w-[22px] rounded-md text-foreground/35">
-                <Icons.MoreHorizontal className="h-3.5 w-3.5" strokeWidth={2} />
-              </TopBarButton>
-            </DropdownMenuTrigger>
-            <StyledDropdownMenuContent align="end" minWidth="min-w-52">
-              {hiddenPanels.map((entry) => {
-                const kind = workbenchPanelKindForRoute(entry.route)
-                const Icon = kind ? WORKBENCH_ICONS[kind] : Icons.Eye
-                return (
-                  <StyledDropdownMenuItem key={entry.id} onClick={() => restorePanel(entry.id)}>
-                    <Icon className="h-3.5 w-3.5" />
-                    <span className="flex-1">{hiddenPanelLabel(entry.route)}</span>
-                    <Icons.RotateCcw className="h-3 w-3 text-muted-foreground" />
-                  </StyledDropdownMenuItem>
-                )
-              })}
-            </StyledDropdownMenuContent>
-          </DropdownMenu>
-        )}
-
         {/* Help button */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

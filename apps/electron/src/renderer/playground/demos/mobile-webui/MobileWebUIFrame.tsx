@@ -25,7 +25,7 @@ const DEVICE_SIZES: Record<Exclude<MobileDevice, 'custom'>, { width: number; hei
  * Constrains its child to a phone-shaped viewport. Default 390×844 (iPhone 15).
  *
  * The inner content div names the `shell` and `panel` containers used by
- * AppShell / PanelSlot, so internal compact-mode container queries fire
+ * AppShell / SurfaceSlot, so internal compact-mode container queries fire
  * naturally when their layout reads `@container/shell` or `@container/panel`.
  */
 export function MobileWebUIFrame({

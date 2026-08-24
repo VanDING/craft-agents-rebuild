@@ -64,7 +64,7 @@ export interface UseEntityListInteractionsOptions<T> {
   /**
    * Override which item ID is considered "selected" for highlighting.
    * When provided, `getRowProps` uses this instead of `selectionState.selected`.
-   * Used by multi-panel focus tracking where the focused panel determines selection.
+   * Used when structural navigation owns selection independently of the list store.
    */
   selectedIdOverride?: string | null
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { handleDeepLink } from '../deep-link'
+import { handleDeepLink, parseDeepLink } from '../deep-link'
 import { RPC_CHANNELS } from '../../shared/types'
 import type { EventSink } from '@craft-agent/server-core/transport'
 import type { WindowManager } from '../window-manager'
@@ -36,7 +36,7 @@ describe('handleDeepLink routing', () => {
     }
 
     await handleDeepLink(
-      'craftagents://workspace/ws-target/allSessions',
+      'craftagents://workspace/ws-target/allSessions?sidebar=files%2Fsrc%2Fmain.ts',
       windowManager,
       sink,
       (wcId) => wcId === 22 ? 'client-target' : undefined,
@@ -46,6 +46,10 @@ describe('handleDeepLink routing', () => {
     expect(sent.length).toBe(1)
     expect(sent[0]?.channel).toBe(RPC_CHANNELS.deeplink.NAVIGATE)
     expect(sent[0]?.target).toEqual({ to: 'client', clientId: 'client-target' })
+    expect(sent[0]?.args[0]).toMatchObject({
+      view: 'allSessions',
+      rightSidebar: 'files/src/main.ts',
+    })
   })
 
   it('uses preferred client only when no resolver is provided', async () => {
@@ -100,5 +104,19 @@ describe('handleDeepLink routing', () => {
 
     expect(sent.length).toBe(1)
     expect(sent[0]?.target).toEqual({ to: 'workspace', workspaceId: 'ws-target' })
+  })
+})
+
+describe('parseDeepLink Project Management routes', () => {
+  it('accepts canonical project projections and automation routes', () => {
+    expect(parseDeepLink('craftagents://projects/board')).toMatchObject({ view: 'projects/board' })
+    expect(parseDeepLink('craftagents://projects/list')).toMatchObject({ view: 'projects/list' })
+    expect(parseDeepLink('craftagents://projects/calendar')).toMatchObject({ view: 'projects/calendar' })
+    expect(parseDeepLink('craftagents://automations/scheduled')).toMatchObject({ view: 'automations/scheduled' })
+  })
+
+  it('keeps legacy standalone project aliases parseable for migration', () => {
+    expect(parseDeepLink('craftagents://board')).toMatchObject({ view: 'board' })
+    expect(parseDeepLink('craftagents://calendar')).toMatchObject({ view: 'calendar' })
   })
 })

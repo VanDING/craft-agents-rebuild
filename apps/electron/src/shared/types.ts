@@ -546,6 +546,33 @@ export interface ElectronAPI {
   deleteCalendarEntry(workspaceId: string, entryId: string): Promise<void>
   onCalendarEntriesChanged(callback: (workspaceId: string) => void): () => void
 
+  // Work items (workspace-scoped canonical project-management tasks)
+  listWorkItems(workspaceId: string): Promise<import('@craft-agent/shared/work-items').WorkItem[]>
+  createWorkItem(workspaceId: string, input: import('@craft-agent/shared/work-items').CreateWorkItemInput): Promise<import('@craft-agent/shared/work-items').WorkItem>
+  updateWorkItem(workspaceId: string, itemId: string, patch: import('@craft-agent/shared/work-items').UpdateWorkItemInput): Promise<import('@craft-agent/shared/work-items').WorkItem>
+  deleteWorkItem(workspaceId: string, itemId: string): Promise<void>
+  listWorkItemEvents(workspaceId: string, itemId: string, limit?: number): Promise<import('@craft-agent/shared/work-items').WorkItemEvent[]>
+  listWorkItemViews(workspaceId: string): Promise<import('@craft-agent/shared/work-items').WorkItemViewDefinition[]>
+  createWorkItemView(workspaceId: string, input: import('@craft-agent/shared/work-items').CreateWorkItemViewInput): Promise<import('@craft-agent/shared/work-items').WorkItemViewDefinition>
+  updateWorkItemView(workspaceId: string, viewId: string, patch: import('@craft-agent/shared/work-items').UpdateWorkItemViewInput): Promise<import('@craft-agent/shared/work-items').WorkItemViewDefinition>
+  deleteWorkItemView(workspaceId: string, viewId: string): Promise<void>
+  onWorkItemsChanged(callback: (workspaceId: string) => void): () => void
+
+  // Artifacts (workspace-scoped revisioned deliverables)
+  listArtifacts(workspaceId: string, filter?: import('@craft-agent/shared/artifacts').ArtifactListFilter): Promise<import('@craft-agent/shared/artifacts').ResolvedArtifact[]>
+  getArtifact(workspaceId: string, artifactId: string): Promise<import('@craft-agent/shared/artifacts').ResolvedArtifact>
+  registerCurrentArtifact(workspaceId: string, input: import('@craft-agent/shared/artifacts').RegisterCurrentArtifactInput): Promise<import('@craft-agent/shared/artifacts').ResolvedArtifact>
+  createArtifact(workspaceId: string, input: import('@craft-agent/shared/artifacts').CreateArtifactDraftInput): Promise<import('@craft-agent/shared/artifacts').ResolvedArtifact>
+  applyArtifact(workspaceId: string, artifactId: string, input: import('@craft-agent/shared/artifacts').ApplyArtifactDraftInput): Promise<import('@craft-agent/shared/artifacts').ResolvedArtifact>
+  inspectArtifact(workspaceId: string, artifactId: string, leaseId?: string): Promise<import('@craft-agent/shared/artifacts').ResolvedArtifact>
+  submitArtifact(workspaceId: string, artifactId: string, expectedRevision?: string, leaseId?: string): Promise<import('@craft-agent/shared/artifacts').ResolvedArtifact>
+  reviseArtifact(workspaceId: string, artifactId: string): Promise<import('@craft-agent/shared/artifacts').ResolvedArtifact>
+  acceptArtifact(workspaceId: string, artifactId: string): Promise<import('@craft-agent/shared/artifacts').AcceptArtifactResult>
+  discardArtifact(workspaceId: string, artifactId: string): Promise<import('@craft-agent/shared/artifacts').ResolvedArtifact>
+  acquireArtifactLease(workspaceId: string, artifactId: string, owner: 'agent' | 'user', durationMs?: number): Promise<import('@craft-agent/shared/artifacts').ResolvedArtifact>
+  releaseArtifactLease(workspaceId: string, artifactId: string, leaseId: string): Promise<import('@craft-agent/shared/artifacts').ResolvedArtifact>
+  onArtifactsChanged(callback: (workspaceId: string) => void): () => void
+
   // LLM connections change listener
   onLlmConnectionsChanged(callback: () => void): () => void
 
@@ -836,7 +863,8 @@ export type WeChatUiEvent =
 // =============================================================================
 
 /**
- * Right sidebar panel types
+ * Legacy right-sidebar value shape.
+ * @deprecated Only used to migrate legacy `?sidebar=` URLs into Workbench tabs.
  */
 export type RightSidebarPanel =
   | { type: 'files'; path?: string }
@@ -867,13 +895,6 @@ export interface SessionsNavigationState {
   navigator: 'sessions'
   filter: SessionFilter
   details: { type: 'session'; sessionId: string } | null
-  rightSidebar?: RightSidebarPanel
-  /**
-   * Presentation mode for the sessions navigator. `'board'` renders the Kanban
-   * board, `'calendar'` renders the schedule month grid (all sessions) in the
-   * content area instead of the list + chat. Absent/`'list'` is the default.
-   */
-  viewMode?: 'list' | 'board' | 'calendar'
 }
 
 /**
@@ -899,7 +920,6 @@ export interface SourcesNavigationState {
   navigator: 'sources'
   filter?: SourceFilter
   details: { type: 'source'; sourceSlug: string } | null
-  rightSidebar?: RightSidebarPanel
 }
 
 /**
@@ -912,7 +932,6 @@ export interface SourcesNavigationState {
 export interface SettingsNavigationState {
   navigator: 'settings'
   subpage: SettingsSubpage | null
-  rightSidebar?: RightSidebarPanel
 }
 
 /**
@@ -921,7 +940,6 @@ export interface SettingsNavigationState {
 export interface SkillsNavigationState {
   navigator: 'skills'
   details: { type: 'skill'; skillSlug: string } | null
-  rightSidebar?: RightSidebarPanel
 }
 
 /**
@@ -931,16 +949,35 @@ export interface AutomationsNavigationState {
   navigator: 'automations'
   filter?: AutomationFilter
   details: { type: 'automation'; automationId: string } | null
-  rightSidebar?: RightSidebarPanel
 }
 
 /**
- * Projects navigation state
+ * Enabled projections inside the Project Management surface.
+ *
+ * Gantt/timeline deliberately stay out of this union until they have a real
+ * renderer and WorkItem backing model. Adding a future view happens here and
+ * in the project-view registry instead of creating another top-level surface.
+ */
+export const PROJECT_MANAGEMENT_VIEWS = ['overview', 'list', 'board', 'calendar'] as const
+export type ProjectManagementView = (typeof PROJECT_MANAGEMENT_VIEWS)[number]
+
+export function isProjectManagementView(value: string): value is ProjectManagementView {
+  return (PROJECT_MANAGEMENT_VIEWS as readonly string[]).includes(value)
+}
+
+/**
+ * Project Management navigation state.
+ *
+ * The navigator key remains `projects` for URL/backward compatibility, while
+ * `view` identifies the active peer projection within the one surface.
  */
 export interface ProjectsNavigationState {
   navigator: 'projects'
-  details: { type: 'project'; projectSlug: string } | null
-  rightSidebar?: RightSidebarPanel
+  view: ProjectManagementView
+  details:
+    | { type: 'project'; projectSlug: string }
+    | { type: 'workItem'; workItemId: string }
+    | null
 }
 
 /**
@@ -948,10 +985,9 @@ export interface ProjectsNavigationState {
  *
  * These panels (Review-Diff, Files tree, Context, Preview) follow the active
  * session and carry no session id in their route — the route is a single
- * segment constant (`diff`/`files`/`context`/`preview`), same convention as
- * the standalone `board`/`calendar` prefixes.
+ * segment constant (`diff`/`files`/`context`/`preview`).
  */
-export type BoundPanelType = 'diff' | 'files' | 'context' | 'preview' | 'trajectory'
+export type BoundPanelType = 'diff' | 'files' | 'context' | 'preview' | 'trajectory' | 'artifact'
 
 /**
  * Content-workbench panel navigation state.
@@ -963,7 +999,8 @@ export type BoundPanelType = 'diff' | 'files' | 'context' | 'preview' | 'traject
 export interface OtherNavigationState {
   navigator: 'other'
   panel: BoundPanelType
-  rightSidebar?: RightSidebarPanel
+  /** Required only for the artifact workbench route. */
+  artifactId?: string
 }
 
 /**
@@ -1035,14 +1072,19 @@ export const getNavigationStateKey = (state: NavigationState): string => {
     if (state.details?.type === 'project') {
       return `projects/project/${state.details.projectSlug}`
     }
-    return 'projects'
+    if (state.details?.type === 'workItem' && state.view !== 'overview') {
+      return `projects/${state.view}/work-item/${encodeURIComponent(state.details.workItemId)}`
+    }
+    return state.view === 'overview' ? 'projects' : `projects/${state.view}`
   }
   if (state.navigator === 'settings') {
     if (state.subpage === null) return 'settings'
     return `settings:${state.subpage}`
   }
   if (state.navigator === 'other') {
-    return `other:${state.panel}`
+    return state.panel === 'artifact' && state.artifactId
+      ? `other:artifact:${state.artifactId}`
+      : `other:${state.panel}`
   }
   // Chats
   const f = state.filter
@@ -1089,13 +1131,27 @@ export const parseNavigationStateKey = (key: string): NavigationState | null => 
   }
 
   // Handle projects
-  if (key === 'projects') return { navigator: 'projects', details: null }
+  if (key === 'projects') return { navigator: 'projects', view: 'overview', details: null }
   if (key.startsWith('projects/project/')) {
     const projectSlug = key.slice(17)
     if (projectSlug) {
-      return { navigator: 'projects', details: { type: 'project', projectSlug } }
+      return { navigator: 'projects', view: 'overview', details: { type: 'project', projectSlug } }
     }
-    return { navigator: 'projects', details: null }
+    return { navigator: 'projects', view: 'overview', details: null }
+  }
+  if (key.startsWith('projects/')) {
+    const workItemMatch = /^projects\/(list|board|calendar)\/work-item\/(.+)$/.exec(key)
+    if (workItemMatch) {
+      return {
+        navigator: 'projects',
+        view: workItemMatch[1] as Exclude<ProjectManagementView, 'overview'>,
+        details: { type: 'workItem', workItemId: decodeURIComponent(workItemMatch[2]!) },
+      }
+    }
+    const view = key.slice(9)
+    if (isProjectManagementView(view)) {
+      return { navigator: 'projects', view, details: null }
+    }
   }
 
   // Handle settings
@@ -1104,6 +1160,17 @@ export const parseNavigationStateKey = (key: string): NavigationState | null => 
     const subpage = key.slice(9)
     if (isValidSettingsSubpage(subpage)) {
       return { navigator: 'settings', subpage }
+    }
+  }
+
+  if (key.startsWith('other:')) {
+    if (key.startsWith('other:artifact:')) {
+      const artifactId = key.slice('other:artifact:'.length)
+      return artifactId ? { navigator: 'other', panel: 'artifact', artifactId } : null
+    }
+    const [, panel] = key.split(':')
+    if (panel && ['diff', 'files', 'context', 'preview', 'trajectory'].includes(panel)) {
+      return { navigator: 'other', panel: panel as BoundPanelType }
     }
   }
 

@@ -76,6 +76,30 @@ import {
 } from '@craft-agent/shared/sessions'
 import { loadWorkspaceSources, loadAllSources, getSourcesBySlugs, isSourceUsable, type LoadedSource, type McpServerConfig, getSourcesNeedingAuth, getSourceCredentialManager, getSourceServerBuilder, type SourceWithCredential, isApiOAuthProvider, hasRenewEndpoint, SERVER_BUILD_ERRORS, TokenRefreshManager, createTokenGetter } from '@craft-agent/shared/sources'
 import { listTaskSlugs, parseTaskSpec, uniqueTaskSlug } from '@craft-agent/shared/tasks'
+import {
+  detachSessionFromWorkItems,
+  ensureWorkItemForSession,
+  updatePrimaryWorkItemForSession,
+  type UpdateWorkItemInput,
+} from '@craft-agent/shared/work-items'
+import {
+  acquireArtifactLease,
+  applyArtifactDraft,
+  createArtifactDraft,
+  getArtifact,
+  inspectArtifact,
+  listArtifacts,
+  serializeArtifactEvent,
+  submitArtifact,
+  type ArtifactStorageScope,
+  type ResolvedArtifact,
+} from '@craft-agent/shared/artifacts'
+import {
+  createBlankUniverSheetSnapshot,
+  UNIVER_SHEET_ENGINE_ID,
+  UNIVER_SHEET_MIME_TYPE,
+  type UniverSheetMutation,
+} from '@craft-agent/artifact-engine-univer'
 import { createTaskFromSpec, resolveCreateTaskProjectId } from '../tasks'
 import { ConfigWatcher, UserThemeWatcher, type ConfigWatcherCallbacks } from '@craft-agent/shared/config'
 import { toolMetadataStore, getLastApiError } from '@craft-agent/shared/interceptor'
@@ -100,6 +124,8 @@ import { loadStatusConfig } from '@craft-agent/shared/statuses/storage'
 import { AutomationSystem, createPromptHistoryEntry, appendAutomationHistoryEntry, type AutomationSystemMetadataSnapshot } from '@craft-agent/shared/automations'
 import { buildBackendRuntimeSignature, buildRestartRequiredSignature, filterAttachmentsForModelInput } from './runtime-config'
 import { validateArchiveTarget } from './archive-guards'
+import { renderOfficeArtifactPreview } from '../services/artifact-preview'
+import { inspectUniverSheetRange, mutateUniverSheetArtifact } from '../services/univer-artifact'
 
 // Import from server-core domain utilities
 import { sanitizeForTitle, shouldActivateBrowserOverlay, normalizeBrowserToolName, rollbackFailedBranchCreation, releaseBrowserOwnershipOnForcedStop } from '@craft-agent/server-core/domain'
@@ -1470,6 +1496,12 @@ export class SessionManager implements ISessionManager {
       // Prevent stale pending writes from reverting externally-updated metadata.
       sessionPersistenceQueue.cancel(sessionId)
       this.persistSession(managed)
+      this.syncPrimaryWorkItem(managed, {
+        title: managed.name?.trim() || 'Untitled task',
+        projectId: managed.projectId ?? null,
+        statusId: managed.sessionStatus ?? 'todo',
+        columnId: managed.kanbanColumn ?? null,
+      })
     }
 
     return changed
@@ -1716,6 +1748,78 @@ export class SessionManager implements ISessionManager {
     if (!this.eventSink) return
     sessionLog.info(`Broadcasting labels changed for ${workspaceId}`)
     this.eventSink(RPC_CHANNELS.labels.CHANGED, { to: 'workspace', workspaceId }, workspaceId)
+  }
+
+  private broadcastWorkItemsChanged(workspaceId: string): void {
+    if (!this.eventSink) return
+    this.eventSink(RPC_CHANNELS.workItems.CHANGED, { to: 'workspace', workspaceId }, workspaceId)
+  }
+
+  private broadcastArtifactsChanged(workspaceId: string): void {
+    if (!this.eventSink) return
+    this.eventSink(RPC_CHANNELS.artifacts.CHANGED, { to: 'workspace', workspaceId }, workspaceId)
+  }
+
+  /**
+   * Session is a compatibility projection of its primary WorkItem. All
+   * Session/TaskRunner-originated changes cross this one storage boundary;
+   * renderer listeners never write back and therefore cannot form a loop.
+   */
+  private syncPrimaryWorkItem(
+    managed: ManagedSession,
+    patch: Pick<UpdateWorkItemInput, 'title' | 'projectId' | 'statusId' | 'columnId'>,
+  ): void {
+    try {
+      const result = updatePrimaryWorkItemForSession(managed.workspace.rootPath, managed.id, patch, {
+        actor: { type: 'agent' },
+        context: { sessionId: managed.id },
+      })
+      if (result?.changed) this.broadcastWorkItemsChanged(managed.workspace.id)
+    } catch (error) {
+      sessionLog.error('[work-items] Failed to sync primary task projection:', {
+        sessionId: managed.id,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+
+  private ensurePrimaryWorkItem(managed: ManagedSession): void {
+    if (managed.parentSessionId || managed.taskDraft) return
+    try {
+      const result = ensureWorkItemForSession(managed.workspace.rootPath, {
+        id: managed.id,
+        title: managed.name?.trim() || 'Untitled task',
+        projectId: managed.projectId,
+        statusId: managed.sessionStatus,
+        columnId: managed.kanbanColumn,
+        createdAt: managed.createdAt,
+        updatedAt: managed.lastMessageAt,
+      }, {
+        actor: { type: 'agent' },
+        context: { sessionId: managed.id },
+      })
+      if (result.created) this.broadcastWorkItemsChanged(managed.workspace.id)
+    } catch (error) {
+      sessionLog.error('[work-items] Failed to register task session:', {
+        sessionId: managed.id,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+
+  private detachSessionWorkItems(managed: ManagedSession): void {
+    try {
+      const result = detachSessionFromWorkItems(managed.workspace.rootPath, managed.id, {
+        actor: { type: 'system' },
+        context: { sessionId: managed.id },
+      })
+      if (result.changed) this.broadcastWorkItemsChanged(managed.workspace.id)
+    } catch (error) {
+      sessionLog.error('[work-items] Failed to detach deleted session:', {
+        sessionId: managed.id,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
   }
 
   private broadcastAutomationsChanged(workspaceId: string): void {
@@ -4147,8 +4251,202 @@ export class SessionManager implements ISessionManager {
         }
       }
 
-      // Wire up session self-management tools (set_session_labels, set_session_status, etc.)
+      const sessionArtifactScope = (): ArtifactStorageScope => {
+        const contentRootPath = managed.workingDirectory || managed.workspace.rootPath
+        return {
+          workspaceRootPath: managed.workspace.rootPath,
+          workspaceId: managed.workspace.id,
+          contentRootPath,
+          allowedRoots: [...getWorkspaceAllowedDirs(managed.workspace.id), contentRootPath],
+        }
+      }
+
+      const artifactEventResult = (
+        resolved: ResolvedArtifact,
+        extra: Record<string, unknown> = {},
+      ) => ({
+        // Keep the event on the first line: renderer replay intentionally parses
+        // only the canonical prefix and never guesses from arbitrary tool prose.
+        text: `${serializeArtifactEvent(resolved)}\n${JSON.stringify({ ...resolved, ...extra }, null, 2)}`,
+        structuredContent: {
+          artifact: resolved.artifact,
+          activePath: resolved.activePath,
+          editablePath: resolved.editablePath,
+          ...extra,
+        },
+      })
+
+      const assertOwnedArtifact = (artifactId: string): ResolvedArtifact => {
+        const resolved = getArtifact(sessionArtifactScope(), artifactId)
+        if (resolved.artifact.sessionId !== managed.id) {
+          throw new Error(`Artifact ${artifactId} does not belong to this session`)
+        }
+        return resolved
+      }
+
+      const ensureAgentArtifactLease = (artifactId: string): string | undefined => {
+        const resolved = assertOwnedArtifact(artifactId)
+        if (resolved.artifact.status !== 'draft') return undefined
+        const lease = resolved.artifact.lease
+        if (lease && lease.expiresAt > Date.now()) {
+          if (lease.owner !== 'agent') return undefined
+          return lease.id
+        }
+        return acquireArtifactLease(
+          sessionArtifactScope(),
+          artifactId,
+          'agent',
+          undefined,
+          managed.id,
+        ).artifact.lease?.id
+      }
+
+      // Wire up session self-management and Artifact tools.
       mergeSessionScopedToolCallbacks(managed.id, {
+        artifactStatusFn: async (artifactId?: string) => {
+          if (artifactId) {
+            const resolved = assertOwnedArtifact(artifactId)
+            return {
+              text: JSON.stringify(resolved, null, 2),
+              structuredContent: { artifacts: [resolved] },
+            }
+          }
+          const artifacts = listArtifacts(
+            { workspaceRootPath: managed.workspace.rootPath },
+            { sessionId: managed.id },
+          )
+          return {
+            text: JSON.stringify(artifacts, null, 2),
+            structuredContent: { artifacts },
+          }
+        },
+        artifactCreateFn: async (input) => {
+          const normalizedInput = { ...input }
+          if (normalizedInput.engineId === UNIVER_SHEET_ENGINE_ID) {
+            if (normalizedInput.kind !== 'spreadsheet') {
+              throw new Error(`${UNIVER_SHEET_ENGINE_ID} can only create spreadsheet artifacts`)
+            }
+            if (normalizedInput.mimeType && normalizedInput.mimeType !== UNIVER_SHEET_MIME_TYPE) {
+              throw new Error(`${UNIVER_SHEET_ENGINE_ID} requires MIME type ${UNIVER_SHEET_MIME_TYPE}`)
+            }
+            normalizedInput.mimeType = UNIVER_SHEET_MIME_TYPE
+            const hasInitialContent = normalizedInput.initialPath !== undefined
+              || normalizedInput.initialText !== undefined
+              || normalizedInput.initialBase64 !== undefined
+            if (!hasInitialContent) {
+              normalizedInput.initialText = `${JSON.stringify(createBlankUniverSheetSnapshot({
+                workbookName: normalizedInput.title ?? basename(normalizedInput.sourcePath),
+              }), null, 2)}\n`
+            }
+          }
+          const created = createArtifactDraft(sessionArtifactScope(), {
+            ...normalizedInput,
+            sessionId: managed.id,
+          })
+          const leased = acquireArtifactLease(
+            sessionArtifactScope(),
+            created.artifact.id,
+            'agent',
+            undefined,
+            managed.id,
+          )
+          this.broadcastArtifactsChanged(managed.workspace.id)
+          return artifactEventResult(leased)
+        },
+        artifactApplyFn: async (artifactId, input) => {
+          const leaseId = ensureAgentArtifactLease(artifactId)
+          const operation = input.operation
+          if (
+            operation.type === 'sheet_set_range'
+            || operation.type === 'sheet_set_formula'
+            || operation.type === 'sheet_clear_range'
+          ) {
+            let sheetMutation: UniverSheetMutation
+            switch (operation.type) {
+              case 'sheet_set_range':
+                sheetMutation = {
+                  type: 'set-range-values',
+                  range: operation.range,
+                  values: operation.values,
+                }
+                break
+              case 'sheet_set_formula':
+                sheetMutation = {
+                  type: 'set-formula',
+                  range: operation.range,
+                  formula: operation.formula,
+                }
+                break
+              case 'sheet_clear_range':
+                sheetMutation = {
+                  type: 'clear-range',
+                  range: operation.range,
+                  contentsOnly: operation.contentsOnly,
+                }
+                break
+            }
+            const result = await mutateUniverSheetArtifact(
+              sessionArtifactScope(),
+              artifactId,
+              input.expectedRevision,
+              sheetMutation,
+              { sessionId: managed.id, leaseId },
+            )
+            this.broadcastArtifactsChanged(managed.workspace.id)
+            return artifactEventResult(result.resolved, {
+              sheetInspection: result.sheetInspection,
+            })
+          }
+          const updated = applyArtifactDraft(
+            sessionArtifactScope(),
+            artifactId,
+            { expectedRevision: input.expectedRevision, operation, leaseId },
+            managed.id,
+          )
+          this.broadcastArtifactsChanged(managed.workspace.id)
+          return artifactEventResult(updated)
+        },
+        artifactInspectFn: async (artifactId, range) => {
+          const leaseId = ensureAgentArtifactLease(artifactId)
+          const scope = sessionArtifactScope()
+          const inspected = inspectArtifact(scope, artifactId, {
+            sessionId: managed.id,
+            leaseId,
+          })
+          const rendered = await renderOfficeArtifactPreview(scope, inspected)
+          const sheetInspection = range
+            ? await inspectUniverSheetRange(rendered, range)
+            : undefined
+          this.broadcastArtifactsChanged(managed.workspace.id)
+          return artifactEventResult(rendered, sheetInspection ? { sheetInspection } : {})
+        },
+        artifactRenderFn: async (artifactId) => {
+          const leaseId = ensureAgentArtifactLease(artifactId)
+          const scope = sessionArtifactScope()
+          const inspected = inspectArtifact(scope, artifactId, {
+            sessionId: managed.id,
+            leaseId,
+          })
+          const rendered = await renderOfficeArtifactPreview(scope, inspected)
+          this.broadcastArtifactsChanged(managed.workspace.id)
+          return artifactEventResult(rendered)
+        },
+        artifactSubmitFn: async (artifactId, expectedRevision) => {
+          const leaseId = ensureAgentArtifactLease(artifactId)
+          const scope = sessionArtifactScope()
+          const inspected = inspectArtifact(scope, artifactId, {
+            sessionId: managed.id,
+            leaseId,
+          })
+          await renderOfficeArtifactPreview(scope, inspected)
+          const submitted = submitArtifact(scope, artifactId, {
+            sessionId: managed.id,
+            expectedRevision,
+            leaseId,
+          })
+          this.broadcastArtifactsChanged(managed.workspace.id)
+          return artifactEventResult(submitted)
+        },
         setSessionLabelsFn: async (sessionId: string | undefined, labels: string[]) => {
           await this.setSessionLabels(sessionId ?? managed.id, labels)
         },
@@ -4585,6 +4883,7 @@ export class SessionManager implements ISessionManager {
     const managed = this.sessions.get(sessionId)
     if (managed) {
       managed.sessionStatus = sessionStatus
+      this.syncPrimaryWorkItem(managed, { statusId: sessionStatus })
       this.setMetadataWriteGuard(managed)
       // Persist in-memory state directly to avoid race with pending queue writes
       this.persistSession(managed)
@@ -5123,6 +5422,7 @@ export class SessionManager implements ISessionManager {
     const managed = this.sessions.get(sessionId)
     if (managed) {
       managed.name = name
+      this.syncPrimaryWorkItem(managed, { title: name })
       this.persistSession(managed)
       // Notify renderer of the name change
       this.sendEvent({ type: 'title_generated', sessionId, title: name }, managed.workspace.id)
@@ -5230,6 +5530,7 @@ export class SessionManager implements ISessionManager {
       sessionLog.info(`refreshTitle: regenerateTitle returned: ${title ? `"${title}"` : 'null'}`)
       if (title) {
         managed.name = title
+        this.syncPrimaryWorkItem(managed, { title })
         this.persistSession(managed)
         // title_generated will also clear isRegeneratingTitle via the event handler
         this.sendEvent({ type: 'title_generated', sessionId, title }, managed.workspace.id)
@@ -5630,6 +5931,7 @@ export class SessionManager implements ISessionManager {
 
     // Delete from disk too
     deleteStoredSession(workspaceRootPath, sessionId)
+    this.detachSessionWorkItems(managed)
 
     // Notify all windows for this workspace that the session was deleted
     this.sendEvent({ type: 'session_deleted', sessionId }, managed.workspace.id)
@@ -5833,6 +6135,7 @@ export class SessionManager implements ISessionManager {
         const sanitized = sanitizeForTitle(titleSource)
         const initialTitle = sanitized.slice(0, 50) + (sanitized.length > 50 ? '…' : '')
         managed.name = initialTitle
+        this.syncPrimaryWorkItem(managed, { title: initialTitle })
         this.persistSession(managed)
         // Flush immediately so disk is authoritative before notifying renderer
         await this.flushSession(managed.id)
@@ -7093,7 +7396,10 @@ export class SessionManager implements ISessionManager {
     ]
 
     const existing = itemOf(managed.labels)
-    if (existing) return { labelId: existing }
+    if (existing) {
+      this.ensurePrimaryWorkItem(managed)
+      return { labelId: existing }
+    }
 
     let itemId: string
     const parent = opts?.parentSessionId ? this.sessions.get(opts.parentSessionId) : undefined
@@ -7105,11 +7411,13 @@ export class SessionManager implements ISessionManager {
         itemId = ensureTaskItemLabel(rootPath, parent.name || 'task').itemId
         await this.setSessionLabels(parent.id, withItemEntry(parent.labels, itemId))
       }
+      this.ensurePrimaryWorkItem(parent)
     } else {
       itemId = ensureTaskItemLabel(rootPath, managed.name || 'task').itemId
     }
 
     await this.setSessionLabels(sessionId, withItemEntry(managed.labels, itemId))
+    this.ensurePrimaryWorkItem(managed)
     return { labelId: itemId }
   }
 
@@ -7122,6 +7430,7 @@ export class SessionManager implements ISessionManager {
     const managed = this.sessions.get(sessionId)
     if (managed) {
       managed.projectId = projectId ?? undefined
+      this.syncPrimaryWorkItem(managed, { projectId })
       this.setMetadataWriteGuard(managed)
 
       this.sendEvent({
@@ -7145,6 +7454,7 @@ export class SessionManager implements ISessionManager {
     const managed = this.sessions.get(sessionId)
     if (managed) {
       managed.kanbanColumn = column ?? undefined
+      this.syncPrimaryWorkItem(managed, { columnId: column })
       this.setMetadataWriteGuard(managed)
 
       this.persistSession(managed)
@@ -7233,6 +7543,10 @@ export class SessionManager implements ISessionManager {
     if (connectionChanged) managed.llmConnection = reconcile!.llmConnection
     const renamed = Boolean(reconcile?.name && reconcile.name !== managed.name)
     if (renamed) managed.name = reconcile!.name!
+    this.syncPrimaryWorkItem(managed, {
+      ...(renamed ? { title: managed.name! } : {}),
+      ...(reconcile?.projectId !== undefined ? { projectId: reconcile.projectId } : {}),
+    })
 
     // Route model / cwd / permission mode through the canonical mutators so the LIVE agent, caches,
     // and per-field events stay consistent — not just the on-disk metadata (the split-brain the
@@ -7320,6 +7634,10 @@ export class SessionManager implements ISessionManager {
     if (connectionChanged) managed.llmConnection = reconcile!.llmConnection
     const renamed = Boolean(reconcile?.name && reconcile.name !== managed.name)
     if (renamed) managed.name = reconcile!.name!
+    this.syncPrimaryWorkItem(managed, {
+      ...(renamed ? { title: managed.name! } : {}),
+      ...(reconcile?.projectId !== undefined ? { projectId: reconcile.projectId } : {}),
+    })
 
     // Route model / cwd / permission mode through the canonical mutators so the LIVE agent, caches,
     // and per-field events stay consistent — not just the on-disk metadata (the split-brain the
@@ -7438,6 +7756,7 @@ export class SessionManager implements ISessionManager {
       const title = await agent.generateTitle(userMessage, { language: titleLanguage })
       if (title) {
         managed.name = title
+        this.syncPrimaryWorkItem(managed, { title })
         this.persistSession(managed)
         // Flush immediately to ensure disk is up-to-date before notifying renderer.
         // This prevents race condition where lazy loading reads stale disk data

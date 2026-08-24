@@ -17,6 +17,7 @@
 
 import type { SettingsSubpage } from './settings-registry'
 import type { PermissionMode } from '@craft-agent/shared/agent/mode-types'
+import type { ProjectManagementView } from './types'
 
 // Helper to build query strings from params
 function toQueryString(params?: Record<string, string | undefined>): string {
@@ -190,18 +191,25 @@ export const routes = {
         ? `projects/project/${projectSlug}` as const
         : 'projects' as const,
 
-    /** Kanban board view (sessions navigator, board view mode, all sessions) */
-    board: () => 'board' as const,
+    /** Project Management surface projection (workspace scope). */
+    projectManagement: (view: ProjectManagementView = 'overview') =>
+      view === 'overview' ? 'projects' as const : `projects/${view}` as const,
 
-    /** Calendar view (sessions navigator, month grid of all sessions) */
-    calendar: () => 'calendar' as const,
+    /** WorkItem detail peek inside a Project Management projection. */
+    projectWorkItem: (view: Exclude<ProjectManagementView, 'overview'>, workItemId: string) =>
+      `projects/${view}/work-item/${encodeURIComponent(workItemId)}` as const,
+
+    /** @deprecated Compatibility builder. Use projectManagement('board'). */
+    board: () => 'projects/board' as const,
+
+    /** @deprecated Compatibility builder. Use projectManagement('calendar'). */
+    calendar: () => 'projects/calendar' as const,
 
     // ─────────────────────────────────────────────
     // Bound content-workbench panels
     //
     // These routes are single-segment constants that carry NO session id —
-    // the panel content follows the active session. Same standalone-prefix
-    // convention as board/calendar (encodes as its own first segment).
+    // the panel content follows the active session.
     // ─────────────────────────────────────────────
 
     /** Review-Diff panel (bound to the active session) */
@@ -216,6 +224,9 @@ export const routes = {
     /** Preview panel (opened files + document pop-outs, bound to the active session) */
     preview: () => 'preview' as const,
 
+    /** Revisioned Artifact workbench. Artifact id is part of the durable route. */
+    artifact: (artifactId: string) => `artifact/${encodeURIComponent(artifactId)}` as const,
+
     /** Trajectory panel (turn-aware event ledger, bound to the active session) */
     trajectory: () => 'trajectory' as const,
   },
@@ -225,5 +236,7 @@ export const routes = {
  * Type representing any valid route string
  */
 export type ActionRoute = ReturnType<(typeof routes.action)[keyof typeof routes.action]>
-export type ViewRoute = ReturnType<(typeof routes.view)[keyof typeof routes.view]>
+/** Legacy persisted/deep-link aliases accepted for one migration window. */
+export type LegacyViewRoute = 'board' | 'calendar'
+export type ViewRoute = ReturnType<(typeof routes.view)[keyof typeof routes.view]> | LegacyViewRoute
 export type Route = ActionRoute | ViewRoute

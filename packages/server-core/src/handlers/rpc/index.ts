@@ -3,6 +3,7 @@ import type { HandlerDeps } from '../handler-deps'
 
 import { registerAuthHandlers } from './auth'
 import { registerAutomationsHandlers } from './automations'
+import { registerArtifactHandlers } from './artifacts'
 import { registerCalendarHandlers } from './calendar'
 import { registerFilesHandlers } from './files'
 import { registerLabelsHandlers } from './labels'
@@ -26,6 +27,7 @@ import { registerTasksHandlers } from './tasks'
 import { registerTransferHandlers } from './transfer'
 import { registerWorkspaceCoreHandlers } from './workspace'
 import { registerMessagingHandlers } from './messaging'
+import { registerWorkItemHandlers } from './work-items'
 
 export function registerCoreRpcHandlers(
   server: RpcServer,
@@ -34,6 +36,7 @@ export function registerCoreRpcHandlers(
 ): void {
   registerAuthHandlers(server, deps)
   registerAutomationsHandlers(server, deps)
+  registerArtifactHandlers(server, deps)
   registerCalendarHandlers(server, deps)
   registerFilesHandlers(server, deps)
   registerLabelsHandlers(server, deps)
@@ -53,4 +56,5 @@ export function registerCoreRpcHandlers(
   registerTransferHandlers(server)
   registerWorkspaceCoreHandlers(server, deps)
   registerMessagingHandlers(server, deps)
+  registerWorkItemHandlers(server, deps)
 }

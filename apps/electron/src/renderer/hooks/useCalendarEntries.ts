@@ -14,8 +14,8 @@ export interface UseCalendarEntriesResult {
   isLoading: boolean
   error: string | null
   refresh: () => Promise<void>
-  create: (input: { title: string; date: string; time?: string; note?: string }) => Promise<CalendarEntry | null>
-  update: (entryId: string, input: { title: string; date: string; time?: string; note?: string }) => Promise<CalendarEntry | null>
+  create: (input: { title: string; date: string; time?: string; note?: string; projectId?: string }) => Promise<CalendarEntry | null>
+  update: (entryId: string, input: { title: string; date: string; time?: string; note?: string; projectId?: string }) => Promise<CalendarEntry | null>
   remove: (entryId: string) => Promise<void>
 }
 
@@ -57,7 +57,7 @@ export function useCalendarEntries(workspaceId: string | null): UseCalendarEntri
   }, [workspaceId, refresh])
 
   const create = useCallback(
-    async (input: { title: string; date: string; time?: string; note?: string }) => {
+    async (input: { title: string; date: string; time?: string; note?: string; projectId?: string }) => {
       if (!workspaceId) return null
       try {
         const entry = await window.electronAPI.createCalendarEntry(workspaceId, input)
@@ -72,7 +72,7 @@ export function useCalendarEntries(workspaceId: string | null): UseCalendarEntri
   )
 
   const update = useCallback(
-    async (entryId: string, input: { title: string; date: string; time?: string; note?: string }) => {
+    async (entryId: string, input: { title: string; date: string; time?: string; note?: string; projectId?: string }) => {
       if (!workspaceId) return null
       try {
         const entry = await window.electronAPI.updateCalendarEntry(workspaceId, entryId, input)

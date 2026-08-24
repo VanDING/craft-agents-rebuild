@@ -351,7 +351,15 @@ function copyProductionDeps(config: ServerBuildConfig): void {
   // messaging-whatsapp-worker is intentionally OMITTED: Baileys and its transitive deps
   // are bundled directly into packages/messaging-whatsapp-worker/dist/worker.cjs by
   // scripts/build-wa-worker.ts — pulling them into node_modules would duplicate the tree.
-  const SERVER_PACKAGES = ['server', 'server-core', 'shared', 'core', 'session-tools-core', 'messaging-gateway'];
+  const SERVER_PACKAGES = [
+    'server',
+    'server-core',
+    'artifact-engine-univer',
+    'shared',
+    'core',
+    'session-tools-core',
+    'messaging-gateway',
+  ];
 
   const allImports = new Set<string>();
   for (const pkg of SERVER_PACKAGES) {
@@ -441,6 +449,7 @@ function copyWorkspacePackages(config: ServerBuildConfig): void {
   const packages = [
     'server',
     'server-core',
+    'artifact-engine-univer',
     'shared',
     'core',
     'session-tools-core',
@@ -506,6 +515,7 @@ function createRootConfig(config: ServerBuildConfig): void {
       moduleResolution: 'bundler',
       paths: {
         '@craft-agent/server-core/*': ['./packages/server-core/src/*'],
+        '@craft-agent/artifact-engine-univer/*': ['./packages/artifact-engine-univer/src/*'],
         '@craft-agent/shared/*': ['./packages/shared/src/*'],
         '@craft-agent/core/*': ['./packages/core/src/*'],
         '@craft-agent/session-tools-core/*': ['./packages/session-tools-core/src/*'],

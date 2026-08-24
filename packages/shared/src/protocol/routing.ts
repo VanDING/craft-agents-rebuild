@@ -404,6 +404,33 @@ export const REMOTE_ELIGIBLE_CHANNELS = new Set<string>([
   RPC_CHANNELS.calendar.DELETE,
   RPC_CHANNELS.calendar.CHANGED,
 
+  // workItems — canonical project-management tasks
+  RPC_CHANNELS.workItems.LIST,
+  RPC_CHANNELS.workItems.CREATE,
+  RPC_CHANNELS.workItems.UPDATE,
+  RPC_CHANNELS.workItems.DELETE,
+  RPC_CHANNELS.workItems.LIST_EVENTS,
+  RPC_CHANNELS.workItems.LIST_VIEWS,
+  RPC_CHANNELS.workItems.CREATE_VIEW,
+  RPC_CHANNELS.workItems.UPDATE_VIEW,
+  RPC_CHANNELS.workItems.DELETE_VIEW,
+  RPC_CHANNELS.workItems.CHANGED,
+
+  // artifacts — revisioned agent/user deliverables
+  RPC_CHANNELS.artifacts.LIST,
+  RPC_CHANNELS.artifacts.GET,
+  RPC_CHANNELS.artifacts.REGISTER_CURRENT,
+  RPC_CHANNELS.artifacts.CREATE,
+  RPC_CHANNELS.artifacts.APPLY,
+  RPC_CHANNELS.artifacts.INSPECT,
+  RPC_CHANNELS.artifacts.SUBMIT,
+  RPC_CHANNELS.artifacts.REVISE,
+  RPC_CHANNELS.artifacts.ACCEPT,
+  RPC_CHANNELS.artifacts.DISCARD,
+  RPC_CHANNELS.artifacts.ACQUIRE_LEASE,
+  RPC_CHANNELS.artifacts.RELEASE_LEASE,
+  RPC_CHANNELS.artifacts.CHANGED,
+
   // views — workspace UI views
   RPC_CHANNELS.views.LIST,
   RPC_CHANNELS.views.SAVE,

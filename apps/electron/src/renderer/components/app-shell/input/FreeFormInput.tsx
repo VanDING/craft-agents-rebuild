@@ -433,7 +433,7 @@ export function FreeFormInput({
     return appShellCtx.workspaces.find(w => w.id === workspaceId)?.slug ?? workspaceId
   }, [appShellCtx, workspaceId])
 
-  // Read panel focus state from context (for multi-panel unfocused styling)
+  // Read surface focus state from context for inactive styling.
   const appShellContext = useOptionalAppShellContext()
   const isFocusedPanel = appShellContext?.isFocusedPanel ?? true
 
@@ -454,7 +454,7 @@ export function FreeFormInput({
     })
   }, [placeholder, compactMode])
 
-  // Hide placeholder entirely when panel is unfocused in multi-panel layout
+  // Hide the placeholder while another surface owns focus.
   const shuffledPlaceholder = React.useMemo(
     () => Array.isArray(effectivePlaceholderProp) ? shuffleArray(effectivePlaceholderProp) : effectivePlaceholderProp,
     [] // eslint-disable-line react-hooks/exhaustive-deps -- intentionally shuffle only on mount

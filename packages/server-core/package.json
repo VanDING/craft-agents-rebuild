@@ -26,14 +26,17 @@
   },
   "dependencies": {
     "@craft-agent/core": "workspace:*",
+    "@craft-agent/artifact-engine-univer": "workspace:*",
     "@craft-agent/shared": "workspace:*",
     "@earendil-works/pi-ai": "0.84.2",
     "jose": "^6.0.0",
+    "markitdown-js": "^0.0.14",
     "sharp": "0.35.3",
     "ws": "^8.19.0"
   },
   "devDependencies": {
     "@types/node": "25.0.0",
-    "typescript": "7"
+    "typescript": "7",
+    "xlsx": "0.18.5"
   }
 }

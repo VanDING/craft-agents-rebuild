@@ -73,6 +73,13 @@ describe('normalizePanelRouteForReconcile', () => {
     expect(normalizePanelRouteForReconcile('sources', resolver)).toBe('sources')
   })
 
+  it('canonicalizes legacy project-management aliases during restore', () => {
+    const resolver = (state: NavigationState): NavigationState => state
+
+    expect(normalizePanelRouteForReconcile('board', resolver)).toBe('projects/board')
+    expect(normalizePanelRouteForReconcile('calendar', resolver)).toBe('projects/calendar')
+  })
+
   it('keeps explicit detail route even if resolver tries to rewrite it', () => {
     const resolver = (state: NavigationState): NavigationState => {
       if ('details' in state) {

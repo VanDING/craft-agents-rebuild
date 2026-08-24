@@ -14,9 +14,23 @@
 import { atom } from 'jotai'
 import { atomWithStorage } from 'jotai/utils'
 import type { KanbanColumnId, TaskEditorTarget } from '@/components/app-shell/kanban/types'
+import type { WorkItemQuery } from '@craft-agent/shared/work-items/browser'
 
 /** Selected project ids to filter the board by. Empty array = all projects. */
 export const kanbanProjectFilterAtom = atom<string[]>([])
+
+/** Shared List/Board/Calendar query + selection state for the active workspace. */
+export const workItemSearchAtom = atom('')
+export const workItemSortAtom = atom<NonNullable<WorkItemQuery['sort']>>({
+  field: 'updatedAt',
+  direction: 'desc',
+})
+export const workItemStatusFilterAtom = atom<string[]>([])
+export const workItemScheduledFilterAtom = atom<NonNullable<WorkItemQuery['scheduled']>>('all')
+export const workItemActiveViewIdAtom = atom<string | null>(null)
+export const workItemSelectionAtom = atom<string[]>([])
+export const workItemViewWorkspaceAtom = atom<string | null>(null)
+export const workItemDetailIdAtom = atom<string | null>(null)
 
 /**
  * The board pane's Task-editor overlay target (null = closed). An atom rather than

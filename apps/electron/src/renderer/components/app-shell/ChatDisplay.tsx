@@ -62,11 +62,12 @@ import { useAppShellContext } from "@/context/AppShellContext"
 import { navigate, routes } from "@/lib/navigate"
 import { CHAT_LAYOUT } from "@/config/layout"
 import { collectFileChangesFromActivities, getFirstFileChangeIdForActivity } from "@/lib/file-changes"
-import { resolveBranchNewPanelOption } from "./branching"
 import { handleErrorMessageAction } from "./error-message-actions"
 import { addPreviewEntryAtom, type PreviewEntry } from "@/atoms/preview"
 import { reviewPanelFocusRequestAtom } from "@/atoms/content-panel-ui"
-import { usePanelTriggerOpener, useTriggerOpenToast } from "@/lib/panel-triggers"
+import { usePanelTriggerOpener } from "@/lib/panel-triggers"
+import { useArtifacts } from "@/hooks/useArtifacts"
+import { ArtifactTurnCards } from "@/components/artifacts/ArtifactTurnCards"
 
 // ============================================================================
 // CSS Custom Highlight API helper
@@ -461,7 +462,7 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
 }, ref) {
   const { t } = useTranslation()
 
-  // Panel focus state (for multi-panel auto-scroll behavior)
+  // Surface focus state gates auto-scroll and input focus while Workbench is active.
   const appShellContext = useAppShellContext()
   const isFocusedPanel = appShellContext?.isFocusedPanel ?? true
 
@@ -507,7 +508,7 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
   const { isDark } = useTheme()
 
   // Register as focus zone - when zone gains focus, focus the textarea
-  // Guard with isFocusedPanelRef so only the focused panel responds in multi-panel layouts
+  // Guard so only the focused surface responds.
   const { zoneRef, isFocused } = useFocusZone({
     zoneId: 'chat',
     enabled: isFocusedPanel,
@@ -566,7 +567,7 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
   // Does NOT auto-focus just because session changed (that would steal focus from SessionList)
   // Uses isSearchModeActive (prop) instead of isSearchActive (query-based) to prevent
   // focus stealing when search is open but query is empty
-  // In multi-panel layouts, only the focused panel should auto-focus its textarea
+  // Only the focused surface should auto-focus its textarea.
   useEffect(() => {
     if (session && !isSearchModeActive && isFocused && isFocusedPanel) {
       textareaRef.current?.focus()
@@ -936,17 +937,42 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
   // ============================================================================
 
   const openTriggeredPanel = usePanelTriggerOpener()
-  const notifyTriggerToast = useTriggerOpenToast()
   const addPreviewEntry = useSetAtom(addPreviewEntryAtom)
   const setReviewPanelFocusRequest = useSetAtom(reviewPanelFocusRequestAtom)
+  const artifactStore = useArtifacts(workspaceId ?? session?.workspaceId ?? null, session?.id)
+
+  const openArtifact = useCallback((artifactId: string) => {
+    navigate(routes.view.artifact(artifactId))
+  }, [navigate])
+
+  const acceptArtifact = useCallback(async (artifactId: string) => {
+    const result = await artifactStore.accept(artifactId)
+    if (!result) {
+      toast.error(artifactStore.error ?? t('artifact.actionFailed'))
+      return
+    }
+    if (result.accepted) toast.success(t('artifact.accepted'))
+    else toast.error(t('artifact.conflictDetected'))
+  }, [artifactStore, t])
+
+  const discardArtifact = useCallback(async (artifactId: string) => {
+    if (!window.confirm(t('artifact.discardConfirm'))) return
+    const result = await artifactStore.discard(artifactId)
+    if (!result) toast.error(artifactStore.error ?? t('artifact.actionFailed'))
+  }, [artifactStore, t])
+
+  const reviseArtifact = useCallback(async (artifactId: string) => {
+    const result = await artifactStore.revise(artifactId)
+    if (!result) toast.error(artifactStore.error ?? t('artifact.actionFailed'))
+  }, [artifactStore, t])
 
   // Push a preview entry for the current session and open/focus the Preview
-  // panel using the trigger-type strategy (replaces the oldest panel when full).
+  // item using the trigger strategy (activate existing or create a tab).
   const openPreviewEntry = useCallback((entry: PreviewEntry) => {
     if (!session) return
     addPreviewEntry({ sessionId: session.id, entry })
-    notifyTriggerToast(openTriggeredPanel('preview'))
-  }, [session, addPreviewEntry, openTriggeredPanel, notifyTriggerToast])
+    openTriggeredPanel('preview')
+  }, [session, addPreviewEntry, openTriggeredPanel])
 
   // Pop-out handler - a message shown read-only (read-only markdown preview)
   const handlePopOut = useCallback((message: Message) => {
@@ -958,8 +984,8 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
     if (focusedChangeId) {
       setReviewPanelFocusRequest({ changeId: focusedChangeId, nonce: Date.now() })
     }
-    notifyTriggerToast(openTriggeredPanel('diff'))
-  }, [openTriggeredPanel, notifyTriggerToast, setReviewPanelFocusRequest])
+    openTriggeredPanel('diff')
+  }, [openTriggeredPanel, setReviewPanelFocusRequest])
 
   // Ref to track total turn count for scroll handler
   const totalTurnCountRef = React.useRef(0)
@@ -1653,7 +1679,7 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
                         compactMode={compactMode}
                         sendMessageKey={sendMessageKey}
                         openAnnotationRequest={openAnnotationRequest}
-                        onBranch={session?.supportsBranching ? async (messageId: string, options?: { newPanel?: boolean }) => {
+                        onBranch={session?.supportsBranching ? async (messageId: string, _options?: { newPanel?: boolean }) => {
                           if (!session) return
                           try {
                             const child = await appShellContext.onCreateSession(
@@ -1670,12 +1696,12 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
                                 enabledSourceSlugs: session.enabledSourceSlugs,
                               }
                             )
-                            navigate(routes.view.allSessions(child.id), { newPanel: resolveBranchNewPanelOption(options) })
+                            navigate(routes.view.allSessions(child.id))
                           } catch (error) {
                             const rawMessage = error instanceof Error ? error.message : 'Failed to create branch'
                             const message = rawMessage.includes('source and target providers must match')
                               || rawMessage.includes('same provider/backend')
-                              ? 'Branching is only supported within the same provider/backend. Switch this panel connection and try again.'
+                              ? 'Branching is only supported within the same provider/backend. Switch this session connection and try again.'
                               : rawMessage
                             toast.error(t('toast.couldNotCreateBranch'), { description: message })
                           }
@@ -1798,6 +1824,14 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
                             openDiffPanel()
                           }
                         }}
+                      />
+                      <ArtifactTurnCards
+                        activities={turn.activities}
+                        artifacts={artifactStore.artifacts}
+                        onOpen={openArtifact}
+                        onAccept={acceptArtifact}
+                        onDiscard={discardArtifact}
+                        onRevise={reviseArtifact}
                       />
                       </div>
                     )

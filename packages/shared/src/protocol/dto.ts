@@ -844,6 +844,8 @@ export interface DeepLinkNavigation {
   tabParams?: Record<string, string>
   action?: string
   actionParams?: Record<string, string>
+  /** Legacy sidebar target, migrated by the desktop renderer to a Workbench item. */
+  rightSidebar?: string
 }
 
 // ---------------------------------------------------------------------------
@@ -865,6 +867,8 @@ export interface CalendarEntry {
   time?: string
   /** Optional note body. */
   note?: string
+  /** Optional Project Management scope; absent entries appear only in workspace aggregate. */
+  projectId?: string
   createdAt: number
   updatedAt: number
 }
@@ -876,4 +880,5 @@ export interface CalendarEntryInput {
   date: string
   time?: string
   note?: string
+  projectId?: string
 }

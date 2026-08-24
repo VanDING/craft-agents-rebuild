@@ -2,7 +2,7 @@
  * PanelEmptyState - Shared guidance empty-state for content-workbench panels.
  *
  * Used by bound panels (Review-Diff / Files / Context / Preview) when there is
- * no active session to bind to, and by PanelSlot when a bound route fails to
+ * no active session to bind to, and by SurfaceSlot when a bound route fails to
  * parse (invalid URL) — in both cases showing a hint instead of crashing or
  * falling through to the global navigation.
  */

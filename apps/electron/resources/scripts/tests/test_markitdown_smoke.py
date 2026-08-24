@@ -24,6 +24,12 @@ class MarkitdownSmokeTests(unittest.TestCase):
     def run_docx(self, *args: str):
         return run_tool("docx-tool", *args, env=self.env)
 
+    def run_xlsx(self, *args: str):
+        return run_tool("xlsx-tool", *args, env=self.env)
+
+    def run_pptx(self, *args: str):
+        return run_tool("pptx-tool", *args, env=self.env)
+
     def test_plain_text_passthrough(self) -> None:
         txt = self.tmpdir / "plain.txt"
         txt.write_text("hello craft", encoding="utf-8")
@@ -40,6 +46,24 @@ class MarkitdownSmokeTests(unittest.TestCase):
         result = self.run_markitdown(str(docx))
         self.assertEqual(result.returncode, 0, msg=result.stderr)
         self.assertIn("Hello from docx", result.stdout)
+
+    def test_xlsx_preview_path(self) -> None:
+        xlsx = self.tmpdir / "sample.xlsx"
+        create = self.run_xlsx("write", str(xlsx), "--cell", "A1", "--value", "Hello from xlsx")
+        self.assertEqual(create.returncode, 0, msg=create.stderr)
+
+        result = self.run_markitdown(str(xlsx))
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertIn("Hello from xlsx", result.stdout)
+
+    def test_pptx_preview_path(self) -> None:
+        pptx = self.tmpdir / "sample.pptx"
+        create = self.run_pptx("create", "--text", "# Preview\nHello from pptx", "-o", str(pptx))
+        self.assertEqual(create.returncode, 0, msg=create.stderr)
+
+        result = self.run_markitdown(str(pptx))
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        self.assertIn("Hello from pptx", result.stdout)
 
 
 if __name__ == "__main__":

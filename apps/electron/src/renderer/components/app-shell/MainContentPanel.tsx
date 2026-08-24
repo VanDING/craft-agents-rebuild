@@ -44,9 +44,7 @@ import { SourceInfoPage, ChatPage } from '@/pages'
 import SkillInfoPage from '@/pages/SkillInfoPage'
 import { getSettingsPageComponent } from '@/pages/settings/settings-pages'
 import { AutomationInfoPage } from '../automations/AutomationInfoPage'
-import ProjectInfoPage from '@/pages/ProjectInfoPage'
-import { KanbanBoardContainer } from './kanban/KanbanBoardContainer'
-import { CalendarView } from './kanban/CalendarView'
+import { ProjectManagementSurface } from '../projects/ProjectManagementSurface'
 import type { ExecutionEntry } from '../automations/types'
 import { automationsAtom } from '@/atoms/automations'
 import { SendResourceToWorkspaceDialog, type SendResourceType } from './SendResourceToWorkspaceDialog'
@@ -59,7 +57,7 @@ export interface MainContentPanelProps {
   /**
    * Override the navigation state for this panel.
    * When provided, this panel renders based on the override instead of the global NavigationState.
-   * Used by PanelSlot to render panels in the panel stack.
+   * Used by SurfaceSlot to render the Primary Surface.
    */
   navStateOverride?: import('../../../shared/types').NavigationState | null
 }
@@ -239,7 +237,7 @@ export function MainContentPanel({
 
   // Settings navigator - uses component map from settings-pages.ts.
   // Bare `settings` route (subpage === null) means navigator-only view in compact mode;
-  // PanelStackContainer hides the content panel entirely. On desktop the panel still
+  // SurfaceContainer hides the content surface entirely. On desktop it still
   // mounts, so fall back to the App page so it isn't empty.
   if (isSettingsNavigation(navState)) {
     const subpage = navState.subpage ?? 'app'
@@ -362,45 +360,18 @@ export function MainContentPanel({
     )
   }
 
-  // Projects navigator - show project detail page or empty state
+  // Project Management surface. Board and Calendar are peer projections here,
+  // not presentation modes of the Sessions navigator.
   if (isProjectsNavigation(navState)) {
-    const projectDetails = navState.details
-    if (projectDetails && projectDetails.type === 'project') {
-      return wrapWithStoplight(
-        <Panel variant="grow" className={className}>
-          <ProjectInfoPage projectSlug={projectDetails.projectSlug} />
-        </Panel>
-      )
-    }
     return wrapWithStoplight(
       <Panel variant="grow" className={className}>
-        <div className="flex items-center justify-center h-full text-muted-foreground">
-          <p className="text-sm">{t("projectsList.noProjectSelected")}</p>
-        </div>
+        <ProjectManagementSurface state={navState} />
       </Panel>
     )
   }
 
   // Chats navigator - show chat, multi-select panel, or empty state
   if (isSessionsNavigation(navState)) {
-    // Board view: full-width Kanban over all sessions (placement independent of status)
-    if (navState.viewMode === 'board') {
-      return wrapWithStoplight(
-        <Panel variant="grow" className={className}>
-          <KanbanBoardContainer />
-        </Panel>
-      )
-    }
-
-    // Calendar view: full-width month grid of all sessions
-    if (navState.viewMode === 'calendar') {
-      return wrapWithStoplight(
-        <Panel variant="grow" className={className}>
-          <CalendarView />
-        </Panel>
-      )
-    }
-
     // Multi-select mode: show batch actions panel
     if (isMultiSelectActive) {
       return wrapWithStoplight(

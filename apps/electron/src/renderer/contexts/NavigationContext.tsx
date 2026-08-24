@@ -4,10 +4,10 @@
  * Provides a global `navigate()` function that decouples components from
  * direct session/action imports. All navigation goes through typed routes.
  *
- * PEER PANEL MODEL:
- * All panels are equal. The **focused** panel drives the NavigationState
- * (which determines sidebar highlight, navigator content, etc.).
- * `navigate(route)` updates the focused panel's route.
+ * SURFACE MODEL:
+ * Exactly one Primary Surface drives NavigationState. Bound tools are Context
+ * Workbench tabs and never replace global navigation merely because they gain
+ * keyboard focus.
  *
  * URL-DRIVEN HISTORY:
  * The URL is the source of truth. Every meaningful navigation pushes a
@@ -46,7 +46,6 @@ import {
   parseRoute,
   parseRouteToNavigationState,
   buildRouteFromNavigationState,
-  buildRightSidebarParam,
   type ParsedRoute,
 } from '../../shared/route-parser'
 import { routes, type Route, type ViewRoute } from '../../shared/routes'
@@ -54,6 +53,11 @@ import { parsePermissionMode } from '@craft-agent/shared/agent/mode-types'
 import { NAVIGATE_EVENT, type NavigateOptions } from '../lib/navigate'
 import { normalizePanelRouteForReconcile } from './navigation-reconcile'
 import { buildSemanticHistoryKey, canRunInitialRestore } from './navigation-history'
+import {
+  legacySidebarToWorkbenchRoute,
+  parseSurfaceUrlParams,
+  writeSurfaceUrlParams,
+} from './surface-url'
 import * as storage from '@/lib/local-storage'
 import type {
   DeepLinkNavigation,
@@ -61,7 +65,6 @@ import type {
   NavigationState,
   SessionFilter,
   SourceFilter,
-  RightSidebarPanel,
   ContentBadge,
 } from '../../shared/types'
 import {
@@ -77,23 +80,17 @@ import { sessionMetaMapAtom, updateSessionMetaAtom, type SessionMeta } from '@/a
 import { sourcesAtom } from '@/atoms/sources'
 import { skillsAtom } from '@/atoms/skills'
 import {
-  panelStackAtom,
-  pushPanelAtom,
-  reconcilePanelStackAtom,
-  focusedPanelIdAtom,
-  focusedPanelRouteAtom,
-  focusedPanelIndexAtom,
-  focusedSessionIdAtom,
-  updateFocusedPanelRouteAtom,
-  parseSessionIdFromRoute,
-} from '@/atoms/panel-stack'
+  deriveSurfaceRestoreState,
+  hydrateSurfaceStateAtom,
+  openWorkbenchItemAtom,
+  primarySurfaceAtom,
+  primarySessionIdAtom,
+  parseSessionIdFromSurfaceRoute,
+  setPrimarySurfaceRouteAtom,
+  workbenchStateAtom,
+  type WorkbenchState,
+} from '@/atoms/workbench'
 import { lastActiveSessionIdAtom } from '@/atoms/active-session'
-import {
-  hiddenPanelsAtom,
-  restoreHiddenPanelsForWorkspaceAtom,
-  persistHiddenPanelsAtom,
-  dedupeHiddenPanelsAtom,
-} from '@/atoms/hidden-panels'
 
 // Re-export routes for convenience
 export { routes }
@@ -112,7 +109,7 @@ interface NavigationContextValue {
   navigate: (route: Route, options?: NavigateOptions) => void | Promise<void>
   /** Check if navigation is ready */
   isReady: boolean
-  /** Unified navigation state — derived from focused panel + right sidebar */
+  /** Unified navigation state — derived only from the Primary Surface */
   navigationState: NavigationState
   /** Whether we can go back in history */
   canGoBack: boolean
@@ -122,10 +119,6 @@ interface NavigationContextValue {
   goBack: () => void
   /** Go forward in history */
   goForward: () => void
-  /** Update right sidebar panel */
-  updateRightSidebar: (panel: RightSidebarPanel | undefined) => void
-  /** Toggle right sidebar (with optional panel) */
-  toggleRightSidebar: (panel?: RightSidebarPanel) => void
   /** Navigate to a source (or source list if no slug), preserving the current filter type */
   navigateToSource: (sourceSlug?: string) => void
   /** Navigate to a session, preserving the current filter type */
@@ -181,8 +174,6 @@ export function NavigationProvider({
   // Label tree for filter matching (auto-select must agree with the visible list).
   const { labels: labelConfigs } = useLabels(workspaceId)
 
-  const pushPanel = useSetAtom(pushPanelAtom)
-
   // Store reference for reading fresh atom values in callbacks (avoids stale closures)
   const store = useStore()
 
@@ -193,29 +184,21 @@ export function NavigationProvider({
   const skills = useAtomValue(skillsAtom)
 
   // =========================================================================
-  // DERIVED NAVIGATION STATE (from focused panel + right sidebar)
+  // DERIVED NAVIGATION STATE (from Primary Surface)
   // =========================================================================
 
-  const focusedRoute = useAtomValue(focusedPanelRouteAtom)
+  const primarySurface = useAtomValue(primarySurfaceAtom)
 
-  // Right sidebar is independent of panels (not per-panel state)
-  const [rightSidebar, setRightSidebar] = useState<RightSidebarPanel | undefined>()
-  const rightSidebarRef = useRef<RightSidebarPanel | undefined>(rightSidebar)
-  useEffect(() => { rightSidebarRef.current = rightSidebar }, [rightSidebar])
-
-  // NavigationState derived from the focused panel's route
+  // NavigationState is structural: workbench focus never changes it.
   const navigationState: NavigationState = useMemo(() => {
-    const base = focusedRoute
-      ? parseRouteToNavigationState(focusedRoute) ?? DEFAULT_NAVIGATION_STATE
-      : DEFAULT_NAVIGATION_STATE
-    return rightSidebar ? { ...base, rightSidebar } : base
-  }, [focusedRoute, rightSidebar])
+    return parseRouteToNavigationState(primarySurface.route) ?? DEFAULT_NAVIGATION_STATE
+  }, [primarySurface.route])
 
-  // Active-session memory: every time the focused panel is a session, remember
+  // Active-session memory: every time Primary is a session, remember
   // it as the "last active session". Bound panels (Review/Files/Context/Preview)
   // follow `activeSessionIdAtom = focused ?? last` so they never drift while the
-  // user focuses a board/calendar/diff panel.
-  const focusedSessionId = useAtomValue(focusedSessionIdAtom)
+  // Primary switches to project-management or a management surface.
+  const focusedSessionId = useAtomValue(primarySessionIdAtom)
   const setLastActiveSession = useSetAtom(lastActiveSessionIdAtom)
   useEffect(() => {
     if (focusedSessionId) setLastActiveSession(focusedSessionId)
@@ -236,8 +219,7 @@ export function NavigationProvider({
   // Suppress pushState in atom subscriptions during restore/reconciliation
   const suppressPushRef = useRef(false)
 
-  // Coalesce compound atom writes (e.g. pushPanelAtom sets both panelStackAtom
-  // and focusedPanelIdAtom) into a single pushState via microtask debounce
+  // Coalesce compound Primary/Workbench atom writes into one history entry.
   const pendingPushRef = useRef(false)
 
   // Flag: workspace switch was triggered by popstate (URL already correct)
@@ -262,14 +244,15 @@ export function NavigationProvider({
   }, [])
 
   const getSemanticHistoryKey = useCallback(() => {
-    const panels = store.get(panelStackAtom)
-    const focusedIdx = store.get(focusedPanelIndexAtom)
-    const sidebarKey = buildRightSidebarParam(rightSidebarRef.current) ?? ''
+    const primary = store.get(primarySurfaceAtom)
+    const workbench = store.get(workbenchStateAtom)
+    const activeIndex = workbench.items.findIndex((item) => item.id === workbench.activeItemId)
+    const focusedIdx = workbench.open && activeIndex >= 0 ? activeIndex + 1 : 0
     return buildSemanticHistoryKey({
       workspaceSlug,
-      panelRoutes: panels.map(p => p.route),
+      panelRoutes: [primary.route, ...workbench.items.map((item) => item.route)],
       focusedPanelIndex: focusedIdx,
-      sidebarParam: sidebarKey,
+      sidebarParam: '',
     })
   }, [store, workspaceSlug])
 
@@ -286,11 +269,8 @@ export function NavigationProvider({
    * Also persists the URL per-workspace in localStorage for workspace switch restoration.
    */
   const syncUrl = useCallback((push: boolean = false) => {
-    const panels = store.get(panelStackAtom)
-    const focusedIdx = store.get(focusedPanelIndexAtom)
-    if (panels.length === 0) return
-
-    const focusedPanel = panels[focusedIdx] ?? panels[0]
+    const primary = store.get(primarySurfaceAtom)
+    const workbench = store.get(workbenchStateAtom)
     const url = new URL(window.location.href)
 
     // ?ws= workspace slug
@@ -298,31 +278,10 @@ export function NavigationProvider({
       url.searchParams.set('ws', workspaceSlug)
     }
 
-    // ?route= is the focused panel's route
-    url.searchParams.set('route', focusedPanel.route)
+    writeSurfaceUrlParams(url.searchParams, primary, workbench)
 
-    // ?panels= encodes ALL panels in stack order
-    if (panels.length > 1) {
-      const encoded = panels.map(p => `${p.route}:${p.proportion.toFixed(4)}`).join(',')
-      url.searchParams.set('panels', encoded)
-    } else {
-      url.searchParams.delete('panels')
-    }
-
-    // ?fi= is focused panel index (for multi-panel layouts)
-    if (panels.length > 1) {
-      url.searchParams.set('fi', String(focusedIdx))
-    } else {
-      url.searchParams.delete('fi')
-    }
-
-    // ?sidebar=
-    const sidebarParam = buildRightSidebarParam(rightSidebarRef.current)
-    if (sidebarParam) {
-      url.searchParams.set('sidebar', sidebarParam)
-    } else {
-      url.searchParams.delete('sidebar')
-    }
+    // v1 right-sidebar state is migrated into Workbench tabs on restore.
+    url.searchParams.delete('sidebar')
 
     const urlStr = url.toString()
 
@@ -353,154 +312,132 @@ export function NavigationProvider({
     lastSemanticHistoryKeyRef.current = currentSemanticKey
   }, [getSemanticHistoryKey])
 
-  // replaceState sync when panel stack, focus, or sidebar changes (catches resize, etc.)
-  const panelStack = useAtomValue(panelStackAtom)
-  const focusedPanelId = useAtomValue(focusedPanelIdAtom)
+  // replaceState sync catches workbench width and other layout-only changes.
+  const workbenchState = useAtomValue(workbenchStateAtom)
   useEffect(() => {
     if (!initialRouteRestoredRef.current) return
     syncUrlRef.current(false)
-  }, [panelStack, focusedPanelId, rightSidebar])
+  }, [primarySurface, workbenchState])
 
   // =========================================================================
   // ATOM SUBSCRIPTIONS FOR pushState (meaningful navigation)
   // =========================================================================
 
-  // Panel stack changes: push history on add/remove/route change (NOT resize)
+  // Primary route changes are semantic navigation.
   useEffect(() => {
-    let prevRoutes = store.get(panelStackAtom).map(p => p.route)
-    const unsub = store.sub(panelStackAtom, () => {
-      if (suppressPushRef.current || !initialRouteRestoredRef.current) return
-      const currRoutes = store.get(panelStackAtom).map(p => p.route)
-      if (currRoutes.length !== prevRoutes.length || !currRoutes.every((r, i) => r === prevRoutes[i])) {
+    let previousRoute = store.get(primarySurfaceAtom).route
+    const unsub = store.sub(primarySurfaceAtom, () => {
+      const currentRoute = store.get(primarySurfaceAtom).route
+      if (suppressPushRef.current || !initialRouteRestoredRef.current) {
+        previousRoute = currentRoute
+        return
+      }
+      if (currentRoute !== previousRoute) {
         if (!pendingPushRef.current) {
           pendingPushRef.current = true
           queueMicrotask(() => { pendingPushRef.current = false; maybePushHistoryForSemanticChange() })
         }
       }
-      prevRoutes = currRoutes
+      previousRoute = currentRoute
     })
     return unsub
   }, [store, maybePushHistoryForSemanticChange])
 
-  // Focus changes: push history when active panel changes.
+  // Workbench tab/open changes are semantic; pixel width is layout-only.
   useEffect(() => {
-    let prevFocusId = store.get(focusedPanelIdAtom)
-    const unsub = store.sub(focusedPanelIdAtom, () => {
-      const newFocusId = store.get(focusedPanelIdAtom)
-      if (suppressPushRef.current || !initialRouteRestoredRef.current) return
-      if (newFocusId !== prevFocusId) {
+    const semanticKey = (state: WorkbenchState) => [
+      state.items.map((item) => item.route).join('|'),
+      state.activeItemId ?? '',
+      state.open ? '1' : '0',
+    ].join('::')
+    let previousKey = semanticKey(store.get(workbenchStateAtom))
+    const unsub = store.sub(workbenchStateAtom, () => {
+      const currentKey = semanticKey(store.get(workbenchStateAtom))
+      if (suppressPushRef.current || !initialRouteRestoredRef.current) {
+        previousKey = currentKey
+        return
+      }
+      if (currentKey !== previousKey) {
         if (!pendingPushRef.current) {
           pendingPushRef.current = true
           queueMicrotask(() => { pendingPushRef.current = false; maybePushHistoryForSemanticChange() })
         }
-        prevFocusId = newFocusId
       }
+      previousKey = currentKey
     })
     return unsub
   }, [store, maybePushHistoryForSemanticChange])
-
-  // Persist the hidden panel set whenever it changes (per workspace).
-  useEffect(() => {
-    if (!workspaceSlug) return
-    const unsub = store.sub(hiddenPanelsAtom, () => {
-      store.set(persistHiddenPanelsAtom, workspaceSlug)
-    })
-    return unsub
-  }, [store, workspaceSlug])
-
-  // Right sidebar changes: push history
-  const prevSidebarTypeRef = useRef(rightSidebar?.type)
-  useEffect(() => {
-    if (rightSidebar?.type === prevSidebarTypeRef.current) return
-    prevSidebarTypeRef.current = rightSidebar?.type
-    if (suppressPushRef.current) return
-    if (!initialRouteRestoredRef.current) return
-    maybePushHistoryForSemanticChange()
-  }, [rightSidebar, maybePushHistoryForSemanticChange])
 
   // =========================================================================
-  // RECONCILE PANELS FROM URL PARAMS
+  // RECONCILE PRIMARY + WORKBENCH FROM URL PARAMS
   // =========================================================================
 
   /**
-   * Parse URL search params and reconcile the panel stack + sidebar.
-   * Uses reconcilePanelStackAtom for smart matching (preserves React keys).
+   * Parses the v2 surface URL. A one-window migration also accepts legacy
+   * `panels`/`fi` plus the old hidden-panel localStorage payload.
    */
   const reconcileFromUrlParams = useCallback(
     (params: URLSearchParams) => {
-      const initialRoute = params.get('route')
       const sidebarParam = params.get('sidebar') || undefined
-      const panelsParam = params.get('panels')
-      const focusedIndexParam = params.get('fi')
 
-      // Restore right sidebar
+      const normalizeRoute = (rawRoute: string): ViewRoute => normalizePanelRouteForReconcile(
+        rawRoute as ViewRoute,
+        (state) => resolveAutoSelectionRef.current(state),
+      )
+
+      const fallbackPrimaryRoute = store.get(primarySurfaceAtom).route
+      const parsedSurface = parseSurfaceUrlParams(params, {
+        fallbackPrimaryRoute,
+        normalizeRoute,
+      })
+      // A bare legacy URL can still carry `sidebar` or hidden Workbench items.
+      // Start from a valid Primary fallback so those migrations are not lost.
+      let restore = parsedSurface?.restore
+        ?? deriveSurfaceRestoreState([], 0, fallbackPrimaryRoute)
+
+      // Migrate the discontinued right-sidebar URL into a real Workbench tab.
       if (sidebarParam) {
-        const parsed = parseRouteToNavigationState('allSessions', sidebarParam)
-        if (parsed?.rightSidebar) {
-          setRightSidebar(parsed.rightSidebar)
-        } else {
-          setRightSidebar(undefined)
+        const migratedRoute = legacySidebarToWorkbenchRoute(sidebarParam)
+        if (migratedRoute && !restore.workbenchRoutes.includes(migratedRoute)) {
+          restore = {
+            ...restore,
+            workbenchRoutes: [...restore.workbenchRoutes, migratedRoute],
+            activeWorkbenchRoute: migratedRoute,
+            workbenchOpen: true,
+          }
         }
-      } else {
-        setRightSidebar(undefined)
       }
 
-      // Parse panel entries from URL
-      let entries: { route: ViewRoute; proportion: number }[] = []
-      let focusedIndex = 0
-
-      if (panelsParam) {
-        // Canonical format: ?panels= contains ALL panels, ?fi= is focused index.
-        // We intentionally no longer support older mixed route/panels formats.
-        entries = panelsParam.split(',').filter(Boolean).map(entry => {
-          const colonIdx = entry.lastIndexOf(':')
-          if (colonIdx > 0) {
-            const proportion = parseFloat(entry.slice(colonIdx + 1))
-            if (!isNaN(proportion) && proportion > 0 && proportion < 1) {
-              const rawRoute = entry.slice(0, colonIdx) as ViewRoute
-              const route = normalizePanelRouteForReconcile(rawRoute, (state) => resolveAutoSelectionRef.current(state))
-              return { route, proportion }
+      // One-time migration of old background bound panels into lightweight
+      // workbench tabs. Primary/session entries are intentionally ignored.
+      if (parsedSurface?.source !== 'v2' && workspaceSlug) {
+        const legacyHidden = storage.get<Array<{ route?: ViewRoute }>>(
+          storage.KEYS.hiddenPanels,
+          [],
+          workspaceSlug,
+        )
+        if (legacyHidden.length > 0) {
+          const merged = [...restore.workbenchRoutes]
+          for (const entry of legacyHidden) {
+            if (!entry.route) continue
+            const candidate = deriveSurfaceRestoreState([normalizeRoute(entry.route)], 0, restore.primaryRoute)
+            for (const route of candidate.workbenchRoutes) {
+              if (!merged.includes(route)) merged.push(route)
             }
           }
-          const rawRoute = entry as ViewRoute
-          const route = normalizePanelRouteForReconcile(rawRoute, (state) => resolveAutoSelectionRef.current(state))
-          return { route, proportion: 0 }
-        })
-
-        const hasProportions = entries.some(e => e.proportion > 0)
-        if (!hasProportions) {
-          const equal = 1 / entries.length
-          entries.forEach(e => { e.proportion = equal })
-        } else {
-          const total = entries.reduce((s, e) => s + e.proportion, 0)
-          if (total > 0 && Math.abs(total - 1) > 0.001) {
-            entries.forEach(e => { e.proportion = e.proportion / total })
+          restore = {
+            ...restore,
+            workbenchRoutes: merged,
+            activeWorkbenchRoute: restore.activeWorkbenchRoute ?? merged.at(-1) ?? null,
+            workbenchOpen: restore.workbenchOpen || merged.length > 0,
           }
-        }
-
-        focusedIndex = focusedIndexParam != null ? (parseInt(focusedIndexParam, 10) || 0) : 0
-      } else if (initialRoute) {
-        // Single panel from ?route=
-        const navState = parseRouteToNavigationState(initialRoute)
-        if (navState) {
-          const finalRoute = ('details' in navState && navState.details)
-            ? (initialRoute as ViewRoute)
-            : (buildRouteFromNavigationState(resolveAutoSelectionRef.current(navState)) as ViewRoute)
-          entries = [{ route: finalRoute, proportion: 1 }]
+          storage.remove(storage.KEYS.hiddenPanels, workspaceSlug)
         }
       }
 
-      if (entries.length > 0) {
-        store.set(reconcilePanelStackAtom, { entries, focusedIndex })
-      }
-
-      // History/URL consistency: the hidden set lives in localStorage, not the
-      // URL. After restoring the foreground from any URL (startup, back/forward,
-      // workspace switch), drop hidden entries whose route is now in the
-      // foreground — a panel must never exist in both sets at once.
-      store.set(dedupeHiddenPanelsAtom)
+      store.set(hydrateSurfaceStateAtom, restore)
     },
-    [store]
+    [store, workspaceSlug]
   )
 
   // Keep ref fresh for use in event handlers / effects that capture stale closures
@@ -511,24 +448,14 @@ export function NavigationProvider({
   // EMPTY SESSION CLEANUP (reactive — covers navigate, close tab, etc.)
   // =========================================================================
 
-  // Track which session IDs are visible across all panels. When a session ID
-  // disappears (navigate away, close tab, Cmd+W), check if it was empty and
-  // auto-delete it. This is the single codepath for all navigate-away cleanup.
+  // Track the session visible in Primary. Background execution is a session
+  // domain concern; it no longer needs a hidden UI panel to stay alive.
   const prevVisibleSessionIdsRef = useRef<Set<string>>(new Set())
-  const hiddenPanels = useAtomValue(hiddenPanelsAtom)
 
   useEffect(() => {
     const currentIds = new Set<string>()
-    for (const entry of panelStack) {
-      const sessionId = parseSessionIdFromRoute(entry.route)
-      if (sessionId) currentIds.add(sessionId)
-    }
-    // Hidden (backgrounded) panels still "hold" their session: a backgrounded
-    // empty session must never be auto-deleted (decision #5 / Task 5 Step 4).
-    for (const hidden of hiddenPanels) {
-      const sessionId = parseSessionIdFromRoute(hidden.route)
-      if (sessionId) currentIds.add(sessionId)
-    }
+    const primarySessionId = parseSessionIdFromSurfaceRoute(primarySurface.route)
+    if (primarySessionId) currentIds.add(primarySessionId)
 
     // Only check after we've seen at least one set of IDs
     // (skip first render to avoid false positives during initialization)
@@ -546,20 +473,20 @@ export function NavigationProvider({
     }
 
     prevVisibleSessionIdsRef.current = currentIds
-  }, [panelStack, hiddenPanels, onAutoDeleteEmptySession, store, getDraft])
+  }, [primarySurface.route, onAutoDeleteEmptySession, store, getDraft])
 
   // =========================================================================
   // SESSION SELECTION SYNC
   // =========================================================================
 
-  // Keep the global session selection in sync with the focused panel
+  // Keep the global session selection in sync with Primary.
   useEffect(() => {
     if (isSessionsNavigation(navigationState) && navigationState.details) {
       setSession({ selected: navigationState.details.sessionId })
       if (workspaceId) {
         // Only persist if the session belongs to this workspace (prevents cross-workspace
         // pollution during workspace switch, when workspaceId changed but navigationState
-        // still reflects the old workspace's focused panel)
+        // still reflects the previous workspace's Primary route)
         const meta = store.get(sessionMetaMapAtom).get(navigationState.details.sessionId)
         if (meta && meta.workspaceId === workspaceId) {
           storage.set(storage.KEYS.lastSelectedSessionId, navigationState.details.sessionId, workspaceId)
@@ -674,13 +601,10 @@ export function NavigationProvider({
         }
       }
 
-      // Sessions: auto-select last/first session.
-      // Board/gantt/calendar views have no per-session detail, so skip
-      // auto-selection — otherwise navigating there would immediately
-      // resolve into a chat route.
+      // Sessions: auto-select last/first session. Project-management views are
+      // a separate navigator, so this branch no longer needs view-mode guards.
       if (
         isSessionsNavigation(nextState) &&
-        (!nextState.viewMode || nextState.viewMode === 'list') &&
         !nextState.details &&
         !options?.skipAutoSelect
       ) {
@@ -724,7 +648,7 @@ export function NavigationProvider({
   // =========================================================================
 
   const handleActionNavigation = useCallback(
-    async (parsed: ParsedRoute, options?: { newPanel?: boolean; targetLaneId?: 'main' }) => {
+    async (parsed: ParsedRoute, _options?: NavigateOptions) => {
       if (!workspaceId) return
 
       switch (parsed.name) {
@@ -780,24 +704,15 @@ export function NavigationProvider({
             parsed.params.label ? { kind: 'label', labelId: parsed.params.label } :
             { kind: 'allSessions' }
 
-          if (options?.newPanel) {
-            // Open the new session in a new panel using lane-aware routing (pushPanel auto-focuses it)
-            pushPanel({
-              route: routes.view.allSessions(session.id) as ViewRoute,
-              targetLaneId: options.targetLaneId,
-              intent: 'explicit',
-            })
-          } else {
-            // Navigate the focused panel to the new session
-            const newState: NavigationState = {
-              navigator: 'sessions',
-              filter,
-              details: { type: 'session', sessionId: session.id },
-            }
-            const route = buildRouteFromNavigationState(newState) as ViewRoute
-            store.set(updateFocusedPanelRouteAtom, route)
-            // Session selection sync handled by effect
+          // Primary is singular. Creating a session selects it there; the
+          // session process remains independently alive after navigation.
+          const newState: NavigationState = {
+            navigator: 'sessions',
+            filter,
+            details: { type: 'session', sessionId: session.id },
           }
+          const route = buildRouteFromNavigationState(newState) as ViewRoute
+          store.set(setPrimarySurfaceRouteAtom, route)
 
           // Parse badges from params
           let badges: ContentBadge[] | undefined
@@ -891,7 +806,7 @@ export function NavigationProvider({
           console.warn('[Navigation] Unknown action:', parsed.name)
       }
     },
-    [workspaceId, onCreateSession, onInputChange, pushPanel, store, updateSessionMeta]
+    [workspaceId, onCreateSession, onInputChange, store, updateSessionMeta]
   )
 
   // =========================================================================
@@ -922,21 +837,6 @@ export function NavigationProvider({
         return
       }
 
-      // For view routes with newPanel: push a panel using lane-aware routing.
-      //
-      // Important distinction:
-      // - explicit opens (intent='explicit') can target a specific lane
-      // - implicit navigation (updateFocusedPanelRouteAtom path) applies lock/fallback
-      // This mirrors VS Code-style "locked group" behavior.
-      if (options?.newPanel) {
-        pushPanel({
-          route: route as ViewRoute,
-          targetLaneId: options.targetLaneId,
-          intent: 'explicit',
-        })
-        return
-      }
-
       // Parse route to NavigationState. Bare `settings` produces `subpage: null` —
       // navigator-only view in compact mode, App-page fallback on desktop. We
       // intentionally do NOT auto-redirect to the last-visited subpage; doing so
@@ -958,12 +858,14 @@ export function NavigationProvider({
           storage.set(storage.KEYS.lastSelectedSessionId, resolvedState.details.sessionId, workspaceId)
         }
 
-        // Update the focused panel's route (atom update is synchronous)
-        // The panelStack atom subscription detects the route change and calls syncUrl(true)
-        store.set(updateFocusedPanelRouteAtom, finalRoute)
+        if (resolvedState.navigator === 'other') {
+          store.set(openWorkbenchItemAtom, finalRoute)
+        } else {
+          store.set(setPrimarySurfaceRouteAtom, finalRoute)
+        }
       }
     },
-    [isReady, handleActionNavigation, resolveAutoSelection, store, pushPanel, workspaceId]
+    [isReady, handleActionNavigation, resolveAutoSelection, store, workspaceId]
   )
 
   // =========================================================================
@@ -1076,11 +978,6 @@ export function NavigationProvider({
       lastSemanticHistoryKeyRef.current = getSemanticHistoryKey()
     }
 
-    // Hidden panels are per-workspace: load the new workspace's set and dedupe
-    // against the freshly reconciled foreground (a panel never lives in both).
-    store.set(restoreHiddenPanelsForWorkspaceAtom, workspaceSlug)
-    store.set(dedupeHiddenPanelsAtom)
-
     // The remembered "last active session" belongs to the previous workspace —
     // bound panels must not bind to a stale cross-workspace session id. It is
     // re-populated as soon as a session in the new workspace is focused.
@@ -1112,15 +1009,11 @@ export function NavigationProvider({
 
     const params = new URLSearchParams(window.location.search)
 
-    // Restore the workspace's hidden panel set BEFORE reconciling the foreground
-    // from the URL (reconcile dedupes hidden against the restored foreground).
-    store.set(restoreHiddenPanelsForWorkspaceAtom, workspaceSlug)
-
-    // Reconcile panels + sidebar from current URL
+    // Reconcile Primary + Workbench + sidebar from current URL.
     reconcileFromUrlParamsRef.current(params)
     lastSemanticHistoryKeyRef.current = getSemanticHistoryKey()
 
-    // If nothing was in the URL, navigate to default
+    // If nothing was in the URL, navigate to default.
     if (!params.get('route') && !params.get('panels')) {
       navigate(routes.view.allSessions())
     }
@@ -1155,7 +1048,8 @@ export function NavigationProvider({
       if (navState) {
         const resolved = resolveAutoSelection(navState)
         const finalRoute = buildRouteFromNavigationState(resolved) as ViewRoute
-        store.set(updateFocusedPanelRouteAtom, finalRoute)
+        if (resolved.navigator === 'other') store.set(openWorkbenchItemAtom, finalRoute)
+        else store.set(setPrimarySurfaceRouteAtom, finalRoute)
       }
     }
   }, [isReady, handleActionNavigation, resolveAutoSelection, store])
@@ -1195,10 +1089,13 @@ export function NavigationProvider({
         }
         navigate(route as Route)
       }
+
+      const workbenchRoute = legacySidebarToWorkbenchRoute(nav.rightSidebar)
+      if (workbenchRoute) store.set(openWorkbenchItemAtom, workbenchRoute)
     })
 
     return cleanup
-  }, [workspaceId, navigate])
+  }, [workspaceId, navigate, store, t])
 
   // =========================================================================
   // INTERNAL NAVIGATION EVENT LISTENER
@@ -1206,10 +1103,10 @@ export function NavigationProvider({
 
   useEffect(() => {
     const handleNavigateEvent = (event: Event) => {
-      const customEvent = event as CustomEvent<{ route: Route; newPanel?: boolean; targetLaneId?: 'main' }>
+      const customEvent = event as CustomEvent<{ route: Route } & NavigateOptions>
       if (customEvent.detail?.route) {
-        const { route: r, newPanel, targetLaneId } = customEvent.detail
-        navigate(r, newPanel ? { newPanel, targetLaneId } : undefined)
+        const { route: r, ...options } = customEvent.detail
+        navigate(r, options)
       }
     }
 
@@ -1218,23 +1115,6 @@ export function NavigationProvider({
       window.removeEventListener(NAVIGATE_EVENT, handleNavigateEvent)
     }
   }, [navigate])
-
-  // =========================================================================
-  // SIDEBAR HELPERS
-  // =========================================================================
-
-  const updateRightSidebar = useCallback((panel: RightSidebarPanel | undefined) => {
-    setRightSidebar(panel)
-    // pushState handled by the rightSidebar change effect
-  }, [])
-
-  const toggleRightSidebar = useCallback((panel?: RightSidebarPanel) => {
-    const currentSidebar = rightSidebarRef.current
-    const newPanel = panel || (currentSidebar && currentSidebar.type !== 'none'
-      ? { type: 'none' as const }
-      : { type: 'none' as const })
-    updateRightSidebar(newPanel)
-  }, [updateRightSidebar])
 
   // =========================================================================
   // PRESERVE-FILTER NAVIGATION HELPERS
@@ -1295,8 +1175,6 @@ export function NavigationProvider({
   useEffect(() => {
     if (suppressAutoSelectRef.current) return
     if (!isReady || !workspaceId) return
-    // Don't auto-select when panel stack is empty (user closed all panels)
-    if (store.get(panelStackAtom).length === 0) return
     // Scoped to sessions with no explicit detail. resolveAutoSelection owns the
     // selection decision (board skip, last/first fallback) so it lives in one
     // place; this effect just applies it when the session list loads after
@@ -1329,8 +1207,6 @@ export function NavigationProvider({
         canGoForward,
         goBack,
         goForward,
-        updateRightSidebar,
-        toggleRightSidebar,
         navigateToSource,
         navigateToSession,
       }}

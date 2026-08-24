@@ -3,8 +3,8 @@
  *
  * iOS-style slide between navigator and detail in compact mode.
  *
- * Why a small wrapper instead of inlining motion config in PanelStackContainer:
- * - PanelStackContainer already juggles sidebar/navigator/content layouts;
+ * Why a small wrapper instead of inlining motion config in SurfaceContainer:
+ * - SurfaceContainer already juggles sidebar/navigator/content layouts;
  *   keeping the spring + reduced-motion plumbing here keeps that file readable.
  * - Two slots (navigator and detail) need symmetric variants — easier to keep
  *   them aligned in one place.

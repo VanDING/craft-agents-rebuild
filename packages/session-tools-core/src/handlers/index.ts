@@ -78,3 +78,21 @@ export { handleCreateTask } from './create-task.ts';
 export type { CreateTaskArgs } from './create-task.ts';
 export { handleArchiveSession } from './archive-session.ts';
 export type { ArchiveSessionArgs } from './archive-session.ts';
+
+// Artifact drafts
+export {
+  handleArtifactStatus,
+  handleArtifactCreate,
+  handleArtifactApply,
+  handleArtifactInspect,
+  handleArtifactRender,
+  handleArtifactSubmit,
+} from './artifact.ts';
+export type {
+  ArtifactStatusArgs,
+  ArtifactCreateArgs,
+  ArtifactApplyArgs,
+  ArtifactInspectArgs,
+  ArtifactRenderArgs,
+  ArtifactSubmitArgs,
+} from './artifact.ts';

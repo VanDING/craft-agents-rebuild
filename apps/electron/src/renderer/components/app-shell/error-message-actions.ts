@@ -16,7 +16,7 @@ export interface HandleErrorMessageActionOptions {
  * Execute an error-message action using the app's canonical handlers.
  *
  * Retry intentionally routes through the session-scoped focus event system
- * instead of querying the DOM, which is fragile in multi-panel mode and
+ * instead of querying the DOM, which is fragile across surface/overlay modes and
  * no longer matches the RichTextInput implementation.
  */
 export function handleErrorMessageAction(

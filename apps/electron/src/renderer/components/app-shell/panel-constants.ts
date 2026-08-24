@@ -1,6 +1,6 @@
 import { isMac } from '@/lib/platform'
 
-/** Gap between any adjacent panels (sidebar ↔ navigator ↔ content ↔ right sidebar) */
+/** Gap between adjacent shell surfaces (sidebar ↔ navigator ↔ Primary ↔ Workbench). */
 export const PANEL_GAP = 6
 
 /** Padding from window edges to outermost panels (right, bottom, left when sidebar hidden) */

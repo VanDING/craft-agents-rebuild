@@ -8,10 +8,9 @@
  * only fires when the whole app is unfocused.
  *
  * Behavior:
- * - Only the *focused* session's input renders the chip (`focusedSessionIdAtom`),
- *   so a split view never shows the same announcement twice. The completing
- *   session is never its own announcer — it's excluded from the queue lookup and
- *   the App-level detector already skips sessions visible in any panel.
+ * - Only the Primary Session's input renders the chip (`focusedSessionIdAtom`).
+ *   The completing session is never its own announcer and the App-level detector
+ *   skips the session currently visible in Primary.
  * - Clicking the chip dissolves it, *then* jumps to the finished session
  *   (preserving the old banner's jump-to-output behavior) and clears its queue
  *   entry, so it stays gone until the next completion. The navigation is
@@ -38,7 +37,7 @@ import { CheckCircle2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { NavigationContext } from '@/contexts/NavigationContext'
 import { navigate, routes } from '@/lib/navigate'
-import { focusedSessionIdAtom } from '@/atoms/panel-stack'
+import { primarySessionIdAtom } from '@/atoms/workbench'
 import {
   backgroundFinishedAtom,
   dismissBackgroundFinishedAtom,
@@ -62,7 +61,7 @@ export function BackgroundFinishedChip({ sessionId }: BackgroundFinishedChipProp
   const nav = useContext(NavigationContext)
   const enabled = useAtomValue(showBackgroundFinishedChipAtom)
   const queue = useAtomValue(backgroundFinishedAtom)
-  const focusedSessionId = useAtomValue(focusedSessionIdAtom)
+  const focusedSessionId = useAtomValue(primarySessionIdAtom)
   const dismiss = useSetAtom(dismissBackgroundFinishedAtom)
 
   // Opening a session acknowledges it: clear its queued entry whenever it's the
@@ -77,7 +76,7 @@ export function BackgroundFinishedChip({ sessionId }: BackgroundFinishedChipProp
   }, [sessionId, queue, dismiss])
 
   // Most-recent background completion that isn't the session on screen. Only the
-  // focused session's row announces it, so split views don't double up.
+  // Primary Session's row announces it.
   const entry = enabled && focusedSessionId === sessionId
     ? [...queue].reverse().find(e => e.sessionId !== sessionId)
     : undefined

@@ -215,6 +215,22 @@ describe('attachSessionSelfManagementBindings', () => {
     // No callbacks registered — resolveLabels should be undefined, not an identity function
     expect(ctx.resolveLabels).toBeUndefined();
   });
+
+  it('resolves late-bound Artifact callbacks from the same backend registry', async () => {
+    const ctx = createBaseContext(sessionId);
+    attachSessionSelfManagementBindings(ctx, sessionId);
+    expect(ctx.artifactCreate).toBeUndefined();
+
+    mergeSessionScopedToolCallbacks(sessionId, {
+      artifactCreateFn: async () => ({
+        text: 'CRAFT_ARTIFACT_EVENT:{"artifactId":"a"}',
+        structuredContent: { artifact: { id: 'a' } },
+      }),
+    });
+
+    const result = await ctx.artifactCreate!({ kind: 'text', sourcePath: 'report.txt' });
+    expect(result.structuredContent).toEqual({ artifact: { id: 'a' } });
+  });
 });
 
 // ============================================================

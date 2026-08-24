@@ -349,6 +349,28 @@ export interface SessionToolContext {
   createTask?(input: CreateTaskInput): Promise<CreateTaskResult>;
 
   // ============================================================
+  // Artifact Drafts
+  // ============================================================
+
+  /** List this session's artifacts or inspect one by id. */
+  artifactStatus?(artifactId?: string): Promise<ArtifactToolResult>;
+
+  /** Create a typed draft without touching its final source path. */
+  artifactCreate?(input: ArtifactCreateInput): Promise<ArtifactToolResult>;
+
+  /** Apply one schema-checked text/JSON operation to a draft. */
+  artifactApply?(artifactId: string, input: ArtifactApplyInput): Promise<ArtifactToolResult>;
+
+  /** Validate the active draft/current revision. */
+  artifactInspect?(artifactId: string, range?: string): Promise<ArtifactToolResult>;
+
+  /** Refresh the engine-independent preview metadata for an artifact. */
+  artifactRender?(artifactId: string): Promise<ArtifactToolResult>;
+
+  /** Validate and move a draft to ready-for-user-review. */
+  artifactSubmit?(artifactId: string, expectedRevision?: string): Promise<ArtifactToolResult>;
+
+  // ============================================================
   // Inter-Session Messaging
   // ============================================================
 
@@ -482,6 +504,51 @@ export interface CreateTaskResult {
   taskLabelId?: string;
   /** Fail-soft problems (unknown source/skill slugs, label failure, …). */
   warnings: string[];
+}
+
+// ============================================================
+// Artifact Tool Types
+// ============================================================
+
+export type ArtifactToolKind =
+  | 'spreadsheet'
+  | 'document'
+  | 'presentation'
+  | 'data'
+  | 'diagram'
+  | 'pdf'
+  | 'image'
+  | 'html'
+  | 'text';
+
+export interface ArtifactCreateInput {
+  kind: ArtifactToolKind;
+  sourcePath: string;
+  title?: string;
+  engineId?: string;
+  mimeType?: string;
+  initialPath?: string;
+  initialText?: string;
+  initialBase64?: string;
+}
+
+export type ArtifactApplyOperation =
+  | { type: 'set_text'; text: string }
+  | { type: 'set_json'; value: unknown }
+  | { type: 'replace_text'; search: string; replacement: string; replaceAll?: boolean }
+  | { type: 'sheet_set_range'; range: string; values: unknown[][] }
+  | { type: 'sheet_set_formula'; range: string; formula: string }
+  | { type: 'sheet_clear_range'; range: string; contentsOnly?: boolean };
+
+export interface ArtifactApplyInput {
+  expectedRevision: string;
+  operation: ArtifactApplyOperation;
+}
+
+/** Transport-neutral handler result. `text` includes the replayable event line. */
+export interface ArtifactToolResult {
+  text: string;
+  structuredContent: Record<string, unknown>;
 }
 
 export interface SessionInfo {

@@ -27,6 +27,7 @@ import { mobileWebUIComponents } from './mobile-webui'
 import { kanbanComponents } from './kanban'
 import { scheduleViewComponents } from './schedule-views'
 import { taskEditorComponents } from './task-editor'
+import { artifactComponents } from './artifacts'
 
 export * from './types'
 
@@ -49,6 +50,7 @@ export const componentRegistry: ComponentEntry[] = [
   ...kanbanComponents,
   ...scheduleViewComponents,
   ...taskEditorComponents,
+  ...artifactComponents,
   ...projectColorsComponents,
   ...editPopoverComponents,
   ...automationComponents,
@@ -63,7 +65,7 @@ export const componentRegistry: ComponentEntry[] = [
 ]
 
 export function getCategories(): CategoryGroup[] {
-  const categoryOrder: Category[] = ['Mobile WebUI', 'Automations', 'Onboarding', 'Agent Setup', 'Chat', 'Island', 'Browser', 'Planner', 'Custom Shadows', 'Session List', 'Kanban', 'Entity Lists', 'Edit Popover', 'Turn Cards', 'TurnCard Modes', 'Fullscreen', 'Chat Messages', 'Chat Inputs', 'Toast Messages', 'Markdown', 'Icons', 'OAuth', 'Messaging']
+  const categoryOrder: Category[] = ['Mobile WebUI', 'Automations', 'Onboarding', 'Agent Setup', 'Chat', 'Island', 'Browser', 'Planner', 'Custom Shadows', 'Session List', 'Project Management', 'Kanban', 'Artifacts', 'Entity Lists', 'Edit Popover', 'Turn Cards', 'TurnCard Modes', 'Fullscreen', 'Chat Messages', 'Chat Inputs', 'Toast Messages', 'Markdown', 'Icons', 'OAuth', 'Messaging']
   const categoryMap = new Map<Category, ComponentEntry[]>()
 
   for (const entry of componentRegistry) {

@@ -2,7 +2,7 @@ import * as React from 'react'
 import { LayoutGrid, List, X } from 'lucide-react'
 import type { ComponentEntry } from './types'
 import { cn } from '@/lib/utils'
-import { getModelShortName } from '@config/models'
+import { DEFAULT_MODEL, getModelShortName } from '@config/models'
 import type { ProjectColorTreatment } from '@/utils/project-colors'
 import { KanbanBoard } from '@/components/app-shell/kanban/KanbanBoard'
 import { TaskTile } from '@/components/app-shell/kanban/TaskTile'
@@ -156,7 +156,7 @@ function StubSessionList() {
               />
               <span className="flex-1 truncate text-sm text-foreground">{task.title}</span>
               {status && <StatusBadge status={status} />}
-              <ModelChip model={task.model} />
+              {task.model && <ModelChip model={task.model} />}
             </div>
           )
         })}
@@ -193,7 +193,7 @@ function buildTaskWindowProps(task: KanbanTask): TaskWindowProps {
     title: task.title,
     project,
     status: mockStatusesById.get(task.statusId),
-    model: task.model,
+    model: task.model ?? DEFAULT_MODEL,
     userMessage: `Coordinate "${task.title}" and route each part to the best-fit model.`,
     assistantIntro: hasSubtasks
       ? "I'm acting as the orchestrator — here are the subtasks I've spawned, each routed to a best-fit model:"

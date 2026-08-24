@@ -1,0 +1,48 @@
+export type {
+  CreateWorkItemInput,
+  CreateWorkItemViewInput,
+  DetachSessionWorkItemsResult,
+  EnsureSessionWorkItemResult,
+  LegacySessionWorkItemSource,
+  LegacySessionWorkItemMigrationResult,
+  PrimaryWorkItemSyncResult,
+  UpdateWorkItemInput,
+  UpdateWorkItemViewInput,
+  WorkItem,
+  WorkItemEvent,
+  WorkItemEventAction,
+  WorkItemEventActor,
+  WorkItemEventChange,
+  WorkItemEventContext,
+  WorkItemMutationContext,
+  WorkItemQuery,
+  WorkItemScheduledFilter,
+  WorkItemSortDirection,
+  WorkItemSortField,
+  WorkItemViewDefinition,
+  WorkItemViewGroupBy,
+  WorkItemViewLayout,
+} from './types.ts';
+
+export {
+  queryWorkItems,
+  reconcileWorkItemSelection,
+  workItemDateKey,
+} from './query.ts';
+
+export {
+  createWorkItem,
+  createWorkItemView,
+  deleteWorkItem,
+  deleteWorkItemView,
+  detachSessionFromWorkItems,
+  ensureWorkItemForSession,
+  findPrimaryWorkItemBySessionId,
+  listWorkItems,
+  listWorkItemEvents,
+  listWorkItemViews,
+  migrateLegacySessionWorkItems,
+  updatePrimaryWorkItemForSession,
+  updateWorkItem,
+  updateWorkItemView,
+} from './storage.ts';

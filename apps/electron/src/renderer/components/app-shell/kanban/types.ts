@@ -55,8 +55,8 @@ export interface KanbanTask {
   column: KanbanColumnId
   /** Workspace status id shown on the badge. Independent from `column`. */
   statusId: string
-  /** Orchestrator model id for the parent task. */
-  model: string
+  /** Orchestrator model id for a linked execution session. */
+  model?: string
   /** Optional project binding; colors the tile. */
   projectId?: string
   /**

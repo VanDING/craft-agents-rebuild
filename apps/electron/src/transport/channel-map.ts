@@ -267,6 +267,33 @@ export const CHANNEL_MAP = {
   deleteCalendarEntry: invoke(RPC_CHANNELS.calendar.DELETE),
   onCalendarEntriesChanged: listener(RPC_CHANNELS.calendar.CHANGED),
 
+  // Work items (canonical project-management tasks)
+  listWorkItems: invoke(RPC_CHANNELS.workItems.LIST),
+  createWorkItem: invoke(RPC_CHANNELS.workItems.CREATE),
+  updateWorkItem: invoke(RPC_CHANNELS.workItems.UPDATE),
+  deleteWorkItem: invoke(RPC_CHANNELS.workItems.DELETE),
+  listWorkItemEvents: invoke(RPC_CHANNELS.workItems.LIST_EVENTS),
+  listWorkItemViews: invoke(RPC_CHANNELS.workItems.LIST_VIEWS),
+  createWorkItemView: invoke(RPC_CHANNELS.workItems.CREATE_VIEW),
+  updateWorkItemView: invoke(RPC_CHANNELS.workItems.UPDATE_VIEW),
+  deleteWorkItemView: invoke(RPC_CHANNELS.workItems.DELETE_VIEW),
+  onWorkItemsChanged: listener(RPC_CHANNELS.workItems.CHANGED),
+
+  // Artifacts (revisioned agent/user deliverables)
+  listArtifacts: invoke(RPC_CHANNELS.artifacts.LIST),
+  getArtifact: invoke(RPC_CHANNELS.artifacts.GET),
+  registerCurrentArtifact: invoke(RPC_CHANNELS.artifacts.REGISTER_CURRENT),
+  createArtifact: invoke(RPC_CHANNELS.artifacts.CREATE),
+  applyArtifact: invoke(RPC_CHANNELS.artifacts.APPLY),
+  inspectArtifact: invoke(RPC_CHANNELS.artifacts.INSPECT),
+  submitArtifact: invoke(RPC_CHANNELS.artifacts.SUBMIT),
+  reviseArtifact: invoke(RPC_CHANNELS.artifacts.REVISE),
+  acceptArtifact: invoke(RPC_CHANNELS.artifacts.ACCEPT),
+  discardArtifact: invoke(RPC_CHANNELS.artifacts.DISCARD),
+  acquireArtifactLease: invoke(RPC_CHANNELS.artifacts.ACQUIRE_LEASE),
+  releaseArtifactLease: invoke(RPC_CHANNELS.artifacts.RELEASE_LEASE),
+  onArtifactsChanged: listener(RPC_CHANNELS.artifacts.CHANGED),
+
   // LLM connections change listener
   onLlmConnectionsChanged: listener(RPC_CHANNELS.llmConnections.CHANGED),
 

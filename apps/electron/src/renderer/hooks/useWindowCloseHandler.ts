@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { useAtomValue, useSetAtom } from 'jotai'
 import { useModalRegistry } from '@/context/ModalContext'
 import { useDismissibleLayerRegistry } from '@/context/DismissibleLayerContext'
-import { panelStackAtom, closePanelAtom, focusedPanelIdAtom } from '@/atoms/panel-stack'
+import { closeWorkbenchItemAtom, workbenchStateAtom } from '@/atoms/workbench'
 import type { WindowCloseRequest } from '../../shared/types'
 
 /**
@@ -11,7 +11,7 @@ import type { WindowCloseRequest } from '../../shared/types'
  * - `window-button` closes the window directly.
  * - `keyboard-shortcut` (Cmd/Ctrl+W) uses layered dismissal:
  *   1. Close top modal
- *   2. Else close focused panel
+ *   2. Else close the active Context Workbench tab
  *   3. Else close window
  * - `unknown` follows layered dismissal as a safe fallback.
  *
@@ -24,9 +24,8 @@ import type { WindowCloseRequest } from '../../shared/types'
 export function useWindowCloseHandler() {
   const { hasOpenLayers, closeTop } = useDismissibleLayerRegistry()
   const { hasOpenModals, closeTopModal } = useModalRegistry()
-  const panelStack = useAtomValue(panelStackAtom)
-  const focusedPanelId = useAtomValue(focusedPanelIdAtom)
-  const closePanel = useSetAtom(closePanelAtom)
+  const workbench = useAtomValue(workbenchStateAtom)
+  const closeWorkbenchItem = useSetAtom(closeWorkbenchItemAtom)
 
   useEffect(() => {
     const cleanup = window.electronAPI.onCloseRequested((request: WindowCloseRequest) => {
@@ -48,19 +47,17 @@ export function useWindowCloseHandler() {
         return
       }
 
-      // Close the focused panel (or last if no focus tracked)
-      const target = focusedPanelId
-        ? panelStack.find(p => p.id === focusedPanelId)
-        : panelStack[panelStack.length - 1]
-      if (target) {
-        closePanel(target.id)
+      // Primary is structural and cannot be closed. Cmd/Ctrl+W first closes
+      // the active workbench tab; with no docked item left it closes the window.
+      if (workbench.open && workbench.activeItemId) {
+        closeWorkbenchItem(workbench.activeItemId)
         window.electronAPI.cancelCloseWindow()
       } else {
-        // No panels, no modals — close the window
+        // No workbench tab or modal — close the window.
         window.electronAPI.confirmCloseWindow()
       }
     })
 
     return cleanup
-  }, [hasOpenLayers, closeTop, hasOpenModals, closeTopModal, panelStack, focusedPanelId, closePanel])
+  }, [hasOpenLayers, closeTop, hasOpenModals, closeTopModal, workbench, closeWorkbenchItem])
 }

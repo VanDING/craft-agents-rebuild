@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'bun:test'
+import { mkdtemp, realpath, rm, writeFile } from 'fs/promises'
 import { homedir, tmpdir } from 'os'
 import { join, sep } from 'path'
 import { validateFilePath } from '../utils'
@@ -30,6 +31,19 @@ describe('validateFilePath', () => {
     const path = join(projectDir, 'src', 'main.ts')
     const result = await validateFilePath(path, [projectDir])
     expect(result).toContain('main.ts')
+  })
+
+  it('canonicalizes macOS /tmp aliases for explicitly allowed workspace roots', async () => {
+    if (process.platform !== 'darwin') return
+    const workspaceDir = await mkdtemp('/tmp/craft-allowed-workspace-')
+    try {
+      const filePath = join(workspaceDir, 'artifact.json')
+      await writeFile(filePath, '{}')
+      expect(await realpath(workspaceDir)).toStartWith('/private/tmp/')
+      expect(await validateFilePath(filePath, [workspaceDir])).toBe(await realpath(filePath))
+    } finally {
+      await rm(workspaceDir, { recursive: true, force: true })
+    }
   })
 
   it('still allows homedir paths when additionalAllowedDirs are provided', async () => {

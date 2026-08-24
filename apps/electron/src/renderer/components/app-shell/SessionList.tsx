@@ -87,9 +87,9 @@ interface SessionListProps {
   statusFilter?: Map<string, FilterMode>
   /** Secondary label filter (label chips) - for search result grouping */
   labelFilterMap?: Map<string, FilterMode>
-  /** Override which session is highlighted (for multi-panel focused panel tracking) */
+  /** Override which Primary session is highlighted. */
   focusedSessionId?: string | null
-  /** Override navigation target (for multi-panel: focuses existing panel or navigates focused panel) */
+  /** Override navigation behavior for a selected session. */
   onNavigateToSession?: (sessionId: string) => void
   /** Session-level pending prompt marker (permission/admin approval) */
   hasPendingPrompt?: (sessionId: string) => boolean

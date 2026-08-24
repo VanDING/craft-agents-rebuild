@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import base64
 import tempfile
 import unittest
 from pathlib import Path
@@ -77,6 +78,58 @@ class XlsxToolSmokeTests(unittest.TestCase):
         result = self.run_tool("read", str(self.book), "--sheet", "Missing")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("not found", result.stderr)
+
+    def test_structured_build_range_styles_validation_chart_and_image(self) -> None:
+        image = self.tmpdir / "pixel.png"
+        image.write_bytes(base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2nZ8AAAAASUVORK5CYII="
+        ))
+        spec = self.tmpdir / "workbook-spec.json"
+        spec.write_text(json.dumps({
+            "properties": {"title": "Quarterly Scores", "creator": "Craft Agent"},
+            "sheets": [{
+                "name": "Scores",
+                "rows": [["Name", "Math", "English"], ["Ada", 91, 88], ["Lin", 84, 95]],
+                "cells": {
+                    "D1": {"value": "Total", "style": {"font": {"bold": True}, "fill": {"color": "DDEBFF"}}},
+                    "D2": {"formula": "SUM(B2:C2)", "style": {"numberFormat": "0"}},
+                    "E1": {"value": "Summary", "style": {"alignment": {"horizontal": "center"}}},
+                },
+                "ranges": [{"start": "D3", "values": [[{"formula": "SUM(B3:C3)"}]]}],
+                "merges": ["E1:F1"],
+                "freezePanes": "A2",
+                "autoFilter": "A1:D3",
+                "columnWidths": {"A": 18, "B": 12},
+                "conditionalFormats": [{"range": "B2:C3", "type": "colorScale"}],
+                "dataValidations": [{"range": "A2:A20", "type": "list", "formula1": "\"Ada,Lin\""}],
+                "charts": [{
+                    "type": "column", "title": "Scores", "data": "B1:C3",
+                    "categories": "A2:A3", "anchor": "F3"
+                }],
+                "images": [{"path": str(image), "anchor": "H1", "width": 16, "height": 16}],
+            }],
+        }), encoding="utf-8")
+        rich_book = self.tmpdir / "rich.xlsx"
+        built = self.run_tool("build", "--spec", str(spec), "-o", str(rich_book))
+        self.assertEqual(built.returncode, 0, msg=built.stderr)
+
+        batch = self.run_tool(
+            "write-range", str(rich_book), "--sheet", "Scores", "--start", "A5",
+            "--values", '[["Status", "Value"], ["Ready", 1]]',
+            "--style", '{"fill":{"color":"E8F5E9"}}',
+        )
+        self.assertEqual(batch.returncode, 0, msg=batch.stderr)
+
+        info = self.run_tool("info", str(rich_book))
+        self.assertEqual(info.returncode, 0, msg=info.stderr)
+        sheet = json.loads(info.stdout)["sheets"][0]
+        self.assertEqual(sheet["formula_count"], 2)
+        self.assertEqual(sheet["merged_ranges"], ["E1:F1"])
+        self.assertEqual(sheet["conditional_format_count"], 1)
+        self.assertEqual(sheet["data_validation_count"], 1)
+        self.assertEqual(sheet["chart_count"], 1)
+        self.assertEqual(sheet["image_count"], 1)
+        self.assertEqual(sheet["freeze_panes"], "A2")
 
 
 if __name__ == "__main__":

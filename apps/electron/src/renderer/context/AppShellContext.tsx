@@ -138,17 +138,17 @@ export interface AppShellContextType {
   // Open a new chat with optional agent, name, and pre-filled input
   openNewChat?: (params?: NewChatActionParams) => Promise<void>
 
-  // Right sidebar button (for page headers)
-  rightSidebarButton?: React.ReactNode
+  // Surface-level trailing action injected into page headers (normally close).
+  trailingAction?: React.ReactNode
 
-  // Fullscreen-expand button for panel headers (PanelSlot injects it; expands
-  // the panel into the ExpandedPanelOverlay overlay — decision #6)
+  // Fullscreen-expand button for workbench headers (SurfaceSlot injects it; expands
+  // the workbench item into ExpandedWorkbenchOverlay)
   expandButton?: React.ReactNode
 
   // Leading action button for panel header (e.g., back button in compact mode)
   leadingAction?: React.ReactNode
 
-  /** Whether this panel is the focused panel (for multi-panel visual differentiation) */
+  /** Whether this surface currently owns keyboard focus. */
   isFocusedPanel?: boolean
 
   /** Whether the shell is currently in compact/narrow mode */

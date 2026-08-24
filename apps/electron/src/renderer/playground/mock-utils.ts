@@ -12,6 +12,11 @@ import type {
   PlatformAccessMode,
   PlatformOwner,
 } from '../components/messaging/access/types'
+import type {
+  WorkItem,
+  WorkItemEvent,
+  WorkItemViewDefinition,
+} from '@craft-agent/shared/work-items/browser'
 
 // ============================================================================
 // Messaging mock state + control handle
@@ -33,6 +38,72 @@ type BindingListener = (workspaceId: string) => void
 type WhatsAppEventListener = (payload: { workspaceId: string; event: WhatsAppUiEvent }) => void
 
 const PLAYGROUND_WORKSPACE_ID = 'playground-workspace'
+
+const playgroundWorkItemListeners = new Set<(workspaceId: string) => void>()
+const playgroundWorkItems: WorkItem[] = [
+  {
+    id: 'work-item-launch',
+    projectId: 'project-1',
+    title: 'Prepare launch review',
+    description: 'Consolidate validation results and remaining risks.',
+    statusId: 'in-progress',
+    columnId: 'in-progress',
+    startAt: '2026-08-23',
+    dueAt: '2026-08-26',
+    progress: 65,
+    dependencyIds: [],
+    sessionIds: [],
+    createdAt: Date.UTC(2026, 7, 20, 8),
+    updatedAt: Date.UTC(2026, 7, 24, 9),
+  },
+  {
+    id: 'work-item-docs',
+    projectId: 'project-1',
+    title: 'Update integration guide',
+    description: 'Document the unified project-management surface.',
+    statusId: 'todo',
+    columnId: 'todo',
+    dueAt: '2026-08-29',
+    progress: 20,
+    dependencyIds: ['work-item-launch'],
+    parentId: 'work-item-launch',
+    sessionIds: [],
+    createdAt: Date.UTC(2026, 7, 21, 8),
+    updatedAt: Date.UTC(2026, 7, 23, 9),
+  },
+]
+const playgroundWorkItemViews: WorkItemViewDefinition[] = [{
+  id: 'view-active-launch',
+  name: 'Active launch work',
+  layout: 'list',
+  query: { projectIds: ['project-1'], sort: { field: 'dueAt', direction: 'asc' } },
+  display: { groupBy: 'none', showSubtasks: true },
+  isDefault: true,
+  createdAt: Date.UTC(2026, 7, 22, 8),
+  updatedAt: Date.UTC(2026, 7, 22, 8),
+}]
+const playgroundWorkItemEvents: WorkItemEvent[] = [
+  {
+    id: 'event-launch-updated',
+    workItemId: 'work-item-launch',
+    action: 'updated',
+    actor: { type: 'agent', label: 'Codex' },
+    changes: [{ field: 'progress', before: 40, after: 65 }],
+    occurredAt: Date.UTC(2026, 7, 24, 9),
+  },
+  {
+    id: 'event-launch-transitioned',
+    workItemId: 'work-item-launch',
+    action: 'transitioned',
+    actor: { type: 'user' },
+    changes: [{ field: 'statusId', before: 'todo', after: 'in-progress' }],
+    occurredAt: Date.UTC(2026, 7, 23, 9),
+  },
+]
+
+function emitWorkItemsChanged(workspaceId = PLAYGROUND_WORKSPACE_ID) {
+  for (const listener of playgroundWorkItemListeners) listener(workspaceId)
+}
 
 type AllowListPlatform = 'telegram' | 'whatsapp' | 'lark'
 
@@ -312,6 +383,100 @@ export const mockElectronAPI = {
     console.log('[Playground] onCalendarEntriesChanged subscribed')
     void callback
     return () => {}
+  },
+
+  // Work items (canonical project-management tasks)
+  listWorkItems: async (workspaceId: string) => {
+    console.log('[Playground] listWorkItems called:', workspaceId)
+    return playgroundWorkItems.map((item) => ({
+      ...item,
+      dependencyIds: [...item.dependencyIds],
+      sessionIds: [...item.sessionIds],
+    }))
+  },
+  createWorkItem: async (workspaceId: string, input: unknown) => {
+    console.log('[Playground] createWorkItem called:', workspaceId, input)
+    const now = Date.now()
+    const created = {
+      ...(input as object),
+      id: `mock-work-item-${now}`,
+      statusId: (input as { statusId?: string }).statusId ?? 'todo',
+      dependencyIds: (input as { dependencyIds?: string[] }).dependencyIds ?? [],
+      sessionIds: (input as { sessionIds?: string[] }).sessionIds ?? [],
+      createdAt: now,
+      updatedAt: now,
+    } as WorkItem
+    playgroundWorkItems.push(created)
+    emitWorkItemsChanged(workspaceId)
+    return created
+  },
+  updateWorkItem: async (workspaceId: string, itemId: string, patch: unknown) => {
+    console.log('[Playground] updateWorkItem called:', workspaceId, itemId, patch)
+    const index = playgroundWorkItems.findIndex(({ id }) => id === itemId)
+    const existing = playgroundWorkItems[index]
+    const updated = {
+      ...(existing ?? {
+        id: itemId,
+        title: 'Mock work item',
+        statusId: 'todo',
+        dependencyIds: [],
+        sessionIds: [],
+        createdAt: Date.now(),
+      }),
+      ...(patch as object),
+      updatedAt: Date.now(),
+    } as WorkItem
+    if (index >= 0) playgroundWorkItems[index] = updated
+    else playgroundWorkItems.push(updated)
+    emitWorkItemsChanged(workspaceId)
+    return updated
+  },
+  deleteWorkItem: async (workspaceId: string, itemId: string) => {
+    console.log('[Playground] deleteWorkItem called:', workspaceId, itemId)
+    const index = playgroundWorkItems.findIndex(({ id }) => id === itemId)
+    if (index >= 0) playgroundWorkItems.splice(index, 1)
+    emitWorkItemsChanged(workspaceId)
+  },
+  listWorkItemEvents: async (_workspaceId: string, itemId: string) => {
+    return playgroundWorkItemEvents.filter(({ workItemId }) => workItemId === itemId)
+  },
+  listWorkItemViews: async () => playgroundWorkItemViews.map((view) => ({
+    ...view,
+    query: { ...view.query },
+    display: { ...view.display },
+  })),
+  createWorkItemView: async (workspaceId: string, input: any) => {
+    const now = Date.now()
+    const view: WorkItemViewDefinition = {
+      id: `mock-view-${now}`,
+      ...input,
+      query: input.query ?? {},
+      display: { groupBy: 'none', showSubtasks: true, ...input.display },
+      createdAt: now,
+      updatedAt: now,
+    }
+    if (view.isDefault) playgroundWorkItemViews.forEach((candidate) => { candidate.isDefault = undefined })
+    playgroundWorkItemViews.push(view)
+    emitWorkItemsChanged(workspaceId)
+    return view
+  },
+  updateWorkItemView: async (workspaceId: string, viewId: string, patch: any) => {
+    const index = playgroundWorkItemViews.findIndex(({ id }) => id === viewId)
+    const updated = { ...playgroundWorkItemViews[index]!, ...patch, updatedAt: Date.now() }
+    if (updated.isDefault) playgroundWorkItemViews.forEach((candidate) => { candidate.isDefault = undefined })
+    playgroundWorkItemViews[index] = updated
+    emitWorkItemsChanged(workspaceId)
+    return updated
+  },
+  deleteWorkItemView: async (workspaceId: string, viewId: string) => {
+    const index = playgroundWorkItemViews.findIndex(({ id }) => id === viewId)
+    if (index >= 0) playgroundWorkItemViews.splice(index, 1)
+    emitWorkItemsChanged(workspaceId)
+  },
+  onWorkItemsChanged: (callback: (workspaceId: string) => void) => {
+    console.log('[Playground] onWorkItemsChanged subscribed')
+    playgroundWorkItemListeners.add(callback)
+    return () => playgroundWorkItemListeners.delete(callback)
   },
 
   browserPane: {

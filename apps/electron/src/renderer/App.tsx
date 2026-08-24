@@ -54,14 +54,12 @@ import {
 } from '@/atoms/sessions'
 import { sourcesAtom } from '@/atoms/sources'
 import { activeSessionIdAtom } from '@/atoms/active-session'
-import { addPreviewEntryAtom } from '@/atoms/preview'
-import { usePanelTriggerOpener, useTriggerOpenToast } from '@/lib/panel-triggers'
 import { skillsAtom } from '@/atoms/skills'
 import {
   showBackgroundFinishedChipAtom,
   pushBackgroundFinishedAtom,
 } from '@/atoms/background-finished'
-import { visibleSessionIdsAtom } from '@/atoms/panel-stack'
+import { visibleSessionIdsAtom } from '@/atoms/workbench'
 import { getSessionTitle } from '@/utils/session'
 import { extractBadges } from '@/lib/mentions'
 import { getDefaultStore } from 'jotai'
@@ -83,6 +81,7 @@ import {
   markLiveBackgroundTasksOrphaned,
 } from '@/components/app-shell/background-task-chip-state'
 import { getFileManagerName } from '@/lib/platform'
+import { getFileType } from '@craft-agent/shared/utils'
 import { rendererLog } from '@/lib/logger'
 import { ActionRegistryProvider } from '@/actions'
 import { toast } from 'sonner'
@@ -1754,25 +1753,30 @@ export default function App() {
     })
   }, [])
 
-  // File previews converge into the Preview panel (per-session). When there is
-  // an active session, opening a previewable file writes a preview entry and
-  // opens/focuses the panel (trigger strategy). Without an active session the
-  // global overlay fallback (linkInterceptor.previewState) still applies.
+  // Existing files enter the same durable Artifact/Workbench model as Agent
+  // drafts. Markdown turn/activity pop-outs still use the lightweight Preview
+  // panel; ordinary files no longer accumulate an unbounded sibling tab stack.
   const activeSessionId = useAtomValue(activeSessionIdAtom)
-  const addPreviewEntry = useSetAtom(addPreviewEntryAtom)
-  const openTriggeredPanel = usePanelTriggerOpener()
-  const notifyTriggerToast = useTriggerOpenToast()
 
   const handleOpenFile = useCallback((path: string) => {
     const classification = classifyFile(path)
-    if (classification.canPreview && classification.type && activeSessionId) {
-      addPreviewEntry({ sessionId: activeSessionId, entry: { type: 'file', path } })
-      notifyTriggerToast(openTriggeredPanel('preview'))
+    const hasArtifactPreview = (classification.canPreview && classification.type)
+      || getFileType(path) === 'office'
+    if (hasArtifactPreview && activeSessionId && windowWorkspaceId) {
+      void window.electronAPI.registerCurrentArtifact(windowWorkspaceId, {
+        sessionId: activeSessionId,
+        sourcePath: path,
+      }).then((artifact) => {
+        navigate(routes.view.artifact(artifact.artifact.id))
+      }).catch((error) => {
+        console.error('Failed to register file preview as an Artifact:', error)
+        linkInterceptor.handleOpenFile(path)
+      })
       return
     }
     // External open (non-previewable) or global overlay fallback (no session)
     linkInterceptor.handleOpenFile(path)
-  }, [activeSessionId, addPreviewEntry, openTriggeredPanel, notifyTriggerToast, linkInterceptor])
+  }, [activeSessionId, linkInterceptor, windowWorkspaceId])
 
   const handleOpenUrl = linkInterceptor.handleOpenUrl
 

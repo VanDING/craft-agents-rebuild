@@ -1,7 +1,7 @@
 /**
  * BoundPanelContent - Central dispatcher for bound content-workbench panels.
  *
- * PanelSlot routes every panel by `entry.panelType`. Bound panels
+ * SurfaceSlot routes the active workbench item by `entry.panelType`. Bound items
  * (diff/files/context/preview) render here; all other panel types flow through
  * the existing MainContentPanel path.
  *
@@ -18,20 +18,21 @@
 import { useTranslation } from 'react-i18next'
 import { isOtherNavigation } from '../../../shared/types'
 import { parseRouteToNavigationState } from '../../../shared/route-parser'
-import type { PanelStackEntry } from '@/atoms/panel-stack'
+import type { SurfaceRenderEntry } from '@/atoms/workbench'
 import { PanelEmptyState } from './PanelEmptyState'
 import { ReviewPanel } from './ReviewPanel'
 import { FilesPanel } from './FilesPanel'
 import { ContextPanel } from './ContextPanel'
 import { PreviewPanel } from './PreviewPanel'
 import { TrajectoryPanel } from './TrajectoryPanel'
+import { ArtifactWorkbench } from './ArtifactWorkbench'
 
 /** True for panel types that are rendered by this dispatcher (bound panels). */
-export function isBoundPanelType(panelType: PanelStackEntry['panelType']): boolean {
-  return panelType === 'diff' || panelType === 'files' || panelType === 'context' || panelType === 'preview' || panelType === 'trajectory'
+export function isBoundPanelType(panelType: SurfaceRenderEntry['panelType']): boolean {
+  return panelType === 'diff' || panelType === 'files' || panelType === 'context' || panelType === 'preview' || panelType === 'trajectory' || panelType === 'artifact'
 }
 
-export function BoundPanelContent({ entry }: { entry: PanelStackEntry }) {
+export function BoundPanelContent({ entry }: { entry: SurfaceRenderEntry }) {
   const { t } = useTranslation()
 
   // Validate the route parses to a bound 'other' navigation state. A bound
@@ -52,6 +53,10 @@ export function BoundPanelContent({ entry }: { entry: PanelStackEntry }) {
       return <PreviewPanel />
     case 'trajectory':
       return <TrajectoryPanel />
+    case 'artifact':
+      return navState.artifactId
+        ? <ArtifactWorkbench artifactId={navState.artifactId} />
+        : <PanelEmptyState title={t('contentPanel.panelUnavailable')} />
     default:
       return <PanelEmptyState title={t('contentPanel.panelUnavailable')} />
   }

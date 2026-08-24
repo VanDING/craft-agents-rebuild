@@ -11,13 +11,6 @@ export const actions = {
     defaultHotkey: 'mod+n',
     category: 'General',
   },
-  'app.newChatInPanel': {
-    id: 'app.newChatInPanel',
-    label: 'New Chat in Panel',
-    description: 'Create a new chat session in a new panel',
-    defaultHotkey: 'mod+t',
-    category: 'General',
-  },
   'app.settings': {
     id: 'app.settings',
     label: 'Settings',
@@ -158,19 +151,19 @@ export const actions = {
   },
 
   // ═══════════════════════════════════════════
-  // Panels
+  // Surface focus + Context Workbench
   // ═══════════════════════════════════════════
   'panel.focusNext': {
     id: 'panel.focusNext',
-    label: 'Focus Next Panel',
-    description: 'Move focus to the next panel',
+    label: 'Focus Next Surface',
+    description: 'Move focus between Primary and the Context Workbench',
     defaultHotkey: 'mod+shift+]',
     category: 'Navigation',
   },
   'panel.focusPrev': {
     id: 'panel.focusPrev',
-    label: 'Focus Previous Panel',
-    description: 'Move focus to the previous panel',
+    label: 'Focus Previous Surface',
+    description: 'Move focus between Primary and the Context Workbench',
     defaultHotkey: 'mod+shift+[',
     category: 'Navigation',
   },
@@ -204,8 +197,8 @@ export const actions = {
   },
   'panel.toggle': {
     id: 'panel.toggle',
-    label: 'Toggle Last Bound Panel',
-    description: 'Close the focused bound panel, or reopen the last used bound panel',
+    label: 'Toggle Context Workbench',
+    description: 'Collapse the Context Workbench or reopen its last used item',
     defaultHotkey: 'mod+shift+t',
     category: 'Panels',
   },

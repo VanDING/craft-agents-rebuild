@@ -36,7 +36,7 @@ import {
 // SessionStatusIcons no longer used - icons come from dynamic sessionStatuses
 import { SourceAvatar } from "@/components/ui/source-avatar"
 import { TopBar } from "./TopBar"
-import { ExpandedPanelOverlay } from "./ExpandedPanelOverlay"
+import { ExpandedWorkbenchOverlay } from "./ExpandedWorkbenchOverlay"
 import { SquarePenRounded } from "../icons/SquarePenRounded"
 import { McpIcon } from "../icons/McpIcon"
 import { cn } from "@/lib/utils"
@@ -73,7 +73,7 @@ import {
 } from "@/components/ui/collapsible"
 import { SessionList, type ChatGroupingMode } from "./SessionList"
 import { MainContentPanel } from "./MainContentPanel"
-import { PanelStackContainer } from "./PanelStackContainer"
+import { SurfaceContainer } from "./SurfaceContainer"
 import { CompactSessionListFilter } from "./CompactSessionListFilter"
 import type { ChatDisplayHandle } from "./ChatDisplay"
 import { LeftSidebar } from "./LeftSidebar"
@@ -89,16 +89,22 @@ import { useFocusContext } from "@/context/FocusContext"
 import { getSessionTitle } from "@/utils/session"
 import { useSetAtom } from "jotai"
 import type { Session, Workspace, FileAttachment, PermissionRequest, LoadedSource, LoadedSkill, PermissionMode, SourceFilter, AutomationFilter } from "../../../shared/types"
-import { isOtherNavigation } from "../../../shared/types"
 import { sessionMetaMapAtom, sendToWorkspaceAtom, type SessionMeta } from "@/atoms/sessions"
 import { sourcesAtom } from "@/atoms/sources"
 import { skillsAtom } from "@/atoms/skills"
 import { activeSessionIdAtom } from "@/atoms/active-session"
-import { expandedPanelIdAtom } from "@/atoms/overlay"
-import { panelStackAtom, panelCountAtom, focusedPanelIdAtom, focusedSessionIdAtom, focusNextPanelAtom, focusPrevPanelAtom, parseSessionIdFromRoute, closePanelAtom } from "@/atoms/panel-stack"
+import { expandedWorkbenchItemIdAtom } from "@/atoms/overlay"
+import {
+  collapseWorkbenchAtom,
+  focusNextSurfaceAtom,
+  focusPreviousSurfaceAtom,
+  openWorkbenchItemAtom,
+  primarySessionIdAtom,
+  renderedSurfaceCountAtom,
+  workbenchStateAtom,
+} from "@/atoms/workbench"
 import { browserInstancesAtom, activeBrowserInstanceIdAtom, filterInstancesForWorkspace } from "@/atoms/browser-pane"
-import { hiddenPanelsAtom, openPanelAtom, restorePanelAtom } from "@/atoms/hidden-panels"
-import { WORKBENCH_PANEL_ROUTES, workbenchPanelKindForRoute, type WorkbenchPanelKind } from "@/lib/workbench-panels"
+import { SURFACE_LAUNCHER_ROUTES, type SurfaceLauncherKind } from "@/lib/surface-launchers"
 import { type SessionStatusId, type SessionStatus, statusConfigsToSessionStatuses } from "@/config/session-status-config"
 import { useStatuses } from "@/hooks/useStatuses"
 import { useLabels } from "@/hooks/useLabels"
@@ -591,43 +597,21 @@ function AppShellContent({
   const { handleEscapePress } = useEscapeInterrupt()
 
   // UNIFIED NAVIGATION STATE - single source of truth from NavigationContext
-  // Derived from focused panel's route — all panels are peers
+  // Derived from the single Primary Surface; Workbench focus cannot change it.
   const navState = useNavigationState()
 
   const store = useStore()
-  const panelStack = useAtomValue(panelStackAtom)
-  const panelCount = useAtomValue(panelCountAtom)
-  const focusedSessionId = useAtomValue(focusedSessionIdAtom)
-  const expandedPanelId = useAtomValue(expandedPanelIdAtom)
+  const surfaceCount = useAtomValue(renderedSurfaceCountAtom)
+  const primarySessionId = useAtomValue(primarySessionIdAtom)
+  const expandedWorkbenchItemId = useAtomValue(expandedWorkbenchItemIdAtom)
 
-  // Navigate the focused panel to a session.
-  // If the session is already open in another panel, focus that panel instead.
-  const setFocusedPanel = useSetAtom(focusedPanelIdAtom)
-  const navigateToSessionInPanel = useCallback((sessionId: string) => {
-    // Check if the session is already open in any panel — focus it instead of navigating
-    const stack = store.get(panelStackAtom)
-    for (const entry of stack) {
-      if (parseSessionIdFromRoute(entry.route) === sessionId) {
-        setFocusedPanel(entry.id)
-        return
-      }
-    }
-
-    // Not open in any panel — navigate() updates the focused panel
-    navigateToSession(sessionId)
-  }, [store, setFocusedPanel, navigateToSession])
-
-  // Bound panels (diff/files/context/preview) parse to navigator 'other' —
-  // the navigator column still shows the session list for them (fallback),
-  // so the list never blanks out while a bound panel is focused (fix,
-  // verified via CDP). Filters fall back to allSessions in that case.
-  const isSessionsListVisible = isSessionsNavigation(navState) || isOtherNavigation(navState)
+  const isSessionsListVisible = isSessionsNavigation(navState)
 
   const sessionsContext = React.useMemo(() => {
-    if (isSessionsListVisible) {
+    if (isSessionsNavigation(navState)) {
       return {
-        filter: isSessionsNavigation(navState) ? navState.filter : { kind: 'allSessions' as const },
-        sessionId: isSessionsNavigation(navState) ? navState.details?.sessionId ?? null : null,
+        filter: navState.filter,
+        sessionId: navState.details?.sessionId ?? null,
       }
     }
     return null
@@ -635,10 +619,9 @@ function AppShellContent({
 
   const sessionFilter = sessionsContext?.filter ?? null
 
-  // Board/calendar views replace the session-list navigator with a
-  // full-width panel, so the navigator (and its resize handle) collapse to
-  // zero width while one of them is active.
-  const isFullWidthView = isSessionsNavigation(navState) && (navState.viewMode === 'board' || navState.viewMode === 'calendar')
+  // Board/calendar are full-width projections inside Project Management, so
+  // its project-list navigator collapses while either projection is active.
+  const isFullWidthView = isProjectsNavigation(navState) && (navState.view === 'board' || navState.view === 'calendar')
 
   // Derive source filter from navigation state (only when in sources navigator)
   const sourceFilter: SourceFilter | null = isSourcesNavigation(navState) ? navState.filter ?? null : null
@@ -1191,16 +1174,15 @@ function AppShellContent({
     focusNextZone()
   }, { enabled: () => !document.querySelector('[role="dialog"]') })
 
-  // Shift+Tab cycles permission mode through enabled modes (textarea handles its own, this handles when focus is elsewhere)
-  // In multi-panel, targets the focused panel's session
-  const effectiveSessionId = focusedSessionId ?? session.selected
+  // Shift+Tab cycles permission mode through enabled modes (the textarea handles its own).
+  const effectiveSessionId = primarySessionId ?? session.selected
 
   // Active session for bound content panels + TopBar session-bound affordances.
   // Sticky: follows the focused session, but holds the last focused session while
-  // a non-session panel (board/calendar/diff/files/context/preview) is focused.
+  // a non-session panel (projects/diff/files/context/preview) is focused.
   const topBarActiveSessionId = useAtomValue(activeSessionIdAtom)
 
-  // Focus chat input for the target session only (multi-panel safe).
+  // Focus chat input for the target session only.
   const focusChatInputForSession = useCallback((targetSessionId?: string | null) => {
     if (!targetSessionId) return
     dispatchFocusInputEvent({ sessionId: targetSessionId })
@@ -1235,14 +1217,13 @@ function AppShellContent({
   useAction('view.toggleFocusMode', () => setIsSidebarAndNavigatorHidden(v => !v))
 
   // Panel focus navigation (CMD+SHIFT+[ / ])
-  const focusNextPanel = useSetAtom(focusNextPanelAtom)
-  const focusPrevPanel = useSetAtom(focusPrevPanelAtom)
-  useAction('panel.focusNext', focusNextPanel, { enabled: () => panelCount > 1 })
-  useAction('panel.focusPrev', focusPrevPanel, { enabled: () => panelCount > 1 })
+  const focusNextSurface = useSetAtom(focusNextSurfaceAtom)
+  const focusPreviousSurface = useSetAtom(focusPreviousSurfaceAtom)
+  useAction('panel.focusNext', focusNextSurface, { enabled: () => surfaceCount > 1 })
+  useAction('panel.focusPrev', focusPreviousSurface, { enabled: () => surfaceCount > 1 })
 
   // New chat
   useAction('app.newChat', () => handleNewChat())
-  useAction('app.newChatInPanel', () => handleNewChat(true))
 
   // Settings
   useAction('app.settings', onOpenSettings)
@@ -1272,9 +1253,7 @@ function AppShellContent({
     enabled: () => searchActive && (chatMatchInfo.count ?? 0) > 0
   })
 
-  // ESC to stop processing - requires double-press within 1 second
-  // First press shows warning overlay, second press interrupts
-  // In multi-panel, targets the focused panel's session
+  // ESC to stop processing: first press warns, second press interrupts.
   useAction('chat.stopProcessing', () => {
     if (effectiveSessionId) {
       const meta = sessionMetaMap.get(effectiveSessionId)
@@ -1330,7 +1309,7 @@ function AppShellContent({
 
       // Dispatch custom event for FreeFormInput to handle (target focused session only)
       const filesArray = Array.from(files)
-      const targetSessionId = focusedSessionId ?? session.selected
+      const targetSessionId = primarySessionId ?? session.selected
       if (!targetSessionId) return
       window.dispatchEvent(new CustomEvent('craft:paste-files', {
         detail: { files: filesArray, sessionId: targetSessionId }
@@ -1339,9 +1318,9 @@ function AppShellContent({
 
     document.addEventListener('paste', handleGlobalPaste)
     return () => document.removeEventListener('paste', handleGlobalPaste)
-  }, [focusedSessionId, session.selected])
+  }, [primarySessionId, session.selected])
 
-  // Resize effect for sidebar, session list, browser host lane, and metadata right sidebar.
+  // Resize effect for the global sidebar and navigator.
   React.useEffect(() => {
     if (!isResizing) return
 
@@ -1702,7 +1681,7 @@ function AppShellContent({
     return onDeleteSession(sessionId, skipConfirmation)
   }, [session.selected, setSession, onDeleteSession])
 
-  // Extend context value with local overrides (wrapped onDeleteSession, sources, skills, labels, enabledModes, rightSidebarOpenButton, effectiveSessionStatuses)
+  // Extend context value with shell-local data and callbacks.
   const appShellContextValue = React.useMemo<AppShellContextType>(() => ({
     ...contextValue,
     onDeleteSession: handleDeleteSession,
@@ -1715,7 +1694,7 @@ function AppShellContent({
     sessionStatuses: effectiveSessionStatuses,
     onSessionSourcesChange: handleSessionSourcesChange,
     onJumpToTaskSessions: handleJumpToTaskSessions,
-    rightSidebarButton: null,
+    trailingAction: null,
     isCompactMode: isAutoCompact,
     // Search state for ChatDisplay highlighting
     sessionListSearchQuery: searchActive ? searchQuery : undefined,
@@ -1844,7 +1823,7 @@ function AppShellContent({
 
   // Handler for projects view
   const handleProjectsClick = useCallback(() => {
-    navigate(routes.view.projects())
+    navigate(routes.view.projectManagement('overview'))
   }, [])
 
   const handleAutomationsScheduledClick = useCallback(() => {
@@ -2022,8 +2001,8 @@ function AppShellContent({
     [listFilter, labelFilter, projectFilter]
   )
 
-  // Create a new chat and select it
-  const handleNewChat = useCallback((newPanel: boolean = false) => {
+  // Create a new chat and select it in Primary.
+  const handleNewChat = useCallback(() => {
     if (!activeWorkspace) return
 
     // Exit search mode and switch to All Sessions
@@ -2034,10 +2013,7 @@ function AppShellContent({
     const inherited = resolveInheritedNewSessionParams()
 
     // Delegate to NavigationContext which handles session creation
-    navigate(
-      routes.action.newSession(inherited ?? undefined),
-      newPanel ? { newPanel: true, targetLaneId: 'main' } : undefined
-    )
+    navigate(routes.action.newSession(inherited ?? undefined))
 
     // Focus the chat input after navigation completes
     setTimeout(() => focusZone('chat', { intent: 'programmatic' }), 50)
@@ -2082,76 +2058,49 @@ function AppShellContent({
     }
   }, [store, workspaces, contextValue.activeWorkspaceId, handleNewBrowserWindow, t])
 
-  /**
-   * Unified workbench panel opener (decision #3):
-   * - already open in the foreground → focus it
-   * - closed → push a new panel
-   * - Shift/Alt click (`replace`) → replace the focused panel content,
-   *   but only when the kind isn't already open anywhere (avoids duplicates)
-   */
-  const lastBoundPanelKindRef = useRef<WorkbenchPanelKind>('diff')
-  const openPanel = useCallback((kind: WorkbenchPanelKind, options?: { replace?: boolean }) => {
-    if (kind === 'diff' || kind === 'files' || kind === 'context' || kind === 'preview') {
-      lastBoundPanelKindRef.current = kind
-    }
-
-    const route = WORKBENCH_PANEL_ROUTES[kind]
-    const stack = store.get(panelStackAtom)
-
-    const existing = stack.find((entry) => workbenchPanelKindForRoute(entry.route) === kind)
-    if (existing) {
-      // Focus subscription in NavigationContext records the LRU activity.
-      store.set(focusedPanelIdAtom, existing.id)
+  /** Primary launchers navigate; bound launchers activate a Workbench tab. */
+  const lastWorkbenchKindRef = useRef<SurfaceLauncherKind>('diff')
+  const openSurfaceLauncher = useCallback((kind: SurfaceLauncherKind) => {
+    if (kind === 'sessions' || kind === 'projects') {
+      navigate(SURFACE_LAUNCHER_ROUTES[kind])
       return
     }
 
-    // Background set: restore the hidden panel (evicting the LRU foreground
-    // panel when the foreground is full) instead of pushing a duplicate.
-    const hiddenEntry = store
-      .get(hiddenPanelsAtom)
-      .find((entry) => workbenchPanelKindForRoute(entry.route) === kind)
-    if (hiddenEntry) {
-      store.set(restorePanelAtom, hiddenEntry.id)
-      return
+    if (kind === 'diff' || kind === 'files' || kind === 'context' || kind === 'preview' || kind === 'trajectory') {
+      lastWorkbenchKindRef.current = kind
     }
-
-    // LRU-aware open: evicts the least-recently-used panel into the hidden set
-    // when the foreground is full; replaceFocused swaps the focused panel.
-    store.set(openPanelAtom, { route, replaceFocused: options?.replace === true })
+    store.set(openWorkbenchItemAtom, SURFACE_LAUNCHER_ROUTES[kind])
   }, [store])
 
   // Session-list toggle (decision #7): independent of the rail. Revealing the
-  // navigator also guarantees it shows the session list — focus an existing
-  // sessions panel or open one (never replaces bound-panel content).
+  // navigator also guarantees Primary is the Sessions surface.
   const handleToggleSessionList = useCallback(() => {
     const next = !isNavigatorVisible
     setIsNavigatorVisible(next)
     if (next) {
-      openPanel('sessions')
+      openSurfaceLauncher('sessions')
     }
-  }, [isNavigatorVisible, openPanel])
+  }, [isNavigatorVisible, openSurfaceLauncher])
 
-  // panel.toggle: close the focused bound panel, or reopen the last used one.
-  const toggleBoundPanel = useCallback(() => {
-    const stack = store.get(panelStackAtom)
-    const focusedEntry = stack.find((entry) => entry.id === store.get(focusedPanelIdAtom))
-    if (!focusedEntry) return
-    const focusedKind = workbenchPanelKindForRoute(focusedEntry.route)
-    if (focusedKind === 'diff' || focusedKind === 'files' || focusedKind === 'context' || focusedKind === 'preview') {
-      store.set(closePanelAtom, focusedEntry.id)
+  // panel.toggle collapses the dock without destroying its tabs; when closed,
+  // it activates the last bound kind.
+  const toggleWorkbench = useCallback(() => {
+    const workbench = store.get(workbenchStateAtom)
+    if (workbench.open) {
+      store.set(collapseWorkbenchAtom)
       return
     }
-    openPanel(lastBoundPanelKindRef.current)
-  }, [store, openPanel])
+    openSurfaceLauncher(lastWorkbenchKindRef.current)
+  }, [store, openSurfaceLauncher])
 
   // Workbench panel hotkeys (definitions in actions/definitions.ts).
-  useAction('panel.diff', () => openPanel('diff'))
-  useAction('panel.files', () => openPanel('files'))
-  useAction('panel.context', () => openPanel('context'))
-  useAction('panel.preview', () => openPanel('preview'))
-  useAction('panel.toggle', toggleBoundPanel)
+  useAction('panel.diff', () => openSurfaceLauncher('diff'))
+  useAction('panel.files', () => openSurfaceLauncher('files'))
+  useAction('panel.context', () => openSurfaceLauncher('context'))
+  useAction('panel.preview', () => openSurfaceLauncher('preview'))
+  useAction('panel.toggle', toggleWorkbench)
 
-  // Browser workbench button state is derived inside WorkbenchPanelButtons.
+  // Browser launcher state is derived inside SurfaceLauncherButtons.
 
   // Delete Source - simplified since agents system is removed
   const handleDeleteSource = useCallback(async (sourceSlug: string) => {
@@ -2442,7 +2391,7 @@ function AppShellContent({
         {/* === TOP BAR === */}
         {/* Hidden while a panel is expanded fullscreen: the fixed drag region would
             swallow clicks on the overlay's restore button (top-2). Esc still works. */}
-        {!expandedPanelId && <TopBar
+        {!expandedWorkbenchItemId && <TopBar
           workspaces={workspaces}
           activeWorkspaceId={activeWorkspaceId}
           onSelectWorkspace={onSelectWorkspace}
@@ -2462,10 +2411,10 @@ function AppShellContent({
           canGoForward={canGoForward}
           onToggleSidebar={handleToggleSidebar}
           onToggleFocusMode={() => setIsSidebarAndNavigatorHidden(prev => !prev)}
-          onAddSessionPanel={() => handleNewChat(true)}
+          onNewSessionFromToolbar={() => handleNewChat()}
           onAddBrowserPanel={() => { void handleNewBrowserWindow() }}
           isCompact={isAutoCompact}
-          onOpenPanel={openPanel}
+          onOpenLauncher={openSurfaceLauncher}
           onOpenBrowser={() => { void handleFocusOrCreateBrowser() }}
           onToggleSessionList={handleToggleSessionList}
         />}
@@ -2482,7 +2431,7 @@ function AppShellContent({
           gap: PANEL_GAP,
         }}
       >
-        <PanelStackContainer
+        <SurfaceContainer
           sidebarSlot={
             <div
               ref={sidebarRef}
@@ -2510,7 +2459,7 @@ function AppShellContent({
                           <ContextMenuTrigger asChild>
                             <Button
                               variant="ghost"
-                              onClick={(e) => handleNewChat(e.metaKey || e.ctrlKey)}
+                              onClick={() => handleNewChat()}
                               className="w-full justify-start gap-2 py-[7px] px-2 text-[13px] font-normal rounded-md shadow-minimal bg-secondary text-secondary-foreground hover:bg-secondary/80"
                               data-tutorial="new-chat-button"
                             >
@@ -2718,9 +2667,8 @@ function AppShellContent({
                         id: `nav:projects:${p.config.id}`,
                         title: p.config.name,
                         icon: FolderKanban,
-                        // Highlight when on allSessions view AND filter includes this project (the jump-to state)
-                        variant: (sessionFilter?.kind === 'allSessions' && projectFilter.get(p.config.id) === 'include') ? "default" as const : "ghost" as const,
-                        onClick: () => handleJumpToProjectSessions(p.config.id),
+                        variant: (isProjectsNavigation(navState) && navState.details?.type === 'project' && navState.details.projectSlug === p.config.slug) ? 'default' as const : 'ghost' as const,
+                        onClick: () => navigate(routes.view.projects(p.config.slug)),
                       })),
                     },
                     {
@@ -2821,7 +2769,7 @@ function AppShellContent({
                   {/* Filter dropdown - available in ALL chat views.
                       Shows user-added filters (removable) and pinned filters (non-removable, derived from route).
                       Pinned filters: state views pin a status, label views pin a label, flagged pins the flag.
-                      Also shown while a bound panel is focused (navigator keeps the session list). */}
+                      Also shown while Workbench owns focus (Primary still owns navigation). */}
                   {isSessionsListVisible && (
                     isAutoCompact ? (
                       <CompactSessionListFilter
@@ -3590,7 +3538,7 @@ function AppShellContent({
                 onProjectClick={(slug) => navigate(routes.view.projects(slug))}
                 onAddProject={openAddProject}
                 onJumpToSessions={handleJumpToProjectSessions}
-                selectedProjectSlug={isProjectsNavigation(navState) ? navState.details?.projectSlug ?? null : null}
+                selectedProjectSlug={isProjectsNavigation(navState) && navState.details?.type === 'project' ? navState.details.projectSlug : null}
               />
             )}
             {isAutomationsNavigation(navState) && (
@@ -3615,9 +3563,8 @@ function AppShellContent({
               />
             )}
             {isSessionsListVisible && (
-              /* Sessions List — also rendered while a bound panel
-                 (diff/files/context/preview) is focused so the navigator
-                 never blanks out (fix, verified via CDP). */
+              /* Sessions List remains rendered while Workbench owns focus;
+                 Workbench focus never replaces Primary navigation. */
               <>
                 {/* SessionList: Scrollable list of session cards */}
                 {/* Key on sidebarMode forces full remount when switching views, skipping animations */}
@@ -3633,7 +3580,7 @@ function AppShellContent({
                   onSessionStatusChange={onSessionStatusChange}
                   onRename={onRenameSession}
                   onFocusChatInput={(targetSessionId) => {
-                    focusChatInputForSession(targetSessionId ?? focusedSessionId ?? session.selected)
+                    focusChatInputForSession(targetSessionId ?? primarySessionId ?? session.selected)
                   }}
                   onSessionSelect={(selectedMeta) => {
                     navigateToSession(selectedMeta.id)
@@ -3668,8 +3615,7 @@ function AppShellContent({
                   workspaceId={activeWorkspaceId ?? undefined}
                   statusFilter={listFilter}
                   labelFilterMap={labelFilter}
-                  focusedSessionId={panelCount === 0 ? null : panelCount > 1 ? focusedSessionId : undefined}
-                  onNavigateToSession={panelCount > 1 ? navigateToSessionInPanel : undefined}
+                  focusedSessionId={primarySessionId ?? undefined}
                   hasPendingPrompt={hasPendingPrompt}
                   activeChatMatchInfo={chatMatchInfo}
                 />
@@ -3685,7 +3631,6 @@ function AppShellContent({
           }
           navigatorWidth={isAutoCompact ? sessionListWidth : (effectiveSidebarAndNavigatorHidden || isFullWidthView || !isNavigatorVisible ? 0 : sessionListWidth)}
           isSidebarAndNavigatorHidden={effectiveSidebarAndNavigatorHidden}
-          isRightSidebarVisible={false}
           isCompact={isAutoCompact}
           isResizing={!!isResizing}
         />
@@ -3980,10 +3925,10 @@ function AppShellContent({
           Mounted here so they survive context-menu / dropdown close. */}
       <MessagingDialogHost />
 
-      {/* Fullscreen rendering of an expanded panel (decision #6) — inside
-          AppShellProvider so bound panels and MainContentPanel keep their
+      {/* Fullscreen rendering of an expanded Workbench item — inside
+          AppShellProvider so bound content and defensive fallbacks keep their
           context (close/expand buttons, onOpenFile, navigation). */}
-      <ExpandedPanelOverlay />
+      <ExpandedWorkbenchOverlay />
 
     </AppShellProvider>
   )

@@ -136,6 +136,11 @@ export type {
   ResolvedStatusResult,
   CreateTaskInput,
   CreateTaskResult,
+  ArtifactToolKind,
+  ArtifactCreateInput,
+  ArtifactApplyOperation,
+  ArtifactApplyInput,
+  ArtifactToolResult,
 } from './context.ts';
 
 export { createNodeFileSystem } from './context.ts';
@@ -169,6 +174,12 @@ export {
   handleRenderTemplate,
   // Send Developer Feedback
   handleSendDeveloperFeedback,
+  handleArtifactStatus,
+  handleArtifactCreate,
+  handleArtifactApply,
+  handleArtifactInspect,
+  handleArtifactRender,
+  handleArtifactSubmit,
 } from './handlers/index.ts';
 
 export type {
@@ -187,6 +198,12 @@ export type {
   ScriptSandboxArgs,
   RenderTemplateArgs,
   SendDeveloperFeedbackArgs,
+  ArtifactStatusArgs,
+  ArtifactCreateArgs,
+  ArtifactApplyArgs,
+  ArtifactInspectArgs,
+  ArtifactRenderArgs,
+  ArtifactSubmitArgs,
 } from './handlers/index.ts';
 
 // Tool definitions — single source of truth
@@ -204,6 +221,12 @@ export {
   TransformDataSchema,
   ScriptSandboxSchema,
   RenderTemplateSchema,
+  ArtifactStatusSchema,
+  ArtifactCreateSchema,
+  ArtifactApplySchema,
+  ArtifactInspectSchema,
+  ArtifactRenderSchema,
+  ArtifactSubmitSchema,
   // Browser tool schema
   BrowserToolSchema,
   // Developer feedback schema

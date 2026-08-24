@@ -87,6 +87,18 @@ export interface SessionScopedToolCallbacks {
   createTaskFn?: (
     input: import('@craft-agent/session-tools-core').CreateTaskInput
   ) => Promise<import('@craft-agent/session-tools-core').CreateTaskResult>;
+  artifactStatusFn?: (artifactId?: string) => Promise<import('@craft-agent/session-tools-core').ArtifactToolResult>;
+  artifactCreateFn?: (input: import('@craft-agent/session-tools-core').ArtifactCreateInput) => Promise<import('@craft-agent/session-tools-core').ArtifactToolResult>;
+  artifactApplyFn?: (
+    artifactId: string,
+    input: import('@craft-agent/session-tools-core').ArtifactApplyInput,
+  ) => Promise<import('@craft-agent/session-tools-core').ArtifactToolResult>;
+  artifactInspectFn?: (artifactId: string, range?: string) => Promise<import('@craft-agent/session-tools-core').ArtifactToolResult>;
+  artifactRenderFn?: (artifactId: string) => Promise<import('@craft-agent/session-tools-core').ArtifactToolResult>;
+  artifactSubmitFn?: (
+    artifactId: string,
+    expectedRevision?: string,
+  ) => Promise<import('@craft-agent/session-tools-core').ArtifactToolResult>;
 }
 
 // Registry of callbacks keyed by sessionId

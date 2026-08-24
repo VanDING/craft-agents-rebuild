@@ -408,6 +408,7 @@ export class WindowManager {
                 view: target.view,
                 action: target.action,
                 actionParams: target.actionParams,
+                rightSidebar: target.rightSidebar,
               })
             }, 100)
           }

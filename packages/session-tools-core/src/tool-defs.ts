@@ -43,6 +43,14 @@ import { handleCreateTask } from './handlers/create-task.ts';
 import { handleArchiveSession } from './handlers/archive-session.ts';
 import { handleSendAgentMessage } from './handlers/send-agent-message.ts';
 import { handleListMessagingChannels, handleUnbindMessagingChannel } from './handlers/messaging.ts';
+import {
+  handleArtifactStatus,
+  handleArtifactCreate,
+  handleArtifactApply,
+  handleArtifactInspect,
+  handleArtifactRender,
+  handleArtifactSubmit,
+} from './handlers/artifact.ts';
 
 // ============================================================
 // Canonical Zod Schemas
@@ -211,6 +219,77 @@ export const CreateTaskSchema = z.object({
   model: z.string().optional().describe('Model ID for the task sessions (workspace default when omitted)'),
   workingDirectory: z.string().optional().describe('Working directory for the task sessions'),
   projectId: z.string().optional().describe("Project ID to bind the task to (defaults to the invoking session's project)"),
+});
+
+const ArtifactKindSchema = z.enum([
+  'spreadsheet',
+  'document',
+  'presentation',
+  'data',
+  'diagram',
+  'pdf',
+  'image',
+  'html',
+  'text',
+]);
+
+export const ArtifactStatusSchema = z.object({
+  artifactId: z.string().optional().describe('Artifact ID. Omit to list artifacts owned by the current session.'),
+});
+
+export const ArtifactCreateSchema = z.object({
+  kind: ArtifactKindSchema.describe('Artifact kind, independent of the file extension or editor engine'),
+  sourcePath: z.string().describe('Final deliverable path. Relative paths resolve from the session working directory.'),
+  title: z.string().optional().describe('Human-readable title shown on the Artifact Card'),
+  engineId: z.string().optional().describe('Producing engine identifier; defaults to native-file'),
+  mimeType: z.string().optional().describe('Explicit MIME type when it cannot be inferred from sourcePath'),
+  initialPath: z.string().optional().describe('Existing file to copy into the managed draft. Mutually exclusive with initialText/initialBase64.'),
+  initialText: z.string().optional().describe('Initial UTF-8 draft content. Mutually exclusive with initialPath/initialBase64.'),
+  initialBase64: z.string().optional().describe('Initial binary draft content as base64. Mutually exclusive with initialPath/initialText.'),
+});
+
+export const ArtifactApplySchema = z.object({
+  artifactId: z.string().describe('Artifact draft to modify'),
+  expectedRevision: z.string().describe('Current draft revision returned by artifact_create/status; stale values are rejected'),
+  operation: z.discriminatedUnion('type', [
+    z.object({ type: z.literal('set_text'), text: z.string() }),
+    z.object({ type: z.literal('set_json'), value: z.unknown() }),
+    z.object({
+      type: z.literal('replace_text'),
+      search: z.string(),
+      replacement: z.string(),
+      replaceAll: z.boolean().optional(),
+    }),
+    z.object({
+      type: z.literal('sheet_set_range'),
+      range: z.string().describe('A1 notation, optionally prefixed with a sheet name'),
+      values: z.array(z.array(z.unknown())).describe('Exact two-dimensional matrix matching the target range'),
+    }),
+    z.object({
+      type: z.literal('sheet_set_formula'),
+      range: z.string().describe('Single cell in A1 notation'),
+      formula: z.string().describe('Formula beginning with ='),
+    }),
+    z.object({
+      type: z.literal('sheet_clear_range'),
+      range: z.string().describe('A1 notation, optionally prefixed with a sheet name'),
+      contentsOnly: z.boolean().optional(),
+    }),
+  ]).describe('Schema-checked edit operation; arbitrary code or shell expressions are never accepted'),
+});
+
+export const ArtifactInspectSchema = z.object({
+  artifactId: z.string().describe('Artifact to validate'),
+  range: z.string().optional().describe('For Univer Sheet artifacts, inspect this A1 range after validation and formula calculation'),
+});
+
+export const ArtifactRenderSchema = z.object({
+  artifactId: z.string().describe('Artifact whose preview metadata should be refreshed'),
+});
+
+export const ArtifactSubmitSchema = z.object({
+  artifactId: z.string().describe('Draft to submit for user review'),
+  expectedRevision: z.string().optional().describe('Expected draft revision; stale values are rejected'),
 });
 
 export const ListSessionsSchema = z.object({
@@ -497,6 +576,30 @@ Provide title + description (the description becomes the task goal and the initi
 
 Returns { slug, orchestratorSessionId, taskLabelId, warnings } — unknown source/skill slugs are reported as warnings, not errors. Use it when the user asks to capture or queue work as a task; to execute work right now, use the current session or spawn_session instead.`,
 
+  artifact_status: `List Artifact drafts owned by this session, or get one by artifactId.
+
+Use the returned revision before artifact_apply/artifact_submit. This is read-only and never accepts or discards a draft.`,
+
+  artifact_create: `Create a typed, managed Artifact draft and emit a replayable Artifact Card event.
+
+The final sourcePath is not modified until the user accepts the ready draft. For a file already generated by an Office/image/PDF tool, pass initialPath; for text or JSON, pass initialText. Pass only one initial content field. For an interactive internal spreadsheet, use kind=spreadsheet and engineId=univer-sheet; when initial content is omitted, CraftAgent creates a blank canonical workbook snapshot. The result includes editablePath for binary tools and a draft revision for compare-and-swap edits.`,
+
+  artifact_apply: `Apply one strict text/JSON operation to an Artifact draft.
+
+Pass the exact expectedRevision from the previous artifact result. Stale revisions and active user edit leases are rejected. Univer Sheet artifacts accept only the typed sheet_set_range, sheet_set_formula, and sheet_clear_range operations. Binary Office edits should operate on the managed editablePath returned by artifact_create, then call artifact_inspect or artifact_submit to snapshot them.`,
+
+  artifact_inspect: `Validate an Artifact's active revision and emit an updated card event.
+
+For managed binary checkouts, this also snapshots external tool edits. For a Univer Sheet, pass range to calculate and return values/formulas for that A1 range. It never accepts the result or overwrites the final sourcePath.`,
+
+  artifact_render: `Refresh and return the engine-independent preview/validation projection for an Artifact.
+
+The native-file engine previews text, JSON, image and PDF sources directly. Standard Office drafts receive a local Markdown preview bound to the active revision; engine adapters may add richer previews.`,
+
+  artifact_submit: `Validate an Artifact draft and mark it ready for explicit user review.
+
+This does not write the final sourcePath. Only the user-facing Artifact Card/Workbench can accept or discard the ready revision.`,
+
   get_session_info: `Get metadata about the current session or a specific session by ID.
 
 Returns labels, status, name, permission mode, projectId (if the session is bound to a project), workingDirectory, and other details.
@@ -602,6 +705,13 @@ export const SESSION_TOOL_DEFS: SessionToolDef[] = [
   { name: 'set_session_status', description: TOOL_DESCRIPTIONS.set_session_status, inputSchema: SetSessionStatusSchema, executionMode: 'registry', safeMode: 'block', handler: handleSetSessionStatus },
   { name: 'archive_session', description: TOOL_DESCRIPTIONS.archive_session, inputSchema: ArchiveSessionSchema, executionMode: 'registry', safeMode: 'block', handler: handleArchiveSession },
   { name: 'create_task', description: TOOL_DESCRIPTIONS.create_task, inputSchema: CreateTaskSchema, executionMode: 'registry', safeMode: 'block', handler: handleCreateTask },
+  // Artifact draft tools. Accept/discard intentionally remain user-only RPC actions.
+  { name: 'artifact_status', description: TOOL_DESCRIPTIONS.artifact_status, inputSchema: ArtifactStatusSchema, executionMode: 'registry', safeMode: 'allow', readOnly: true, handler: handleArtifactStatus },
+  { name: 'artifact_create', description: TOOL_DESCRIPTIONS.artifact_create, inputSchema: ArtifactCreateSchema, executionMode: 'registry', safeMode: 'block', handler: handleArtifactCreate },
+  { name: 'artifact_apply', description: TOOL_DESCRIPTIONS.artifact_apply, inputSchema: ArtifactApplySchema, executionMode: 'registry', safeMode: 'block', handler: handleArtifactApply },
+  { name: 'artifact_inspect', description: TOOL_DESCRIPTIONS.artifact_inspect, inputSchema: ArtifactInspectSchema, executionMode: 'registry', safeMode: 'allow', handler: handleArtifactInspect },
+  { name: 'artifact_render', description: TOOL_DESCRIPTIONS.artifact_render, inputSchema: ArtifactRenderSchema, executionMode: 'registry', safeMode: 'allow', handler: handleArtifactRender },
+  { name: 'artifact_submit', description: TOOL_DESCRIPTIONS.artifact_submit, inputSchema: ArtifactSubmitSchema, executionMode: 'registry', safeMode: 'block', handler: handleArtifactSubmit },
   { name: 'get_session_info', description: TOOL_DESCRIPTIONS.get_session_info, inputSchema: GetSessionInfoSchema, executionMode: 'registry', safeMode: 'allow', readOnly: true, handler: handleGetSessionInfo },
   { name: 'list_sessions', description: TOOL_DESCRIPTIONS.list_sessions, inputSchema: ListSessionsSchema, executionMode: 'registry', safeMode: 'allow', readOnly: true, handler: handleListSessions },
   { name: 'list_background_tasks', description: TOOL_DESCRIPTIONS.list_background_tasks, inputSchema: ListBackgroundTasksSchema, executionMode: 'registry', safeMode: 'allow', readOnly: true, handler: handleListBackgroundTasks },

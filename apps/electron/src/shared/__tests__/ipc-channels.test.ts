@@ -24,6 +24,19 @@ const EXPECTED_CHANNELS: string[] = [
   "LLM_Connection:test",
   "appearance:getRichToolDescriptions",
   "appearance:setRichToolDescriptions",
+  "artifacts:accept",
+  "artifacts:acquireLease",
+  "artifacts:apply",
+  "artifacts:changed",
+  "artifacts:create",
+  "artifacts:discard",
+  "artifacts:get",
+  "artifacts:inspect",
+  "artifacts:list",
+  "artifacts:registerCurrent",
+  "artifacts:releaseLease",
+  "artifacts:revise",
+  "artifacts:submit",
   "auth:logout",
   "auth:showDeleteSessionConfirmation",
   "auth:showLogoutConfirmation",
@@ -347,6 +360,16 @@ const EXPECTED_CHANNELS: string[] = [
   "window:setTitleBarOverlay",
   "window:setTrafficLights",
   "window:switchWorkspace",
+  "workItems:changed",
+  "workItems:create",
+  "workItems:create-view",
+  "workItems:delete",
+  "workItems:delete-view",
+  "workItems:list",
+  "workItems:list-events",
+  "workItems:list-views",
+  "workItems:update",
+  "workItems:update-view",
   "workspace:getPermissions",
   "workspace:readImage",
   "workspace:writeImage",
@@ -394,6 +417,18 @@ describe('BroadcastEventMap payload shapes', () => {
   it('skills:changed carries (workspaceId, skills)', () => {
     type Payload = BroadcastEventMap[typeof RPC_CHANNELS.skills.CHANGED]
     const _check: AssertTuple<Payload, 2> = true
+    expect(_check).toBe(true)
+  })
+
+  it('workItems:changed carries (workspaceId)', () => {
+    type Payload = BroadcastEventMap[typeof RPC_CHANNELS.workItems.CHANGED]
+    const _check: AssertTuple<Payload, 1> = true
+    expect(_check).toBe(true)
+  })
+
+  it('artifacts:changed carries (workspaceId)', () => {
+    type Payload = BroadcastEventMap[typeof RPC_CHANNELS.artifacts.CHANGED]
+    const _check: AssertTuple<Payload, 1> = true
     expect(_check).toBe(true)
   })
 })

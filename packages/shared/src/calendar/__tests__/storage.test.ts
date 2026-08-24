@@ -29,13 +29,13 @@ describe('calendar entries storage', () => {
 
   it('roundtrips create → list → update → delete', () => {
     const root = freshRoot()
-    const created = createCalendarEntry(root, { title: '团队周会', date: '2026-08-06', time: '10:00', note: '同步进展' })
+    const created = createCalendarEntry(root, { title: '团队周会', date: '2026-08-06', time: '10:00', note: '同步进展', projectId: 'p1' })
     expect(created.id).toBeTruthy()
     expect(created.title).toBe('团队周会')
 
     const listed = listCalendarEntries(root)
     expect(listed).toHaveLength(1)
-    expect(listed[0]).toMatchObject({ title: '团队周会', date: '2026-08-06', time: '10:00', note: '同步进展' })
+    expect(listed[0]).toMatchObject({ title: '团队周会', date: '2026-08-06', time: '10:00', note: '同步进展', projectId: 'p1' })
 
     const updated = updateCalendarEntry(root, created.id, { title: '团队周会（改期）', date: '2026-08-07', time: '14:00' })
     expect(updated.title).toBe('团队周会（改期）')
@@ -43,6 +43,7 @@ describe('calendar entries storage', () => {
     expect(updated.time).toBe('14:00')
     // note cleared when omitted
     expect(updated.note).toBeUndefined()
+    expect(updated.projectId).toBeUndefined()
     expect(updated.updatedAt).toBeGreaterThanOrEqual(created.updatedAt)
 
     deleteCalendarEntry(root, created.id)

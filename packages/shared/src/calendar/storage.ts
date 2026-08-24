@@ -55,6 +55,7 @@ export function createCalendarEntry(
     date: input.date,
     time: input.time?.trim() || undefined,
     note: input.note?.trim() || undefined,
+    projectId: input.projectId?.trim() || undefined,
     createdAt: now,
     updatedAt: now,
   };
@@ -79,6 +80,7 @@ export function updateCalendarEntry(
     date: input.date,
     time: input.time?.trim() || undefined,
     note: input.note?.trim() || undefined,
+    projectId: input.projectId?.trim() || undefined,
     updatedAt: Date.now(),
   };
   const index = entries.findIndex((e) => e.id === entryId);

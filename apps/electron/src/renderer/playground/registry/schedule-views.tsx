@@ -17,7 +17,8 @@ import { ActionRegistryProvider } from '@/actions/registry'
 import { NavigationProvider } from '@/contexts/NavigationContext'
 import { ensureMockElectronAPI } from '../mock-utils'
 import type { ComponentEntry } from './types'
-import { CalendarView } from '@/components/app-shell/kanban/CalendarView'
+import { ProjectManagementSurface } from '@/components/projects/ProjectManagementSurface'
+import type { ProjectManagementView } from '../../../shared/types'
 
 ensureMockElectronAPI()
 
@@ -38,7 +39,7 @@ function ScheduleAppShell({ children }: { children: React.ReactNode }) {
   return <AppShellProvider value={value as never}>{children}</AppShellProvider>
 }
 
-function CalendarViewPreview() {
+function ProjectManagementViewPreview({ view }: { view: ProjectManagementView }) {
   const store = React.useMemo(() => createStore(), [])
   return (
     <JotaiProvider store={store}>
@@ -56,7 +57,7 @@ function CalendarViewPreview() {
                 >
                   <ScheduleAppShell>
                     <div className="h-full w-full bg-background">
-                      <CalendarView />
+                      <ProjectManagementSurface state={{ navigator: 'projects', view, details: null }} />
                     </div>
                   </ScheduleAppShell>
                 </NavigationProvider>
@@ -71,11 +72,38 @@ function CalendarViewPreview() {
 
 export const scheduleViewComponents: ComponentEntry[] = [
   {
-    category: 'Kanban',
+    category: 'Project Management',
+    id: 'projects-overview-view',
+    name: 'Projects Overview',
+    description: 'Project Management overview with the shared projection switcher.',
+    component: () => <ProjectManagementViewPreview view="overview" />,
+    props: [],
+    variants: [{ name: 'Overview', props: {} }],
+  },
+  {
+    category: 'Project Management',
+    id: 'work-item-list-view',
+    name: 'Work Item List',
+    description: 'List projection with local controls left and the shared projection switcher right.',
+    component: () => <ProjectManagementViewPreview view="list" />,
+    props: [],
+    variants: [{ name: 'List', props: {} }],
+  },
+  {
+    category: 'Project Management',
+    id: 'work-item-board-view',
+    name: 'Work Item Board',
+    description: 'Board projection with New Task left and the shared projection switcher right.',
+    component: () => <ProjectManagementViewPreview view="board" />,
+    props: [],
+    variants: [{ name: 'Board', props: {} }],
+  },
+  {
+    category: 'Project Management',
     id: 'calendar-view',
     name: 'Calendar View',
-    description: 'Full calendar container: Day / Week / Month views over standalone schedule entries.',
-    component: () => <CalendarViewPreview />,
+    description: 'Calendar projection with date controls left and the shared projection switcher right.',
+    component: () => <ProjectManagementViewPreview view="calendar" />,
     props: [],
     variants: [{ name: 'Calendar', props: {} }],
   },

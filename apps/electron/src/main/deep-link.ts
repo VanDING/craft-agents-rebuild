@@ -10,6 +10,8 @@
  *   craftagents://flagged[/session/{sessionId}]             - Session list (flagged filter)
  *   craftagents://state/{stateId}[/session/{sessionId}]     - Session list (state filter)
  *   craftagents://sources[/source/{sourceSlug}]          - Sources list
+ *   craftagents://projects[/board|calendar]              - Project Management
+ *   craftagents://automations[...]                       - Automations
  *   craftagents://settings[/{subpage}]                   - Settings (general, shortcuts, preferences)
  *
  * Action format:
@@ -37,7 +39,7 @@
 import type { BrowserWindow } from 'electron'
 import { mainLog } from './logger'
 import type { WindowManager } from './window-manager'
-import { RPC_CHANNELS } from '../shared/types'
+import { RPC_CHANNELS, type DeepLinkNavigation } from '../shared/types'
 import type { EventSink } from '@craft-agent/server-core/transport'
 
 export interface DeepLinkTarget {
@@ -50,7 +52,7 @@ export interface DeepLinkTarget {
   actionParams?: Record<string, string>
   /** Window mode - if set, opens in a new window instead of navigating in existing */
   windowMode?: 'focused' | 'full'
-  /** Right sidebar param (e.g., 'files/path/to/file', 'history') */
+  /** Legacy sidebar param, migrated by the renderer to a Workbench item. */
   rightSidebar?: string
 }
 
@@ -58,17 +60,6 @@ export interface DeepLinkResult {
   success: boolean
   error?: string
   windowId?: number
-}
-
-/**
- * Navigation payload sent to renderer via IPC
- */
-export interface DeepLinkNavigation {
-  /** Compound route format (e.g., 'allSessions/session/abc123', 'settings/shortcuts') */
-  view?: string
-  /** Action route (e.g., 'new-chat', 'delete-session') */
-  action?: string
-  actionParams?: Record<string, string>
 }
 
 /**
@@ -83,7 +74,7 @@ function parseWindowMode(parsed: URL): 'focused' | 'full' | undefined {
 }
 
 /**
- * Parse right sidebar param from URL search params
+ * Parse the legacy sidebar param from URL search params.
  */
 function parseRightSidebar(parsed: URL): string | undefined {
   return parsed.searchParams.get('sidebar') || undefined
@@ -120,7 +111,17 @@ const DEEP_LINK_ALLOWED_PARAMS: ReadonlySet<string> = new Set(['send'])
 
 // Compound route prefixes
     const COMPOUND_ROUTE_PREFIXES = [
-      'allSessions', 'flagged', 'state', 'sources', 'settings', 'skills'
+      'allSessions',
+      'flagged',
+      'state',
+      'sources',
+      'settings',
+      'skills',
+      'automations',
+      'projects',
+      // Legacy aliases accepted for the same migration window as renderer URLs.
+      'board',
+      'calendar',
     ]
 
     // craftagents://allSessions/..., craftagents://settings/..., etc. (compound routes)
@@ -333,6 +334,7 @@ export async function handleDeepLink(
       view: target.view,
       action: target.action,
       actionParams: target.actionParams,
+      rightSidebar: target.rightSidebar,
     }
     const wsId = target.workspaceId ?? windowManager.getWorkspaceForWindow(window.webContents.id)
     const resolvedClientId = resolveClientId?.(window.webContents.id)

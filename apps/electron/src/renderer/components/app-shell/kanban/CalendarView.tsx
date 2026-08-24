@@ -1,11 +1,9 @@
 /**
- * CalendarView — schedule view over standalone calendar entries.
+ * CalendarView — aggregate schedule projection over WorkItems and standalone entries.
  *
- * Three view modes (Day / Week / Month) over workspace-level calendar
- * entries (title / date / optional time / optional note), which are
- * independent of sessions. Conversations live in the list/board — the
- * calendar shows schedule items only; each entry card offers "create
- * conversation" to spawn a session from it on demand.
+ * Three view modes (Day / Week / Month) over one aggregate projection:
+ * durable WorkItems with start/due dates plus lightweight standalone calendar
+ * entries. Either kind can open or lazily create an execution conversation.
  *
  * Day/Week render entries inline (full info, no preview popup); Month uses
  * compact chips with an anchored day-list popover. The create/edit dialog is
@@ -14,22 +12,26 @@
  */
 
 import * as React from 'react'
-import { Plus } from 'lucide-react'
+import { Plus, Search } from 'lucide-react'
+import { useAtomValue, useSetAtom } from 'jotai'
+import { toast } from 'sonner'
 import { useTranslation } from 'react-i18next'
 import {
   addDays,
-  addMonths,
   format,
   isSameDay,
   isSameMonth,
   startOfMonth,
   startOfWeek,
-  subMonths,
 } from 'date-fns'
 import { useAppShellContext } from '@/context/AppShellContext'
 import { useCompensateForStoplight } from '@/context/StoplightContext'
-import { useNavigation } from '@/contexts/NavigationContext'
+import { routes, useNavigation } from '@/contexts/NavigationContext'
 import { useCalendarEntries } from '@/hooks/useCalendarEntries'
+import { useWorkItems } from '@/hooks/useWorkItems'
+import { useWorkItemViewState } from '@/hooks/useWorkItemViewState'
+import { projectsAtom } from '@/atoms/projects'
+import { workItemDetailIdAtom } from '@/atoms/kanban'
 import { cn } from '@/lib/utils'
 import {
   Dialog,
@@ -43,6 +45,10 @@ import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import type { CalendarEntry, CalendarEntryInput } from '@craft-agent/shared/protocol'
+import { queryWorkItems, workItemDateKey, type WorkItem } from '@craft-agent/shared/work-items/browser'
+import { ProjectManagementViewTabs } from '../../projects/ProjectManagementViewTabs'
+import { WorkItemViewControls } from '../../projects/WorkItemViewControls'
+import { KanbanProjectFilter, type KanbanProjectFilterOption } from './KanbanProjectFilter'
 
 type ViewMode = 'day' | 'week' | 'month'
 
@@ -67,18 +73,9 @@ function dayKey(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
 
-function parseEntryDate(date: string): Date {
-  const [y, m, d] = date.split('-').map(Number)
-  return new Date(y, (m ?? 1) - 1, d ?? 1)
-}
-
-/** Translucent accent block for entries (calendar shows schedules only). */
+/** Translucent accent block shared by both schedule sources. */
 function entryBlock(alpha: number): string {
   return `color-mix(in srgb, var(--accent) ${Math.round(alpha * 100)}%, transparent)`
-}
-
-function isTodayEntryDay(entry: CalendarEntry, today: Date): boolean {
-  return entry.date === dayKey(today)
 }
 
 function nowMinutes(): number {
@@ -92,19 +89,55 @@ interface EntryFormState {
   date: string
   time: string
   note: string
+  projectId: string
+}
+
+interface CalendarProjection {
+  id: string
+  title: string
+  date: string
+  endDate: string
+  time?: string
+  note?: string
+  projectId?: string
+  entry?: CalendarEntry
+  workItem?: WorkItem
 }
 
 export function CalendarView() {
-  const { activeWorkspaceId, onCreateSession, rightSidebarButton, expandButton } = useAppShellContext()
+  const { activeWorkspaceId, sessionStatuses, onCreateSession, trailingAction, expandButton } = useAppShellContext()
   const compensateForStoplight = useCompensateForStoplight()
   const { t } = useTranslation()
-  const { navigateToSession } = useNavigation()
+  const { navigate, navigateToSession } = useNavigation()
   const { entries, create, update, remove } = useCalendarEntries(activeWorkspaceId ?? null)
+  const { items: workItems, update: updateWorkItem } = useWorkItems(activeWorkspaceId ?? null)
+  const setDetailId = useSetAtom(workItemDetailIdAtom)
+  const projects = useAtomValue(projectsAtom)
+  const projectOptions = React.useMemo<KanbanProjectFilterOption[]>(
+    () => projects.map((project) => ({ id: project.config.id, name: project.config.name, color: project.config.color })),
+    [projects],
+  )
+  const liveProjectIds = React.useMemo(() => projectOptions.map(({ id }) => id), [projectOptions])
+  const {
+    projectIds,
+    setProjectIds,
+    search,
+    setSearch,
+    statusIds,
+    setStatusIds,
+    scheduled,
+    setScheduled,
+    activeViewId,
+    setActiveViewId,
+    query,
+    applyQuery,
+    setSelectedIds,
+  } = useWorkItemViewState(activeWorkspaceId ?? null, workItems, liveProjectIds)
   const [view, setView] = React.useState<ViewMode>('month')
   const [cursor, setCursor] = React.useState(() => startOfMonth(new Date()))
   const [selectedDay, setSelectedDay] = React.useState<Date | null>(null)
   const [formOpen, setFormOpen] = React.useState(false)
-  const [form, setForm] = React.useState<EntryFormState>({ title: '', date: '', time: '', note: '' })
+  const [form, setForm] = React.useState<EntryFormState>({ title: '', date: '', time: '', note: '', projectId: '' })
 
   const today = new Date()
 
@@ -112,23 +145,70 @@ export function CalendarView() {
   // Entry helpers
   // -------------------------------------------------------------------------
 
+  const calendarItems = React.useMemo<CalendarProjection[]>(() => {
+    const normalizedSearch = search.trim().toLocaleLowerCase()
+    const scheduledWorkItems = queryWorkItems(workItems, {
+      ...query,
+      scheduled: scheduled === 'all' ? 'scheduled' : scheduled,
+    }).flatMap((item): CalendarProjection[] => {
+      const start = workItemDateKey(item.startAt) ?? workItemDateKey(item.dueAt)
+      const end = workItemDateKey(item.dueAt) ?? workItemDateKey(item.startAt)
+      if (!start || !end) return []
+      const time = item.startAt?.includes('T') ? item.startAt.slice(11, 16) : undefined
+      return [{
+        id: `work-item:${item.id}`,
+        title: item.title,
+        date: start,
+        endDate: end,
+        time,
+        note: item.description,
+        projectId: item.projectId,
+        workItem: item,
+      }]
+    })
+    const standalone = entries
+      .filter((entry) => !projectIds.length || Boolean(entry.projectId && projectIds.includes(entry.projectId)))
+      .filter((entry) => !normalizedSearch || `${entry.title}\n${entry.note ?? ''}`.toLocaleLowerCase().includes(normalizedSearch))
+      .map((entry): CalendarProjection => ({
+        id: `entry:${entry.id}`,
+        title: entry.title,
+        date: entry.date,
+        endDate: entry.date,
+        time: entry.time,
+        note: entry.note,
+        projectId: entry.projectId,
+        entry,
+      }))
+    return [...scheduledWorkItems, ...standalone].sort((left, right) =>
+      left.date.localeCompare(right.date) || (left.time ?? '').localeCompare(right.time ?? '') || left.title.localeCompare(right.title),
+    )
+  }, [entries, projectIds, query, scheduled, search, workItems])
+
   const entriesFor = React.useCallback(
-    (day: Date): CalendarEntry[] => {
+    (day: Date): CalendarProjection[] => {
       const key = dayKey(day)
-      return entries.filter((e) => e.date === key)
+      return calendarItems.filter((entry) => entry.date <= key && entry.endDate >= key)
     },
-    [entries],
+    [calendarItems],
   )
 
   const openCreate = React.useCallback((date: Date) => {
-    setForm({ title: '', date: dayKey(date), time: '', note: '' })
+    setForm({ title: '', date: dayKey(date), time: '', note: '', projectId: projectIds[0] ?? '' })
     setFormOpen(true)
-  }, [])
+  }, [projectIds])
 
-  const openEdit = React.useCallback((entry: CalendarEntry) => {
-    setForm({ id: entry.id, title: entry.title, date: entry.date, time: entry.time ?? '', note: entry.note ?? '' })
+  const openEdit = React.useCallback((projection: CalendarProjection) => {
+    if (projection.workItem) {
+      setSelectedIds([projection.workItem.id])
+      setDetailId(projection.workItem.id)
+      navigate(routes.view.projectWorkItem('calendar', projection.workItem.id))
+      return
+    }
+    const entry = projection.entry
+    if (!entry) return
+    setForm({ id: entry.id, title: entry.title, date: entry.date, time: entry.time ?? '', note: entry.note ?? '', projectId: entry.projectId ?? '' })
     setFormOpen(true)
-  }, [])
+  }, [navigate, setDetailId, setSelectedIds])
 
   const submitForm = React.useCallback(async () => {
     const title = form.title.trim()
@@ -138,6 +218,7 @@ export function CalendarView() {
       date: form.date,
       time: form.time.trim() || undefined,
       note: form.note.trim() || undefined,
+      projectId: form.projectId || undefined,
     }
     if (form.id) await update(form.id, input)
     else await create(input)
@@ -145,26 +226,40 @@ export function CalendarView() {
   }, [form, create, update])
 
   const handleDelete = React.useCallback(
-    (entryId: string) => {
-      void remove(entryId)
+    (projection: CalendarProjection) => {
+      if (projection.entry) void remove(projection.entry.id)
     },
     [remove],
   )
 
   const createConversation = React.useCallback(
-    async (entry: CalendarEntry) => {
+    async (projection: CalendarProjection) => {
       if (!activeWorkspaceId) return
       try {
+        if (projection.workItem?.primarySessionId) {
+          navigateToSession(projection.workItem.primarySessionId)
+          return
+        }
         const session = await onCreateSession(activeWorkspaceId, {
-          name: entry.title,
-          ...(entry.note ? {} : {}),
+          name: projection.title,
+          ...(projection.projectId ? { projectId: projection.projectId } : {}),
         })
+        if (projection.workItem) {
+          const linked = await updateWorkItem(projection.workItem.id, {
+            sessionIds: [...projection.workItem.sessionIds, session.id],
+            primarySessionId: session.id,
+          })
+          if (!linked) {
+            toast.error(t('kanban.workItemLinkFailed'))
+            return
+          }
+        }
         if (session?.id) navigateToSession(session.id)
       } catch (err) {
         console.error('[CalendarView] Failed to create conversation:', err)
       }
     },
-    [activeWorkspaceId, onCreateSession, navigateToSession],
+    [activeWorkspaceId, onCreateSession, navigateToSession, t, updateWorkItem],
   )
 
   // -------------------------------------------------------------------------
@@ -207,7 +302,7 @@ export function CalendarView() {
   // Shared card chrome
   // -------------------------------------------------------------------------
 
-  const entryActions = (entry: CalendarEntry, compact?: boolean) => (
+  const entryActions = (entry: CalendarProjection, compact?: boolean) => (
     <div className={cn('flex flex-none items-center gap-1', compact && 'flex-col gap-1')}>
       <Button
         size="sm"
@@ -218,19 +313,21 @@ export function CalendarView() {
           void createConversation(entry)
         }}
       >
-        {t('schedule.createChat')}
+        {entry.workItem?.primarySessionId ? t('kanban.workItemOpenSession') : t('schedule.createChat')}
       </Button>
-      <Button
-        size="sm"
-        variant="outline"
-        className="h-6 px-2 text-[11px] font-semibold text-destructive hover:text-destructive"
-        onClick={(e) => {
-          e.stopPropagation()
-          handleDelete(entry.id)
-        }}
-      >
-        {t('schedule.delete')}
-      </Button>
+      {entry.entry && (
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-6 px-2 text-[11px] font-semibold text-destructive hover:text-destructive"
+          onClick={(e) => {
+            e.stopPropagation()
+            handleDelete(entry)
+          }}
+        >
+          {t('schedule.delete')}
+        </Button>
+      )}
     </div>
   )
 
@@ -243,8 +340,9 @@ export function CalendarView() {
   const renderDay = () => {
     const day = cursor
     const key = dayKey(day)
-    const timed = entries.filter((e) => e.date === key && e.time)
-    const allDay = entries.filter((e) => e.date === key && !e.time)
+    const dayEntries = entriesFor(day)
+    const timed = dayEntries.filter((entry) => entry.date === key && entry.time)
+    const allDay = dayEntries.filter((entry) => entry.date !== key || !entry.time)
     const now = nowMinutes()
 
     return (
@@ -266,6 +364,7 @@ export function CalendarView() {
               key={entry.id}
               className="flex items-center gap-2.5 rounded-lg px-2.5 py-2"
               style={entryBlockStyle(0.16)}
+              onClick={() => openEdit(entry)}
             >
               <span className="w-[76px] flex-none text-[11px] font-bold tabular-nums opacity-80">
                 {t('schedule.allDay')}
@@ -323,6 +422,7 @@ export function CalendarView() {
                     key={entry.id}
                     className="absolute left-1.5 right-2.5 flex items-center gap-2.5 rounded-lg px-2.5 py-1.5"
                     style={{ top, height: `calc(100% / ${HOUR_END - HOUR_START})`, ...entryBlockStyle(0.22) }}
+                    onClick={() => openEdit(entry)}
                   >
                     <span className="w-[76px] flex-none text-[11px] font-bold tabular-nums opacity-80">
                       {entry.time}–{endH}:{String(mm).padStart(2, '0')}
@@ -384,7 +484,8 @@ export function CalendarView() {
           <div className="w-[52px] flex-none border-r border-border/60" />
           {Array.from({ length: 7 }, (_, i) => {
             const d = addDays(monday, i)
-            const allDay = entriesFor(d).filter((e) => !e.time)
+            const key = dayKey(d)
+            const allDay = entriesFor(d).filter((entry) => entry.date !== key || !entry.time)
             return (
               <div key={i} className="min-w-0 flex-1 border-r border-border/60 p-1 last:border-r-0">
                 {allDay.map((entry) => (
@@ -393,6 +494,7 @@ export function CalendarView() {
                     className="mb-1 flex items-center gap-1 overflow-hidden rounded-md px-1.5 py-1 text-[11.5px] font-medium"
                     style={entryBlockStyle(0.2)}
                     title={entry.title}
+                    onClick={() => openEdit(entry)}
                   >
                     <span className="truncate">{entry.title}</span>
                   </div>
@@ -439,7 +541,7 @@ export function CalendarView() {
                     />
                   )}
                   {entriesFor(d)
-                    .filter((e) => e.time)
+                    .filter((entry) => entry.date === dayKey(d) && entry.time)
                     .map((entry) => {
                       const [hh, mm] = entry.time!.split(':').map(Number)
                       return (
@@ -452,6 +554,7 @@ export function CalendarView() {
                             ...entryBlockStyle(0.22),
                           }}
                           title={entry.title}
+                          onClick={() => openEdit(entry)}
                         >
                           <span className="block truncate text-[11.5px] font-semibold">
                             {entry.time} · {entry.title}
@@ -530,7 +633,10 @@ export function CalendarView() {
                             <button
                               key={entry.id}
                               type="button"
-                              onClick={() => setSelectedDay(null)}
+                              onClick={() => {
+                                setSelectedDay(null)
+                                openEdit(entry)
+                              }}
                               className="flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs hover:bg-foreground/[0.06]"
                               style={entryBlockStyle(0.14)}
                             >
@@ -588,64 +694,93 @@ export function CalendarView() {
           overlay): left reserves macOS traffic lights, right reserves the
           floating restore button of the expanded overlay. */}
       <div
-        className="flex flex-none items-center gap-2 border-b border-border/60 py-2.5"
+        className="flex flex-none flex-wrap items-center justify-between gap-2 border-b border-border/60 py-2.5"
         style={{
           paddingLeft: compensateForStoplight ? 84 : 16,
           paddingRight: compensateForStoplight ? 48 : 16,
         }}
       >
-        <button
-          type="button"
-          onClick={goPrev}
-          aria-label={t('schedule.prevMonth')}
-          className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-border/80 text-foreground/55 transition-colors hover:text-foreground"
-        >
-          ‹
-        </button>
-        <span className="text-sm font-semibold">{title}</span>
-        <button
-          type="button"
-          onClick={goNext}
-          aria-label={t('schedule.nextMonth')}
-          className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-border/80 text-foreground/55 transition-colors hover:text-foreground"
-        >
-          ›
-        </button>
-        <button
-          type="button"
-          onClick={goToday}
-          className="rounded-md border border-border/80 px-2.5 py-1 text-xs font-medium text-foreground/70 transition-colors hover:text-foreground"
-        >
-          {t('common.today')}
-        </button>
-        <div className="flex-1" />
-        <div className="inline-flex items-center gap-0.5 rounded-lg border border-border/80 bg-foreground/[0.02] p-0.5">
-          {(['day', 'week', 'month'] as const).map((mode) => (
-            <button
-              key={mode}
-              type="button"
-              onClick={() => switchView(mode)}
-              aria-pressed={view === mode}
-              className={cn(
-                'rounded-md px-2.5 py-1 text-xs font-medium transition-colors',
-                view === mode ? 'bg-card text-foreground shadow-minimal' : 'text-foreground/50 hover:text-foreground/80',
-              )}
-            >
-              {t(`schedule.view.${mode}`)}
-            </button>
-          ))}
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+          {projectOptions.length > 0 && (
+            <KanbanProjectFilter projects={projectOptions} value={projectIds} onChange={setProjectIds} />
+          )}
+          <label className="relative hidden min-w-32 @min-[980px]/panel:block @min-[980px]/panel:w-44">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-foreground/35" />
+            <input
+              type="search"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder={t('kanban.workItemSearch')}
+              className="h-8 w-full rounded-lg border border-border bg-background pl-8 pr-2 text-xs outline-none focus:border-ring/60"
+            />
+          </label>
+          <button
+            type="button"
+            onClick={goPrev}
+            aria-label={t('schedule.prevMonth')}
+            className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-border/80 text-foreground/55 transition-colors hover:text-foreground"
+          >
+            ‹
+          </button>
+          <span className="text-sm font-semibold">{title}</span>
+          <button
+            type="button"
+            onClick={goNext}
+            aria-label={t('schedule.nextMonth')}
+            className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-border/80 text-foreground/55 transition-colors hover:text-foreground"
+          >
+            ›
+          </button>
+          <button
+            type="button"
+            onClick={goToday}
+            className="rounded-md border border-border/80 px-2.5 py-1 text-xs font-medium text-foreground/70 transition-colors hover:text-foreground"
+          >
+            {t('common.today')}
+          </button>
+          <div className="inline-flex items-center gap-0.5 rounded-lg border border-border/80 bg-foreground/[0.02] p-0.5">
+            {(['day', 'week', 'month'] as const).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => switchView(mode)}
+                aria-pressed={view === mode}
+                className={cn(
+                  'rounded-md px-2.5 py-1 text-xs font-medium transition-colors',
+                  view === mode ? 'bg-card text-foreground shadow-minimal' : 'text-foreground/50 hover:text-foreground/80',
+                )}
+              >
+                {t(`schedule.view.${mode}`)}
+              </button>
+            ))}
+          </div>
+          <Button
+            variant="outline"
+            className="h-8 gap-1.5 border-border/80 bg-card px-2.5 text-[12.5px] font-semibold"
+            onClick={() => openCreate(cursor)}
+          >
+            <Plus className="h-3.5 w-3.5" strokeWidth={2.5} />
+            {t('schedule.newEntry')}
+          </Button>
         </div>
-        <Button
-          variant="outline"
-          className="h-8 gap-1.5 border-border/80 bg-card px-2.5 text-[12.5px] font-semibold"
-          onClick={() => openCreate(cursor)}
-        >
-          <Plus className="h-3.5 w-3.5" strokeWidth={2.5} />
-          {t('schedule.newEntry')}
-        </Button>
-        {/* Panel-slot injected close + fullscreen buttons (decision #3) */}
-        {rightSidebarButton}
-        {expandButton}
+        <div className="ml-auto flex shrink-0 items-center gap-2">
+          <WorkItemViewControls
+            layout="calendar"
+            query={query}
+            applyQuery={applyQuery}
+            activeViewId={activeViewId}
+            setActiveViewId={setActiveViewId}
+            statusIds={statusIds}
+            setStatusIds={setStatusIds}
+            scheduled={scheduled}
+            setScheduled={setScheduled}
+            statuses={sessionStatuses ?? []}
+          />
+          <ProjectManagementViewTabs value="calendar" />
+          {/* Surface-injected close + fullscreen controls. */}
+          {trailingAction}
+          {expandButton}
+        </div>
       </div>
 
       <div className="min-h-0 flex-1 p-4">
@@ -671,6 +806,19 @@ export function CalendarView() {
                 className="w-full rounded-md border border-border/80 bg-background px-2.5 py-1.5 text-[13px] outline-none focus:border-accent"
               />
             </div>
+            {projectOptions.length > 0 && (
+              <div>
+                <label className="mb-1 block text-[11px] font-medium text-foreground/55">{t('kanban.workItemProject')}</label>
+                <select
+                  value={form.projectId}
+                  onChange={(e) => setForm((prev) => ({ ...prev, projectId: e.target.value }))}
+                  className="w-full rounded-md border border-border/80 bg-background px-2.5 py-1.5 text-[13px] outline-none focus:border-accent"
+                >
+                  <option value="">{t('kanban.workItemNoProject')}</option>
+                  {projectOptions.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
+                </select>
+              </div>
+            )}
             <div className="flex gap-3">
               <div className="flex-1">
                 <label className="mb-1 block text-[11px] font-medium text-foreground/55">{t('schedule.entryDate')}</label>

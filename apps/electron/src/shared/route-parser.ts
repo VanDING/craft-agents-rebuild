@@ -16,7 +16,9 @@ import type {
   AutomationFilter,
   RightSidebarPanel,
   BoundPanelType,
+  ProjectManagementView,
 } from './types'
+import { isProjectManagementView } from './types'
 import { isValidSettingsSubpage, type SettingsSubpage } from './settings-registry'
 
 // =============================================================================
@@ -47,8 +49,8 @@ export interface ParsedCompoundRoute {
   sourceFilter?: SourceFilter
   /** Automation filter (only for automations navigator) */
   automationFilter?: AutomationFilter
-  /** Sessions presentation mode (only for sessions navigator). 'board' = Kanban view, 'calendar' = schedule view. */
-  viewMode?: 'list' | 'board' | 'calendar'
+  /** Active projection inside the Project Management surface. */
+  projectView?: ProjectManagementView
   /** Bound workbench panel kind (only for 'other' navigator) */
   panel?: BoundPanelType
   /** Details page info (null for empty state) */
@@ -66,7 +68,7 @@ export interface ParsedCompoundRoute {
  * Known prefixes that indicate a compound route
  */
 const COMPOUND_ROUTE_PREFIXES = [
-  'allSessions', 'flagged', 'archived', 'state', 'label', 'view', 'board', 'calendar', 'sources', 'skills', 'automations', 'projects', 'settings', 'diff', 'files', 'context', 'preview', 'trajectory'
+  'allSessions', 'flagged', 'archived', 'state', 'label', 'view', 'board', 'calendar', 'sources', 'skills', 'automations', 'projects', 'settings', 'diff', 'files', 'context', 'preview', 'trajectory', 'artifact'
 ]
 
 /**
@@ -102,36 +104,41 @@ export function parseCompoundRoute(route: string): ParsedCompoundRoute | null {
 
   const first = segments[0]
 
-  // Kanban board — standalone route. A view of all sessions in board mode.
-  // Encoded as its own prefix (not `allSessions/board`) so it never collides
-  // with the positional `{filter}/session/{id}` detail parsing below.
+  // Legacy standalone aliases. They now resolve into the Project Management
+  // surface; buildCompoundRoute emits the canonical projects/* route.
   if (first === 'board') {
     return {
-      navigator: 'sessions',
-      sessionFilter: { kind: 'allSessions' },
-      viewMode: 'board',
+      navigator: 'projects',
+      projectView: 'board',
       details: null,
     }
   }
 
-  // Calendar — standalone schedule view of all sessions (same convention).
   if (first === 'calendar') {
     return {
-      navigator: 'sessions',
-      sessionFilter: { kind: 'allSessions' },
-      viewMode: 'calendar',
+      navigator: 'projects',
+      projectView: 'calendar',
       details: null,
     }
   }
 
   // Bound content-workbench panels — standalone single-segment routes that
-  // carry no session id (content follows the active session). Same prefix
-  // convention as board/calendar.
+  // carry no session id (content follows the active session).
   if (first === 'diff' || first === 'files' || first === 'context' || first === 'preview' || first === 'trajectory') {
     return {
       navigator: 'other',
       panel: first as BoundPanelType,
       details: null,
+    }
+  }
+
+  if (first === 'artifact') {
+    const artifactId = segments[1] ? decodeURIComponent(segments[1]) : undefined
+    if (!artifactId || segments.length !== 2) return null
+    return {
+      navigator: 'other',
+      panel: 'artifact',
+      details: { type: 'artifact', id: artifactId },
     }
   }
 
@@ -205,11 +212,32 @@ export function parseCompoundRoute(route: string): ParsedCompoundRoute | null {
   // Projects navigator
   if (first === 'projects') {
     if (segments.length === 1) {
-      return { navigator: 'projects', details: null }
+      return { navigator: 'projects', projectView: 'overview', details: null }
+    }
+    if (
+      segments.length === 4
+      && isProjectManagementView(segments[1])
+      && segments[1] !== 'overview'
+      && segments[2] === 'work-item'
+      && segments[3]
+    ) {
+      return {
+        navigator: 'projects',
+        projectView: segments[1],
+        details: { type: 'workItem', id: decodeURIComponent(segments[3]) },
+      }
+    }
+    if (segments.length === 2 && isProjectManagementView(segments[1])) {
+      return {
+        navigator: 'projects',
+        projectView: segments[1],
+        details: null,
+      }
     }
     if (segments[1] === 'project' && segments[2]) {
       return {
         navigator: 'projects',
+        projectView: 'overview',
         details: { type: 'project', id: segments[2] },
       }
     }
@@ -315,6 +343,9 @@ export function parseCompoundRoute(route: string): ParsedCompoundRoute | null {
  */
 export function buildCompoundRoute(parsed: ParsedCompoundRoute): string {
   if (parsed.navigator === 'other') {
+    if (parsed.panel === 'artifact' && parsed.details?.type === 'artifact') {
+      return `artifact/${encodeURIComponent(parsed.details.id)}`
+    }
     return parsed.panel ?? 'diff'
   }
 
@@ -349,15 +380,18 @@ export function buildCompoundRoute(parsed: ParsedCompoundRoute): string {
   }
 
   if (parsed.navigator === 'projects') {
-    if (!parsed.details) return 'projects'
+    if (!parsed.details) {
+      return parsed.projectView && parsed.projectView !== 'overview'
+        ? `projects/${parsed.projectView}`
+        : 'projects'
+    }
+    if (parsed.details.type === 'workItem' && parsed.projectView && parsed.projectView !== 'overview') {
+      return `projects/${parsed.projectView}/work-item/${encodeURIComponent(parsed.details.id)}`
+    }
     return `projects/project/${parsed.details.id}`
   }
 
   // Sessions navigator
-  // Board/calendar are standalone views of all sessions; emit their own prefix.
-  if (parsed.viewMode === 'board') return 'board'
-  if (parsed.viewMode === 'calendar') return 'calendar'
-
   let base: string
   const filter = parsed.sessionFilter
   if (!filter) return 'allSessions'
@@ -449,7 +483,12 @@ export function parseRoute(route: string): ParsedRoute | null {
 function convertCompoundToViewRoute(compound: ParsedCompoundRoute): ParsedRoute {
   // Bound workbench panels — parsed as compound routes with 'other' navigator.
   if (compound.navigator === 'other') {
-    return { type: 'view', name: compound.panel ?? 'diff', params: {} }
+    return {
+      type: 'view',
+      name: compound.panel ?? 'diff',
+      id: compound.details?.type === 'artifact' ? compound.details.id : undefined,
+      params: {},
+    }
   }
 
   // Settings
@@ -487,6 +526,9 @@ function convertCompoundToViewRoute(compound: ParsedCompoundRoute): ParsedRoute 
 
   // Projects
   if (compound.navigator === 'projects') {
+    if (compound.projectView && compound.projectView !== 'overview') {
+      return { type: 'view', name: compound.projectView, params: {} }
+    }
     if (!compound.details) {
       return { type: 'view', name: 'projects', params: {} }
     }
@@ -527,30 +569,19 @@ function convertCompoundToViewRoute(compound: ParsedCompoundRoute): ParsedRoute 
 /**
  * Parse a route string directly to NavigationState (the unified state)
  *
- * This is the preferred way to parse routes - returns the unified state that
- * determines all 3 panels (sidebar, navigator, main content).
+ * This is the preferred way to parse routes: it returns the structural state
+ * for the one Primary Surface or a typed Context Workbench target.
  *
  * Supports:
  * - Compound routes: allSessions, allSessions/session/abc, sources, sources/source/github, settings/shortcuts
- * - Right sidebar param: ?sidebar=files or ?sidebar=history
- *
  * Returns null for action routes (they don't map to a navigation state) and invalid routes.
  */
-export function parseRouteToNavigationState(
-  route: string,
-  sidebarParam?: string
-): NavigationState | null {
+export function parseRouteToNavigationState(route: string): NavigationState | null {
   // Parse compound routes
   if (isCompoundRoute(route)) {
     const compound = parseCompoundRoute(route)
     if (compound) {
-      const state = convertCompoundToNavigationState(compound)
-      // Add rightSidebar if param provided
-      const rightSidebar = parseRightSidebarParam(sidebarParam)
-      if (rightSidebar) {
-        return { ...state, rightSidebar }
-      }
-      return state
+      return convertCompoundToNavigationState(compound)
     }
   }
 
@@ -562,15 +593,7 @@ export function parseRouteToNavigationState(
   if (parsed.type === 'action') return null
 
   // Convert view routes to NavigationState
-  const state = convertParsedRouteToNavigationState(parsed)
-  if (state) {
-    // Add rightSidebar if param provided
-    const rightSidebar = parseRightSidebarParam(sidebarParam)
-    if (rightSidebar) {
-      return { ...state, rightSidebar }
-    }
-  }
-  return state
+  return convertParsedRouteToNavigationState(parsed)
 }
 
 /**
@@ -579,7 +602,10 @@ export function parseRouteToNavigationState(
 function convertCompoundToNavigationState(compound: ParsedCompoundRoute): NavigationState {
   // Bound workbench panels
   if (compound.navigator === 'other') {
-    return { navigator: 'other', panel: compound.panel ?? 'diff' }
+    const panel = compound.panel ?? 'diff'
+    return panel === 'artifact'
+      ? { navigator: 'other', panel, artifactId: compound.details?.id }
+      : { navigator: 'other', panel }
   }
 
   // Settings
@@ -636,12 +662,19 @@ function convertCompoundToNavigationState(compound: ParsedCompoundRoute): Naviga
   // Projects
   if (compound.navigator === 'projects') {
     if (!compound.details) {
-      return { navigator: 'projects', details: null }
+      return { navigator: 'projects', view: compound.projectView ?? 'overview', details: null }
     }
-    return {
-      navigator: 'projects',
-      details: { type: 'project', projectSlug: compound.details.id },
-    }
+    return compound.details.type === 'workItem'
+      ? {
+          navigator: 'projects',
+          view: compound.projectView && compound.projectView !== 'overview' ? compound.projectView : 'list',
+          details: { type: 'workItem', workItemId: compound.details.id },
+        }
+      : {
+          navigator: 'projects',
+          view: 'overview',
+          details: { type: 'project', projectSlug: compound.details.id },
+        }
   }
 
   // Sessions
@@ -656,7 +689,6 @@ function convertCompoundToNavigationState(compound: ParsedCompoundRoute): Naviga
   return {
     navigator: 'sessions',
     filter,
-    viewMode: compound.viewMode,
     details: null,
   }
 }
@@ -723,15 +755,20 @@ function convertParsedRouteToNavigationState(parsed: ParsedRoute): NavigationSta
       }
       return { navigator: 'automations', details: null }
     case 'projects':
-      return { navigator: 'projects', details: null }
+      return { navigator: 'projects', view: 'overview', details: null }
+    case 'board':
+      return { navigator: 'projects', view: 'board', details: null }
+    case 'calendar':
+      return { navigator: 'projects', view: 'calendar', details: null }
     case 'project-info':
       if (parsed.id) {
         return {
           navigator: 'projects',
+          view: 'overview',
           details: { type: 'project', projectSlug: parsed.id },
         }
       }
-      return { navigator: 'projects', details: null }
+      return { navigator: 'projects', view: 'overview', details: null }
     case 'session':
       if (parsed.id) {
         // Reconstruct filter from params
@@ -808,7 +845,13 @@ function convertParsedRouteToNavigationState(parsed: ParsedRoute): NavigationSta
  */
 function navigationStateToCompoundRoute(state: NavigationState): ParsedCompoundRoute {
   if (state.navigator === 'other') {
-    return { navigator: 'other', panel: state.panel, details: null }
+    return {
+      navigator: 'other',
+      panel: state.panel,
+      details: state.panel === 'artifact' && state.artifactId
+        ? { type: 'artifact', id: state.artifactId }
+        : null,
+    }
   }
 
   if (state.navigator === 'settings') {
@@ -847,7 +890,12 @@ function navigationStateToCompoundRoute(state: NavigationState): ParsedCompoundR
   if (state.navigator === 'projects') {
     return {
       navigator: 'projects',
-      details: state.details ? { type: 'project', id: state.details.projectSlug } : null,
+      projectView: state.view,
+      details: state.details
+        ? state.details.type === 'project'
+          ? { type: 'project', id: state.details.projectSlug }
+          : { type: 'workItem', id: state.details.workItemId }
+        : null,
     }
   }
 
@@ -855,7 +903,6 @@ function navigationStateToCompoundRoute(state: NavigationState): ParsedCompoundR
   return {
     navigator: 'sessions',
     sessionFilter: state.filter,
-    viewMode: state.viewMode,
     details: state.details ? { type: 'session', id: state.details.sessionId } : null,
   }
 }
@@ -868,11 +915,11 @@ export function buildRouteFromNavigationState(state: NavigationState): string {
 }
 
 // =============================================================================
-// Right Sidebar Param Parsing
+// Legacy Right Sidebar Param Parsing
 // =============================================================================
 
 /**
- * Parse right sidebar param from URL query string
+ * Parse a discontinued right-sidebar query value for Workbench migration.
  *
  * Examples:
  *   'history' -> { type: 'history' }
@@ -886,31 +933,15 @@ export function parseRightSidebarParam(sidebarStr?: string): RightSidebarPanel |
   if (sidebarStr === 'history') {
     return { type: 'history' }
   }
-  if (sidebarStr.startsWith('files')) {
-    const path = sidebarStr.substring(6) // Remove 'files/' prefix
-    return { type: 'files', path: path || undefined }
+  if (sidebarStr === 'files') {
+    return { type: 'files' }
+  }
+  if (sidebarStr.startsWith('files/')) {
+    return { type: 'files', path: sidebarStr.substring(6) }
   }
   if (sidebarStr === 'none') {
     return { type: 'none' }
   }
 
   return undefined
-}
-
-/**
- * Build right sidebar param for URL query string
- *
- * Returns undefined for 'none' type (omit from URL to keep URLs clean)
- */
-export function buildRightSidebarParam(panel?: RightSidebarPanel): string | undefined {
-  if (!panel || panel.type === 'none') return undefined
-
-  switch (panel.type) {
-    case 'history':
-      return 'history'
-    case 'files':
-      return panel.path ? `files/${panel.path}` : 'files'
-    default:
-      return undefined
-  }
 }

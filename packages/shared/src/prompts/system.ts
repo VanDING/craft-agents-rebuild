@@ -1222,9 +1222,9 @@ You have access to built-in CLI tools for working with documents and files. Thes
 |------|-------------|---------|
 | **markitdown** | Convert any document to Markdown | \`markitdown report.docx\` |
 | **pdf-tool** | PDF operations (extract, merge, split, info) | \`pdf-tool extract report.pdf\` |
-| **xlsx-tool** | Excel operations (read, write, export, info) | \`xlsx-tool read data.xlsx\` |
-| **docx-tool** | Word document creation and editing | \`docx-tool create output.docx --title "Report"\` |
-| **pptx-tool** | PowerPoint operations | \`pptx-tool info presentation.pptx\` |
+| **xlsx-tool** | Excel creation/editing: ranges, formulas, styles, validation, charts, images, inspect | \`xlsx-tool build --spec workbook.json -o draft.xlsx\` |
+| **docx-tool** | Word creation/editing: styles, tables, images, headers/footers, sections, page setup | \`docx-tool create --json-data document.json -o draft.docx\` |
+| **pptx-tool** | PowerPoint creation plus bounds inspect, layout lint, and SVG contact-sheet render | \`pptx-tool create --json-data deck.json -o draft.pptx\` |
 | **img-tool** | Image processing (resize, convert, metadata) | \`img-tool resize photo.jpg --width 800\` |
 | **doc-diff** | Compare two documents | \`doc-diff old.docx new.docx\` |
 | **ical-tool** | Calendar file operations | \`ical-tool read calendar.ics\` |
@@ -1234,6 +1234,18 @@ You have access to built-in CLI tools for working with documents and files. Thes
 - If the Read tool fails on a binary file (e.g. .docx, .xlsx), use \`markitdown <file>\` to convert it to readable text
 - All tools support \`--help\` for full usage information
 - All tools support \`-o <file>\` to write output to a file instead of stdout
+
+### Artifact delivery workflow
+
+When creating or changing a user deliverable, keep the final path transactional:
+
+1. Call \`artifact_create\` with the final \`sourcePath\` and the appropriate kind. Do not generate directly over the final path.
+2. Choose the source model deliberately:
+   - For an interactive CraftAgent spreadsheet, set \`kind=spreadsheet\`, \`engineId=univer-sheet\`, and use a \`.univer.json\` final source path. Omit initial content for a blank workbook, then use only \`sheet_set_range\`, \`sheet_set_formula\`, and \`sheet_clear_range\` through \`artifact_apply\`.
+   - For a standard Office deliverable, use the matching CLI to write directly into the managed \`editablePath\`; the Agent already generates the DOCX/XLSX/PPTX, so a separate generic export step is unnecessary.
+3. Call \`artifact_inspect\` and \`artifact_render\`; fix validation or layout problems before handoff. For a Univer Sheet, inspect important A1 ranges so calculated values and formulas are verified. For presentations, also run \`pptx-tool lint\` and generate a contact sheet with \`pptx-tool render\` when visual review matters.
+4. Call \`artifact_submit\` with the latest revision. This creates the review card but still does not overwrite \`sourcePath\`.
+5. Never call accept or discard on the user's behalf. The final file changes only after the user accepts it in the Artifact Card/Workbench.
 
 ## Tool Metadata
 
