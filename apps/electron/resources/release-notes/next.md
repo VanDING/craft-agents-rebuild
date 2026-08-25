@@ -8,6 +8,7 @@ This file accumulates release notes for the next unreleased version. PRs that ad
 
 ## Improvements
 
+- **Session list control moved beside the sidebar toggle** — the session list button now sits with the other navigation controls on the left side of the top bar and behaves as a simple action without a persistent selected state.
 - **Automatic custom-endpoint models and model-aware thinking levels** — compatible endpoints now discover models from OpenAI, Anthropic, and Ollama list APIs, while keeping manual IDs as a fallback. Pi capability metadata drives each model's exact reasoning choices (including Minimal and model-specific Extra High/Max), and Pi's effective clamped level is synchronized back to the session UI.
 - **Pi kernel 0.84.3 and smoother long-running work** — the single agent backend now waits for Pi's fully settled lifecycle boundary, so automatic retry, compaction, and queued continuation are no longer cut off by a prose update. A dedicated progress channel keeps long tasks moving, context usage comes directly from Pi after settlement, Windows uses Pi's native PowerShell tool, and live browser-tool settings refresh safely on the next turn.
 - **Faster warm sessions and chat rendering** — unchanged source runtimes and tool definitions are reused instead of rebuilding the Pi session every turn. Ordered transcripts skip redundant sorting and chat turns are grouped once per render. New cold/warm, first-response, tool round-trip, event-processing, and stream-to-paint timing samples expose p50/p95 regressions.

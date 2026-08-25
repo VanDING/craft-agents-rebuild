@@ -18,7 +18,7 @@ import { useTranslation } from 'react-i18next'
 import { useAtomValue } from 'jotai'
 import {
   MessageSquare, FolderKanban, GitCompareArrows,
-  FolderTree, ListFilter, FileText, Globe, List, Activity,
+  FolderTree, ListFilter, FileText, Globe, Activity,
   type LucideIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -38,10 +38,10 @@ import {
 
 export type SurfaceLauncherState = 'closed' | 'open' | 'focused' | 'background'
 
-/** Top-bar button order (left → right): New Session, surface/tool launchers, the
- * browser (focus-or-create; Shift/Alt = new window), and the session-list
- * toggle. All entries are always rendered tiled — no width truncation. */
-const TOP_BAR_BUTTON_ORDER = ['newSession', ...SURFACE_LAUNCHER_KINDS, 'browser', 'sessionList'] as const
+/** Top-bar button order (left → right): New Session, surface/tool launchers,
+ * and the browser (focus-or-create; Shift/Alt = new window). All entries are
+ * always rendered tiled — no width truncation. */
+const TOP_BAR_BUTTON_ORDER = ['newSession', ...SURFACE_LAUNCHER_KINDS, 'browser'] as const
 
 interface SurfaceLauncherButtonsProps {
   /** Navigate a Primary launcher or activate/create a Workbench item. */
@@ -52,8 +52,6 @@ interface SurfaceLauncherButtonsProps {
   onNewSession: () => void
   /** Open a brand-new browser window (was the [+] menu item) */
   onNewBrowser: () => void
-  /** Toggle the navigator (session list) column — decision #7 */
-  onToggleSessionList?: () => void
 }
 
 export const SURFACE_LAUNCHER_ICONS: Record<SurfaceLauncherKind, LucideIcon> = {
@@ -71,7 +69,6 @@ export function SurfaceLauncherButtons({
   onOpenBrowser,
   onNewSession,
   onNewBrowser,
-  onToggleSessionList,
 }: SurfaceLauncherButtonsProps) {
   const { t } = useTranslation()
   const primarySurface = useAtomValue(primarySurfaceAtom)
@@ -123,24 +120,6 @@ export function SurfaceLauncherButtons({
   return (
     <div className="inline-flex items-center gap-0.5">
       {allButtons.map((kind) => {
-        if (kind === 'sessionList') {
-          if (!onToggleSessionList) return null
-          return (
-            <Tooltip key="sessionList">
-              <TooltipTrigger asChild>
-                <TopBarButton
-                  aria-label={t('contentPanel.title.sessionsList')}
-                  onClick={onToggleSessionList}
-                  className="h-[22px] w-[22px] rounded-md text-foreground/35"
-                >
-                  <List className="h-3.5 w-3.5" strokeWidth={2} />
-                </TopBarButton>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">{t('contentPanel.title.sessionsList')}</TooltipContent>
-            </Tooltip>
-          )
-        }
-
         if (kind === 'newSession') {
           return (
             <Tooltip key="newSession">

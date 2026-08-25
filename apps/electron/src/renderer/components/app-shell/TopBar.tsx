@@ -1,7 +1,7 @@
 /**
  * TopBar - Persistent top bar above all panels (Slack-style)
  *
- * Layout: [Sidebar] [Menu] [Back] [Forward] [Workspace selector] ... [Browser strip] [+] [Help]
+ * Layout: [Sidebar] [Session list] [Menu] [Back] [Forward] [Workspace selector] ... [Browser strip] [+] [Help]
  *
  * Fixed at top of window, 48px tall.
  * macOS: offset left to avoid stoplight controls.
@@ -164,14 +164,30 @@ export function TopBar({
       >
         <div className="flex items-center gap-0.5">
         {!isCompact && (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <TopBarButton onClick={onToggleSidebar} aria-label={t("menu.toggleSidebar")}>
-              <PanelLeftRounded className="h-[18px] w-[18px] text-foreground/70" />
-            </TopBarButton>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">{t("menu.toggleSidebar")}</TooltipContent>
-        </Tooltip>
+        <>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <TopBarButton onClick={onToggleSidebar} aria-label={t("menu.toggleSidebar")}>
+                <PanelLeftRounded className="h-[18px] w-[18px] text-foreground/70" />
+              </TopBarButton>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">{t("menu.toggleSidebar")}</TooltipContent>
+          </Tooltip>
+
+          {onToggleSessionList && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <TopBarButton
+                  onClick={onToggleSessionList}
+                  aria-label={t('contentPanel.title.sessionsList')}
+                >
+                  <Icons.List className="h-[18px] w-[18px] text-foreground/70" strokeWidth={1.5} />
+                </TopBarButton>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">{t('contentPanel.title.sessionsList')}</TooltipContent>
+            </Tooltip>
+          )}
+        </>
         )}
 
         <AppMenu
@@ -251,7 +267,6 @@ export function TopBar({
             onOpenBrowser={onOpenBrowser}
             onNewSession={onNewSessionFromToolbar}
             onNewBrowser={onAddBrowserPanel}
-            onToggleSessionList={onToggleSessionList}
           />
         )}
         {/* Help button */}
