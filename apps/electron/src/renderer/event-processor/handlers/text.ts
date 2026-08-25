@@ -125,6 +125,8 @@ export function handleTextComplete(
       ...(event.promptSnapshot !== undefined ? { promptSnapshot: event.promptSnapshot } : {}),
       ...(event.assistantMetrics !== undefined ? { assistantMetrics: event.assistantMetrics } : {}),
       ...(event.outputBlocks !== undefined ? { outputBlocks: event.outputBlocks } : {}),
+      durableOperationId: event.durableOperationId,
+      durableSeq: event.durableSeq,
     }, shouldUpdateTimestamp)
     return { session: updatedSession, streaming: null }
   }
@@ -147,6 +149,8 @@ export function handleTextComplete(
     promptSnapshot: event.promptSnapshot,
     assistantMetrics: event.assistantMetrics,
     outputBlocks: event.outputBlocks,
+    durableOperationId: event.durableOperationId,
+    durableSeq: event.durableSeq,
   }
 
   // Only update lastMessageAt for final (non-intermediate) messages

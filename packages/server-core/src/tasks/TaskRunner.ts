@@ -242,10 +242,10 @@ class ActiveRun {
 
   /**
    * Rebuild run state from a persisted run-log (cross-restart resume). Done nodes reuse their
-   * recorded output and are NOT re-run; in-flight/cancelled nodes fall back to pending so they
-   * re-dispatch. A done node whose output file is missing also falls back to pending.
+   * recorded output and are NOT re-run. In-flight/cancelled nodes remain unknown
+   * and block automatic resume. A done node whose output file is missing falls back to pending.
    */
-  hydrate(log: RunLogEntry[], loadOutput: (nodeId: string) => NodeOutput | null): void {
+  hydrate(log: RunLogEntry[], loadOutput: (nodeId: string) => NodeOutput | null): string[] {
     for (const e of log) {
       if (e.kind === 'node-spawned') {
         const st = this.state.get(e.nodeId);
@@ -255,7 +255,10 @@ class ActiveRun {
         }
       } else if (e.kind === 'node-scheduled') {
         const st = this.state.get(e.nodeId);
-        if (st) st.attempt += 1;
+        if (st) {
+          st.state = 'running';
+          st.attempt += 1;
+        }
       } else if (e.kind === 'node-finished') {
         const st = this.state.get(e.nodeId);
         if (st) st.state = e.state;
@@ -267,16 +270,20 @@ class ActiveRun {
         else if (e.result === 'pass') this.unparsedReAsks = 0;
       }
     }
+    const recoveryRequired: string[] = [];
     for (const [nodeId, st] of this.state) {
       if (st.state === 'done') {
         const out = loadOutput(nodeId);
         if (out) this.outputs[nodeId] = out;
         else st.state = 'pending'; // recorded output missing → must re-run
       } else if (st.state === 'running' || st.state === 'cancelled') {
-        st.state = 'pending'; // in-flight at shutdown / cancelled → re-dispatch on resume
+        // A durable scheduling record does not prove whether the child side
+        // effect happened. Never collapse this unknown state back to pending.
+        recoveryRequired.push(nodeId);
       }
     }
     this.inFlight = 0;
+    return recoveryRequired;
   }
 
   /** Resume a hydrated run: subscribe, log, and schedule the ready set (finished nodes are skipped). */
@@ -963,7 +970,15 @@ export class TaskRunner {
       { orchestratorSessionId, params: resolveParams(loaded.spec), verifyOnComplete: true },
       this.deps,
     );
-    run.hydrate(log, (nodeId) => readNodeOutput(this.deps.workspaceRoot, slug, runId, nodeId));
+    const recoveryRequired = run.hydrate(
+      log,
+      (nodeId) => readNodeOutput(this.deps.workspaceRoot, slug, runId, nodeId),
+    );
+    if (recoveryRequired.length > 0) {
+      throw new Error(
+        `Cannot automatically resume "${slug}:${runId}": node outcome is unknown after restart (${recoveryRequired.join(', ')}). Reconcile it before retrying.`,
+      );
+    }
     this.runs.set(this.key(slug, runId), run);
     run.resumeFromHydrated();
     return run.snapshot();

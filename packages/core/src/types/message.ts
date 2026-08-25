@@ -44,7 +44,7 @@ export type AuthStatus = 'pending' | 'completed' | 'cancelled' | 'failed';
 /**
  * Tool execution status
  */
-export type ToolStatus = 'pending' | 'executing' | 'completed' | 'error' | 'backgrounded';
+export type ToolStatus = 'pending' | 'executing' | 'completed' | 'error' | 'backgrounded' | 'unknown';
 
 /**
  * Tool display metadata - embedded at storage time for viewer compatibility
@@ -260,6 +260,10 @@ export interface Message {
   toolResult?: string;
   toolStatus?: ToolStatus;
   toolDuration?: number;
+  /** Canonical runtime operation for this tool invocation. */
+  durableOperationId?: string;
+  /** Highest canonical runtime event sequence reflected by this message. */
+  durableSeq?: number;
   /** Full provider usage breakdown for assistant messages (Pi SDK). */
   usage?: PiUsage;
   /** Per-session request ordinal for trajectory request-header grouping. */
@@ -370,6 +374,8 @@ export interface StoredMessage {
   toolResult?: string;
   toolStatus?: ToolStatus;
   toolDuration?: number;
+  durableOperationId?: string;
+  durableSeq?: number;
   /** Full provider usage breakdown for assistant messages (Pi SDK). */
   usage?: PiUsage;
   /** Per-session request ordinal for trajectory request-header grouping. */
@@ -640,10 +646,10 @@ export type AgentEvent =
   | { type: 'status'; message: string }
   | { type: 'info'; message: string }
   | { type: 'text_delta'; text: string; turnId?: string; parentToolUseId?: string; timestamp?: number }
-  | { type: 'text_complete'; text: string; isIntermediate?: boolean; turnId?: string; parentToolUseId?: string; sdkMessageId?: string; timestamp?: number; usage?: PiUsage; requestSeq?: number; promptSnapshot?: string; assistantMetrics?: AssistantMetrics; outputBlocks?: TrajectorySourceBlock[] }
+  | { type: 'text_complete'; text: string; isIntermediate?: boolean; turnId?: string; parentToolUseId?: string; sdkMessageId?: string; timestamp?: number; usage?: PiUsage; requestSeq?: number; promptSnapshot?: string; assistantMetrics?: AssistantMetrics; outputBlocks?: TrajectorySourceBlock[]; durableOperationId?: string; durableSeq?: number }
   | { type: 'pi_turn_anchor'; sdkMessageId: string; sdkTurnAnchor: string }
-  | { type: 'tool_start'; toolName: string; toolUseId: string; input: Record<string, unknown>; intent?: string; displayName?: string; turnId?: string; parentToolUseId?: string; toolDisplayMeta?: ToolDisplayMeta; timestamp?: number }
-  | { type: 'tool_result'; toolUseId: string; toolName?: string; result: string; isError: boolean; input?: Record<string, unknown>; turnId?: string; parentToolUseId?: string; timestamp?: number; durationMs?: number }
+  | { type: 'tool_start'; toolName: string; toolUseId: string; input: Record<string, unknown>; intent?: string; displayName?: string; turnId?: string; parentToolUseId?: string; toolDisplayMeta?: ToolDisplayMeta; timestamp?: number; durableOperationId?: string; durableSeq?: number }
+  | { type: 'tool_result'; toolUseId: string; toolName?: string; result: string; isError: boolean; input?: Record<string, unknown>; turnId?: string; parentToolUseId?: string; timestamp?: number; durationMs?: number; durableOperationId?: string; durableSeq?: number }
   | { type: 'compaction_start'; reason: 'manual' | 'threshold' | 'overflow' }
   | { type: 'compaction_end'; reason: 'manual' | 'threshold' | 'overflow'; aborted: boolean; willRetry: boolean; errorMessage?: string }
   | {

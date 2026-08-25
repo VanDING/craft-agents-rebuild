@@ -484,6 +484,18 @@ describe('TaskRunner (Conductor)', () => {
     expect(r2.getRunState('res', 'r1')!.status).toBe('completed');
   });
 
+  it('refuses to replay an in-flight node whose external outcome is unknown after restart', async () => {
+    saveTaskSpec(root, specOf({ id: 'unknown', title: 'Unknown', goal: 'g', nodes: [{ id: 'a', prompt: 'a' }] }));
+    const r1 = makeRunner();
+    r1.run('unknown', { runId: 'r1', orchestratorSessionId: 'orch' });
+    await tick();
+
+    const host2 = new MockHost();
+    const r2 = new TaskRunner({ host: host2, workspaceId: 'ws', workspaceRoot: root });
+    expect(() => r2.resume('unknown', 'r1')).toThrow('outcome is unknown after restart')
+    expect(host2.dispatchedNames()).toEqual([])
+  });
+
   it('retries a failed node up to retry.limit, then fails', async () => {
     saveTaskSpec(
       root,
@@ -767,8 +779,13 @@ describe('TaskRunner (Conductor)', () => {
     host.completeSession('orch', { finalText: 'VERDICT: FAIL — redo' }); // consumes the one repair
     await tick();
     expect(r1.getRunState('hyd', 'r1')!.status).toBe('running');
+    // Finish the repaired node before the simulated restart. Restarting while
+    // it is in-flight is intentionally recovery-required and covered above.
+    host.complete('a', { finalText: 'repaired' });
+    await tick();
+    expect(r1.getRunState('hyd', 'r1')!.status).toBe('verifying');
 
-    // Restart: fresh host + runner with empty in-memory state, resume from the run-log.
+    // Restart at a durable checkpoint: fresh host + runner with empty in-memory state.
     const host2 = new MockHost();
     const r2 = new TaskRunner({ host: host2, workspaceId: 'ws', workspaceRoot: root, now: () => '2026-06-07T00:00:00.000Z' });
     r2.resume('hyd', 'r1');

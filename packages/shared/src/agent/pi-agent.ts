@@ -38,6 +38,10 @@ import { getModelById } from '../config/models.ts';
 // BaseAgent provides common functionality
 import { BaseAgent } from './base-agent.ts';
 import type { Workspace } from '../config/storage.ts';
+import type {
+  DurableToolOutcomeRequest,
+  DurableToolPrepareRequest,
+} from '../durable-runtime/types.ts';
 
 // Event adapter
 import { PiEventAdapter } from './backend/pi/event-adapter.ts';
@@ -378,6 +382,9 @@ export class PiAgent extends BaseAgent {
     displayName?: string;
     capturedAt: number;
   }> = new Map();
+
+  /** Pi emits tool_execution_start before execute(); hold it until Runtime Host commits T1. */
+  private bufferedDurableToolStarts = new Map<string, Record<string, unknown>>();
 
   // Current user message (for context in summarization)
   private currentUserMessage: string = '';
@@ -953,10 +960,21 @@ export class PiAgent extends BaseAgent {
         this.subprocessReadyResolve?.();
         break;
 
-      case 'event':
-        // Pi SDK event -- forward through PiEventAdapter
-        this.handleSubprocessEvent(msg.event as Record<string, unknown>);
+      case 'event': {
+        // Pi SDK announces a tool before its execute() wrapper reaches T1. Do not
+        // expose that speculative state to UI projections. report_progress is an
+        // internal presentation tool and deliberately has no external boundary.
+        const event = msg.event as Record<string, unknown>;
+        const eventType = event.type as string | undefined;
+        const toolCallId = event.toolCallId as string | undefined;
+        const toolName = event.toolName as string | undefined;
+        if (eventType === 'tool_execution_start' && toolCallId && toolName !== 'report_progress') {
+          this.bufferedDurableToolStarts.set(toolCallId, event);
+          break;
+        }
+        this.handleSubprocessEvent(event);
         break;
+      }
 
       case 'pre_tool_use_request':
         // Subprocess needs permission check + transforms before tool execution
@@ -975,6 +993,14 @@ export class PiAgent extends BaseAgent {
           toolName: string;
           args: Record<string, unknown>;
         });
+        break;
+
+      case 'durable_tool_prepare_request':
+        void this.handleDurableToolPrepareRequest(msg as unknown as DurableToolPrepareRequest & { requestId: string });
+        break;
+
+      case 'durable_tool_outcome_request':
+        void this.handleDurableToolOutcomeRequest(msg as unknown as DurableToolOutcomeRequest & { requestId: string });
         break;
 
       case 'session_tool_completed':
@@ -1476,6 +1502,73 @@ export class PiAgent extends BaseAgent {
     }
   }
 
+  private async handleDurableToolPrepareRequest(
+    request: DurableToolPrepareRequest & { requestId: string },
+  ): Promise<void> {
+    const boundary = this.config.durableToolBoundary;
+    if (!boundary) {
+      this.send({
+        type: 'durable_tool_prepare_response',
+        requestId: request.requestId,
+        ok: false,
+        reason: 'Runtime Host did not provide a durable tool boundary',
+      });
+      return;
+    }
+    try {
+      const prepared = await boundary.prepare(request);
+      const bufferedStart = this.bufferedDurableToolStarts.get(request.providerToolCallId);
+      this.bufferedDurableToolStarts.delete(request.providerToolCallId);
+      if (bufferedStart) {
+        this.handleSubprocessEvent({
+          ...bufferedStart,
+          durableOperationId: prepared.operationId,
+          durableSeq: prepared.committedSeq,
+        });
+      }
+      this.send({ type: 'durable_tool_prepare_response', requestId: request.requestId, ok: true, prepared });
+    } catch (error) {
+      this.bufferedDurableToolStarts.delete(request.providerToolCallId);
+      this.send({
+        type: 'durable_tool_prepare_response',
+        requestId: request.requestId,
+        ok: false,
+        reason: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  private async handleDurableToolOutcomeRequest(
+    request: DurableToolOutcomeRequest & { requestId: string },
+  ): Promise<void> {
+    const boundary = this.config.durableToolBoundary;
+    if (!boundary) {
+      this.send({
+        type: 'durable_tool_outcome_response',
+        requestId: request.requestId,
+        ok: false,
+        reason: 'Runtime Host did not provide a durable tool boundary',
+      });
+      return;
+    }
+    try {
+      const committed = await boundary.commitOutcome(request);
+      this.send({
+        type: 'durable_tool_outcome_response',
+        requestId: request.requestId,
+        ok: true,
+        committedSeq: committed.committedSeq,
+      });
+    } catch (error) {
+      this.send({
+        type: 'durable_tool_outcome_response',
+        requestId: request.requestId,
+        ok: false,
+        reason: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
   /**
    * Route a proxy tool call to the appropriate handler based on tool name.
    *
@@ -1863,6 +1956,7 @@ export class PiAgent extends BaseAgent {
 
     // Drop any cached pre-tool metadata for the dead subprocess.
     this.preToolMetadataByCallId.clear();
+    this.bufferedDurableToolStarts.clear();
   }
 
   /**
@@ -2185,6 +2279,8 @@ export class PiAgent extends BaseAgent {
         id: turnId,
         message: userMessage,
         systemPrompt: fullSystemPrompt,
+        durableRunOperationId: options?.durableRunOperationId,
+        durableTurnId: options?.durableTurnId,
         images: images.length > 0 ? images : undefined,
       });
 
@@ -2374,6 +2470,7 @@ export class PiAgent extends BaseAgent {
 
     // Clear bridge cache for this interrupted turn.
     this.preToolMetadataByCallId.clear();
+    this.bufferedDurableToolStarts.clear();
   }
 
   forceAbort(reason: AbortReason): void {
@@ -2400,6 +2497,7 @@ export class PiAgent extends BaseAgent {
 
     // Clear bridge cache for aborted turn.
     this.preToolMetadataByCallId.clear();
+    this.bufferedDurableToolStarts.clear();
 
     // For PlanSubmitted and AuthRequest, just interrupt the turn
     if (reason === AbortReason.PlanSubmitted || reason === AbortReason.AuthRequest) {
@@ -2544,6 +2642,7 @@ export class PiAgent extends BaseAgent {
     this.subprocessReadyResolve = null;
     this.callbackPort = 0;
     this.preToolMetadataByCallId.clear();
+    this.bufferedDurableToolStarts.clear();
     this.adapter.resetOverflowState();
 
     if (result) {
@@ -2578,6 +2677,7 @@ export class PiAgent extends BaseAgent {
     this.subprocessReadyResolve = null;
     this.callbackPort = 0;
     this.preToolMetadataByCallId.clear();
+    this.bufferedDurableToolStarts.clear();
 
     // Clear any in-flight overflow-recovery state on the torn-down adapter.
     this.adapter.resetOverflowState();

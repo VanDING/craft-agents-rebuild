@@ -29,6 +29,7 @@ import { AbortReason, type RecoveryMessage } from '../core/index.ts';
 export { AbortReason, type RecoveryMessage };
 
 import type { ModelProvider } from '../../config/models.ts';
+import type { DurableToolBoundary } from '../../durable-runtime/types.ts';
 
 // Import LLM connection types for auth
 import type { LlmAuthType, LlmProviderType } from '../../config/llm-connections.ts';
@@ -149,6 +150,7 @@ export interface BridgeUpdateContext {
   context: string;
   /** URL of the McpPoolServer HTTP endpoint */
   poolServerUrl?: string;
+
 }
 
 /**
@@ -231,6 +233,9 @@ export interface CoreBackendConfig {
    */
   poolServerUrl?: string;
 
+  /** Runtime-Host-owned durable T1/T2 boundary for all real tool effects. */
+  durableToolBoundary?: DurableToolBoundary;
+
   /** Callback when SDK session ID is captured/updated */
   onSdkSessionIdUpdate?: (sdkSessionId: string) => void;
 
@@ -309,6 +314,10 @@ export interface ChatOptions {
   isRetry?: boolean;
   /** Override thinking level for this message only */
   thinkingOverride?: ThinkingLevel;
+  /** Durable parent operation for this accepted unit of agent work. */
+  durableRunOperationId?: string;
+  /** Stable product turn identity used by durable projections. */
+  durableTurnId?: string;
 }
 
 /**

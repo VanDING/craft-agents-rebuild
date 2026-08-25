@@ -164,10 +164,12 @@ interface RuntimeConfigUpdateMessage {
 /** Messages from main process (stdin) */
 type InboundMessage =
   | InitMessage
-  | { type: 'prompt'; id: string; message: string; systemPrompt: string; images?: Array<{ type: 'image'; data: string; mimeType: string }> }
+  | { type: 'prompt'; id: string; message: string; systemPrompt: string; durableRunOperationId?: string; durableTurnId?: string; images?: Array<{ type: 'image'; data: string; mimeType: string }> }
   | { type: 'sync_tools'; tools: ProxyToolDef[] }
   | { type: 'tool_execute_response'; requestId: string; result: { content: string; isError: boolean } }
   | { type: 'pre_tool_use_response'; requestId: string; action: 'allow' | 'block' | 'modify'; input?: Record<string, unknown>; reason?: string }
+  | { type: 'durable_tool_prepare_response'; requestId: string; ok: boolean; prepared?: { operationId: string; idempotencyKey: string; canonicalArgsHash: string; created: boolean; status: string; committedSeq: number }; reason?: string }
+  | { type: 'durable_tool_outcome_response'; requestId: string; ok: boolean; committedSeq?: number; reason?: string }
   | { type: 'abort' }
   | { type: 'mini_completion'; id: string; prompt: string }
   | { type: 'llm_query'; id: string; request: LLMQueryRequest }
@@ -238,6 +240,29 @@ interface OutboundPreToolUseReq {
   input: Record<string, unknown>;
 }
 interface OutboundToolExecReq { type: 'tool_execute_request'; requestId: string; toolName: string; args: Record<string, unknown> }
+interface OutboundDurableToolPrepareReq {
+  type: 'durable_tool_prepare_request';
+  requestId: string;
+  sessionId: string;
+  turnId: string;
+  runOperationId: string;
+  providerToolCallId: string;
+  toolName: string;
+  args: Record<string, unknown>;
+}
+interface OutboundDurableToolOutcomeReq {
+  type: 'durable_tool_outcome_request';
+  requestId: string;
+  sessionId: string;
+  turnId: string;
+  runOperationId: string;
+  operationId: string;
+  providerToolCallId: string;
+  toolName: string;
+  canonicalArgsHash: string;
+  result: unknown;
+  isError: boolean;
+}
 interface OutboundSessionToolCompleted { type: 'session_tool_completed'; toolName: string; args: Record<string, unknown>; isError: boolean }
 interface OutboundMiniResult { type: 'mini_completion_result'; id: string; text: string | null }
 interface OutboundLlmQueryResult {
@@ -292,6 +317,8 @@ type OutboundMessage =
   | OutboundEvent
   | OutboundPreToolUseReq
   | OutboundToolExecReq
+  | OutboundDurableToolPrepareReq
+  | OutboundDurableToolOutcomeReq
   | OutboundSessionToolCompleted
   | OutboundMiniResult
   | OutboundLlmQueryResult
@@ -319,6 +346,8 @@ let initConfig: Extract<InboundMessage, { type: 'init' }> | null = null;
 
 // Mutable state
 let currentUserMessage = '';
+let currentDurableRunOperationId: string | undefined;
+let currentDurableTurnId: string | undefined;
 
 function sendThinkingLevelState(): void {
   if (!piSession) return;
@@ -332,6 +361,9 @@ function sendThinkingLevelState(): void {
 // Pending promises for async handshakes
 const pendingPreToolUse = new Map<string, { resolve: (response: { action: string; input?: Record<string, unknown>; reason?: string }) => void }>();
 const pendingToolExecutions = new Map<string, { resolve: (result: { content: string; isError: boolean }) => void }>();
+const pendingDurableToolPrepares = new Map<string, { resolve: (response: { ok: boolean; prepared?: { operationId: string; idempotencyKey: string; canonicalArgsHash: string; created: boolean; status: string; committedSeq: number }; reason?: string }) => void }>();
+const pendingDurableToolOutcomes = new Map<string, { resolve: (response: { ok: boolean; committedSeq?: number; reason?: string }) => void }>();
+const durableToolCommits = new Map<string, { operationId: string; startSeq: number; outcomeSeq?: number }>();
 
 // Pending session MCP tool calls for completion detection
 const pendingSessionToolCalls = new Map<string, { toolName: string; arguments: Record<string, unknown> }>();
@@ -343,7 +375,10 @@ let proxyToolDefs: ProxyToolDef[] = [];
 // When the LLM emits multiple call_llm tool calls in a single message, we fire all requests
 // to the main process in parallel on message_end (before executeToolCalls iterates sequentially).
 // Each proxy tool's execute() then hits the cache instead of sending a new request.
-const PREFETCHABLE_TOOLS = new Set(['call_llm']);
+// Speculative dispatch used to send proxy requests before permission and before
+// a durable T1 boundary. Keep it disabled until prefetch owns the same prepare
+// protocol as ordinary execution; performance must not weaken effect safety.
+const PREFETCHABLE_TOOLS = new Set<string>();
 const prefetchCache = new Map<string, Promise<{ content: string; isError: boolean }>>();
 
 // ============================================================
@@ -861,6 +896,87 @@ async function requestPreToolUseApproval(
   return response.action === 'modify' && response.input ? response.input : input;
 }
 
+interface PreparedDurableTool {
+  operationId: string;
+  idempotencyKey: string;
+  canonicalArgsHash: string;
+  committedSeq: number;
+}
+
+async function requestDurableToolPrepare(
+  toolName: string,
+  input: Record<string, unknown>,
+  toolCallId: string,
+): Promise<PreparedDurableTool> {
+  if (!initConfig || !currentDurableRunOperationId || !currentDurableTurnId) {
+    throw new Error(`Durable tool boundary is unavailable for "${toolName}"`);
+  }
+  const requestId = `pi-durable-t1-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const responsePromise = new Promise<{ ok: boolean; prepared?: PreparedDurableTool & { created: boolean; status: string }; reason?: string }>((resolve) => {
+    pendingDurableToolPrepares.set(requestId, { resolve });
+  });
+  send({
+    type: 'durable_tool_prepare_request',
+    requestId,
+    sessionId: initConfig.sessionId,
+    turnId: currentDurableTurnId,
+    runOperationId: currentDurableRunOperationId,
+    providerToolCallId: toolCallId,
+    toolName,
+    args: input,
+  });
+  const response = await responsePromise;
+  if (!response.ok || !response.prepared) {
+    throw new Error(response.reason || `Durable T1 failed for "${toolName}"`);
+  }
+  if (!response.prepared.created) {
+    throw new Error(`Tool operation ${response.prepared.operationId} already crossed T1 and requires recovery`);
+  }
+  durableToolCommits.set(toolCallId, {
+    operationId: response.prepared.operationId,
+    startSeq: response.prepared.committedSeq,
+  });
+  return response.prepared;
+}
+
+async function requestDurableToolOutcome(
+  prepared: PreparedDurableTool,
+  toolName: string,
+  toolCallId: string,
+  result: unknown,
+  isError: boolean,
+): Promise<number> {
+  if (!initConfig || !currentDurableRunOperationId || !currentDurableTurnId) {
+    throw new Error(`Durable tool outcome boundary is unavailable for "${toolName}"`);
+  }
+  const requestId = `pi-durable-t2-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const responsePromise = new Promise<{ ok: boolean; committedSeq?: number; reason?: string }>((resolve) => {
+    pendingDurableToolOutcomes.set(requestId, { resolve });
+  });
+  send({
+    type: 'durable_tool_outcome_request',
+    requestId,
+    sessionId: initConfig.sessionId,
+    turnId: currentDurableTurnId,
+    runOperationId: currentDurableRunOperationId,
+    operationId: prepared.operationId,
+    providerToolCallId: toolCallId,
+    toolName,
+    canonicalArgsHash: prepared.canonicalArgsHash,
+    result,
+    isError,
+  });
+  const response = await responsePromise;
+  if (!response.ok) throw new Error(response.reason || `Durable T2 failed for "${toolName}"`);
+  if (response.committedSeq === undefined) throw new Error(`Durable T2 returned no commit sequence for "${toolName}"`);
+  durableToolCommits.set(toolCallId, {
+    operationId: prepared.operationId,
+    startSeq: prepared.committedSeq,
+    outcomeSeq: response.committedSeq,
+  });
+  return response.committedSeq;
+}
+
 function wrapToolsWithHooks(tools: ToolDefinition<any, any>[]): ToolDefinition<any, any>[] {
   return tools.map(tool => wrapSingleTool(tool));
 }
@@ -903,9 +1019,24 @@ function wrapSingleTool(tool: ToolDefinition<any, any>): ToolDefinition<any, any
     // even if a future pre-tool-use path returns `allow` without modification.
     inputObj = stripCraftMetadata(inputObj);
 
-    // Execute original tool with (potentially modified) input
-    const result = await originalExecute(toolCallId, inputObj, signal, onUpdate, ctx);
+    // T1 must commit after preflight and before the implementation is allowed to run.
+    const durable = await requestDurableToolPrepare(sdkToolName, inputObj, toolCallId);
 
+    // Execute original tool with (potentially modified) input. T2 commits before
+    // the result is returned to Pi, so the next model request cannot outrun durability.
+    let result: AgentToolResult<any>;
+    try {
+      result = await originalExecute(toolCallId, inputObj, signal, onUpdate, ctx);
+    } catch (error) {
+      await requestDurableToolOutcome(
+        durable,
+        sdkToolName,
+        toolCallId,
+        { error: error instanceof Error ? error.message : String(error) },
+        true,
+      );
+      throw error;
+    }
     // --- Post-execute: large response summarization ---
 
     const resultText = result.content
@@ -938,7 +1069,7 @@ function wrapSingleTool(tool: ToolDefinition<any, any>): ToolDefinition<any, any
         });
 
         if (largeResult) {
-          return {
+          result = {
             content: [{ type: 'text', text: largeResult.message }],
             details: result.details,
           };
@@ -950,6 +1081,14 @@ function wrapSingleTool(tool: ToolDefinition<any, any>): ToolDefinition<any, any
       }
     }
 
+    // Commit exactly the representation Pi will append to model context.
+    await requestDurableToolOutcome(
+      durable,
+      sdkToolName,
+      toolCallId,
+      result,
+      result.details?.isError === true,
+    );
     return result;
   };
 
@@ -1403,14 +1542,17 @@ function handleSessionEvent(event: AgentSessionEvent): void {
 
     const toolMetadata = extractToolExecutionMetadata((event.args ?? {}) as Record<string, unknown>);
     // Wall-clock stamp for trajectory timing (authoritative over adapter-local time).
+    const durable = durableToolCommits.get(event.toolCallId);
     forwardedEvent = {
       ...event,
       ...(toolMetadata ? { toolMetadata } : {}),
+      ...(durable ? { durableOperationId: durable.operationId, durableSeq: durable.startSeq } : {}),
       ts: Date.now(),
     } as unknown as OutboundAgentEvent;
   }
 
   if (event.type === 'tool_execution_end') {
+    const durable = durableToolCommits.get(event.toolCallId);
     const pending = pendingSessionToolCalls.get(event.toolCallId);
     if (pending) {
       pendingSessionToolCalls.delete(event.toolCallId);
@@ -1425,8 +1567,12 @@ function handleSessionEvent(event: AgentSessionEvent): void {
     // Wall-clock stamp for trajectory duration (start → end delta).
     forwardedEvent = {
       ...event,
+      ...(durable?.outcomeSeq !== undefined
+        ? { durableOperationId: durable.operationId, durableSeq: durable.outcomeSeq }
+        : {}),
       ts: Date.now(),
     } as unknown as OutboundAgentEvent;
+    durableToolCommits.delete(event.toolCallId);
   }
 
   if (event.type === 'agent_settled' && piSession) {
@@ -1517,6 +1663,8 @@ async function waitForCompaction(session: { isCompacting: boolean }, timeoutMs =
 
 async function handlePrompt(msg: Extract<InboundMessage, { type: 'prompt' }>): Promise<void> {
   currentUserMessage = msg.message;
+  currentDurableRunOperationId = msg.durableRunOperationId;
+  currentDurableTurnId = msg.durableTurnId ?? msg.id;
 
   try {
     // If proxy tools changed since last session creation, dispose and recreate.
@@ -1624,6 +1772,30 @@ function handlePreToolUseResponse(msg: Extract<InboundMessage, { type: 'pre_tool
   } else {
     debugLog(`No pending pre_tool_use for requestId: ${msg.requestId}`);
   }
+}
+
+function handleDurableToolPrepareResponse(
+  msg: Extract<InboundMessage, { type: 'durable_tool_prepare_response' }>,
+): void {
+  const pending = pendingDurableToolPrepares.get(msg.requestId);
+  if (!pending) {
+    debugLog(`No pending durable T1 for requestId: ${msg.requestId}`);
+    return;
+  }
+  pendingDurableToolPrepares.delete(msg.requestId);
+  pending.resolve({ ok: msg.ok, prepared: msg.prepared, reason: msg.reason });
+}
+
+function handleDurableToolOutcomeResponse(
+  msg: Extract<InboundMessage, { type: 'durable_tool_outcome_response' }>,
+): void {
+  const pending = pendingDurableToolOutcomes.get(msg.requestId);
+  if (!pending) {
+    debugLog(`No pending durable T2 for requestId: ${msg.requestId}`);
+    return;
+  }
+  pendingDurableToolOutcomes.delete(msg.requestId);
+  pending.resolve({ ok: msg.ok, committedSeq: msg.committedSeq, reason: msg.reason });
 }
 
 async function handleAbort(): Promise<void> {
@@ -1919,6 +2091,14 @@ async function processMessage(msg: InboundMessage): Promise<void> {
 
     case 'pre_tool_use_response':
       handlePreToolUseResponse(msg);
+      break;
+
+    case 'durable_tool_prepare_response':
+      handleDurableToolPrepareResponse(msg);
+      break;
+
+    case 'durable_tool_outcome_response':
+      handleDurableToolOutcomeResponse(msg);
       break;
 
     case 'abort':

@@ -391,6 +391,7 @@ export class PiEventAdapter extends BaseEventAdapter {
       // ============================================================
 
       case 'tool_execution_start': {
+        const durable = this.durableAttachments(event);
         const toolCallId = event.toolCallId;
         const toolName = this.resolveToolName(event.toolName);
         this.toolNames.set(toolCallId, toolName);
@@ -467,23 +468,23 @@ export class PiEventAdapter extends BaseEventAdapter {
         if (toolName === 'Bash' && typeof args.command === 'string') {
           const readInfo = this.classifyReadCommand(toolCallId, args.command);
           if (readInfo) {
-            yield this.createReadToolStart(
+            yield { ...this.createReadToolStart(
               toolCallId,
               readInfo,
               intent,
               'Read File',
-            );
+            ), ...durable };
             break;
           }
         }
 
-        yield this.createToolStart(
+        yield { ...this.createToolStart(
           toolCallId,
           toolName,
           args,
           intent,
           displayName,
-        );
+        ), ...durable };
         break;
       }
 
@@ -504,6 +505,7 @@ export class PiEventAdapter extends BaseEventAdapter {
       }
 
       case 'tool_execution_end': {
+        const durable = this.durableAttachments(event);
         const toolCallId = event.toolCallId;
         const resolvedToolName = this.toolNames.get(toolCallId) || 'tool';
         this.toolNames.delete(toolCallId);
@@ -541,11 +543,11 @@ export class PiEventAdapter extends BaseEventAdapter {
         // Check if this was classified as a file read
         const readInfo = this.consumeReadCommand(toolCallId);
         if (readInfo) {
-          yield this.createToolResult(toolCallId, 'Read', result, isError, undefined, endTs, durationMs);
+          yield { ...this.createToolResult(toolCallId, 'Read', result, isError, undefined, endTs, durationMs), ...durable };
           break;
         }
 
-        yield this.createToolResult(toolCallId, resolvedToolName, result, isError, undefined, endTs, durationMs);
+        yield { ...this.createToolResult(toolCallId, resolvedToolName, result, isError, undefined, endTs, durationMs), ...durable };
         break;
       }
 
@@ -631,6 +633,17 @@ export class PiEventAdapter extends BaseEventAdapter {
     if (typeof event !== 'object' || event === null) return undefined;
     const ts = (event as { ts?: unknown }).ts;
     return typeof ts === 'number' ? ts : undefined;
+  }
+
+  private durableAttachments(event: PiEvent): { durableOperationId?: string; durableSeq?: number } {
+    if (typeof event !== 'object' || event === null) return {};
+    const attachment = event as { durableOperationId?: unknown; durableSeq?: unknown };
+    return {
+      ...(typeof attachment.durableOperationId === 'string'
+        ? { durableOperationId: attachment.durableOperationId }
+        : {}),
+      ...(typeof attachment.durableSeq === 'number' ? { durableSeq: attachment.durableSeq } : {}),
+    };
   }
 
   /**

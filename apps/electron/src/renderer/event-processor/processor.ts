@@ -75,17 +75,17 @@ export function processEvent(
 
     case 'text_complete': {
       const newState = handleTextComplete(state, event)
-      return { state: newState, effects: [] }
+      return { state: advanceDurableCursor(newState, event.durableSeq), effects: [] }
     }
 
     case 'tool_start': {
       const newState = handleToolStart(state, event)
-      return { state: newState, effects: [] }
+      return { state: advanceDurableCursor(newState, event.durableSeq), effects: [] }
     }
 
     case 'tool_result': {
       const newState = handleToolResult(state, event)
-      return { state: newState, effects: [] }
+      return { state: advanceDurableCursor(newState, event.durableSeq), effects: [] }
     }
 
     case 'task_backgrounded': {
@@ -240,4 +240,9 @@ export function processEvent(
       }
     }
   }
+}
+
+function advanceDurableCursor(state: SessionState, seq?: number): SessionState {
+  if (seq === undefined || seq <= (state.durableCursor ?? 0)) return state
+  return { ...state, durableCursor: seq }
 }

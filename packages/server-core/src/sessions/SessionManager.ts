@@ -25,6 +25,8 @@ import type { MidStreamBehavior } from '@craft-agent/shared/config'
 import { PrivilegedExecutionBroker } from '@craft-agent/server-core/services'
 import { isValidWorkingDirectory } from '../utils/path-validation'
 import { InitGate } from '@craft-agent/server-core/domain'
+import { DurableRuntimeCoordinator } from '../durable-runtime/coordinator'
+import { auditLegacyProjection } from '../durable-runtime/audit'
 import { i18n } from '@craft-agent/shared/i18n'
 import {
   getWorkspaces,
@@ -753,6 +755,8 @@ interface ManagedSession {
   // Incremented each time a new message starts processing.
   // Used to detect if a follow-up message has superseded the current one (stale-request guard).
   processingGeneration: number
+  /** Current Runtime-Host-owned durable operation, cleared only after terminal commit or parking. */
+  activeDurableRunOperationId?: string
   // NOTE: Parent-child tracking state (pendingTools, parentToolStack, toolToParentMap,
   // pendingTextParent) has been removed. CraftAgent now provides parentToolUseId
   // directly on all events using the SDK's authoritative parent_tool_use_id field.
@@ -1159,6 +1163,7 @@ export function resolveMidStreamDeliveryOutcome(
 
 export class SessionManager implements ISessionManager {
   private sessions: Map<string, ManagedSession> = new Map()
+  private readonly durableRuntime = new DurableRuntimeCoordinator()
   // Delta batching for performance - reduces IPC events from 50+/sec to ~20/sec
   private pendingDeltas: Map<string, PendingDelta> = new Map()
   private deltaFlushTimers: Map<string, NodeJS.Timeout> = new Map()
@@ -1958,6 +1963,13 @@ export class SessionManager implements ISessionManager {
       // ever connect, yet scheduled/event-driven automations must still fire.
       const workspaces = getWorkspaces()
       for (const workspace of workspaces) {
+        const recovery = this.durableRuntime.recoverWorkspace(workspace.rootPath)
+        if (recovery.items.length > 0) {
+          sessionLog.warn('Durable runtime recovered interrupted operations', {
+            workspaceId: workspace.id,
+            operations: recovery.items,
+          })
+        }
         this.setupConfigWatcher(workspace.rootPath, workspace.id)
       }
 
@@ -2075,6 +2087,7 @@ export class SessionManager implements ISessionManager {
     const stored = loadStoredSession(managed.workspace.rootPath, managed.id)
     if (stored) {
       managed.messages = (stored.messages || []).map(storedToMessage)
+      this.applyDurableRecoveryStatus(managed)
       managed.tokenUsage = stored.tokenUsage
       // Deferred-load fields (intentionally undefined after startup, see
       // loadSessionsFromDisk). Populate from disk only if not already set in
@@ -2547,6 +2560,7 @@ export class SessionManager implements ISessionManager {
     const storedSession = loadStoredSession(managed.workspace.rootPath, managed.id)
     if (storedSession) {
       managed.messages = (storedSession.messages || []).map(storedToMessage)
+      this.applyDurableRecoveryStatus(managed)
       managed.tokenUsage = storedSession.tokenUsage
       managed.lastReadMessageId = storedSession.lastReadMessageId
       managed.hasUnread = storedSession.hasUnread  // Explicit unread flag for NEW badge state machine
@@ -2592,6 +2606,37 @@ export class SessionManager implements ISessionManager {
       }
     }
     managed.messagesLoaded = true
+  }
+
+  /** Project unknown T1 tails into the legacy message cache for current UI clients. */
+  private applyDurableRecoveryStatus(managed: ManagedSession): void {
+    const store = this.durableRuntime.storeFor(managed.workspace.rootPath)
+    const unsettled = store
+      .listUnsettledToolOperations()
+      .filter(item => {
+        const runOperationId = item.dispatch?.runOperationId
+        return runOperationId
+          && this.durableRuntime.storeFor(managed.workspace.rootPath).getOperation(runOperationId)?.sessionId === managed.id
+      })
+    for (const evidence of unsettled) {
+      const dispatch = evidence.dispatch
+      if (!dispatch) continue
+      const message = managed.messages.find(item => item.toolUseId === dispatch.providerToolCallId)
+      if (!message) continue
+      message.toolStatus = 'unknown'
+      message.durableOperationId = dispatch.operationId
+      message.toolResult ||= 'Execution outcome is unknown after restart. Reconcile with the external system before retrying.'
+    }
+    const events = store.listEvents({ sessionId: managed.id, limit: 10_000 })
+    if (events.length > 0) {
+      const issues = auditLegacyProjection(events, managed.messages)
+      if (issues.length > 0) {
+        sessionLog.warn('Legacy session cache diverges from canonical runtime facts', {
+          sessionId: managed.id,
+          issues: issues.slice(0, 50),
+        })
+      }
+    }
   }
 
   /**
@@ -3579,6 +3624,7 @@ export class SessionManager implements ISessionManager {
         markTransferredSessionSummaryApplied,
         mcpPool: managed.mcpPool,
         poolServerUrl,
+        durableToolBoundary: this.durableRuntime.boundaryFor(managed.workspace.rootPath),
         envOverrides,
         // Shared backend runtime options
         isHeadless: !AGENT_FLAGS.defaultModesEnabled,
@@ -6442,7 +6488,20 @@ export class SessionManager implements ISessionManager {
       }
 
       sendSpan.mark('chat.starting')
-      const chatIterator = agent.chat(effectiveMessage, modelInputAttachments.attachments)
+      const durableRunOperationId = `run_${userMessage.id}_${myGeneration}`
+      this.durableRuntime.acceptRun({
+        workspaceRootPath,
+        sessionId,
+        turnId: userMessage.id,
+        operationId: durableRunOperationId,
+        userMessageId: userMessage.id,
+        userMessage: message,
+      })
+      managed.activeDurableRunOperationId = durableRunOperationId
+      const chatIterator = agent.chat(effectiveMessage, modelInputAttachments.attachments, {
+        durableRunOperationId,
+        durableTurnId: userMessage.id,
+      })
       sessionLog.info('Got chat iterator, starting iteration...')
 
       let sawFirstEvent = false
@@ -6856,6 +6915,18 @@ export class SessionManager implements ISessionManager {
     if (!managed) return
 
     sessionLog.info(`Processing stopped for session ${sessionId}: ${reason}`)
+
+    const durableRunOperationId = managed.activeDurableRunOperationId
+    if (durableRunOperationId) {
+      try {
+        this.durableRuntime.completeRun(managed.workspace.rootPath, durableRunOperationId, reason)
+        managed.activeDurableRunOperationId = undefined
+      } catch (error) {
+        // Fail closed: retain the active identity so a subsequent stop/recovery
+        // pass can retry convergence. Never hide a durability failure.
+        sessionLog.error(`Failed to settle durable run ${durableRunOperationId}:`, error)
+      }
+    }
 
     // 1. Cleanup state
     this.setProcessing(managed, false)
@@ -7908,6 +7979,18 @@ export class SessionManager implements ISessionManager {
           assistantMetrics: event.assistantMetrics,
           outputBlocks: event.outputBlocks,
         }
+        if (!event.isIntermediate && managed.activeDurableRunOperationId) {
+          assistantMessage.durableOperationId = managed.activeDurableRunOperationId
+          assistantMessage.durableSeq = this.durableRuntime.commitAssistantMessage({
+            workspaceRootPath: managed.workspace.rootPath,
+            operationId: managed.activeDurableRunOperationId,
+            sessionId,
+            turnId: event.turnId,
+            messageId: assistantMessage.id,
+            content: event.text,
+            createdAt: assistantMessage.timestamp,
+          })
+        }
         managed.messages.push(assistantMessage)
         managed.streamingText = ''
 
@@ -7938,7 +8021,7 @@ export class SessionManager implements ISessionManager {
           }
         }
 
-        this.sendEvent({ type: 'text_complete', sessionId, text: event.text, isIntermediate: event.isIntermediate, turnId: event.turnId, parentToolUseId: event.parentToolUseId, timestamp: assistantMessage.timestamp, messageId: assistantMessage.id, usage: event.usage, requestSeq: event.requestSeq, promptSnapshot: event.promptSnapshot, assistantMetrics: event.assistantMetrics, outputBlocks: event.outputBlocks }, workspaceId)
+        this.sendEvent({ type: 'text_complete', sessionId, text: event.text, isIntermediate: event.isIntermediate, turnId: event.turnId, parentToolUseId: event.parentToolUseId, timestamp: assistantMessage.timestamp, messageId: assistantMessage.id, usage: event.usage, requestSeq: event.requestSeq, promptSnapshot: event.promptSnapshot, assistantMetrics: event.assistantMetrics, outputBlocks: event.outputBlocks, durableOperationId: assistantMessage.durableOperationId, durableSeq: assistantMessage.durableSeq }, workspaceId)
 
         // Persist session after complete message to prevent data loss on quit
         this.persistSession(managed)
@@ -8033,6 +8116,8 @@ export class SessionManager implements ISessionManager {
           if (event.displayName && !existingStartMsg.toolDisplayName) {
             existingStartMsg.toolDisplayName = event.displayName
           }
+          existingStartMsg.durableOperationId ??= event.durableOperationId
+          existingStartMsg.durableSeq = Math.max(existingStartMsg.durableSeq ?? 0, event.durableSeq ?? 0) || undefined
         } else {
           // Add tool message immediately (will be updated on tool_result)
           // This ensures tool calls are persisted even if they don't complete
@@ -8050,6 +8135,8 @@ export class SessionManager implements ISessionManager {
             toolDisplayMeta,  // Includes base64 icon for viewer compatibility
             turnId: event.turnId,
             parentToolUseId,
+            durableOperationId: event.durableOperationId,
+            durableSeq: event.durableSeq,
           }
           managed.messages.push(toolStartMessage)
         }
@@ -8091,6 +8178,8 @@ export class SessionManager implements ISessionManager {
             turnId: event.turnId,
             parentToolUseId,
             timestamp,
+            durableOperationId: event.durableOperationId,
+            durableSeq: event.durableSeq,
           }, workspaceId)
         }
         break
@@ -8135,6 +8224,8 @@ export class SessionManager implements ISessionManager {
           existingToolMsg.toolResult = formattedResult
           existingToolMsg.toolStatus = inferredError ? 'error' : 'completed'
           existingToolMsg.isError = inferredError
+          existingToolMsg.durableOperationId ??= event.durableOperationId
+          existingToolMsg.durableSeq = Math.max(existingToolMsg.durableSeq ?? 0, event.durableSeq ?? 0) || undefined
           // If message doesn't have parent set, use event's parentToolUseId
           if (!existingToolMsg.parentToolUseId && event.parentToolUseId) {
             existingToolMsg.parentToolUseId = event.parentToolUseId
@@ -8161,6 +8252,8 @@ export class SessionManager implements ISessionManager {
             toolDisplayMeta: fallbackToolDisplayMeta,
             parentToolUseId,
             isError: inferredError,
+            durableOperationId: event.durableOperationId,
+            durableSeq: event.durableSeq,
           }
           managed.messages.push(toolMessage)
         }
@@ -8182,6 +8275,8 @@ export class SessionManager implements ISessionManager {
             isError: inferredError,
             timestamp: toolResultTimestamp,
             durationMs: event.durationMs,
+            durableOperationId: event.durableOperationId,
+            durableSeq: event.durableSeq,
           }, workspaceId)
         }
 

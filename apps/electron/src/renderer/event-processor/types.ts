@@ -23,6 +23,8 @@ export interface StreamingState {
 export interface SessionState {
   session: Session
   streaming: StreamingState | null
+  /** Highest canonical runtime fact consumed by this projection. */
+  durableCursor?: number
 }
 
 /**
@@ -59,6 +61,8 @@ export interface TextCompleteEvent {
   assistantMetrics?: AssistantMetrics
   /** Structured content blocks in model order (trajectory details panel). */
   outputBlocks?: TrajectorySourceBlock[]
+  durableOperationId?: string
+  durableSeq?: number
 }
 
 /**
@@ -79,6 +83,8 @@ export interface ToolStartEvent {
   toolDisplayName?: string
   /** Tool display metadata with base64-encoded icon for viewer compatibility */
   toolDisplayMeta?: ToolDisplayMeta
+  durableOperationId?: string
+  durableSeq?: number
 }
 
 /**
@@ -97,6 +103,8 @@ export interface ToolResultEvent {
   timestamp?: number
   /** Wall-clock execution duration in ms (server-measured start→end). */
   durationMs?: number
+  durableOperationId?: string
+  durableSeq?: number
 }
 
 /**
