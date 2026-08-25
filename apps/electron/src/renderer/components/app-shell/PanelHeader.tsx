@@ -96,6 +96,8 @@ export interface PanelHeaderProps {
   className?: string
   /** Whether title is being regenerated (shows shimmer effect) */
   isRegeneratingTitle?: boolean
+  /** Center the title against the full panel width rather than the remaining flex space. */
+  centerTitleInPanel?: boolean
 }
 
 /**
@@ -114,6 +116,7 @@ export function PanelHeader({
   paddingLeft,
   className,
   isRegeneratingTitle,
+  centerTitleInPanel = false,
 }: PanelHeaderProps) {
   // Fall back to AppShellContext.leadingAction so per-panel back buttons (set by
   // SurfaceSlot in compact mode) propagate to every page's PanelHeader without each
@@ -244,6 +247,18 @@ export function PanelHeader({
         <div className="max-w-full overflow-hidden pointer-events-auto">
           {titleNode}
         </div>
+      </div>
+    </>
+  ) : centerTitleInPanel ? (
+    <>
+      {leadingAction && <div className="titlebar-no-drag shrink-0 z-[1]">{leadingAction}</div>}
+      <div className="flex-1" />
+      {centerButton && <div className="titlebar-no-drag shrink-0 z-[1]">{centerButton}</div>}
+      {actions && <div className="titlebar-no-drag shrink-0 z-[1]">{actions}</div>}
+      {resolvedExpandButton && <div className="titlebar-no-drag shrink-0 z-[1]">{resolvedExpandButton}</div>}
+      {resolvedTrailingAction && <div className="titlebar-no-drag shrink-0 z-[1]">{resolvedTrailingAction}</div>}
+      <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+        <div className="pointer-events-auto max-w-[45%] overflow-hidden">{titleNode}</div>
       </div>
     </>
   ) : (

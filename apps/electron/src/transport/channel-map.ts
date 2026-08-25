@@ -273,10 +273,6 @@ export const CHANNEL_MAP = {
   updateWorkItem: invoke(RPC_CHANNELS.workItems.UPDATE),
   deleteWorkItem: invoke(RPC_CHANNELS.workItems.DELETE),
   listWorkItemEvents: invoke(RPC_CHANNELS.workItems.LIST_EVENTS),
-  listWorkItemViews: invoke(RPC_CHANNELS.workItems.LIST_VIEWS),
-  createWorkItemView: invoke(RPC_CHANNELS.workItems.CREATE_VIEW),
-  updateWorkItemView: invoke(RPC_CHANNELS.workItems.UPDATE_VIEW),
-  deleteWorkItemView: invoke(RPC_CHANNELS.workItems.DELETE_VIEW),
   onWorkItemsChanged: listener(RPC_CHANNELS.workItems.CHANGED),
 
   // Artifacts (revisioned agent/user deliverables)

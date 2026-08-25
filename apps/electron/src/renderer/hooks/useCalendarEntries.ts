@@ -7,15 +7,15 @@
  */
 
 import { useState, useEffect, useCallback } from 'react'
-import type { CalendarEntry } from '@craft-agent/shared/protocol'
+import type { CalendarEntry, CalendarEntryInput } from '@craft-agent/shared/protocol'
 
 export interface UseCalendarEntriesResult {
   entries: CalendarEntry[]
   isLoading: boolean
   error: string | null
   refresh: () => Promise<void>
-  create: (input: { title: string; date: string; time?: string; note?: string; projectId?: string }) => Promise<CalendarEntry | null>
-  update: (entryId: string, input: { title: string; date: string; time?: string; note?: string; projectId?: string }) => Promise<CalendarEntry | null>
+  create: (input: CalendarEntryInput) => Promise<CalendarEntry | null>
+  update: (entryId: string, input: CalendarEntryInput) => Promise<CalendarEntry | null>
   remove: (entryId: string) => Promise<void>
 }
 
@@ -57,7 +57,7 @@ export function useCalendarEntries(workspaceId: string | null): UseCalendarEntri
   }, [workspaceId, refresh])
 
   const create = useCallback(
-    async (input: { title: string; date: string; time?: string; note?: string; projectId?: string }) => {
+    async (input: CalendarEntryInput) => {
       if (!workspaceId) return null
       try {
         const entry = await window.electronAPI.createCalendarEntry(workspaceId, input)
@@ -72,7 +72,7 @@ export function useCalendarEntries(workspaceId: string | null): UseCalendarEntri
   )
 
   const update = useCallback(
-    async (entryId: string, input: { title: string; date: string; time?: string; note?: string; projectId?: string }) => {
+    async (entryId: string, input: CalendarEntryInput) => {
       if (!workspaceId) return null
       try {
         const entry = await window.electronAPI.updateCalendarEntry(workspaceId, entryId, input)

@@ -195,9 +195,13 @@ export const routes = {
     projectManagement: (view: ProjectManagementView = 'overview') =>
       view === 'overview' ? 'projects' as const : `projects/${view}` as const,
 
-    /** WorkItem detail peek inside a Project Management projection. */
+    /** Full-page WorkItem create/edit route inside a Project Management projection. */
     projectWorkItem: (view: Exclude<ProjectManagementView, 'overview'>, workItemId: string) =>
       `projects/${view}/work-item/${encodeURIComponent(workItemId)}` as const,
+
+    /** Full-page standalone schedule create/edit route. */
+    projectSchedule: (calendarEntryId: string) =>
+      `projects/calendar/schedule/${encodeURIComponent(calendarEntryId)}` as const,
 
     /** @deprecated Compatibility builder. Use projectManagement('board'). */
     board: () => 'projects/board' as const,

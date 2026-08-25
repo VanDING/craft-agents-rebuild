@@ -46,7 +46,7 @@ describe('Project Management routes', () => {
     expect(state && buildRouteFromNavigationState(state)).toBe('projects/project/craft-agent')
   })
 
-  it('round-trips a WorkItem detail peek inside its originating projection', () => {
+  it('round-trips a full-page WorkItem editor inside its originating projection', () => {
     const route = routes.view.projectWorkItem('board', 'task / 42')
     const state = parseRouteToNavigationState(route)
 
@@ -55,6 +55,20 @@ describe('Project Management routes', () => {
       navigator: 'projects',
       view: 'board',
       details: { type: 'workItem', workItemId: 'task / 42' },
+    })
+    expect(state && buildRouteFromNavigationState(state)).toBe(route)
+    expect(getNavigationStateKey(state!)).toBe(route)
+    expect(parseNavigationStateKey(route)).toEqual(state)
+  })
+
+  it('round-trips full-page schedule create and edit routes', () => {
+    const route = routes.view.projectSchedule('new:2026-08-25@14:30')
+    const state = parseRouteToNavigationState(route)
+
+    expect(state).toEqual({
+      navigator: 'projects',
+      view: 'calendar',
+      details: { type: 'calendarEntry', calendarEntryId: 'new:2026-08-25@14:30' },
     })
     expect(state && buildRouteFromNavigationState(state)).toBe(route)
     expect(getNavigationStateKey(state!)).toBe(route)

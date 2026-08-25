@@ -1,12 +1,18 @@
 import * as React from 'react'
-import { useAtom, useAtomValue, useSetAtom } from 'jotai'
 import { Bot, Clock3, History, UserRound, Workflow } from 'lucide-react'
+import { useAtomValue, useSetAtom } from 'jotai'
 import { useTranslation } from 'react-i18next'
-import type { WorkItemEvent, WorkItemEventChange } from '@craft-agent/shared/work-items/browser'
+import type {
+  CreateWorkItemInput,
+  UpdateWorkItemInput,
+  WorkItem,
+  WorkItemEvent,
+  WorkItemEventChange,
+} from '@craft-agent/shared/work-items/browser'
 import type { ProjectManagementView } from '../../../shared/types'
 import { projectsAtom } from '@/atoms/projects'
+import { kanbanEditorTargetAtom, kanbanProjectFilterAtom } from '@/atoms/kanban'
 import { sessionMetaMapAtom } from '@/atoms/sessions'
-import { kanbanEditorTargetAtom, workItemDetailIdAtom } from '@/atoms/kanban'
 import { useAppShellContext } from '@/context/AppShellContext'
 import { routes, useNavigation } from '@/contexts/NavigationContext'
 import { useWorkItemEvents } from '@/hooks/useWorkItemEvents'
@@ -33,7 +39,7 @@ function actorIcon(type: WorkItemEvent['actor']['type']) {
 function WorkItemHistory({ events, loading }: { events: WorkItemEvent[]; loading: boolean }) {
   const { t } = useTranslation()
   return (
-    <section className="rounded-xl border border-border/70 bg-card p-3">
+    <section className="rounded-xl border border-border/70 bg-card p-4">
       <div className="mb-3 flex items-center gap-2 text-xs font-semibold text-foreground/65">
         <History className="h-3.5 w-3.5" /> {t('kanban.workItemHistory')}
       </div>
@@ -71,43 +77,65 @@ function WorkItemHistory({ events, loading }: { events: WorkItemEvent[]; loading
   )
 }
 
-/** Responsive in-surface detail peek. The underlying projection stays mounted. */
-export function WorkItemDetailPeek({ view }: { view: ProjectManagementView }) {
+function createInput(patch: UpdateWorkItemInput): CreateWorkItemInput {
+  return {
+    title: patch.title ?? '',
+    description: patch.description ?? undefined,
+    projectId: patch.projectId ?? undefined,
+    statusId: patch.statusId,
+    startAt: patch.startAt ?? undefined,
+    dueAt: patch.dueAt ?? undefined,
+    progress: patch.progress ?? undefined,
+    dependencyIds: patch.dependencyIds,
+    parentId: patch.parentId ?? undefined,
+    isMilestone: patch.isMilestone,
+  }
+}
+
+export function TaskPage({ workItemId, sourceView }: { workItemId: string; sourceView: Exclude<ProjectManagementView, 'overview'> }) {
   const { t } = useTranslation()
   const { activeWorkspaceId, sessionStatuses, onCreateSession } = useAppShellContext()
   const projects = useAtomValue(projectsAtom)
+  const projectFilter = useAtomValue(kanbanProjectFilterAtom)
   const metaMap = useAtomValue(sessionMetaMapAtom)
-  const [detailId, setDetailId] = useAtom(workItemDetailIdAtom)
   const setTaskEditorTarget = useSetAtom(kanbanEditorTargetAtom)
   const { navigate, navigateToSession } = useNavigation()
-  const { items, update, remove } = useWorkItems(activeWorkspaceId ?? null)
-  const item = detailId ? items.find(({ id }) => id === detailId) : undefined
+  const { items, create, update, remove } = useWorkItems(activeWorkspaceId ?? null)
+  const isCreate = workItemId === 'new'
+  const item = isCreate ? undefined : items.find(({ id }) => id === workItemId)
   const { events, isLoading } = useWorkItemEvents(activeWorkspaceId ?? null, item?.id ?? null)
-  const closeDetail = React.useCallback(() => {
-    setDetailId(null)
-    navigate(routes.view.projectManagement(view))
-  }, [navigate, setDetailId, view])
+
+  const close = React.useCallback(() => {
+    navigate(routes.view.projectManagement(sourceView))
+  }, [navigate, sourceView])
 
   React.useEffect(() => {
-    if (detailId && !item && items.length > 0) closeDetail()
-  }, [closeDetail, detailId, item, items.length])
+    if (!isCreate && items.length > 0 && !item) close()
+  }, [close, isCreate, item, items.length])
 
-  React.useEffect(() => {
-    if (!item) return
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') closeDetail()
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [closeDetail, item])
+  const draft = React.useMemo<WorkItem>(() => ({
+    id: 'new',
+    title: '',
+    description: undefined,
+    projectId: projectFilter[0],
+    statusId: 'todo',
+    dependencyIds: [],
+    sessionIds: [],
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  }), [projectFilter])
 
-  if (!item) return null
-  const sessionId = item.primarySessionId
+  if (!isCreate && !item) {
+    return <div className="flex h-full items-center justify-center text-sm text-foreground/45">{t('common.loading')}</div>
+  }
+
+  const activeItem = item ?? draft
+  const sessionId = item?.primarySessionId
   const meta = sessionId ? metaMap.get(sessionId) : undefined
   const projectOptions = projects.map((project) => ({ id: project.config.id, name: project.config.name }))
 
   const ensureSession = async () => {
-    if (!activeWorkspaceId) return
+    if (!activeWorkspaceId || !item) return
     const session = await onCreateSession(activeWorkspaceId, {
       name: item.title,
       sessionStatus: item.statusId,
@@ -117,48 +145,45 @@ export function WorkItemDetailPeek({ view }: { view: ProjectManagementView }) {
       sessionIds: [...item.sessionIds, session.id],
       primarySessionId: session.id,
     })
-    if (linked) {
-      setDetailId(null)
-      navigateToSession(session.id)
-    }
+    if (linked) navigateToSession(session.id)
   }
 
   return (
-    <aside
-      aria-label={t('kanban.workItemDetails')}
-      className="absolute inset-y-0 right-0 z-30 w-full border-l border-border/70 bg-background shadow-strong @min-[760px]/panel:w-[min(460px,46%)]"
-    >
-      <WorkItemEditor
-        key={item.id}
-        item={item}
-        projects={projectOptions}
-        statuses={sessionStatuses ?? []}
-        workItems={items}
-        closeAfterSave={false}
-        history={<WorkItemHistory events={events} loading={isLoading} />}
-        onClose={closeDetail}
-        onSave={async (patch) => Boolean(await update(item.id, patch))}
-        onDelete={async () => {
-          if (!window.confirm(t('kanban.workItemDeleteConfirm'))) return
-          await remove(item.id)
-          closeDetail()
-        }}
-        onOpenSession={sessionId ? () => {
-          setDetailId(null)
-          navigateToSession(sessionId)
-        } : undefined}
-        onCreateSession={!sessionId ? ensureSession : undefined}
-        onEditDefinition={sessionId ? () => {
-          setTaskEditorTarget({
-            mode: 'edit',
-            sessionId,
-            taskSlug: meta?.taskSlug,
-            initialTitle: item.title,
-          })
-          setDetailId(null)
-          navigate(routes.view.projectManagement('board'))
-        } : undefined}
-      />
-    </aside>
+    <WorkItemEditor
+      key={activeItem.id}
+      item={activeItem}
+      mode={isCreate ? 'create' : 'edit'}
+      projects={projectOptions}
+      statuses={sessionStatuses ?? []}
+      workItems={items}
+      closeAfterSave={false}
+      history={!isCreate ? <WorkItemHistory events={events} loading={isLoading} /> : undefined}
+      onClose={close}
+      onSave={async (patch) => {
+        if (isCreate) {
+          const created = await create(createInput(patch))
+          if (!created) return false
+          navigate(routes.view.projectManagement(sourceView))
+          return true
+        }
+        return Boolean(await update(activeItem.id, patch))
+      }}
+      onDelete={!isCreate ? async () => {
+        if (!window.confirm(t('kanban.workItemDeleteConfirm'))) return
+        await remove(activeItem.id)
+        close()
+      } : undefined}
+      onOpenSession={sessionId ? () => navigateToSession(sessionId) : undefined}
+      onCreateSession={!sessionId && !isCreate ? ensureSession : undefined}
+      onEditDefinition={sessionId ? () => {
+        setTaskEditorTarget({
+          mode: 'edit',
+          sessionId,
+          taskSlug: meta?.taskSlug,
+          initialTitle: activeItem.title,
+        })
+        navigate(routes.view.projectManagement('board'))
+      } : undefined}
+    />
   )
 }

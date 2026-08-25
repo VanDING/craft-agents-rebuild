@@ -1,12 +1,14 @@
 import * as React from 'react'
-import { ExternalLink, MessageSquarePlus, Trash2, X } from 'lucide-react'
+import { ArrowLeft, ExternalLink, MessageSquarePlus, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { UpdateWorkItemInput, WorkItem } from '@craft-agent/shared/work-items/browser'
 import type { SessionStatus } from '@/config/session-status-config'
 import { cn } from '@/lib/utils'
+import { ProjectSelectMenu } from '@/components/projects/ProjectSelectMenu'
 
 interface WorkItemEditorProps {
   item: WorkItem
+  mode?: 'create' | 'edit'
   projects: readonly { id: string; name: string }[]
   statuses: readonly SessionStatus[]
   workItems?: readonly WorkItem[]
@@ -14,7 +16,7 @@ interface WorkItemEditorProps {
   closeAfterSave?: boolean
   onClose: () => void
   onSave: (patch: UpdateWorkItemInput) => Promise<boolean>
-  onDelete: () => Promise<void>
+  onDelete?: () => Promise<void>
   onOpenSession?: () => void
   onCreateSession?: () => Promise<void>
   onEditDefinition?: () => void
@@ -26,6 +28,7 @@ const fieldClass =
 /** Engine-independent metadata editor shared by standalone and session-linked tasks. */
 export function WorkItemEditor({
   item,
+  mode = 'edit',
   projects,
   statuses,
   workItems = [],
@@ -83,50 +86,46 @@ export function WorkItemEditor({
 
   return (
     <div className="flex h-full flex-col bg-background">
-      <div className="flex h-12 flex-none items-center justify-between border-b border-border/60 px-4">
-        <div>
-          <div className="text-sm font-semibold">{t('kanban.workItemDetails')}</div>
-          <div className="text-[11px] text-foreground/45">{item.id}</div>
-        </div>
+      <div className="relative flex h-12 flex-none items-center justify-between border-b border-border/60 px-4">
         <button
           type="button"
           onClick={onClose}
-          aria-label={t('common.close')}
-          className="grid h-8 w-8 place-items-center rounded-lg text-foreground/55 hover:bg-foreground/[0.06] hover:text-foreground"
+          aria-label={t('common.back')}
+          className="z-10 inline-flex h-8 items-center gap-1.5 rounded-lg px-2 text-xs font-semibold text-foreground/60 hover:bg-foreground/[0.06] hover:text-foreground"
         >
-          <X className="h-4 w-4" />
+          <ArrowLeft className="h-4 w-4" /> {t('common.back')}
         </button>
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm font-semibold">
+          {mode === 'create' ? t('kanban.newTask') : t('kanban.workItemDetails')}
+        </div>
+        <div className="w-16" />
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
         <div className="mx-auto flex max-w-2xl flex-col gap-5">
-          <label className="flex flex-col gap-1.5 text-xs font-semibold text-foreground/65">
-            {t('kanban.workItemTitle')}
-            <input className={fieldClass} value={title} onChange={(event) => setTitle(event.target.value)} autoFocus />
-          </label>
+          <section className="space-y-5 rounded-2xl border border-border/70 bg-card p-6 shadow-minimal">
+            <label className="flex flex-col gap-1.5 text-xs font-semibold text-foreground/65">
+              {t('kanban.workItemTitle')}
+              <input className={fieldClass} value={title} onChange={(event) => setTitle(event.target.value)} autoFocus />
+            </label>
 
-          <label className="flex flex-col gap-1.5 text-xs font-semibold text-foreground/65">
-            {t('kanban.workItemDescription')}
-            <textarea
-              className="min-h-28 w-full resize-y rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none transition-colors focus:border-ring/60 focus:ring-2 focus:ring-ring/15"
-              value={description}
-              onChange={(event) => setDescription(event.target.value)}
-            />
-          </label>
+            <label className="flex flex-col gap-1.5 text-xs font-semibold text-foreground/65">
+              {t('kanban.workItemDescription')}
+              <textarea
+                className="min-h-28 w-full resize-y rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none transition-colors focus:border-ring/60 focus:ring-2 focus:ring-ring/15"
+                value={description}
+                onChange={(event) => setDescription(event.target.value)}
+              />
+            </label>
 
-          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-4 sm:grid-cols-2">
             <label className="flex flex-col gap-1.5 text-xs font-semibold text-foreground/65">
               {t('kanban.workItemProject')}
-              <select className={fieldClass} value={projectId} onChange={(event) => setProjectId(event.target.value)}>
-                <option value="">{t('kanban.workItemNoProject')}</option>
-                {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
-              </select>
+              <ProjectSelectMenu value={projectId} options={[{ value: '', label: t('kanban.workItemNoProject') }, ...projects.map((project) => ({ value: project.id, label: project.name }))]} onValueChange={setProjectId} ariaLabel={t('kanban.workItemProject')} className="h-9 w-full justify-between" />
             </label>
             <label className="flex flex-col gap-1.5 text-xs font-semibold text-foreground/65">
               {t('kanban.workItemStatus')}
-              <select className={fieldClass} value={statusId} onChange={(event) => setStatusId(event.target.value)}>
-                {statuses.map((status) => <option key={status.id} value={status.id}>{status.label}</option>)}
-              </select>
+              <ProjectSelectMenu value={statusId} options={statuses.map((status) => ({ value: status.id, label: status.label }))} onValueChange={setStatusId} ariaLabel={t('kanban.workItemStatus')} className="h-9 w-full justify-between" />
             </label>
             <label className="flex flex-col gap-1.5 text-xs font-semibold text-foreground/65">
               {t('kanban.workItemStart')}
@@ -153,8 +152,9 @@ export function WorkItemEditor({
               {t('kanban.workItemMilestone')}
             </label>
           </div>
+          </section>
 
-          <div className="rounded-xl border border-border/70 bg-card p-3">
+          {(onOpenSession || onCreateSession || onEditDefinition) && <div className="rounded-xl border border-border/70 bg-card p-3">
             <div className="mb-2 text-xs font-semibold text-foreground/65">{t('kanban.workItemExecution')}</div>
             <div className="flex flex-wrap gap-2">
               {onOpenSession ? (
@@ -172,19 +172,14 @@ export function WorkItemEditor({
                 </button>
               )}
             </div>
-          </div>
+          </div>}
 
           {workItems.length > 1 && (
             <div className="rounded-xl border border-border/70 bg-card p-3">
               <div className="mb-3 text-xs font-semibold text-foreground/65">{t('kanban.workItemRelationships')}</div>
               <label className="flex flex-col gap-1.5 text-xs font-semibold text-foreground/65">
                 {t('kanban.workItemParent')}
-                <select className={fieldClass} value={parentId} onChange={(event) => setParentId(event.target.value)}>
-                  <option value="">{t('kanban.workItemNoParent')}</option>
-                  {workItems.filter(({ id }) => id !== item.id).map((candidate) => (
-                    <option key={candidate.id} value={candidate.id}>{candidate.title}</option>
-                  ))}
-                </select>
+                <ProjectSelectMenu value={parentId} options={[{ value: '', label: t('kanban.workItemNoParent') }, ...workItems.filter(({ id }) => id !== item.id).map((candidate) => ({ value: candidate.id, label: candidate.title }))]} onValueChange={setParentId} ariaLabel={t('kanban.workItemParent')} className="h-9 w-full justify-between" />
               </label>
               <div className="mt-3 text-xs font-semibold text-foreground/65">{t('kanban.workItemDependencies')}</div>
               <div className="mt-1 max-h-36 space-y-1 overflow-y-auto">
@@ -209,13 +204,15 @@ export function WorkItemEditor({
       </div>
 
       <div className="flex flex-none items-center justify-between border-t border-border/60 px-4 py-3">
-        <button
-          type="button"
-          onClick={() => void onDelete()}
-          className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold text-destructive hover:bg-destructive/10"
-        >
-          <Trash2 className="h-3.5 w-3.5" /> {t('kanban.workItemDelete')}
-        </button>
+        {onDelete ? (
+          <button
+            type="button"
+            onClick={() => void onDelete()}
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold text-destructive hover:bg-destructive/10"
+          >
+            <Trash2 className="h-3.5 w-3.5" /> {t('kanban.workItemDelete')}
+          </button>
+        ) : <div />}
         <div className="flex gap-2">
           <button type="button" onClick={onClose} className="h-8 rounded-lg border border-border px-3 text-xs font-semibold hover:bg-foreground/[0.04]">
             {t('common.cancel')}

@@ -8,7 +8,6 @@ import {
   workItemSelectionAtom,
   workItemSortAtom,
   workItemStatusFilterAtom,
-  workItemActiveViewIdAtom,
   workItemViewWorkspaceAtom,
 } from '@/atoms/kanban'
 
@@ -24,7 +23,6 @@ export function useWorkItemViewState(
   const [sort, setSort] = useAtom(workItemSortAtom)
   const [statusIds, setStatusIds] = useAtom(workItemStatusFilterAtom)
   const [scheduled, setScheduled] = useAtom(workItemScheduledFilterAtom)
-  const [activeViewId, setActiveViewId] = useAtom(workItemActiveViewIdAtom)
   const [selectedIds, setSelectedIds] = useAtom(workItemSelectionAtom)
 
   React.useEffect(() => {
@@ -34,9 +32,8 @@ export function useWorkItemViewState(
     setSearch('')
     setStatusIds([])
     setScheduled('all')
-    setActiveViewId(null)
     setSelectedIds([])
-  }, [scopeWorkspaceId, setActiveViewId, setProjectIds, setScheduled, setScopeWorkspaceId, setSearch, setSelectedIds, setStatusIds, workspaceId])
+  }, [scopeWorkspaceId, setProjectIds, setScheduled, setScopeWorkspaceId, setSearch, setSelectedIds, setStatusIds, workspaceId])
 
   React.useEffect(() => {
     const live = new Set(liveProjectIds)
@@ -66,22 +63,12 @@ export function useWorkItemViewState(
     setStatusIds,
     scheduled,
     setScheduled,
-    activeViewId,
-    setActiveViewId,
     query: {
       projectIds: projectIds.length ? projectIds : undefined,
       statusIds: statusIds.length ? statusIds : undefined,
       search: search || undefined,
       scheduled,
       sort,
-    },
-    applyQuery: (query: import('@craft-agent/shared/work-items/browser').WorkItemQuery) => {
-      setProjectIds(query.projectIds ? [...query.projectIds] : [])
-      setStatusIds(query.statusIds ? [...query.statusIds] : [])
-      setSearch(query.search ?? '')
-      setScheduled(query.scheduled ?? 'all')
-      setSort(query.sort ?? { field: 'updatedAt', direction: 'desc' })
-      setSelectedIds([])
     },
     selectedIds,
     setSelectedIds,

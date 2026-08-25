@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { RPC_CHANNELS } from '@craft-agent/shared/protocol'
-import { listWorkItemEvents, listWorkItems, listWorkItemViews } from '@craft-agent/shared/work-items'
+import { listWorkItemEvents, listWorkItems } from '@craft-agent/shared/work-items'
 import type { HandlerFn, RequestContext, RpcServer } from '@craft-agent/server-core/transport'
 import type { HandlerDeps } from '../handler-deps'
 import { registerWorkItemHandlers } from './work-items'
@@ -182,25 +182,14 @@ describe('work item RPC handlers', () => {
     ])
   })
 
-  it('persists saved views and exposes actor-aware item history', async () => {
+  it('exposes actor-aware item history', async () => {
     const harness = createHarness()
     const createItem = harness.handler(RPC_CHANNELS.workItems.CREATE)
     const updateItem = harness.handler(RPC_CHANNELS.workItems.UPDATE)
-    const createView = harness.handler(RPC_CHANNELS.workItems.CREATE_VIEW)
-    const listViews = harness.handler(RPC_CHANNELS.workItems.LIST_VIEWS)
     const listEvents = harness.handler(RPC_CHANNELS.workItems.LIST_EVENTS)
 
     const item = await createItem(context, workspaceFixture.id, { title: 'History task' })
     await updateItem(context, workspaceFixture.id, item.id, { statusId: 'done' })
-    const view = await createView(context, workspaceFixture.id, {
-      name: 'Done work',
-      layout: 'board',
-      query: { statusIds: ['done'] },
-      isDefault: true,
-    })
-
-    expect(await listViews(context, workspaceFixture.id)).toEqual([view])
-    expect(listWorkItemViews(workspaceRoot)).toEqual([view])
     const events = await listEvents(context, workspaceFixture.id, item.id)
     expect(events.map((event: { action: string }) => event.action)).toEqual(['transitioned', 'created'])
     expect(listWorkItemEvents(workspaceRoot, item.id).every(({ actor }) => actor.type === 'user')).toBe(true)

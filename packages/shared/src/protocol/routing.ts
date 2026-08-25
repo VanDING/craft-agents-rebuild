@@ -410,10 +410,6 @@ export const REMOTE_ELIGIBLE_CHANNELS = new Set<string>([
   RPC_CHANNELS.workItems.UPDATE,
   RPC_CHANNELS.workItems.DELETE,
   RPC_CHANNELS.workItems.LIST_EVENTS,
-  RPC_CHANNELS.workItems.LIST_VIEWS,
-  RPC_CHANNELS.workItems.CREATE_VIEW,
-  RPC_CHANNELS.workItems.UPDATE_VIEW,
-  RPC_CHANNELS.workItems.DELETE_VIEW,
   RPC_CHANNELS.workItems.CHANGED,
 
   // artifacts — revisioned agent/user deliverables

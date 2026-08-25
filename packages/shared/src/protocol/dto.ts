@@ -867,6 +867,10 @@ export interface CalendarEntry {
   date: string
   /** Optional start time (HH:MM). Absent = all-day entry. */
   time?: string
+  /** Optional end time (HH:MM). Timed entries default to one hour when absent. */
+  endTime?: string
+  /** Explicit all-day state. Legacy entries infer this from the absence of `time`. */
+  allDay?: boolean
   /** Optional note body. */
   note?: string
   /** Optional Project Management scope; absent entries appear only in workspace aggregate. */
@@ -881,6 +885,8 @@ export interface CalendarEntryInput {
   /** Local calendar day (YYYY-MM-DD). */
   date: string
   time?: string
+  endTime?: string
+  allDay?: boolean
   note?: string
   projectId?: string
 }

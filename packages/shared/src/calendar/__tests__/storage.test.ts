@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'bun:test'
-import { mkdtempSync, rmSync, readFileSync, existsSync } from 'node:fs'
+import { mkdtempSync, rmSync, readFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -41,6 +41,8 @@ describe('calendar entries storage', () => {
     expect(updated.title).toBe('团队周会（改期）')
     expect(updated.date).toBe('2026-08-07')
     expect(updated.time).toBe('14:00')
+    expect(updated.endTime).toBe('15:00')
+    expect(updated.allDay).toBe(false)
     // note cleared when omitted
     expect(updated.note).toBeUndefined()
     expect(updated.projectId).toBeUndefined()
@@ -64,8 +66,25 @@ describe('calendar entries storage', () => {
     const file = join(root, 'calendar', 'entries.json')
     expect(existsSync(file)).toBe(true)
     const parsed = JSON.parse(readFileSync(file, 'utf-8'))
-    expect(parsed.version).toBe(1)
+    expect(parsed.version).toBe(2)
     expect(parsed.entries).toHaveLength(1)
+  })
+
+  it('infers duration and all-day state for legacy entries', () => {
+    const root = freshRoot()
+    mkdirSync(join(root, 'calendar'), { recursive: true })
+    writeFileSync(join(root, 'calendar', 'entries.json'), JSON.stringify({
+      version: 1,
+      entries: [
+        { id: 'timed', title: 'Review', date: '2026-08-05', time: '10:30', createdAt: 1, updatedAt: 1 },
+        { id: 'all-day', title: 'Launch', date: '2026-08-06', createdAt: 1, updatedAt: 1 },
+      ],
+    }))
+
+    expect(listCalendarEntries(root)).toMatchObject([
+      { id: 'timed', allDay: false, endTime: '11:30' },
+      { id: 'all-day', allDay: true, endTime: undefined },
+    ])
   })
 
   it('update of a missing entry throws', () => {
@@ -82,7 +101,6 @@ describe('calendar entries storage', () => {
 
   it('tolerates a corrupt file', () => {
     const root = freshRoot()
-    const { mkdirSync, writeFileSync } = require('node:fs') as typeof import('node:fs')
     mkdirSync(join(root, 'calendar'), { recursive: true })
     writeFileSync(join(root, 'calendar', 'entries.json'), 'not json', 'utf-8')
     expect(listCalendarEntries(root)).toEqual([])

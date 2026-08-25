@@ -7,7 +7,7 @@ import { useAppShellContext } from '@/context/AppShellContext'
 import { useCompensateForStoplight } from '@/context/StoplightContext'
 import { sessionMetaMapAtom, updateSessionMetaAtom, type SessionMeta } from '@/atoms/sessions'
 import { projectsAtom } from '@/atoms/projects'
-import { kanbanColumnStatusAtom, kanbanEditorTargetAtom, workItemDetailIdAtom } from '@/atoms/kanban'
+import { kanbanColumnStatusAtom, kanbanEditorTargetAtom } from '@/atoms/kanban'
 import { routes, useNavigation } from '@/contexts/NavigationContext'
 import { useProjectColorTreatment } from '@/hooks/useProjectColorTreatment'
 import { useLabels } from '@/hooks/useLabels'
@@ -24,7 +24,7 @@ import { KANBAN_COLUMNS, statusToColumn } from './status-column'
 import { KanbanProjectFilter, type KanbanProjectFilterOption } from './KanbanProjectFilter'
 import { TaskEditor } from './TaskEditor'
 import { ProjectManagementViewTabs } from '../../projects/ProjectManagementViewTabs'
-import { WorkItemViewControls } from '../../projects/WorkItemViewControls'
+import { WorkItemFilterControls } from '../../projects/WorkItemFilterControls'
 import { buildModelCatalog } from './model-catalog'
 import { mergeSubtaskRows, type SpecNodeSummary, type SubtaskChildRow } from './subtask-merge'
 import type { SpecNode } from './task-spec-form'
@@ -88,13 +88,9 @@ export function KanbanBoardContainer() {
     setStatusIds,
     scheduled,
     setScheduled,
-    activeViewId,
-    setActiveViewId,
     query,
-    applyQuery,
     setSelectedIds,
   } = useWorkItemViewState(activeWorkspaceId ?? null, workItems, liveProjectIds)
-  const setDetailId = useSetAtom(workItemDetailIdAtom)
 
   const workItemsById = React.useMemo(
     () => new Map(workItems.map((item) => [item.id, item])),
@@ -513,10 +509,9 @@ export function KanbanBoardContainer() {
   const handleEditTask = React.useCallback(
     (taskId: string) => {
       setSelectedIds([taskId])
-      setDetailId(taskId)
       navigate(routes.view.projectWorkItem('board', taskId))
     },
-    [navigate, setDetailId, setSelectedIds]
+    [navigate, setSelectedIds]
   )
 
   const handleOpenTask = React.useCallback(
@@ -524,10 +519,9 @@ export function KanbanBoardContainer() {
       const item = workItemsById.get(taskId)
       if (!item) return
       setSelectedIds([taskId])
-      setDetailId(taskId)
       navigate(routes.view.projectWorkItem('board', taskId))
     },
-    [navigate, setDetailId, setSelectedIds, workItemsById],
+    [navigate, setSelectedIds, workItemsById],
   )
 
   if (editorTarget && activeWorkspaceId) {
@@ -570,14 +564,13 @@ export function KanbanBoardContainer() {
           fullscreen overlay): left reserves the macOS traffic lights, right
           reserves the floating restore button of the expanded overlay. */}
       <div
-        className="flex items-center justify-between gap-2 border-b border-border/50 py-2.5"
+        className="flex h-[42px] flex-none items-center justify-between gap-2 border-b border-border/60"
         style={{
           paddingLeft: compensateForStoplight ? 84 : 16,
           paddingRight: compensateForStoplight ? 48 : 16,
         }}
       >
-        <div className="flex min-w-0 flex-1 items-center gap-2.5">
-          <span className="text-sm font-medium">{t('kanban.allTasks')}</span>
+        <div className="flex min-w-0 flex-1 items-center gap-2.5 overflow-hidden">
           {projectOptions.length > 0 && (
             <KanbanProjectFilter projects={projectOptions} value={projectFilter} onChange={setProjectFilter} />
           )}
@@ -598,7 +591,7 @@ export function KanbanBoardContainer() {
           )}
           <button
             type="button"
-            onClick={() => setEditorTarget({ mode: 'create', initialProjectId: projectFilter[0] })}
+            onClick={() => navigate(routes.view.projectWorkItem('board', 'new'))}
             disabled={!activeWorkspaceId}
             className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 text-[12.5px] font-semibold text-foreground transition-colors hover:bg-foreground/[0.03] disabled:opacity-50"
           >
@@ -606,12 +599,7 @@ export function KanbanBoardContainer() {
           </button>
         </div>
         <div className="ml-auto flex shrink-0 items-center gap-2">
-          <WorkItemViewControls
-            layout="board"
-            query={query}
-            applyQuery={applyQuery}
-            activeViewId={activeViewId}
-            setActiveViewId={setActiveViewId}
+          <WorkItemFilterControls
             statusIds={statusIds}
             setStatusIds={setStatusIds}
             scheduled={scheduled}

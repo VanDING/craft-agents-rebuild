@@ -1,6 +1,5 @@
 import { useTranslation } from 'react-i18next'
 import * as React from 'react'
-import { useSetAtom } from 'jotai'
 import type { ProjectsNavigationState } from '../../../shared/types'
 import ProjectInfoPage from '@/pages/ProjectInfoPage'
 import { PanelHeader } from '@/components/app-shell/PanelHeader'
@@ -8,8 +7,8 @@ import { CalendarView } from '@/components/app-shell/kanban/CalendarView'
 import { KanbanBoardContainer } from '@/components/app-shell/kanban/KanbanBoardContainer'
 import { WorkItemListView } from '@/components/app-shell/kanban/WorkItemListView'
 import { ProjectManagementViewTabs } from './ProjectManagementViewTabs'
-import { WorkItemDetailPeek } from './WorkItemDetailPeek'
-import { workItemDetailIdAtom } from '@/atoms/kanban'
+import { TaskPage } from './TaskPage'
+import { SchedulePage } from './SchedulePage'
 
 export interface ProjectManagementSurfaceProps {
   state: ProjectsNavigationState
@@ -28,14 +27,12 @@ function assertNeverProjectManagementView(view: never): never {
  */
 export function ProjectManagementSurface({ state }: ProjectManagementSurfaceProps) {
   const { t } = useTranslation()
-  const setDetailId = useSetAtom(workItemDetailIdAtom)
-
-  React.useEffect(() => {
-    setDetailId(state.details?.type === 'workItem' ? state.details.workItemId : null)
-  }, [setDetailId, state.details])
-
   let content: React.ReactNode
-  switch (state.view) {
+  if (state.details?.type === 'workItem' && state.view !== 'overview') {
+    content = <TaskPage workItemId={state.details.workItemId} sourceView={state.view} />
+  } else if (state.details?.type === 'calendarEntry' && state.view === 'calendar') {
+    content = <SchedulePage calendarEntryId={state.details.calendarEntryId} />
+  } else switch (state.view) {
     case 'list':
       content = <WorkItemListView />
       break
@@ -55,6 +52,7 @@ export function ProjectManagementSurface({ state }: ProjectManagementSurfaceProp
           <PanelHeader
             title={t('sidebar.projects')}
             actions={<ProjectManagementViewTabs value="overview" />}
+            centerTitleInPanel
           />
           <div className="flex flex-1 items-center justify-center text-muted-foreground">
             <p className="text-sm">{t('projectsList.noProjectSelected')}</p>
@@ -69,7 +67,6 @@ export function ProjectManagementSurface({ state }: ProjectManagementSurfaceProp
   return (
     <div className="@container/panel relative h-full min-h-0 overflow-hidden">
       <div className="h-full min-h-0">{content}</div>
-      <WorkItemDetailPeek view={state.view} />
     </div>
   )
 }

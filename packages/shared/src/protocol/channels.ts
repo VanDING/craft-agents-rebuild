@@ -309,10 +309,6 @@ export const RPC_CHANNELS = {
     UPDATE: 'workItems:update',
     DELETE: 'workItems:delete',
     LIST_EVENTS: 'workItems:list-events',
-    LIST_VIEWS: 'workItems:list-views',
-    CREATE_VIEW: 'workItems:create-view',
-    UPDATE_VIEW: 'workItems:update-view',
-    DELETE_VIEW: 'workItems:delete-view',
     CHANGED: 'workItems:changed',
   },
   artifacts: {

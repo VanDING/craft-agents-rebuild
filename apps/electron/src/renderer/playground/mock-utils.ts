@@ -15,7 +15,6 @@ import type {
 import type {
   WorkItem,
   WorkItemEvent,
-  WorkItemViewDefinition,
 } from '@craft-agent/shared/work-items/browser'
 
 // ============================================================================
@@ -72,16 +71,6 @@ const playgroundWorkItems: WorkItem[] = [
     updatedAt: Date.UTC(2026, 7, 23, 9),
   },
 ]
-const playgroundWorkItemViews: WorkItemViewDefinition[] = [{
-  id: 'view-active-launch',
-  name: 'Active launch work',
-  layout: 'list',
-  query: { projectIds: ['project-1'], sort: { field: 'dueAt', direction: 'asc' } },
-  display: { groupBy: 'none', showSubtasks: true },
-  isDefault: true,
-  createdAt: Date.UTC(2026, 7, 22, 8),
-  updatedAt: Date.UTC(2026, 7, 22, 8),
-}]
 const playgroundWorkItemEvents: WorkItemEvent[] = [
   {
     id: 'event-launch-updated',
@@ -439,39 +428,6 @@ export const mockElectronAPI = {
   },
   listWorkItemEvents: async (_workspaceId: string, itemId: string) => {
     return playgroundWorkItemEvents.filter(({ workItemId }) => workItemId === itemId)
-  },
-  listWorkItemViews: async () => playgroundWorkItemViews.map((view) => ({
-    ...view,
-    query: { ...view.query },
-    display: { ...view.display },
-  })),
-  createWorkItemView: async (workspaceId: string, input: any) => {
-    const now = Date.now()
-    const view: WorkItemViewDefinition = {
-      id: `mock-view-${now}`,
-      ...input,
-      query: input.query ?? {},
-      display: { groupBy: 'none', showSubtasks: true, ...input.display },
-      createdAt: now,
-      updatedAt: now,
-    }
-    if (view.isDefault) playgroundWorkItemViews.forEach((candidate) => { candidate.isDefault = undefined })
-    playgroundWorkItemViews.push(view)
-    emitWorkItemsChanged(workspaceId)
-    return view
-  },
-  updateWorkItemView: async (workspaceId: string, viewId: string, patch: any) => {
-    const index = playgroundWorkItemViews.findIndex(({ id }) => id === viewId)
-    const updated = { ...playgroundWorkItemViews[index]!, ...patch, updatedAt: Date.now() }
-    if (updated.isDefault) playgroundWorkItemViews.forEach((candidate) => { candidate.isDefault = undefined })
-    playgroundWorkItemViews[index] = updated
-    emitWorkItemsChanged(workspaceId)
-    return updated
-  },
-  deleteWorkItemView: async (workspaceId: string, viewId: string) => {
-    const index = playgroundWorkItemViews.findIndex(({ id }) => id === viewId)
-    if (index >= 0) playgroundWorkItemViews.splice(index, 1)
-    emitWorkItemsChanged(workspaceId)
   },
   onWorkItemsChanged: (callback: (workspaceId: string) => void) => {
     console.log('[Playground] onWorkItemsChanged subscribed')

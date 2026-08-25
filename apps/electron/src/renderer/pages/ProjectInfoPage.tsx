@@ -215,6 +215,7 @@ export default function ProjectInfoPage({ projectSlug }: ProjectInfoPageProps) {
       <Info_Page.Header
         title={project?.config.name ?? ''}
         actions={<ProjectManagementViewTabs value="overview" />}
+        centerTitleInPanel
       />
       {project && (
         <Info_Page.Content>

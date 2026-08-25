@@ -552,10 +552,6 @@ export interface ElectronAPI {
   updateWorkItem(workspaceId: string, itemId: string, patch: import('@craft-agent/shared/work-items').UpdateWorkItemInput): Promise<import('@craft-agent/shared/work-items').WorkItem>
   deleteWorkItem(workspaceId: string, itemId: string): Promise<void>
   listWorkItemEvents(workspaceId: string, itemId: string, limit?: number): Promise<import('@craft-agent/shared/work-items').WorkItemEvent[]>
-  listWorkItemViews(workspaceId: string): Promise<import('@craft-agent/shared/work-items').WorkItemViewDefinition[]>
-  createWorkItemView(workspaceId: string, input: import('@craft-agent/shared/work-items').CreateWorkItemViewInput): Promise<import('@craft-agent/shared/work-items').WorkItemViewDefinition>
-  updateWorkItemView(workspaceId: string, viewId: string, patch: import('@craft-agent/shared/work-items').UpdateWorkItemViewInput): Promise<import('@craft-agent/shared/work-items').WorkItemViewDefinition>
-  deleteWorkItemView(workspaceId: string, viewId: string): Promise<void>
   onWorkItemsChanged(callback: (workspaceId: string) => void): () => void
 
   // Artifacts (workspace-scoped revisioned deliverables)
@@ -977,6 +973,7 @@ export interface ProjectsNavigationState {
   details:
     | { type: 'project'; projectSlug: string }
     | { type: 'workItem'; workItemId: string }
+    | { type: 'calendarEntry'; calendarEntryId: string }
     | null
 }
 
@@ -1075,6 +1072,9 @@ export const getNavigationStateKey = (state: NavigationState): string => {
     if (state.details?.type === 'workItem' && state.view !== 'overview') {
       return `projects/${state.view}/work-item/${encodeURIComponent(state.details.workItemId)}`
     }
+    if (state.details?.type === 'calendarEntry' && state.view === 'calendar') {
+      return `projects/calendar/schedule/${encodeURIComponent(state.details.calendarEntryId)}`
+    }
     return state.view === 'overview' ? 'projects' : `projects/${state.view}`
   }
   if (state.navigator === 'settings') {
@@ -1140,6 +1140,14 @@ export const parseNavigationStateKey = (key: string): NavigationState | null => 
     return { navigator: 'projects', view: 'overview', details: null }
   }
   if (key.startsWith('projects/')) {
+    const calendarEntryMatch = /^projects\/calendar\/schedule\/(.+)$/.exec(key)
+    if (calendarEntryMatch) {
+      return {
+        navigator: 'projects',
+        view: 'calendar',
+        details: { type: 'calendarEntry', calendarEntryId: decodeURIComponent(calendarEntryMatch[1]!) },
+      }
+    }
     const workItemMatch = /^projects\/(list|board|calendar)\/work-item\/(.+)$/.exec(key)
     if (workItemMatch) {
       return {

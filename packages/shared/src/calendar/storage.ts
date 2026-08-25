@@ -15,7 +15,12 @@ const CALENDAR_DIR = 'calendar';
 const CALENDAR_FILE = 'calendar/entries.json';
 
 interface CalendarFile {
-  version: 1;
+  version: 2;
+  entries: CalendarEntry[];
+}
+
+interface LegacyCalendarFile {
+  version?: 1;
   entries: CalendarEntry[];
 }
 
@@ -28,9 +33,13 @@ export function listCalendarEntries(workspaceRootPath: string): CalendarEntry[] 
   const path = filePath(workspaceRootPath);
   if (!existsSync(path)) return [];
   try {
-    const parsed = JSON.parse(readFileSync(path, 'utf-8')) as CalendarFile;
+    const parsed = JSON.parse(readFileSync(path, 'utf-8')) as CalendarFile | LegacyCalendarFile;
     if (!Array.isArray(parsed?.entries)) return [];
-    return parsed.entries;
+    return parsed.entries.map((entry) => ({
+      ...entry,
+      allDay: entry.allDay ?? !entry.time,
+      endTime: entry.time ? (entry.endTime ?? oneHourAfter(entry.time)) : undefined,
+    }));
   } catch {
     return [];
   }
@@ -39,7 +48,7 @@ export function listCalendarEntries(workspaceRootPath: string): CalendarEntry[] 
 function save(workspaceRootPath: string, entries: CalendarEntry[]): void {
   const dir = join(workspaceRootPath, CALENDAR_DIR);
   mkdirSync(dir, { recursive: true });
-  const data: CalendarFile = { version: 1, entries };
+  const data: CalendarFile = { version: 2, entries };
   writeFileSync(filePath(workspaceRootPath), JSON.stringify(data, null, 2), 'utf-8');
 }
 
@@ -53,7 +62,9 @@ export function createCalendarEntry(
     id: randomUUID(),
     title: input.title.trim(),
     date: input.date,
-    time: input.time?.trim() || undefined,
+    time: input.allDay ? undefined : input.time?.trim() || undefined,
+    endTime: input.allDay ? undefined : input.endTime?.trim() || (input.time ? oneHourAfter(input.time) : undefined),
+    allDay: input.allDay ?? !input.time,
     note: input.note?.trim() || undefined,
     projectId: input.projectId?.trim() || undefined,
     createdAt: now,
@@ -78,7 +89,9 @@ export function updateCalendarEntry(
     ...existing,
     title: input.title.trim(),
     date: input.date,
-    time: input.time?.trim() || undefined,
+    time: input.allDay ? undefined : input.time?.trim() || undefined,
+    endTime: input.allDay ? undefined : input.endTime?.trim() || (input.time ? oneHourAfter(input.time) : undefined),
+    allDay: input.allDay ?? !input.time,
     note: input.note?.trim() || undefined,
     projectId: input.projectId?.trim() || undefined,
     updatedAt: Date.now(),
@@ -95,4 +108,8 @@ export function deleteCalendarEntry(workspaceRootPath: string, entryId: string):
   const next = entries.filter((e) => e.id !== entryId);
   if (next.length === entries.length) return;
   save(workspaceRootPath, next);
+}
+function oneHourAfter(time: string): string {
+  const [hour = 0, minute = 0] = time.split(':').map(Number);
+  return `${String(Math.min(23, hour + 1)).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
 }

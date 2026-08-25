@@ -4,18 +4,15 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   createWorkItem,
-  createWorkItemView,
   deleteWorkItem,
   detachSessionFromWorkItems,
   ensureWorkItemForSession,
   findPrimaryWorkItemBySessionId,
   listWorkItems,
   listWorkItemEvents,
-  listWorkItemViews,
   migrateLegacySessionWorkItems,
   updatePrimaryWorkItemForSession,
   updateWorkItem,
-  updateWorkItemView,
 } from '../storage.ts';
 
 const roots: string[] = [];
@@ -91,7 +88,7 @@ describe('work item storage', () => {
     const root = freshRoot();
     createWorkItem(root, { title: 'Persisted' });
     const path = join(root, 'work-items', 'items.json');
-    expect(JSON.parse(readFileSync(path, 'utf8')).version).toBe(2);
+    expect(JSON.parse(readFileSync(path, 'utf8')).version).toBe(3);
 
     writeFileSync(path, 'not-json');
     expect(() => listWorkItems(root)).toThrow('Unable to read work item store');
@@ -125,28 +122,26 @@ describe('work item storage', () => {
     updateWorkItem(root, legacyItem.id, { statusId: 'done' }, { actor: { type: 'user', id: 'client-1' } });
 
     const persisted = JSON.parse(readFileSync(join(root, 'work-items', 'items.json'), 'utf8'));
-    expect(persisted.version).toBe(2);
+    expect(persisted.version).toBe(3);
     expect(listWorkItemEvents(root, legacyItem.id)).toHaveLength(1);
   });
 
-  it('persists named views and enforces a single default', () => {
+  it('upgrades a v2 store while dropping retired saved views only', () => {
     const root = freshRoot();
-    const first = createWorkItemView(root, {
-      name: 'This week',
-      layout: 'list',
-      query: { projectIds: ['p1'], statusIds: ['todo'], sort: { field: 'dueAt' } },
-      isDefault: true,
-    });
-    const second = createWorkItemView(root, { name: 'Board focus', layout: 'board', isDefault: true });
-    updateWorkItemView(root, second.id, { query: { scheduled: 'scheduled' } });
+    const item = createWorkItem(root, { title: 'Keep this task' });
+    const path = join(root, 'work-items', 'items.json');
+    const raw = JSON.parse(readFileSync(path, 'utf8'));
+    raw.version = 2;
+    raw.views = [{ id: 'legacy-view', name: 'Old view' }];
+    writeFileSync(path, JSON.stringify(raw));
 
-    const views = listWorkItemViews(root);
-    expect(views.find(({ id }) => id === first.id)?.isDefault).toBeUndefined();
-    expect(views.find(({ id }) => id === second.id)).toMatchObject({
-      isDefault: true,
-      layout: 'board',
-      query: { scheduled: 'scheduled' },
-    });
+    expect(listWorkItems(root).map(({ id }) => id)).toEqual([item.id]);
+    updateWorkItem(root, item.id, { description: 'Migrated' });
+
+    const migrated = JSON.parse(readFileSync(path, 'utf8'));
+    expect(migrated.version).toBe(3);
+    expect(migrated.views).toBeUndefined();
+    expect(migrated.items[0]).toMatchObject({ id: item.id, description: 'Migrated' });
   });
 
   it('records append-only actor-aware create, transition, link and delete events', () => {

@@ -6,23 +6,25 @@
  * entries. Either kind can open or lazily create an execution conversation.
  *
  * Day/Week render entries inline (full info, no preview popup); Month uses
- * compact chips with an anchored day-list popover. The create/edit dialog is
- * centered. Visual language follows the app: white cards, 1px hairline
- * borders, brand-purple accent, translucent accent color blocks.
+ * compact chips with an anchored day-list popover. Create/edit flows use the
+ * shared full-page editor. Visual language follows the app: white cards, 1px
+ * hairline borders, brand-purple accent, translucent accent color blocks.
  */
 
 import * as React from 'react'
 import { Plus, Search } from 'lucide-react'
-import { useAtomValue, useSetAtom } from 'jotai'
+import { useAtomValue } from 'jotai'
 import { toast } from 'sonner'
 import { useTranslation } from 'react-i18next'
 import {
   addDays,
+  differenceInCalendarDays,
   format,
   isSameDay,
   isSameMonth,
   startOfMonth,
   startOfWeek,
+  parseISO,
 } from 'date-fns'
 import { useAppShellContext } from '@/context/AppShellContext'
 import { useCompensateForStoplight } from '@/context/StoplightContext'
@@ -31,23 +33,14 @@ import { useCalendarEntries } from '@/hooks/useCalendarEntries'
 import { useWorkItems } from '@/hooks/useWorkItems'
 import { useWorkItemViewState } from '@/hooks/useWorkItemViewState'
 import { projectsAtom } from '@/atoms/projects'
-import { workItemDetailIdAtom } from '@/atoms/kanban'
 import { cn } from '@/lib/utils'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-  DialogClose,
-} from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import type { CalendarEntry, CalendarEntryInput } from '@craft-agent/shared/protocol'
+import type { CalendarEntry } from '@craft-agent/shared/protocol'
 import { queryWorkItems, workItemDateKey, type WorkItem } from '@craft-agent/shared/work-items/browser'
 import { ProjectManagementViewTabs } from '../../projects/ProjectManagementViewTabs'
-import { WorkItemViewControls } from '../../projects/WorkItemViewControls'
+import { WorkItemFilterControls } from '../../projects/WorkItemFilterControls'
 import { KanbanProjectFilter, type KanbanProjectFilterOption } from './KanbanProjectFilter'
 
 type ViewMode = 'day' | 'week' | 'month'
@@ -83,13 +76,21 @@ function nowMinutes(): number {
   return n.getHours() * 60 + n.getMinutes()
 }
 
-interface EntryFormState {
-  id?: string
-  title: string
-  date: string
-  time: string
-  note: string
-  projectId: string
+function minutesFromTime(time?: string): number | null {
+  if (!time) return null
+  const [hour = 0, minute = 0] = time.split(':').map(Number)
+  return hour * 60 + minute
+}
+
+function overlapPosition(entry: CalendarProjection, entries: readonly CalendarProjection[]): { index: number; count: number } {
+  const start = minutesFromTime(entry.time) ?? 0
+  const end = minutesFromTime(entry.endTime) ?? start + 60
+  const overlapping = entries.filter((candidate) => {
+    const candidateStart = minutesFromTime(candidate.time) ?? 0
+    const candidateEnd = minutesFromTime(candidate.endTime) ?? candidateStart + 60
+    return candidateStart < end && candidateEnd > start
+  })
+  return { index: Math.max(0, overlapping.findIndex(({ id }) => id === entry.id)), count: Math.max(1, overlapping.length) }
 }
 
 interface CalendarProjection {
@@ -98,6 +99,8 @@ interface CalendarProjection {
   date: string
   endDate: string
   time?: string
+  endTime?: string
+  allDay?: boolean
   note?: string
   projectId?: string
   entry?: CalendarEntry
@@ -109,9 +112,8 @@ export function CalendarView() {
   const compensateForStoplight = useCompensateForStoplight()
   const { t } = useTranslation()
   const { navigate, navigateToSession } = useNavigation()
-  const { entries, create, update, remove } = useCalendarEntries(activeWorkspaceId ?? null)
+  const { entries, update, remove } = useCalendarEntries(activeWorkspaceId ?? null)
   const { items: workItems, update: updateWorkItem } = useWorkItems(activeWorkspaceId ?? null)
-  const setDetailId = useSetAtom(workItemDetailIdAtom)
   const projects = useAtomValue(projectsAtom)
   const projectOptions = React.useMemo<KanbanProjectFilterOption[]>(
     () => projects.map((project) => ({ id: project.config.id, name: project.config.name, color: project.config.color })),
@@ -127,17 +129,12 @@ export function CalendarView() {
     setStatusIds,
     scheduled,
     setScheduled,
-    activeViewId,
-    setActiveViewId,
     query,
-    applyQuery,
     setSelectedIds,
   } = useWorkItemViewState(activeWorkspaceId ?? null, workItems, liveProjectIds)
   const [view, setView] = React.useState<ViewMode>('month')
   const [cursor, setCursor] = React.useState(() => startOfMonth(new Date()))
   const [selectedDay, setSelectedDay] = React.useState<Date | null>(null)
-  const [formOpen, setFormOpen] = React.useState(false)
-  const [form, setForm] = React.useState<EntryFormState>({ title: '', date: '', time: '', note: '', projectId: '' })
 
   const today = new Date()
 
@@ -161,6 +158,7 @@ export function CalendarView() {
         date: start,
         endDate: end,
         time,
+        allDay: !time,
         note: item.description,
         projectId: item.projectId,
         workItem: item,
@@ -175,6 +173,8 @@ export function CalendarView() {
         date: entry.date,
         endDate: entry.date,
         time: entry.time,
+        endTime: entry.endTime,
+        allDay: entry.allDay ?? !entry.time,
         note: entry.note,
         projectId: entry.projectId,
         entry,
@@ -193,37 +193,96 @@ export function CalendarView() {
   )
 
   const openCreate = React.useCallback((date: Date) => {
-    setForm({ title: '', date: dayKey(date), time: '', note: '', projectId: projectIds[0] ?? '' })
-    setFormOpen(true)
-  }, [projectIds])
+    navigate(routes.view.projectSchedule(`new:${dayKey(date)}`))
+  }, [navigate])
+
+  const openCreateAt = React.useCallback((date: Date, event: React.MouseEvent<HTMLElement>) => {
+    if ((event.target as HTMLElement).closest('[data-calendar-entry]')) return
+    const rect = event.currentTarget.getBoundingClientRect()
+    const ratio = Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height))
+    const rawMinutes = HOUR_START * 60 + ratio * (HOUR_END - HOUR_START) * 60
+    const snapped = Math.round(rawMinutes / 30) * 30
+    const hour = Math.min(HOUR_END - 1, Math.floor(snapped / 60))
+    const minute = snapped % 60
+    navigate(routes.view.projectSchedule(`new:${dayKey(date)}@${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`))
+  }, [navigate])
+
+  const moveProjection = React.useCallback(async (projectionId: string, date: Date, time?: string) => {
+    const projection = calendarItems.find(({ id }) => id === projectionId)
+    if (!projection) return
+    const nextDate = dayKey(date)
+    if (projection.entry) {
+      const entry = projection.entry
+      await update(entry.id, {
+        title: entry.title,
+        date: nextDate,
+        allDay: time === undefined ? (entry.allDay ?? !entry.time) : false,
+        time: time ?? entry.time,
+        endTime: entry.endTime,
+        note: entry.note,
+        projectId: entry.projectId,
+      })
+      return
+    }
+    if (!projection.workItem) return
+    const item = projection.workItem
+    const oldStart = workItemDateKey(item.startAt) ?? workItemDateKey(item.dueAt) ?? nextDate
+    const oldEnd = workItemDateKey(item.dueAt) ?? oldStart
+    const span = differenceInCalendarDays(parseISO(oldEnd), parseISO(oldStart))
+    const startAt = time ? `${nextDate}T${time}` : nextDate
+    const dueAt = dayKey(addDays(parseISO(nextDate), span))
+    await updateWorkItem(item.id, { startAt, dueAt })
+  }, [calendarItems, update, updateWorkItem])
+
+  const dropAt = React.useCallback((date: Date, event: React.DragEvent<HTMLElement>, timed: boolean) => {
+    event.preventDefault()
+    const projectionId = event.dataTransfer.getData('text/plain')
+    let time: string | undefined
+    if (timed) {
+      const rect = event.currentTarget.getBoundingClientRect()
+      const ratio = Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height))
+      const rawMinutes = HOUR_START * 60 + ratio * (HOUR_END - HOUR_START) * 60
+      const snapped = Math.round(rawMinutes / 30) * 30
+      time = `${String(Math.min(HOUR_END - 1, Math.floor(snapped / 60))).padStart(2, '0')}:${String(snapped % 60).padStart(2, '0')}`
+    }
+    void moveProjection(projectionId, date, time)
+  }, [moveProjection])
+
+  const startResize = React.useCallback((projection: CalendarProjection, event: React.PointerEvent<HTMLElement>) => {
+    const entry = projection.entry
+    const startMinutes = minutesFromTime(entry?.time)
+    if (!entry || startMinutes === null) return
+    event.preventDefault()
+    event.stopPropagation()
+    const grid = event.currentTarget.closest<HTMLElement>('[data-time-grid]')
+    if (!grid) return
+    const startY = event.clientY
+    const initialEnd = minutesFromTime(entry.endTime) ?? startMinutes + 60
+    let nextEnd = initialEnd
+    const move = (pointerEvent: PointerEvent) => {
+      const deltaMinutes = ((pointerEvent.clientY - startY) / grid.getBoundingClientRect().height) * (HOUR_END - HOUR_START) * 60
+      nextEnd = Math.max(startMinutes + 30, Math.min(HOUR_END * 60, Math.round((initialEnd + deltaMinutes) / 30) * 30))
+    }
+    const finish = () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', finish)
+      const endTime = `${String(Math.floor(nextEnd / 60)).padStart(2, '0')}:${String(nextEnd % 60).padStart(2, '0')}`
+      void update(entry.id, { ...entry, endTime })
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', finish, { once: true })
+  }, [update])
 
   const openEdit = React.useCallback((projection: CalendarProjection) => {
     if (projection.workItem) {
       setSelectedIds([projection.workItem.id])
-      setDetailId(projection.workItem.id)
       navigate(routes.view.projectWorkItem('calendar', projection.workItem.id))
       return
     }
     const entry = projection.entry
     if (!entry) return
-    setForm({ id: entry.id, title: entry.title, date: entry.date, time: entry.time ?? '', note: entry.note ?? '', projectId: entry.projectId ?? '' })
-    setFormOpen(true)
-  }, [navigate, setDetailId, setSelectedIds])
-
-  const submitForm = React.useCallback(async () => {
-    const title = form.title.trim()
-    if (!title || !form.date) return
-    const input: CalendarEntryInput = {
-      title,
-      date: form.date,
-      time: form.time.trim() || undefined,
-      note: form.note.trim() || undefined,
-      projectId: form.projectId || undefined,
-    }
-    if (form.id) await update(form.id, input)
-    else await create(input)
-    setFormOpen(false)
-  }, [form, create, update])
+    navigate(routes.view.projectSchedule(entry.id))
+  }, [navigate, setSelectedIds])
 
   const handleDelete = React.useCallback(
     (projection: CalendarProjection) => {
@@ -332,6 +391,14 @@ export function CalendarView() {
   )
 
   const entryBlockStyle = (alpha: number): React.CSSProperties => ({ backgroundColor: entryBlock(alpha) })
+  const draggableEntryProps = (entry: CalendarProjection) => ({
+    'data-calendar-entry': true,
+    draggable: true,
+    onDragStart: (event: React.DragEvent<HTMLElement>) => {
+      event.dataTransfer.effectAllowed = 'move'
+      event.dataTransfer.setData('text/plain', entry.id)
+    },
+  })
 
   // -------------------------------------------------------------------------
   // Day view
@@ -352,7 +419,7 @@ export function CalendarView() {
         </div>
 
         {/* All-day strip */}
-        <div className="flex flex-col gap-1.5 border-b border-border/60 px-4 pb-2">
+        <div className="flex flex-col gap-1.5 border-b border-border/60 px-4 pb-2" onDragOver={(event) => event.preventDefault()} onDrop={(event) => dropAt(day, event, false)}>
           <div className="text-[10.5px] font-bold uppercase tracking-wide text-foreground/45">
             {t('schedule.allDay')}
           </div>
@@ -365,6 +432,7 @@ export function CalendarView() {
               className="flex items-center gap-2.5 rounded-lg px-2.5 py-2"
               style={entryBlockStyle(0.16)}
               onClick={() => openEdit(entry)}
+              {...draggableEntryProps(entry)}
             >
               <span className="w-[76px] flex-none text-[11px] font-bold tabular-nums opacity-80">
                 {t('schedule.allDay')}
@@ -395,7 +463,7 @@ export function CalendarView() {
                 )
               })}
             </div>
-            <div className="relative flex-1 border-l border-border/60">
+            <div data-time-grid className="relative flex-1 border-l border-border/60" onDoubleClick={(event) => openCreateAt(day, event)} onDragOver={(event) => event.preventDefault()} onDrop={(event) => dropAt(day, event, true)}>
               {Array.from({ length: HOUR_END - HOUR_START + 1 }, (_, i) => {
                 const h = HOUR_START + i
                 return (
@@ -416,16 +484,20 @@ export function CalendarView() {
               {timed.map((entry) => {
                 const [hh, mm] = entry.time!.split(':').map(Number)
                 const top = hourTop(hh + mm / 60 - HOUR_START)
-                const endH = String((hh + 1) % 24).padStart(2, '0')
+                const startMinutes = hh * 60 + mm
+                const endMinutes = minutesFromTime(entry.endTime) ?? startMinutes + 60
+                const duration = Math.max(30, endMinutes - startMinutes)
+                const overlap = overlapPosition(entry, timed)
                 return (
                   <div
                     key={entry.id}
-                    className="absolute left-1.5 right-2.5 flex items-center gap-2.5 rounded-lg px-2.5 py-1.5"
-                    style={{ top, height: `calc(100% / ${HOUR_END - HOUR_START})`, ...entryBlockStyle(0.22) }}
+                    className="absolute flex items-center gap-2.5 overflow-hidden rounded-lg px-2.5 py-1.5"
+                    style={{ top, left: `calc(${(overlap.index / overlap.count) * 100}% + 6px)`, width: `calc(${100 / overlap.count}% - 12px)`, height: `${(duration / 60 / (HOUR_END - HOUR_START)) * 100}%`, minHeight: 30, ...entryBlockStyle(0.22) }}
                     onClick={() => openEdit(entry)}
+                    {...draggableEntryProps(entry)}
                   >
                     <span className="w-[76px] flex-none text-[11px] font-bold tabular-nums opacity-80">
-                      {entry.time}–{endH}:{String(mm).padStart(2, '0')}
+                      {entry.time}–{entry.endTime ?? `${String((hh + 1) % 24).padStart(2, '0')}:${String(mm).padStart(2, '0')}`}
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-[12.5px] font-semibold">{entry.title}</span>
@@ -434,6 +506,7 @@ export function CalendarView() {
                       )}
                     </span>
                     {entryActions(entry)}
+                    {entry.entry && <div className="absolute inset-x-2 bottom-0 h-1.5 cursor-ns-resize" onPointerDown={(event) => startResize(entry, event)} />}
                   </div>
                 )
               })}
@@ -487,7 +560,16 @@ export function CalendarView() {
             const key = dayKey(d)
             const allDay = entriesFor(d).filter((entry) => entry.date !== key || !entry.time)
             return (
-              <div key={i} className="min-w-0 flex-1 border-r border-border/60 p-1 last:border-r-0">
+              <div
+                key={i}
+                className="min-w-0 flex-1 border-r border-border/60 p-1 last:border-r-0"
+                onDoubleClick={(event) => {
+                  if ((event.target as HTMLElement).closest('[data-calendar-entry]')) return
+                  openCreate(d)
+                }}
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={(event) => dropAt(d, event, false)}
+              >
                 {allDay.map((entry) => (
                   <div
                     key={entry.id}
@@ -495,6 +577,7 @@ export function CalendarView() {
                     style={entryBlockStyle(0.2)}
                     title={entry.title}
                     onClick={() => openEdit(entry)}
+                    {...draggableEntryProps(entry)}
                   >
                     <span className="truncate">{entry.title}</span>
                   </div>
@@ -523,7 +606,7 @@ export function CalendarView() {
             {Array.from({ length: 7 }, (_, i) => {
               const d = addDays(monday, i)
               return (
-                <div key={i} className="relative min-w-0 flex-1 border-r border-border/60 last:border-r-0">
+                <div key={i} data-time-grid className="relative min-w-0 flex-1 border-r border-border/60 last:border-r-0" onDoubleClick={(event) => openCreateAt(d, event)} onDragOver={(event) => event.preventDefault()} onDrop={(event) => dropAt(d, event, true)}>
                   {Array.from({ length: HOUR_END - HOUR_START + 1 }, (_, j) => {
                     const h = HOUR_START + j
                     return (
@@ -540,28 +623,39 @@ export function CalendarView() {
                       style={{ top: hourTop((now - HOUR_START * 60) / 60) }}
                     />
                   )}
-                  {entriesFor(d)
-                    .filter((entry) => entry.date === dayKey(d) && entry.time)
+                  {(() => {
+                    const timedEntries = entriesFor(d).filter((entry) => entry.date === dayKey(d) && entry.time)
+                    return timedEntries
                     .map((entry) => {
                       const [hh, mm] = entry.time!.split(':').map(Number)
+                      const startMinutes = hh * 60 + mm
+                      const endMinutes = minutesFromTime(entry.endTime) ?? startMinutes + 60
+                      const duration = Math.max(30, endMinutes - startMinutes)
+                      const overlap = overlapPosition(entry, timedEntries)
                       return (
                         <div
                           key={entry.id}
-                          className="absolute left-1 right-1 overflow-hidden rounded-md px-1.5 py-0.5"
+                          className="absolute overflow-hidden rounded-md px-1.5 py-0.5"
                           style={{
                             top: hourTop(hh + mm / 60 - HOUR_START),
-                            height: `calc(100% / ${HOUR_END - HOUR_START})`,
+                            left: `calc(${(overlap.index / overlap.count) * 100}% + 3px)`,
+                            width: `calc(${100 / overlap.count}% - 6px)`,
+                            height: `${(duration / 60 / (HOUR_END - HOUR_START)) * 100}%`,
+                            minHeight: 28,
                             ...entryBlockStyle(0.22),
                           }}
                           title={entry.title}
                           onClick={() => openEdit(entry)}
+                          {...draggableEntryProps(entry)}
                         >
                           <span className="block truncate text-[11.5px] font-semibold">
                             {entry.time} · {entry.title}
                           </span>
+                          {entry.entry && <div className="absolute inset-x-1 bottom-0 h-1.5 cursor-ns-resize" onPointerDown={(event) => startResize(entry, event)} />}
                         </div>
                       )
-                    })}
+                    })
+                  })()}
                 </div>
               )
             })}
@@ -599,6 +693,12 @@ export function CalendarView() {
                 !inMonth && 'bg-card/60',
                 isToday && 'bg-accent/10',
               )}
+              onDoubleClick={(event) => {
+                if ((event.target as HTMLElement).closest('[data-calendar-entry]')) return
+                openCreate(day)
+              }}
+              onDragOver={(event) => event.preventDefault()}
+              onDrop={(event) => dropAt(day, event, false)}
             >
               <div className="flex items-center justify-between">
                 <Popover
@@ -667,6 +767,7 @@ export function CalendarView() {
                   style={entryBlockStyle(0.16)}
                   title={entry.title}
                   onClick={() => openEdit(entry)}
+                  {...draggableEntryProps(entry)}
                 >
                   <span className="min-w-0 flex-1 truncate font-medium">{entry.title}</span>
                   {entry.time && <span className="flex-none text-[10px] font-semibold opacity-70">{entry.time}</span>}
@@ -694,13 +795,13 @@ export function CalendarView() {
           overlay): left reserves macOS traffic lights, right reserves the
           floating restore button of the expanded overlay. */}
       <div
-        className="flex flex-none flex-wrap items-center justify-between gap-2 border-b border-border/60 py-2.5"
+        className="flex h-[42px] flex-none items-center justify-between gap-2 border-b border-border/60"
         style={{
           paddingLeft: compensateForStoplight ? 84 : 16,
           paddingRight: compensateForStoplight ? 48 : 16,
         }}
       >
-        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+        <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
           {projectOptions.length > 0 && (
             <KanbanProjectFilter projects={projectOptions} value={projectIds} onChange={setProjectIds} />
           )}
@@ -764,12 +865,7 @@ export function CalendarView() {
           </Button>
         </div>
         <div className="ml-auto flex shrink-0 items-center gap-2">
-          <WorkItemViewControls
-            layout="calendar"
-            query={query}
-            applyQuery={applyQuery}
-            activeViewId={activeViewId}
-            setActiveViewId={setActiveViewId}
+          <WorkItemFilterControls
             statusIds={statusIds}
             setStatusIds={setStatusIds}
             scheduled={scheduled}
@@ -788,77 +884,6 @@ export function CalendarView() {
         {view === 'week' && renderWeek()}
         {view === 'month' && renderMonth()}
       </div>
-
-      {/* Centered create/edit dialog */}
-      <Dialog open={formOpen} onOpenChange={setFormOpen}>
-        <DialogContent className="w-[360px]">
-          <DialogHeader>
-            <DialogTitle>{form.id ? t('schedule.editEntry') : t('schedule.newEntry')}</DialogTitle>
-          </DialogHeader>
-          <div className="flex flex-col gap-3">
-            <div>
-              <label className="mb-1 block text-[11px] font-medium text-foreground/55">{t('schedule.entryTitle')}</label>
-              <input
-                value={form.title}
-                onChange={(e) => setForm((prev) => ({ ...prev, title: e.target.value }))}
-                placeholder={t('schedule.entryTitlePlaceholder')}
-                autoFocus
-                className="w-full rounded-md border border-border/80 bg-background px-2.5 py-1.5 text-[13px] outline-none focus:border-accent"
-              />
-            </div>
-            {projectOptions.length > 0 && (
-              <div>
-                <label className="mb-1 block text-[11px] font-medium text-foreground/55">{t('kanban.workItemProject')}</label>
-                <select
-                  value={form.projectId}
-                  onChange={(e) => setForm((prev) => ({ ...prev, projectId: e.target.value }))}
-                  className="w-full rounded-md border border-border/80 bg-background px-2.5 py-1.5 text-[13px] outline-none focus:border-accent"
-                >
-                  <option value="">{t('kanban.workItemNoProject')}</option>
-                  {projectOptions.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
-                </select>
-              </div>
-            )}
-            <div className="flex gap-3">
-              <div className="flex-1">
-                <label className="mb-1 block text-[11px] font-medium text-foreground/55">{t('schedule.entryDate')}</label>
-                <input
-                  type="date"
-                  value={form.date}
-                  onChange={(e) => setForm((prev) => ({ ...prev, date: e.target.value }))}
-                  className="w-full rounded-md border border-border/80 bg-background px-2.5 py-1.5 text-[13px] outline-none focus:border-accent"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-[11px] font-medium text-foreground/55">{t('schedule.entryTime')}</label>
-                <input
-                  type="time"
-                  value={form.time}
-                  onChange={(e) => setForm((prev) => ({ ...prev, time: e.target.value }))}
-                  className="rounded-md border border-border/80 bg-background px-2.5 py-1.5 text-[13px] outline-none focus:border-accent"
-                />
-              </div>
-            </div>
-            <div>
-              <label className="mb-1 block text-[11px] font-medium text-foreground/55">{t('schedule.entryNote')}</label>
-              <textarea
-                value={form.note}
-                onChange={(e) => setForm((prev) => ({ ...prev, note: e.target.value }))}
-                rows={3}
-                className="w-full resize-y rounded-md border border-border/80 bg-background px-2.5 py-1.5 text-[13px] outline-none focus:border-accent"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button variant="ghost" size="sm">{t('common.cancel')}</Button>
-            </DialogClose>
-            <Button size="sm" onClick={() => void submitForm()} disabled={!form.title.trim() || !form.date}>
-              {t('common.save')}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }

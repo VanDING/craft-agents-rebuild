@@ -216,6 +216,18 @@ export function parseCompoundRoute(route: string): ParsedCompoundRoute | null {
     }
     if (
       segments.length === 4
+      && segments[1] === 'calendar'
+      && segments[2] === 'schedule'
+      && segments[3]
+    ) {
+      return {
+        navigator: 'projects',
+        projectView: 'calendar',
+        details: { type: 'calendarEntry', id: decodeURIComponent(segments[3]) },
+      }
+    }
+    if (
+      segments.length === 4
       && isProjectManagementView(segments[1])
       && segments[1] !== 'overview'
       && segments[2] === 'work-item'
@@ -384,6 +396,9 @@ export function buildCompoundRoute(parsed: ParsedCompoundRoute): string {
       return parsed.projectView && parsed.projectView !== 'overview'
         ? `projects/${parsed.projectView}`
         : 'projects'
+    }
+    if (parsed.details.type === 'calendarEntry') {
+      return `projects/calendar/schedule/${encodeURIComponent(parsed.details.id)}`
     }
     if (parsed.details.type === 'workItem' && parsed.projectView && parsed.projectView !== 'overview') {
       return `projects/${parsed.projectView}/work-item/${encodeURIComponent(parsed.details.id)}`
@@ -664,6 +679,13 @@ function convertCompoundToNavigationState(compound: ParsedCompoundRoute): Naviga
     if (!compound.details) {
       return { navigator: 'projects', view: compound.projectView ?? 'overview', details: null }
     }
+    if (compound.details.type === 'calendarEntry') {
+      return {
+        navigator: 'projects',
+        view: 'calendar',
+        details: { type: 'calendarEntry', calendarEntryId: compound.details.id },
+      }
+    }
     return compound.details.type === 'workItem'
       ? {
           navigator: 'projects',
@@ -894,7 +916,9 @@ function navigationStateToCompoundRoute(state: NavigationState): ParsedCompoundR
       details: state.details
         ? state.details.type === 'project'
           ? { type: 'project', id: state.details.projectSlug }
-          : { type: 'workItem', id: state.details.workItemId }
+          : state.details.type === 'workItem'
+            ? { type: 'workItem', id: state.details.workItemId }
+            : { type: 'calendarEntry', id: state.details.calendarEntryId }
         : null,
     }
   }

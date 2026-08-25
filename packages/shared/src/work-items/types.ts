@@ -76,9 +76,6 @@ export type WorkItemScheduledFilter = 'all' | 'scheduled' | 'unscheduled';
 export type WorkItemSortField = 'createdAt' | 'updatedAt' | 'title' | 'startAt' | 'dueAt';
 export type WorkItemSortDirection = 'asc' | 'desc';
 
-export type WorkItemViewLayout = 'list' | 'board' | 'calendar';
-export type WorkItemViewGroupBy = 'none' | 'project' | 'status' | 'column' | 'dueDate';
-
 /** Shared query contract used by List, Board and Calendar projections. */
 export interface WorkItemQuery {
   projectIds?: readonly string[];
@@ -94,38 +91,6 @@ export interface WorkItemQuery {
     field: WorkItemSortField;
     direction?: WorkItemSortDirection;
   };
-}
-
-/** A durable, named lens shared by every WorkItem projection. */
-export interface WorkItemViewDefinition {
-  id: string;
-  name: string;
-  /** Preferred projection when the view is opened. Its query works in every layout. */
-  layout: WorkItemViewLayout;
-  query: WorkItemQuery;
-  display: {
-    groupBy: WorkItemViewGroupBy;
-    showSubtasks: boolean;
-  };
-  isDefault?: boolean;
-  createdAt: number;
-  updatedAt: number;
-}
-
-export interface CreateWorkItemViewInput {
-  name: string;
-  layout: WorkItemViewLayout;
-  query?: WorkItemQuery;
-  display?: Partial<WorkItemViewDefinition['display']>;
-  isDefault?: boolean;
-}
-
-export interface UpdateWorkItemViewInput {
-  name?: string;
-  layout?: WorkItemViewLayout;
-  query?: WorkItemQuery;
-  display?: Partial<WorkItemViewDefinition['display']>;
-  isDefault?: boolean;
 }
 
 export type WorkItemActorType = 'user' | 'agent' | 'automation' | 'system';

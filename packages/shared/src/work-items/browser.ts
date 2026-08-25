@@ -1,9 +1,7 @@
 /** Browser-safe WorkItem contract and pure projection helpers. */
 export type {
   CreateWorkItemInput,
-  CreateWorkItemViewInput,
   UpdateWorkItemInput,
-  UpdateWorkItemViewInput,
   WorkItem,
   WorkItemEvent,
   WorkItemEventAction,
@@ -15,9 +13,6 @@ export type {
   WorkItemScheduledFilter,
   WorkItemSortDirection,
   WorkItemSortField,
-  WorkItemViewDefinition,
-  WorkItemViewGroupBy,
-  WorkItemViewLayout,
 } from './types.ts';
 
 export {

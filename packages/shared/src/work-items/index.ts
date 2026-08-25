@@ -1,13 +1,11 @@
 export type {
   CreateWorkItemInput,
-  CreateWorkItemViewInput,
   DetachSessionWorkItemsResult,
   EnsureSessionWorkItemResult,
   LegacySessionWorkItemSource,
   LegacySessionWorkItemMigrationResult,
   PrimaryWorkItemSyncResult,
   UpdateWorkItemInput,
-  UpdateWorkItemViewInput,
   WorkItem,
   WorkItemEvent,
   WorkItemEventAction,
@@ -19,9 +17,6 @@ export type {
   WorkItemScheduledFilter,
   WorkItemSortDirection,
   WorkItemSortField,
-  WorkItemViewDefinition,
-  WorkItemViewGroupBy,
-  WorkItemViewLayout,
 } from './types.ts';
 
 export {
@@ -32,17 +27,13 @@ export {
 
 export {
   createWorkItem,
-  createWorkItemView,
   deleteWorkItem,
-  deleteWorkItemView,
   detachSessionFromWorkItems,
   ensureWorkItemForSession,
   findPrimaryWorkItemBySessionId,
   listWorkItems,
   listWorkItemEvents,
-  listWorkItemViews,
   migrateLegacySessionWorkItems,
   updatePrimaryWorkItemForSession,
   updateWorkItem,
-  updateWorkItemView,
 } from './storage.ts';

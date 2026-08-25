@@ -1,18 +1,12 @@
 import { RPC_CHANNELS } from '@craft-agent/shared/protocol'
 import {
   createWorkItem,
-  createWorkItemView,
   deleteWorkItem,
-  deleteWorkItemView,
   listWorkItemEvents,
-  listWorkItemViews,
   migrateLegacySessionWorkItems,
   updateWorkItem,
-  updateWorkItemView,
   type CreateWorkItemInput,
-  type CreateWorkItemViewInput,
   type UpdateWorkItemInput,
-  type UpdateWorkItemViewInput,
   type WorkItemMutationContext,
 } from '@craft-agent/shared/work-items'
 import { getWorkspaceByNameOrId } from '@craft-agent/shared/config'
@@ -25,10 +19,6 @@ export const HANDLED_CHANNELS = [
   RPC_CHANNELS.workItems.UPDATE,
   RPC_CHANNELS.workItems.DELETE,
   RPC_CHANNELS.workItems.LIST_EVENTS,
-  RPC_CHANNELS.workItems.LIST_VIEWS,
-  RPC_CHANNELS.workItems.CREATE_VIEW,
-  RPC_CHANNELS.workItems.UPDATE_VIEW,
-  RPC_CHANNELS.workItems.DELETE_VIEW,
 ] as const
 
 function workspaceRoot(workspaceId: string): string {
@@ -140,30 +130,4 @@ export function registerWorkItemHandlers(server: RpcServer, deps: HandlerDeps): 
     listWorkItemEvents(workspaceRoot(workspaceId), itemId, limit),
   )
 
-  server.handle(RPC_CHANNELS.workItems.LIST_VIEWS, (_ctx, workspaceId: string) =>
-    listWorkItemViews(workspaceRoot(workspaceId)),
-  )
-
-  server.handle(
-    RPC_CHANNELS.workItems.CREATE_VIEW,
-    (_ctx, workspaceId: string, input: CreateWorkItemViewInput) => {
-      const view = createWorkItemView(workspaceRoot(workspaceId), input)
-      broadcastChanged(server, workspaceId)
-      return view
-    },
-  )
-
-  server.handle(
-    RPC_CHANNELS.workItems.UPDATE_VIEW,
-    (_ctx, workspaceId: string, viewId: string, patch: UpdateWorkItemViewInput) => {
-      const view = updateWorkItemView(workspaceRoot(workspaceId), viewId, patch)
-      broadcastChanged(server, workspaceId)
-      return view
-    },
-  )
-
-  server.handle(RPC_CHANNELS.workItems.DELETE_VIEW, (_ctx, workspaceId: string, viewId: string) => {
-    deleteWorkItemView(workspaceRoot(workspaceId), viewId)
-    broadcastChanged(server, workspaceId)
-  })
 }

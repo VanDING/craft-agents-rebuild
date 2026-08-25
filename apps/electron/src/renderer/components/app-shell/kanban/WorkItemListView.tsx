@@ -1,9 +1,8 @@
 import * as React from 'react'
-import { CheckSquare, Link2, Plus, Search, Square, Trash2 } from 'lucide-react'
-import { useAtomValue, useSetAtom } from 'jotai'
+import { CheckSquare, Link2, Search, Square, Trash2 } from 'lucide-react'
+import { useAtomValue } from 'jotai'
 import { useTranslation } from 'react-i18next'
 import { projectsAtom } from '@/atoms/projects'
-import { workItemDetailIdAtom } from '@/atoms/kanban'
 import { useAppShellContext } from '@/context/AppShellContext'
 import { useCompensateForStoplight } from '@/context/StoplightContext'
 import { routes, useNavigation } from '@/contexts/NavigationContext'
@@ -12,16 +11,16 @@ import { useWorkItemViewState } from '@/hooks/useWorkItemViewState'
 import { queryWorkItems, type WorkItemSortField } from '@craft-agent/shared/work-items/browser'
 import { KanbanProjectFilter, type KanbanProjectFilterOption } from './KanbanProjectFilter'
 import { ProjectManagementViewTabs } from '../../projects/ProjectManagementViewTabs'
-import { WorkItemViewControls } from '../../projects/WorkItemViewControls'
+import { WorkItemFilterControls } from '../../projects/WorkItemFilterControls'
+import { ProjectSelectMenu } from '../../projects/ProjectSelectMenu'
 
 export function WorkItemListView() {
   const { activeWorkspaceId, sessionStatuses, trailingAction, expandButton } = useAppShellContext()
   const compensateForStoplight = useCompensateForStoplight()
   const { t } = useTranslation()
   const projects = useAtomValue(projectsAtom)
-  const setDetailId = useSetAtom(workItemDetailIdAtom)
   const { navigate } = useNavigation()
-  const { items, create, remove } = useWorkItems(activeWorkspaceId ?? null)
+  const { items, remove } = useWorkItems(activeWorkspaceId ?? null)
   const projectOptions = React.useMemo<KanbanProjectFilterOption[]>(
     () => projects.map((project) => ({
       id: project.config.id,
@@ -50,10 +49,7 @@ export function WorkItemListView() {
     setStatusIds,
     scheduled,
     setScheduled,
-    activeViewId,
-    setActiveViewId,
     query,
-    applyQuery,
     selectedIds,
     setSelectedIds,
   } = useWorkItemViewState(activeWorkspaceId ?? null, items, liveProjectIds)
@@ -61,25 +57,28 @@ export function WorkItemListView() {
     () => queryWorkItems(items, query),
     [items, query],
   )
-  const [newTitle, setNewTitle] = React.useState('')
+  const sortOptions = React.useMemo(() => [
+    { value: 'updatedAt:desc', label: t('kanban.workItemSortUpdated') },
+    { value: 'createdAt:desc', label: t('kanban.workItemSortCreated') },
+    { value: 'title:asc', label: t('kanban.workItemSortTitle') },
+    { value: 'dueAt:asc', label: t('kanban.workItemSortDue') },
+  ], [t])
   const openDetail = React.useCallback((itemId: string) => {
-    setDetailId(itemId)
     navigate(routes.view.projectWorkItem('list', itemId))
-  }, [navigate, setDetailId])
+  }, [navigate])
 
   const allVisibleSelected = visibleItems.length > 0 && visibleItems.every((item) => selectedIds.includes(item.id))
 
   return (
     <div className="flex h-full flex-col bg-background">
       <div
-        className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 py-2.5"
+        className="flex h-[42px] flex-none items-center justify-between gap-2 border-b border-border/60"
         style={{
           paddingLeft: compensateForStoplight ? 84 : 16,
           paddingRight: compensateForStoplight ? 48 : 16,
         }}
       >
-        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-          <span className="text-sm font-semibold">{t('kanban.allTasks')}</span>
+        <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
           {projectOptions.length > 0 && (
             <KanbanProjectFilter projects={projectOptions} value={projectIds} onChange={setProjectIds} />
           )}
@@ -93,28 +92,18 @@ export function WorkItemListView() {
               className="h-8 w-full rounded-lg border border-border bg-background pl-8 pr-2 text-xs outline-none focus:border-ring/60"
             />
           </label>
-          <select
+          <ProjectSelectMenu
             value={`${sort.field}:${sort.direction ?? 'asc'}`}
-            onChange={(event) => {
-              const [field, direction] = event.target.value.split(':') as [WorkItemSortField, 'asc' | 'desc']
+            options={sortOptions}
+            onValueChange={(value) => {
+              const [field, direction] = value.split(':') as [WorkItemSortField, 'asc' | 'desc']
               setSort({ field, direction })
             }}
-            aria-label={t('kanban.workItemSort')}
-            className="h-8 rounded-lg border border-border bg-background px-2 text-xs outline-none"
-          >
-            <option value="updatedAt:desc">{t('kanban.workItemSortUpdated')}</option>
-            <option value="createdAt:desc">{t('kanban.workItemSortCreated')}</option>
-            <option value="title:asc">{t('kanban.workItemSortTitle')}</option>
-            <option value="dueAt:asc">{t('kanban.workItemSortDue')}</option>
-          </select>
+            ariaLabel={t('kanban.workItemSort')}
+          />
         </div>
         <div className="ml-auto flex shrink-0 items-center gap-2">
-          <WorkItemViewControls
-            layout="list"
-            query={query}
-            applyQuery={applyQuery}
-            activeViewId={activeViewId}
-            setActiveViewId={setActiveViewId}
+          <WorkItemFilterControls
             statusIds={statusIds}
             setStatusIds={setStatusIds}
             scheduled={scheduled}
@@ -125,32 +114,6 @@ export function WorkItemListView() {
           {trailingAction}
           {expandButton}
         </div>
-      </div>
-
-      <div className="flex flex-none items-center gap-2 border-b border-border/50 px-4 py-2">
-        <input
-          value={newTitle}
-          onChange={(event) => setNewTitle(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key !== 'Enter' || !newTitle.trim()) return
-            void create({ title: newTitle.trim(), projectId: projectIds[0], statusId: 'todo' })
-            setNewTitle('')
-          }}
-          placeholder={t('kanban.newTaskTitle')}
-          className="h-8 min-w-0 flex-1 rounded-lg border border-border bg-background px-3 text-xs outline-none focus:border-ring/60"
-        />
-        <button
-          type="button"
-          disabled={!newTitle.trim()}
-          onClick={() => {
-            if (!newTitle.trim()) return
-            void create({ title: newTitle.trim(), projectId: projectIds[0], statusId: 'todo' })
-            setNewTitle('')
-          }}
-          className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground disabled:opacity-50"
-        >
-          <Plus className="h-3.5 w-3.5" /> {t('kanban.newTask')}
-        </button>
       </div>
 
       {selectedIds.length > 0 && (
