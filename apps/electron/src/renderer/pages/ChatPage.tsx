@@ -484,7 +484,7 @@ const ChatPage = React.memo(function ChatPage({ sessionId }: ChatPageProps) {
       taskSlug,
       initialTitle: sessionMeta ? getSessionTitle(sessionMeta) : undefined,
     })
-    navigate(routes.view.board())
+    navigate(routes.view.kanban())
   }, [taskSlug, sessionId, sessionMeta, setKanbanEditorTarget])
 
   const handleDelete = React.useCallback(async () => {

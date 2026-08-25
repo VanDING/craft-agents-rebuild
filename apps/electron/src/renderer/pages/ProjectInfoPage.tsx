@@ -27,7 +27,6 @@ import { cn } from '@/lib/utils'
 import { PROJECT_COLOR_PALETTE } from '@/utils/project-colors'
 import { InlineColorPickerRow } from '@/components/ui/inline-color-picker-row'
 import type { LoadedProject, ProjectAsset } from '@craft-agent/shared/projects/types'
-import { ProjectManagementViewTabs } from '@/components/projects/ProjectManagementViewTabs'
 
 interface ProjectInfoPageProps {
   projectSlug: string
@@ -214,7 +213,6 @@ export default function ProjectInfoPage({ projectSlug }: ProjectInfoPageProps) {
     >
       <Info_Page.Header
         title={project?.config.name ?? ''}
-        actions={<ProjectManagementViewTabs value="overview" />}
         centerTitleInPanel
       />
       {project && (

@@ -3,7 +3,7 @@
  *
  * Registry spanning Primary launchers and Context Workbench items. The union
  * stays useful to TopBar, while the two role-specific registries prevent UI
- * code from treating sessions/projects as peer workbench tabs.
+ * code from treating the primary surfaces as peer workbench tabs.
  */
 
 import { parseRouteToNavigationState } from '../../shared/route-parser'
@@ -18,7 +18,8 @@ import type { ViewRoute } from '../../shared/routes'
  */
 export type SurfaceLauncherKind =
   | 'sessions'
-  | 'projects'
+  | 'kanban'
+  | 'calendar'
   | 'diff'
   | 'files'
   | 'context'
@@ -27,14 +28,15 @@ export type SurfaceLauncherKind =
 
 export const SURFACE_LAUNCHER_KINDS: readonly SurfaceLauncherKind[] = [
   'sessions',
-  'projects',
+  'kanban',
+  'calendar',
   'diff',
   'files',
   'context',
   'trajectory',
 ] as const
 
-export const PRIMARY_SURFACE_LAUNCHER_KINDS = ['sessions', 'projects'] as const
+export const PRIMARY_SURFACE_LAUNCHER_KINDS = ['sessions', 'kanban', 'calendar'] as const
 export type PrimarySurfaceLauncherKind = (typeof PRIMARY_SURFACE_LAUNCHER_KINDS)[number]
 
 /** Preview remains trigger-only, so it is a valid item but not a tiled launcher. */
@@ -49,12 +51,13 @@ export type ContextWorkbenchLauncherKind = (typeof CONTEXT_WORKBENCH_LAUNCHER_KI
 export function isContextWorkbenchKind(
   kind: SurfaceLauncherKind,
 ): kind is Exclude<SurfaceLauncherKind, PrimarySurfaceLauncherKind> {
-  return kind !== 'sessions' && kind !== 'projects'
+  return kind !== 'sessions' && kind !== 'kanban' && kind !== 'calendar'
 }
 
 export const SURFACE_LAUNCHER_ROUTES: Record<SurfaceLauncherKind, ViewRoute> = {
   sessions: 'allSessions',
-  projects: 'projects',
+  kanban: 'kanban',
+  calendar: 'calendar',
   diff: 'diff',
   files: 'files',
   context: 'context',
@@ -66,7 +69,8 @@ export const SURFACE_LAUNCHER_ROUTES: Record<SurfaceLauncherKind, ViewRoute> = {
  * Classify a route into a workbench panel kind using parseRouteToNavigationState.
  *
  * - sessions navigator (any filter/list detail) → sessions
- * - every Project Management projection → projects
+ * - Kanban and Calendar projections → their direct launcher
+ * - Project overview/list → no global launcher (entered from the sidebar)
  * - bound panels (`other` navigator) → the bound panel kind
  * - everything else (sources/skills/settings/...) → null
  */
@@ -78,7 +82,9 @@ export function surfaceLauncherKindForRoute(route: ViewRoute): SurfaceLauncherKi
     case 'sessions':
       return 'sessions'
     case 'projects':
-      return 'projects'
+      if (navState.view === 'board') return 'kanban'
+      if (navState.view === 'calendar') return 'calendar'
+      return null
     case 'other':
       // Artifact tabs are contextual documents, not persistent top-bar
       // launcher categories. They still participate in Workbench routing.
@@ -90,5 +96,5 @@ export function surfaceLauncherKindForRoute(route: ViewRoute): SurfaceLauncherKi
 
 /** Translation key for a surface launcher or Workbench tab. */
 export function surfaceLauncherLabelKey(kind: SurfaceLauncherKind): string {
-  return kind === 'projects' ? 'sidebar.projects' : `contentPanel.button.${kind}`
+  return `contentPanel.button.${kind}`
 }

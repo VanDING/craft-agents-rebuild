@@ -6,7 +6,6 @@ import { PanelHeader } from '@/components/app-shell/PanelHeader'
 import { CalendarView } from '@/components/app-shell/kanban/CalendarView'
 import { KanbanBoardContainer } from '@/components/app-shell/kanban/KanbanBoardContainer'
 import { WorkItemListView } from '@/components/app-shell/kanban/WorkItemListView'
-import { ProjectManagementViewTabs } from './ProjectManagementViewTabs'
 import { TaskPage } from './TaskPage'
 import { SchedulePage } from './SchedulePage'
 
@@ -21,7 +20,7 @@ function assertNeverProjectManagementView(view: never): never {
 /**
  * The single Primary Surface for project-oriented work.
  *
- * Overview, Board and Calendar are projections within this component. Future
+ * Overview, Kanban and Calendar are projections within this component. Future
  * projections must be added to the shared registry and handled exhaustively
  * here; they do not become new top-level panel kinds.
  */
@@ -51,7 +50,6 @@ export function ProjectManagementSurface({ state }: ProjectManagementSurfaceProp
         <div className="flex h-full flex-col">
           <PanelHeader
             title={t('sidebar.projects')}
-            actions={<ProjectManagementViewTabs value="overview" />}
             centerTitleInPanel
           />
           <div className="flex flex-1 items-center justify-center text-muted-foreground">

@@ -76,8 +76,8 @@ describe('normalizePanelRouteForReconcile', () => {
   it('canonicalizes legacy project-management aliases during restore', () => {
     const resolver = (state: NavigationState): NavigationState => state
 
-    expect(normalizePanelRouteForReconcile('board', resolver)).toBe('projects/board')
-    expect(normalizePanelRouteForReconcile('calendar', resolver)).toBe('projects/calendar')
+    expect(normalizePanelRouteForReconcile('board', resolver)).toBe('kanban')
+    expect(normalizePanelRouteForReconcile('calendar', resolver)).toBe('calendar')
   })
 
   it('keeps explicit detail route even if resolver tries to rewrite it', () => {

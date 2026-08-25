@@ -1070,12 +1070,19 @@ export const getNavigationStateKey = (state: NavigationState): string => {
       return `projects/project/${state.details.projectSlug}`
     }
     if (state.details?.type === 'workItem' && state.view !== 'overview') {
-      return `projects/${state.view}/work-item/${encodeURIComponent(state.details.workItemId)}`
+      const base = state.view === 'board'
+        ? 'kanban'
+        : state.view === 'calendar'
+          ? 'calendar'
+          : 'projects/list'
+      return `${base}/work-item/${encodeURIComponent(state.details.workItemId)}`
     }
     if (state.details?.type === 'calendarEntry' && state.view === 'calendar') {
-      return `projects/calendar/schedule/${encodeURIComponent(state.details.calendarEntryId)}`
+      return `calendar/schedule/${encodeURIComponent(state.details.calendarEntryId)}`
     }
-    return state.view === 'overview' ? 'projects' : `projects/${state.view}`
+    if (state.view === 'board') return 'kanban'
+    if (state.view === 'calendar') return 'calendar'
+    return state.view === 'overview' ? 'projects' : 'projects/list'
   }
   if (state.navigator === 'settings') {
     if (state.subpage === null) return 'settings'
@@ -1128,6 +1135,36 @@ export const parseNavigationStateKey = (key: string): NavigationState | null => 
       return { navigator: 'automations', details: { type: 'automation', automationId } }
     }
     return { navigator: 'automations', details: null }
+  }
+
+  // Handle direct Kanban and Calendar projections. Legacy project-prefixed
+  // keys remain accepted below for persisted navigation compatibility.
+  if (key === 'kanban' || key === 'board') {
+    return { navigator: 'projects', view: 'board', details: null }
+  }
+  if (key.startsWith('kanban/work-item/')) {
+    return {
+      navigator: 'projects',
+      view: 'board',
+      details: { type: 'workItem', workItemId: decodeURIComponent(key.slice('kanban/work-item/'.length)) },
+    }
+  }
+  if (key === 'calendar') {
+    return { navigator: 'projects', view: 'calendar', details: null }
+  }
+  if (key.startsWith('calendar/schedule/')) {
+    return {
+      navigator: 'projects',
+      view: 'calendar',
+      details: { type: 'calendarEntry', calendarEntryId: decodeURIComponent(key.slice('calendar/schedule/'.length)) },
+    }
+  }
+  if (key.startsWith('calendar/work-item/')) {
+    return {
+      navigator: 'projects',
+      view: 'calendar',
+      details: { type: 'workItem', workItemId: decodeURIComponent(key.slice('calendar/work-item/'.length)) },
+    }
   }
 
   // Handle projects

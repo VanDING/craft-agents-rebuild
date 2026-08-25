@@ -68,7 +68,7 @@ export interface ParsedCompoundRoute {
  * Known prefixes that indicate a compound route
  */
 const COMPOUND_ROUTE_PREFIXES = [
-  'allSessions', 'flagged', 'archived', 'state', 'label', 'view', 'board', 'calendar', 'sources', 'skills', 'automations', 'projects', 'settings', 'diff', 'files', 'context', 'preview', 'trajectory', 'artifact'
+  'allSessions', 'flagged', 'archived', 'state', 'label', 'view', 'kanban', 'board', 'calendar', 'sources', 'skills', 'automations', 'projects', 'settings', 'diff', 'files', 'context', 'preview', 'trajectory', 'artifact'
 ]
 
 /**
@@ -104,9 +104,17 @@ export function parseCompoundRoute(route: string): ParsedCompoundRoute | null {
 
   const first = segments[0]
 
-  // Legacy standalone aliases. They now resolve into the Project Management
-  // surface; buildCompoundRoute emits the canonical projects/* route.
-  if (first === 'board') {
+  // Direct application-level projections. `board` remains a compatibility
+  // alias, while builders emit the canonical `kanban` route.
+  if (first === 'kanban' || first === 'board') {
+    if (segments.length === 3 && segments[1] === 'work-item' && segments[2]) {
+      return {
+        navigator: 'projects',
+        projectView: 'board',
+        details: { type: 'workItem', id: decodeURIComponent(segments[2]) },
+      }
+    }
+    if (segments.length !== 1) return null
     return {
       navigator: 'projects',
       projectView: 'board',
@@ -115,6 +123,21 @@ export function parseCompoundRoute(route: string): ParsedCompoundRoute | null {
   }
 
   if (first === 'calendar') {
+    if (segments.length === 3 && segments[1] === 'schedule' && segments[2]) {
+      return {
+        navigator: 'projects',
+        projectView: 'calendar',
+        details: { type: 'calendarEntry', id: decodeURIComponent(segments[2]) },
+      }
+    }
+    if (segments.length === 3 && segments[1] === 'work-item' && segments[2]) {
+      return {
+        navigator: 'projects',
+        projectView: 'calendar',
+        details: { type: 'workItem', id: decodeURIComponent(segments[2]) },
+      }
+    }
+    if (segments.length !== 1) return null
     return {
       navigator: 'projects',
       projectView: 'calendar',
@@ -393,15 +416,21 @@ export function buildCompoundRoute(parsed: ParsedCompoundRoute): string {
 
   if (parsed.navigator === 'projects') {
     if (!parsed.details) {
-      return parsed.projectView && parsed.projectView !== 'overview'
-        ? `projects/${parsed.projectView}`
-        : 'projects'
+      if (parsed.projectView === 'board') return 'kanban'
+      if (parsed.projectView === 'calendar') return 'calendar'
+      if (parsed.projectView === 'list') return 'projects/list'
+      return 'projects'
     }
     if (parsed.details.type === 'calendarEntry') {
-      return `projects/calendar/schedule/${encodeURIComponent(parsed.details.id)}`
+      return `calendar/schedule/${encodeURIComponent(parsed.details.id)}`
     }
     if (parsed.details.type === 'workItem' && parsed.projectView && parsed.projectView !== 'overview') {
-      return `projects/${parsed.projectView}/work-item/${encodeURIComponent(parsed.details.id)}`
+      const base = parsed.projectView === 'board'
+        ? 'kanban'
+        : parsed.projectView === 'calendar'
+          ? 'calendar'
+          : 'projects/list'
+      return `${base}/work-item/${encodeURIComponent(parsed.details.id)}`
     }
     return `projects/project/${parsed.details.id}`
   }

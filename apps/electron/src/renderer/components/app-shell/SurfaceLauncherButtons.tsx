@@ -1,8 +1,8 @@
 /**
  * SurfaceLauncherButtons
  *
- * Top-bar launchers for Primary Surfaces and Context Workbench items. Project
- * projections share one Projects launcher; Board/Calendar switch in-surface.
+ * Top-bar launchers for Primary Surfaces and Context Workbench items. Kanban
+ * and Calendar are direct primary launchers; Projects remains in the sidebar.
  *
  * Primary state comes from `primarySurfaceAtom`; bound item state comes from
  * `workbenchStateAtom`. A collapsed workbench retains its tab and shows the
@@ -17,7 +17,7 @@ import { useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAtomValue } from 'jotai'
 import {
-  MessageSquare, FolderKanban, GitCompareArrows,
+  MessageSquare, Columns3, CalendarDays, GitCompareArrows,
   FolderTree, ListFilter, FileText, Globe, Activity,
   type LucideIcon,
 } from 'lucide-react'
@@ -56,7 +56,8 @@ interface SurfaceLauncherButtonsProps {
 
 export const SURFACE_LAUNCHER_ICONS: Record<SurfaceLauncherKind, LucideIcon> = {
   sessions: MessageSquare,
-  projects: FolderKanban,
+  kanban: Columns3,
+  calendar: CalendarDays,
   diff: GitCompareArrows,
   files: FolderTree,
   context: ListFilter,

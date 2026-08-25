@@ -360,7 +360,7 @@ export function MainContentPanel({
     )
   }
 
-  // Project Management surface. Board and Calendar are peer projections here,
+  // Project Management surface. Kanban and Calendar are peer projections here,
   // not presentation modes of the Sessions navigator.
   if (isProjectsNavigation(navState)) {
     return wrapWithStoplight(

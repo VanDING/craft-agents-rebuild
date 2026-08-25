@@ -10,7 +10,6 @@ import { useWorkItems } from '@/hooks/useWorkItems'
 import { useWorkItemViewState } from '@/hooks/useWorkItemViewState'
 import { queryWorkItems, type WorkItemSortField } from '@craft-agent/shared/work-items/browser'
 import { KanbanProjectFilter, type KanbanProjectFilterOption } from './KanbanProjectFilter'
-import { ProjectManagementViewTabs } from '../../projects/ProjectManagementViewTabs'
 import { WorkItemFilterControls } from '../../projects/WorkItemFilterControls'
 import { ProjectSelectMenu } from '../../projects/ProjectSelectMenu'
 
@@ -110,7 +109,6 @@ export function WorkItemListView() {
             setScheduled={setScheduled}
             statuses={sessionStatuses ?? []}
           />
-          <ProjectManagementViewTabs value="list" />
           {trailingAction}
           {expandButton}
         </div>

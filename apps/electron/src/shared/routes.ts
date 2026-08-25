@@ -193,21 +193,30 @@ export const routes = {
 
     /** Project Management surface projection (workspace scope). */
     projectManagement: (view: ProjectManagementView = 'overview') =>
-      view === 'overview' ? 'projects' as const : `projects/${view}` as const,
+      view === 'overview'
+        ? 'projects' as const
+        : view === 'board'
+          ? 'kanban' as const
+          : view === 'calendar'
+            ? 'calendar' as const
+            : 'projects/list' as const,
 
     /** Full-page WorkItem create/edit route inside a Project Management projection. */
     projectWorkItem: (view: Exclude<ProjectManagementView, 'overview'>, workItemId: string) =>
-      `projects/${view}/work-item/${encodeURIComponent(workItemId)}` as const,
+      `${view === 'board' ? 'kanban' : view === 'calendar' ? 'calendar' : 'projects/list'}/work-item/${encodeURIComponent(workItemId)}` as const,
 
     /** Full-page standalone schedule create/edit route. */
     projectSchedule: (calendarEntryId: string) =>
-      `projects/calendar/schedule/${encodeURIComponent(calendarEntryId)}` as const,
+      `calendar/schedule/${encodeURIComponent(calendarEntryId)}` as const,
 
-    /** @deprecated Compatibility builder. Use projectManagement('board'). */
-    board: () => 'projects/board' as const,
+    /** Direct Kanban application surface. */
+    kanban: () => 'kanban' as const,
 
-    /** @deprecated Compatibility builder. Use projectManagement('calendar'). */
-    calendar: () => 'projects/calendar' as const,
+    /** @deprecated Compatibility builder. Use kanban(). */
+    board: () => 'kanban' as const,
+
+    /** Direct Calendar application surface. */
+    calendar: () => 'calendar' as const,
 
     // ─────────────────────────────────────────────
     // Bound content-workbench panels
@@ -241,6 +250,6 @@ export const routes = {
  */
 export type ActionRoute = ReturnType<(typeof routes.action)[keyof typeof routes.action]>
 /** Legacy persisted/deep-link aliases accepted for one migration window. */
-export type LegacyViewRoute = 'board' | 'calendar'
+export type LegacyViewRoute = 'board' | 'projects/board' | 'projects/calendar'
 export type ViewRoute = ReturnType<(typeof routes.view)[keyof typeof routes.view]> | LegacyViewRoute
 export type Route = ActionRoute | ViewRoute

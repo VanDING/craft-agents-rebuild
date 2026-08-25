@@ -23,8 +23,6 @@ import { KanbanBoard } from './KanbanBoard'
 import { KANBAN_COLUMNS, statusToColumn } from './status-column'
 import { KanbanProjectFilter, type KanbanProjectFilterOption } from './KanbanProjectFilter'
 import { TaskEditor } from './TaskEditor'
-import { ProjectManagementViewTabs } from '../../projects/ProjectManagementViewTabs'
-import { WorkItemFilterControls } from '../../projects/WorkItemFilterControls'
 import { buildModelCatalog } from './model-catalog'
 import { mergeSubtaskRows, type SpecNodeSummary, type SubtaskChildRow } from './subtask-merge'
 import type { SpecNode } from './task-spec-form'
@@ -84,13 +82,18 @@ export function KanbanBoardContainer() {
     setProjectIds: setProjectFilter,
     search,
     setSearch,
-    statusIds,
     setStatusIds,
-    scheduled,
     setScheduled,
     query,
     setSelectedIds,
   } = useWorkItemViewState(activeWorkspaceId ?? null, workItems, liveProjectIds)
+
+  // Status/schedule filters are intentionally not exposed on the direct Kanban
+  // surface. Clear legacy persisted values so no invisible filter can hide work.
+  React.useEffect(() => {
+    setStatusIds([])
+    setScheduled('all')
+  }, [setScheduled, setStatusIds])
 
   const workItemsById = React.useMemo(
     () => new Map(workItems.map((item) => [item.id, item])),
@@ -262,7 +265,11 @@ export function KanbanBoardContainer() {
   // Project filter: empty selection = show all. While a filter is active, tiles
   // with no project are hidden (an explicit "No project" option is a later add).
   const visibleTasks = React.useMemo(() => {
-    const visibleIds = new Set(queryWorkItems(workItems, query).map(({ id }) => id))
+    const visibleIds = new Set(queryWorkItems(workItems, {
+      ...query,
+      statusIds: [],
+      scheduled: 'all',
+    }).map(({ id }) => id))
     return tasks.filter(({ id }) => visibleIds.has(id))
   }, [tasks, workItems, query])
 
@@ -589,6 +596,8 @@ export function KanbanBoardContainer() {
               {t('kanban.column.columnsFrom', { project: editingProject.config.name })}
             </span>
           )}
+        </div>
+        <div className="ml-auto flex shrink-0 items-center gap-2">
           <button
             type="button"
             onClick={() => navigate(routes.view.projectWorkItem('board', 'new'))}
@@ -597,16 +606,6 @@ export function KanbanBoardContainer() {
           >
             <Plus className="h-3.5 w-3.5" strokeWidth={2.5} /> {t('kanban.newTask')}
           </button>
-        </div>
-        <div className="ml-auto flex shrink-0 items-center gap-2">
-          <WorkItemFilterControls
-            statusIds={statusIds}
-            setStatusIds={setStatusIds}
-            scheduled={scheduled}
-            setScheduled={setScheduled}
-            statuses={sessionStatuses ?? []}
-          />
-          <ProjectManagementViewTabs value="board" />
           {/* Surface-injected close + fullscreen controls. */}
           {trailingAction}
           {expandButton}

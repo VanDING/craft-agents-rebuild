@@ -909,7 +909,7 @@ export function TaskEditor({
       {/* Header */}
       <div className="flex items-center gap-2.5 rounded-xl border border-border bg-card px-3 py-2.5 shadow-minimal">
         <Btn variant="ghost" className="px-2" onClick={onClose}>
-          <ChevronLeft className="h-4 w-4" strokeWidth={2} /> {t('kanban.board')}
+          <ChevronLeft className="h-4 w-4" strokeWidth={2} /> {t('contentPanel.button.kanban')}
         </Btn>
         <span className="text-foreground/25">/</span>
         <span className="text-sm font-semibold">{isEdit ? t('tasks.editTask') : t('kanban.newTask')}</span>

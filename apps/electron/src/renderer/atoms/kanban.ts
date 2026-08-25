@@ -19,7 +19,7 @@ import type { WorkItemQuery } from '@craft-agent/shared/work-items/browser'
 /** Selected project ids to filter the board by. Empty array = all projects. */
 export const kanbanProjectFilterAtom = atom<string[]>([])
 
-/** Shared List/Board/Calendar query + selection state for the active workspace. */
+/** Shared List/Kanban/Calendar query + selection state for the active workspace. */
 export const workItemSearchAtom = atom('')
 export const workItemSortAtom = atom<NonNullable<WorkItemQuery['sort']>>({
   field: 'updatedAt',

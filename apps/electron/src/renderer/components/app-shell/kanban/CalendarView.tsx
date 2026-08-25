@@ -39,8 +39,6 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { ScrollArea } from '@/components/ui/scroll-area'
 import type { CalendarEntry } from '@craft-agent/shared/protocol'
 import { queryWorkItems, workItemDateKey, type WorkItem } from '@craft-agent/shared/work-items/browser'
-import { ProjectManagementViewTabs } from '../../projects/ProjectManagementViewTabs'
-import { WorkItemFilterControls } from '../../projects/WorkItemFilterControls'
 import { KanbanProjectFilter, type KanbanProjectFilterOption } from './KanbanProjectFilter'
 
 type ViewMode = 'day' | 'week' | 'month'
@@ -108,7 +106,7 @@ interface CalendarProjection {
 }
 
 export function CalendarView() {
-  const { activeWorkspaceId, sessionStatuses, onCreateSession, trailingAction, expandButton } = useAppShellContext()
+  const { activeWorkspaceId, onCreateSession, trailingAction, expandButton } = useAppShellContext()
   const compensateForStoplight = useCompensateForStoplight()
   const { t } = useTranslation()
   const { navigate, navigateToSession } = useNavigation()
@@ -125,13 +123,18 @@ export function CalendarView() {
     setProjectIds,
     search,
     setSearch,
-    statusIds,
     setStatusIds,
-    scheduled,
     setScheduled,
     query,
     setSelectedIds,
   } = useWorkItemViewState(activeWorkspaceId ?? null, workItems, liveProjectIds)
+
+  // Calendar always shows scheduled work. Clear legacy hidden filter values so
+  // they cannot silently narrow this direct surface.
+  React.useEffect(() => {
+    setStatusIds([])
+    setScheduled('all')
+  }, [setScheduled, setStatusIds])
   const [view, setView] = React.useState<ViewMode>('month')
   const [cursor, setCursor] = React.useState(() => startOfMonth(new Date()))
   const [selectedDay, setSelectedDay] = React.useState<Date | null>(null)
@@ -146,7 +149,8 @@ export function CalendarView() {
     const normalizedSearch = search.trim().toLocaleLowerCase()
     const scheduledWorkItems = queryWorkItems(workItems, {
       ...query,
-      scheduled: scheduled === 'all' ? 'scheduled' : scheduled,
+      statusIds: [],
+      scheduled: 'scheduled',
     }).flatMap((item): CalendarProjection[] => {
       const start = workItemDateKey(item.startAt) ?? workItemDateKey(item.dueAt)
       const end = workItemDateKey(item.dueAt) ?? workItemDateKey(item.startAt)
@@ -182,7 +186,7 @@ export function CalendarView() {
     return [...scheduledWorkItems, ...standalone].sort((left, right) =>
       left.date.localeCompare(right.date) || (left.time ?? '').localeCompare(right.time ?? '') || left.title.localeCompare(right.title),
     )
-  }, [entries, projectIds, query, scheduled, search, workItems])
+  }, [entries, projectIds, query, search, workItems])
 
   const entriesFor = React.useCallback(
     (day: Date): CalendarProjection[] => {
@@ -795,13 +799,13 @@ export function CalendarView() {
           overlay): left reserves macOS traffic lights, right reserves the
           floating restore button of the expanded overlay. */}
       <div
-        className="flex h-[42px] flex-none items-center justify-between gap-2 border-b border-border/60"
+        className="grid h-[42px] flex-none grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 border-b border-border/60"
         style={{
           paddingLeft: compensateForStoplight ? 84 : 16,
           paddingRight: compensateForStoplight ? 48 : 16,
         }}
       >
-        <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
+        <div className="flex min-w-0 items-center gap-2 overflow-hidden">
           {projectOptions.length > 0 && (
             <KanbanProjectFilter projects={projectOptions} value={projectIds} onChange={setProjectIds} />
           )}
@@ -815,6 +819,8 @@ export function CalendarView() {
               className="h-8 w-full rounded-lg border border-border bg-background pl-8 pr-2 text-xs outline-none focus:border-ring/60"
             />
           </label>
+        </div>
+        <div className="flex shrink-0 items-center justify-center gap-2">
           <button
             type="button"
             onClick={goPrev}
@@ -839,6 +845,8 @@ export function CalendarView() {
           >
             {t('common.today')}
           </button>
+        </div>
+        <div className="flex min-w-0 items-center justify-end gap-2">
           <div className="inline-flex items-center gap-0.5 rounded-lg border border-border/80 bg-foreground/[0.02] p-0.5">
             {(['day', 'week', 'month'] as const).map((mode) => (
               <button
@@ -863,16 +871,6 @@ export function CalendarView() {
             <Plus className="h-3.5 w-3.5" strokeWidth={2.5} />
             {t('schedule.newEntry')}
           </Button>
-        </div>
-        <div className="ml-auto flex shrink-0 items-center gap-2">
-          <WorkItemFilterControls
-            statusIds={statusIds}
-            setStatusIds={setStatusIds}
-            scheduled={scheduled}
-            setScheduled={setScheduled}
-            statuses={sessionStatuses ?? []}
-          />
-          <ProjectManagementViewTabs value="calendar" />
           {/* Surface-injected close + fullscreen controls. */}
           {trailingAction}
           {expandButton}

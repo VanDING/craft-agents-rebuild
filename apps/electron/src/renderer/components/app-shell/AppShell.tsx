@@ -619,7 +619,7 @@ function AppShellContent({
 
   const sessionFilter = sessionsContext?.filter ?? null
 
-  // Board/calendar are full-width projections inside Project Management, so
+  // Kanban/Calendar are full-width projections inside Project Management, so
   // its project-list navigator collapses while either projection is active.
   const isFullWidthView = isProjectsNavigation(navState) && (navState.view === 'board' || navState.view === 'calendar')
 
@@ -2061,7 +2061,7 @@ function AppShellContent({
   /** Primary launchers navigate; bound launchers activate a Workbench tab. */
   const lastWorkbenchKindRef = useRef<SurfaceLauncherKind>('diff')
   const openSurfaceLauncher = useCallback((kind: SurfaceLauncherKind) => {
-    if (kind === 'sessions' || kind === 'projects') {
+    if (kind === 'sessions' || kind === 'kanban' || kind === 'calendar') {
       navigate(SURFACE_LAUNCHER_ROUTES[kind])
       return
     }

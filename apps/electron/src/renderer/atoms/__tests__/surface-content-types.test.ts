@@ -33,13 +33,18 @@ describe('Surface content types', () => {
     expect(getSurfacePanelTypeFromRoute('automations')).toBe('automation')
   })
 
-  it('classifies all project projections as one Project Management surface', () => {
+  it('keeps one Project Management surface while exposing direct launchers', () => {
     expect(getSurfacePanelTypeFromRoute('projects')).toBe('projects')
+    expect(getSurfacePanelTypeFromRoute('kanban')).toBe('projects')
+    expect(getSurfacePanelTypeFromRoute('calendar')).toBe('projects')
     expect(getSurfacePanelTypeFromRoute('projects/board')).toBe('projects')
     expect(getSurfacePanelTypeFromRoute('projects/calendar')).toBe('projects')
     expect(getSurfacePanelTypeFromRoute('board')).toBe('projects')
-    expect(surfaceLauncherKindForRoute('projects/board')).toBe('projects')
-    expect(surfaceLauncherKindForRoute('projects/calendar')).toBe('projects')
+    expect(surfaceLauncherKindForRoute('projects')).toBeNull()
+    expect(surfaceLauncherKindForRoute('kanban')).toBe('kanban')
+    expect(surfaceLauncherKindForRoute('projects/board')).toBe('kanban')
+    expect(surfaceLauncherKindForRoute('calendar')).toBe('calendar')
+    expect(surfaceLauncherKindForRoute('projects/calendar')).toBe('calendar')
   })
 
   it('round-trips bound navigation states without session identity', () => {

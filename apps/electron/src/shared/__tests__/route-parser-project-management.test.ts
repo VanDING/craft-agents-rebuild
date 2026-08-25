@@ -8,7 +8,7 @@ import {
 import { getNavigationStateKey, parseNavigationStateKey } from '../types'
 
 describe('Project Management routes', () => {
-  it('round-trips every enabled projection through its canonical projects route', () => {
+  it('round-trips every enabled projection through its canonical route', () => {
     for (const view of ['overview', 'list', 'board', 'calendar'] as const) {
       const route = routes.view.projectManagement(view)
       const state = parseRouteToNavigationState(route)
@@ -18,14 +18,18 @@ describe('Project Management routes', () => {
     }
   })
 
-  it('migrates legacy standalone aliases to canonical project routes', () => {
+  it('migrates legacy aliases to the direct canonical routes', () => {
     const board = parseRouteToNavigationState('board')
     const calendar = parseRouteToNavigationState('calendar')
+    const prefixedBoard = parseRouteToNavigationState('projects/board')
+    const prefixedCalendar = parseRouteToNavigationState('projects/calendar')
 
     expect(board).toEqual({ navigator: 'projects', view: 'board', details: null })
     expect(calendar).toEqual({ navigator: 'projects', view: 'calendar', details: null })
-    expect(board && buildRouteFromNavigationState(board)).toBe('projects/board')
-    expect(calendar && buildRouteFromNavigationState(calendar)).toBe('projects/calendar')
+    expect(prefixedBoard).toEqual(board)
+    expect(prefixedCalendar).toEqual(calendar)
+    expect(board && buildRouteFromNavigationState(board)).toBe('kanban')
+    expect(calendar && buildRouteFromNavigationState(calendar)).toBe('calendar')
   })
 
   it('normalizes an explicit overview segment to the compact projects route', () => {
@@ -50,7 +54,7 @@ describe('Project Management routes', () => {
     const route = routes.view.projectWorkItem('board', 'task / 42')
     const state = parseRouteToNavigationState(route)
 
-    expect(route).toBe('projects/board/work-item/task%20%2F%2042')
+    expect(route).toBe('kanban/work-item/task%20%2F%2042')
     expect(state).toEqual({
       navigator: 'projects',
       view: 'board',
@@ -78,8 +82,9 @@ describe('Project Management routes', () => {
   it('persists project projection navigation keys without conflating sessions', () => {
     const state = { navigator: 'projects', view: 'calendar', details: null } as const
 
-    expect(getNavigationStateKey(state)).toBe('projects/calendar')
+    expect(getNavigationStateKey(state)).toBe('calendar')
     expect(parseNavigationStateKey('projects/calendar')).toEqual(state)
+    expect(parseNavigationStateKey('calendar')).toEqual(state)
   })
 
   it('does not expose the reserved gantt view before it is implemented', () => {

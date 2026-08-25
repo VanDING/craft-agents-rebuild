@@ -16,7 +16,7 @@ interface WorkItemFilterControlsProps {
   className?: string
 }
 
-/** Transient query controls shared by List, Board and Calendar. */
+/** Preserved query controls for the future dedicated task-list workflow. */
 export function WorkItemFilterControls({
   statusIds,
   setStatusIds,
