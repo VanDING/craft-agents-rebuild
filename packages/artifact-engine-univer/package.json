@@ -1,6 +1,6 @@
 {
   "name": "@craft-agent/artifact-engine-univer",
-  "version": "0.12.0",
+  "version": "0.12.1",
   "license": "Apache-2.0",
   "description": "Optional Univer OSS Sheet adapter for Craft Agent Artifacts",
   "type": "module",

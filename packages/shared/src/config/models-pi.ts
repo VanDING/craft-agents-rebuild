@@ -156,6 +156,8 @@ const PI_PROVIDER_DISPLAY: Partial<Record<string, { label: string; placeholder: 
   'vercel-ai-gateway':      { label: 'Vercel AI Gateway',  placeholder: 'Paste your key here...' },
   'huggingface':            { label: 'Hugging Face',       placeholder: 'hf_...' },
   'minimax':                { label: 'Minimax',            placeholder: 'Paste your key here...' },
+  'moonshotai':             { label: 'Moonshot AI',        placeholder: 'sk-...' },
+  'moonshotai-cn':          { label: 'Moonshot AI (CN)',   placeholder: 'sk-...' },
   'kimi-coding':            { label: 'Kimi (Coding)',      placeholder: 'sk-kimi-...' },
   'zai':                    { label: 'z.ai (GLM)',         placeholder: 'Paste your key here...' },
 };

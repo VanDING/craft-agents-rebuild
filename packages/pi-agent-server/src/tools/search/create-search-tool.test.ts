@@ -85,6 +85,33 @@ describe('createSearchTool', () => {
     );
   });
 
+  it('truncates oversized provider errors in the tool result', async () => {
+    const hugePrimary = `primary detail ${'x'.repeat(5_000)}`;
+    const hugeFallback = `fallback detail ${'y'.repeat(5_000)}`;
+    const provider: WebSearchProvider = {
+      name: 'OpenAI',
+      async search() {
+        throw new Error(hugePrimary);
+      },
+    };
+
+    const fallbackProvider: WebSearchProvider = {
+      name: 'DuckDuckGo',
+      async search() {
+        throw new Error(hugeFallback);
+      },
+    };
+
+    const tool = createSearchTool(provider, fallbackProvider);
+    const error = await tool.execute('tool-5', { query: 'craft' }).catch((e: unknown) => e as Error);
+
+    expect(error.message).toContain('primary detail');
+    expect(error.message).toContain('fallback detail');
+    expect(error.message).toContain('…');
+    // Both snippets capped at 500 chars — the combined message stays compact.
+    expect(error.message.length).toBeLessThan(1_300);
+  });
+
   it('does not recurse fallback when provider is already fallback provider', async () => {
     const ddgProvider: WebSearchProvider = {
       name: 'DuckDuckGo',
