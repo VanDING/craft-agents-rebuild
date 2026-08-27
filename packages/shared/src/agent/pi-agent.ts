@@ -38,6 +38,13 @@ import { getModelById } from '../config/models.ts';
 // BaseAgent provides common functionality
 import { BaseAgent } from './base-agent.ts';
 import type { Workspace } from '../config/storage.ts';
+import type {
+  DurableModelOutcomeRequest,
+  DurableModelPrepareRequest,
+  DurableToolExecutionIdentity,
+  DurableToolOutcomeRequest,
+  DurableToolPrepareRequest,
+} from '../durable-runtime/types.ts';
 
 // Event adapter
 import { PiEventAdapter } from './backend/pi/event-adapter.ts';
@@ -378,6 +385,9 @@ export class PiAgent extends BaseAgent {
     displayName?: string;
     capturedAt: number;
   }> = new Map();
+
+  /** Pi emits tool_execution_start before execute(); hold it until Runtime Host commits T1. */
+  private bufferedDurableToolStarts = new Map<string, Record<string, unknown>>();
 
   // Current user message (for context in summarization)
   private currentUserMessage: string = '';
@@ -953,10 +963,21 @@ export class PiAgent extends BaseAgent {
         this.subprocessReadyResolve?.();
         break;
 
-      case 'event':
-        // Pi SDK event -- forward through PiEventAdapter
-        this.handleSubprocessEvent(msg.event as Record<string, unknown>);
+      case 'event': {
+        // Pi SDK announces a tool before its execute() wrapper reaches T1. Do not
+        // expose that speculative state to UI projections. report_progress is an
+        // internal presentation tool and deliberately has no external boundary.
+        const event = msg.event as Record<string, unknown>;
+        const eventType = event.type as string | undefined;
+        const toolCallId = event.toolCallId as string | undefined;
+        const toolName = event.toolName as string | undefined;
+        if (eventType === 'tool_execution_start' && toolCallId && toolName !== 'report_progress') {
+          this.bufferedDurableToolStarts.set(toolCallId, event);
+          break;
+        }
+        this.handleSubprocessEvent(event);
         break;
+      }
 
       case 'pre_tool_use_request':
         // Subprocess needs permission check + transforms before tool execution
@@ -974,7 +995,24 @@ export class PiAgent extends BaseAgent {
           requestId: string;
           toolName: string;
           args: Record<string, unknown>;
+          durableTool?: DurableToolExecutionIdentity;
         });
+        break;
+
+      case 'durable_tool_prepare_request':
+        void this.handleDurableToolPrepareRequest(msg as unknown as DurableToolPrepareRequest & { requestId: string });
+        break;
+
+      case 'durable_tool_outcome_request':
+        void this.handleDurableToolOutcomeRequest(msg as unknown as DurableToolOutcomeRequest & { requestId: string });
+        break;
+
+      case 'durable_model_prepare_request':
+        void this.handleDurableModelPrepareRequest(msg as unknown as DurableModelPrepareRequest & { requestId: string });
+        break;
+
+      case 'durable_model_outcome_request':
+        void this.handleDurableModelOutcomeRequest(msg as unknown as DurableModelOutcomeRequest & { requestId: string });
         break;
 
       case 'session_tool_completed':
@@ -1445,6 +1483,7 @@ export class PiAgent extends BaseAgent {
     requestId: string;
     toolName: string;
     args: Record<string, unknown>;
+    durableTool?: DurableToolExecutionIdentity;
   }): Promise<void> {
     // Prerequisite check: block source tools until guide.md is read
     const prereqResult = this.prerequisiteManager.checkPrerequisites(request.toolName);
@@ -1458,7 +1497,7 @@ export class PiAgent extends BaseAgent {
     }
 
     try {
-      const result = await this.routeToolCall(request.toolName, request.args);
+      const result = await this.routeToolCall(request.toolName, request.args, request.durableTool);
       this.send({
         type: 'tool_execute_response',
         requestId: request.requestId,
@@ -1476,6 +1515,105 @@ export class PiAgent extends BaseAgent {
     }
   }
 
+  private async handleDurableToolPrepareRequest(
+    request: DurableToolPrepareRequest & { requestId: string },
+  ): Promise<void> {
+    const boundary = this.config.durableToolBoundary;
+    if (!boundary) {
+      this.send({
+        type: 'durable_tool_prepare_response',
+        requestId: request.requestId,
+        ok: false,
+        reason: 'Runtime Host did not provide a durable tool boundary',
+      });
+      return;
+    }
+    try {
+      const prepared = await boundary.prepare(request);
+      const bufferedStart = this.bufferedDurableToolStarts.get(request.providerToolCallId);
+      this.bufferedDurableToolStarts.delete(request.providerToolCallId);
+      if (bufferedStart) {
+        this.handleSubprocessEvent({
+          ...bufferedStart,
+          durableOperationId: prepared.operationId,
+          durableSeq: prepared.committedSeq,
+        });
+      }
+      this.send({ type: 'durable_tool_prepare_response', requestId: request.requestId, ok: true, prepared });
+    } catch (error) {
+      this.bufferedDurableToolStarts.delete(request.providerToolCallId);
+      this.send({
+        type: 'durable_tool_prepare_response',
+        requestId: request.requestId,
+        ok: false,
+        reason: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  private async handleDurableToolOutcomeRequest(
+    request: DurableToolOutcomeRequest & { requestId: string },
+  ): Promise<void> {
+    const boundary = this.config.durableToolBoundary;
+    if (!boundary) {
+      this.send({
+        type: 'durable_tool_outcome_response',
+        requestId: request.requestId,
+        ok: false,
+        reason: 'Runtime Host did not provide a durable tool boundary',
+      });
+      return;
+    }
+    try {
+      const committed = await boundary.commitOutcome(request);
+      this.send({
+        type: 'durable_tool_outcome_response',
+        requestId: request.requestId,
+        ok: true,
+        committedSeq: committed.committedSeq,
+      });
+    } catch (error) {
+      this.send({
+        type: 'durable_tool_outcome_response',
+        requestId: request.requestId,
+        ok: false,
+        reason: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  private async handleDurableModelPrepareRequest(
+    request: DurableModelPrepareRequest & { requestId: string },
+  ): Promise<void> {
+    const boundary = this.config.durableModelBoundary;
+    if (!boundary) {
+      this.send({ type: 'durable_model_prepare_response', requestId: request.requestId, ok: false, reason: 'Runtime Host did not provide a durable model boundary' });
+      return;
+    }
+    try {
+      const prepared = await boundary.prepare(request);
+      this.send({ type: 'durable_model_prepare_response', requestId: request.requestId, ok: true, prepared });
+    } catch (error) {
+      this.send({ type: 'durable_model_prepare_response', requestId: request.requestId, ok: false, reason: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  private async handleDurableModelOutcomeRequest(
+    request: DurableModelOutcomeRequest & { requestId: string },
+  ): Promise<void> {
+    const boundary = this.config.durableModelBoundary;
+    if (!boundary) {
+      this.send({ type: 'durable_model_outcome_response', requestId: request.requestId, ok: false, reason: 'Runtime Host did not provide a durable model boundary' });
+      return;
+    }
+    try {
+      const committed = await boundary.commitOutcome(request);
+      this.send({ type: 'durable_model_outcome_response', requestId: request.requestId, ok: true, committedSeq: committed.committedSeq });
+    } catch (error) {
+      this.send({ type: 'durable_model_outcome_response', requestId: request.requestId, ok: false, reason: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
   /**
    * Route a proxy tool call to the appropriate handler based on tool name.
    *
@@ -1488,7 +1626,8 @@ export class PiAgent extends BaseAgent {
    */
   private async routeToolCall(
     toolName: string,
-    args: Record<string, unknown>
+    args: Record<string, unknown>,
+    durableTool?: DurableToolExecutionIdentity,
   ): Promise<{ content: string; isError: boolean }> {
     // Session-scoped tools — strip mcp__session__ prefix added by the Pi SDK
     // registration (tools are registered as mcp__session__SubmitPlan, etc.)
@@ -1502,7 +1641,7 @@ export class PiAgent extends BaseAgent {
 
     // MCP source tools — route through centralized pool
     if (this.mcpPool?.isProxyTool(toolName)) {
-      return this.mcpPool.callTool(toolName, args);
+      return this.mcpPool.callTool(toolName, args, durableTool);
     }
 
     // Unknown tool
@@ -1863,6 +2002,7 @@ export class PiAgent extends BaseAgent {
 
     // Drop any cached pre-tool metadata for the dead subprocess.
     this.preToolMetadataByCallId.clear();
+    this.bufferedDurableToolStarts.clear();
   }
 
   /**
@@ -1903,12 +2043,17 @@ export class PiAgent extends BaseAgent {
     await this.ensureSubprocess();
 
     const id = `compact-${++this.rpcIdCounter}`;
+    const durableRun = this.config.beginDurableUtilityRun?.({
+      requestId: id,
+      prompt: customInstructions ?? 'Compact the active model context',
+      kind: 'compaction',
+    });
     // GPT-backed Pi compactions on large conversations can legitimately take 60-120s
     // (single blocking OpenAI summary call, no progress stream). 5 min covers realistic
     // cases; truly hung subprocesses are caught by the stdio death watchdog.
     const timeoutMs = 300_000;
 
-    return new Promise<{ summary: string; firstKeptEntryId: string; tokensBefore: number } | null>((resolve, reject) => {
+    const pending = new Promise<{ summary: string; firstKeptEntryId: string; tokensBefore: number } | null>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pendingCompactions.delete(id);
         reject(new Error(`compact timed out after ${Math.floor(timeoutMs / 1000)}s`));
@@ -1925,8 +2070,25 @@ export class PiAgent extends BaseAgent {
         },
       });
 
-      this.send({ type: 'compact', id, customInstructions });
+      this.send({
+        type: 'compact',
+        id,
+        customInstructions,
+        durableRunOperationId: durableRun?.runOperationId,
+        durableTurnId: durableRun?.turnId,
+      });
     });
+    try {
+      const result = await pending;
+      if (durableRun) this.config.completeDurableUtilityRun?.(durableRun.runOperationId, 'complete');
+      return result;
+    } catch (error) {
+      if (durableRun) this.config.completeDurableUtilityRun?.(
+        durableRun.runOperationId,
+        error instanceof Error && error.message.includes('timed out') ? 'timeout' : 'error',
+      );
+      throw error;
+    }
   }
 
   /**
@@ -2178,6 +2340,13 @@ export class PiAgent extends BaseAgent {
       ].filter(Boolean);
       const userMessage = userParts.join('\n\n');
 
+      let canonicalContext: import('../durable-runtime/types.ts').DurableCanonicalModelContext | undefined;
+      try {
+        canonicalContext = this.config.getCanonicalModelContext?.(options?.durableRunOperationId);
+      } catch (error) {
+        this.debug(`Canonical model context unavailable; retaining Pi context: ${error instanceof Error ? error.message : String(error)}`);
+      }
+
       // Send prompt to subprocess
       const turnId = `turn-${++this.rpcIdCounter}`;
       this.send({
@@ -2185,6 +2354,9 @@ export class PiAgent extends BaseAgent {
         id: turnId,
         message: userMessage,
         systemPrompt: fullSystemPrompt,
+        durableRunOperationId: options?.durableRunOperationId,
+        durableTurnId: options?.durableTurnId,
+        canonicalContext,
         images: images.length > 0 ? images : undefined,
       });
 
@@ -2374,6 +2546,7 @@ export class PiAgent extends BaseAgent {
 
     // Clear bridge cache for this interrupted turn.
     this.preToolMetadataByCallId.clear();
+    this.bufferedDurableToolStarts.clear();
   }
 
   forceAbort(reason: AbortReason): void {
@@ -2400,6 +2573,7 @@ export class PiAgent extends BaseAgent {
 
     // Clear bridge cache for aborted turn.
     this.preToolMetadataByCallId.clear();
+    this.bufferedDurableToolStarts.clear();
 
     // For PlanSubmitted and AuthRequest, just interrupt the turn
     if (reason === AbortReason.PlanSubmitted || reason === AbortReason.AuthRequest) {
@@ -2544,6 +2718,7 @@ export class PiAgent extends BaseAgent {
     this.subprocessReadyResolve = null;
     this.callbackPort = 0;
     this.preToolMetadataByCallId.clear();
+    this.bufferedDurableToolStarts.clear();
     this.adapter.resetOverflowState();
 
     if (result) {
@@ -2578,6 +2753,7 @@ export class PiAgent extends BaseAgent {
     this.subprocessReadyResolve = null;
     this.callbackPort = 0;
     this.preToolMetadataByCallId.clear();
+    this.bufferedDurableToolStarts.clear();
 
     // Clear any in-flight overflow-recovery state on the torn-down adapter.
     this.adapter.resetOverflowState();
@@ -2596,16 +2772,25 @@ export class PiAgent extends BaseAgent {
     await this.ensureSubprocess();
 
     const id = `mini-${++this.rpcIdCounter}`;
+    const durableRun = this.config.beginDurableUtilityRun?.({ requestId: id, prompt, kind: 'mini_completion' });
     const resultPromise = new Promise<string | null>((resolve, reject) => {
       this.pendingMiniCompletions.set(id, { resolve, reject });
     });
 
-    this.send({ type: 'mini_completion', id, prompt });
+    this.send({
+      type: 'mini_completion',
+      id,
+      prompt,
+      durableRunOperationId: durableRun?.runOperationId,
+      durableTurnId: durableRun?.turnId,
+    });
 
     // Keep this aligned with the subprocess-side queryLlm timeout.
+    let timedOut = false;
     const timeout = new Promise<string | null>((resolve) => {
       setTimeout(() => {
         if (this.pendingMiniCompletions.has(id)) {
+          timedOut = true;
           this.pendingMiniCompletions.delete(id);
           this.debug(`[runMiniCompletion] Timed out after ${LLM_QUERY_TIMEOUT_MS / 1000}s`);
           resolve(null);
@@ -2613,9 +2798,18 @@ export class PiAgent extends BaseAgent {
       }, LLM_QUERY_TIMEOUT_MS);
     });
 
-    const text = await Promise.race([resultPromise, timeout]);
-    this.debug(`[runMiniCompletion] Result: ${text ? `"${text.slice(0, 200)}"` : 'null'}`);
-    return text;
+    try {
+      const text = await Promise.race([resultPromise, timeout]);
+      if (durableRun) this.config.completeDurableUtilityRun?.(
+        durableRun.runOperationId,
+        timedOut ? 'timeout' : 'complete',
+      );
+      this.debug(`[runMiniCompletion] Result: ${text ? `"${text.slice(0, 200)}"` : 'null'}`);
+      return text;
+    } catch (error) {
+      if (durableRun) this.config.completeDurableUtilityRun?.(durableRun.runOperationId, 'error');
+      throw error;
+    }
   }
 
   /**
@@ -2634,11 +2828,22 @@ export class PiAgent extends BaseAgent {
     await this.ensureSubprocess();
 
     const id = `llm-${++this.rpcIdCounter}`;
+    const durableRun = this.config.beginDurableUtilityRun?.({
+      requestId: id,
+      prompt: request.prompt,
+      kind: 'llm_query',
+    });
     const resultPromise = new Promise<LLMQueryResult>((resolve, reject) => {
       this.pendingLlmQueries.set(id, { resolve, reject });
     });
 
-    this.send({ type: 'llm_query', id, request });
+    this.send({
+      type: 'llm_query',
+      id,
+      request,
+      durableRunOperationId: durableRun?.runOperationId,
+      durableTurnId: durableRun?.turnId,
+    });
 
     // Keep this aligned with the subprocess-side queryLlm timeout.
     const timeout = new Promise<LLMQueryResult>((_, reject) => {
@@ -2650,7 +2855,17 @@ export class PiAgent extends BaseAgent {
       }, LLM_QUERY_TIMEOUT_MS);
     });
 
-    return Promise.race([resultPromise, timeout]);
+    try {
+      const result = await Promise.race([resultPromise, timeout]);
+      if (durableRun) this.config.completeDurableUtilityRun?.(durableRun.runOperationId, 'complete');
+      return result;
+    } catch (error) {
+      if (durableRun) this.config.completeDurableUtilityRun?.(
+        durableRun.runOperationId,
+        error instanceof Error && error.message.includes('timed out') ? 'timeout' : 'error',
+      );
+      throw error;
+    }
   }
 
   // ============================================================

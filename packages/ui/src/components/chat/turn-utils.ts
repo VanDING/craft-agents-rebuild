@@ -193,6 +193,10 @@ export function shouldShowThinkingIndicator(phase: TurnPhase, isBuffering: boole
 
 /** Convert tool status from message to ActivityStatus */
 function getToolStatus(message: Message): ActivityStatus {
+  // Recovery is fail-closed: a persisted explanation is evidence that the
+  // outcome is unknown, not proof that the tool completed. This must take
+  // precedence over toolResult and generic error fallbacks.
+  if (message.toolStatus === 'unknown') return 'unknown'
   // response_too_large is success (data was saved, just too large for inline display)
   if (message.errorCode === 'response_too_large') return 'completed'
   if (message.isError) return 'error'
@@ -222,6 +226,7 @@ function messageToActivity(message: Message, existingActivities: ActivityItem[] 
     status: getToolStatus(message),
     toolName: message.toolName,
     toolUseId: message.toolUseId,  // For parent-child matching
+    durableOperationId: message.durableOperationId,
     toolInput: message.toolInput,
     content: message.toolResult || message.content,
     intent: message.toolIntent,
@@ -558,8 +563,10 @@ export function groupMessagesByTurn(messages: Message[], options: GroupTurnsOpti
 
     // Tool messages belong to current assistant turn
     if (message.role === 'tool') {
-      // Tool is complete if toolStatus is 'completed' OR toolResult exists (but NOT if backgrounded)
-      const isToolComplete = (message.toolStatus === 'completed' || message.toolResult !== undefined) && message.toolStatus !== 'backgrounded'
+      // Unknown is a settled UI state (not a spinner), but it is not success.
+      // A recovery explanation in toolResult must never coerce it to completed.
+      const isToolComplete = message.toolStatus === 'unknown'
+        || ((message.toolStatus === 'completed' || message.toolResult !== undefined) && message.toolStatus !== 'backgrounded')
       if (!currentTurn) {
         // Start a new turn
         currentTurn = {

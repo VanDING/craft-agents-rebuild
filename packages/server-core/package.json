@@ -18,6 +18,7 @@
     "./handlers/rpc": "./src/handlers/rpc/index.ts",
     "./handlers/rpc/*": "./src/handlers/rpc/*.ts",
     "./sessions": "./src/sessions/index.ts",
+    "./durable-runtime": "./src/durable-runtime/index.ts",
     "./tasks": "./src/tasks/index.ts",
     "./webui": "./src/webui/index.ts"
   },

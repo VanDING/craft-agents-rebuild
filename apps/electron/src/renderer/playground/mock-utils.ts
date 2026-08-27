@@ -293,6 +293,26 @@ export const mockElectronAPI = {
     return `Output for task ${taskId}:\n\nThis is a mock output in the playground.\nIn the real app, this would show the actual task output.`
   },
 
+  getRecoveryEvidence: async (sessionId: string, toolOperationId: string) => {
+    console.log('[Playground] getRecoveryEvidence called:', sessionId, toolOperationId)
+    return null
+  },
+
+  reconcileTool: async (sessionId: string, request: unknown) => {
+    console.log('[Playground] reconcileTool called:', sessionId, request)
+    throw new Error('Durable recovery reconciliation is unavailable in the playground')
+  },
+
+  queryReconcileTool: async (sessionId: string, toolOperationId: string) => {
+    console.log('[Playground] queryReconcileTool called:', sessionId, toolOperationId)
+    throw new Error('External recovery queries are unavailable in the playground')
+  },
+
+  reconcileModel: async (sessionId: string, request: unknown) => {
+    console.log('[Playground] reconcileModel called:', sessionId, request)
+    throw new Error('Model recovery reconciliation is unavailable in the playground')
+  },
+
   // Session files API used by SessionFilesSection (Info popover)
   getSessionFiles: async (sessionId: string) => {
     console.log('[Playground] getSessionFiles called:', sessionId)

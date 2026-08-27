@@ -19,6 +19,7 @@ import { proxyToolName } from './proxy-tool-name.ts';
 import type { AgentMcpServerConfig } from '../agent/backend/types.ts';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { DurableToolExecutionIdentity } from '../durable-runtime/types.ts';
 import { isLocalMcpEnabled } from '../workspaces/storage.ts';
 import { guardLargeResult } from '../utils/large-response.ts';
 import {
@@ -370,7 +371,7 @@ export class McpClientPool {
    * Execute an MCP tool by its proxy name (mcp__{slug}__{toolName}).
    * Returns a result matching the subprocess protocol format.
    */
-  async callTool(proxyName: string, args: Record<string, unknown>): Promise<McpToolResult> {
+  async callTool(proxyName: string, args: Record<string, unknown>, durableTool?: DurableToolExecutionIdentity): Promise<McpToolResult> {
     const info = this.proxyTools.get(proxyName);
     if (!info) {
       return {
@@ -391,7 +392,7 @@ export class McpClientPool {
     }
 
     try {
-      const result = await client.callTool(originalName, args) as {
+      const result = await client.callTool(originalName, args, durableTool) as {
         content?: Array<{ type: string; text?: unknown; data?: string; mimeType?: string }>;
         isError?: boolean;
       };

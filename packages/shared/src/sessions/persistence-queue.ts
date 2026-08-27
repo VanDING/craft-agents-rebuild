@@ -1,4 +1,4 @@
-import { writeFile, rename, unlink } from 'fs/promises'
+import { open, rename } from 'fs/promises'
 import { dirname } from 'path'
 import type { StoredSession, SessionHeader } from './types.js'
 import { getSessionFilePath, ensureSessionsDir, ensureSessionDir } from './storage.js'
@@ -175,13 +175,37 @@ class SessionPersistenceQueue {
 
       const tmpFile = filePath + '.tmp'
       // M-23: session transcripts are private — owner read/write only.
-      await writeFile(tmpFile, lines.join('\n') + '\n', { encoding: 'utf-8', mode: 0o600 })
-      // On Windows, rename fails if target exists. Delete first for cross-platform compatibility.
-      try { await unlink(filePath) } catch { /* ignore if doesn't exist */ }
+      const tempHandle = await open(tmpFile, 'w', 0o600)
+      try {
+        await tempHandle.writeFile(lines.join('\n') + '\n', { encoding: 'utf-8' })
+        await tempHandle.sync()
+      } finally {
+        await tempHandle.close()
+      }
+      // Atomic replacement: never unlink the last good snapshot first. If a
+      // platform cannot replace the target atomically, fail closed and leave
+      // the fsynced .tmp available for startup recovery.
       await rename(tmpFile, filePath)
+      // Windows does not support fsync on directory handles (EPERM). The file
+      // itself was fsynced and rename is atomic on the same volume, so only
+      // suppress that documented platform limitation; every other failure is
+      // still fatal and leaves the caller aware persistence was incomplete.
+      let directoryHandle: Awaited<ReturnType<typeof open>> | undefined
+      try {
+        directoryHandle = await open(dirname(filePath), 'r')
+        await directoryHandle.sync()
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code
+        const unsupportedOnWindows = process.platform === 'win32'
+          && (code === 'EPERM' || code === 'EINVAL' || code === 'ENOTSUP')
+        if (!unsupportedOnWindows) throw error
+      } finally {
+        await directoryHandle?.close()
+      }
       debug(`[PersistenceQueue] Wrote session ${sessionId}`)
     } catch (error) {
       console.error(`[PersistenceQueue] Failed to write session ${sessionId}:`, error)
+      throw error
     }
   }
 

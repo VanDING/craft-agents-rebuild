@@ -68,6 +68,8 @@ import { reviewPanelFocusRequestAtom } from "@/atoms/content-panel-ui"
 import { usePanelTriggerOpener } from "@/lib/panel-triggers"
 import { useArtifacts } from "@/hooks/useArtifacts"
 import { ArtifactTurnCards } from "@/components/artifacts/ArtifactTurnCards"
+import { RecoveryReconciliationDialog } from "./RecoveryReconciliationDialog"
+import { ModelRecoveryReconciliationDialog } from "./ModelRecoveryReconciliationDialog"
 
 // ============================================================================
 // CSS Custom Highlight API helper
@@ -490,6 +492,9 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
   const internalTextareaRef = React.useRef<RichTextInputHandle>(null)
   const textareaRef = externalTextareaRef || internalTextareaRef
   const [sendMessageKey, setSendMessageKey] = useState<'enter' | 'cmd-enter'>('enter')
+  const [recoveryActivity, setRecoveryActivity] = useState<ActivityItem | null>(null)
+  const [modelRecoveryMessage, setModelRecoveryMessage] = useState<Message | null>(null)
+  const [resolvedModelOperationIds, setResolvedModelOperationIds] = useState<Set<string>>(() => new Set())
   const [openAnnotationRequest, setOpenAnnotationRequest] = React.useState<{
     messageId: string
     annotationId: string
@@ -1612,6 +1617,11 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
                                 onSendMessage(lastUserMsg.content)
                               }
                             } : undefined}
+                            onReconcileModel={turn.message.role === 'warning'
+                              && turn.message.durableOperationId
+                              && !resolvedModelOperationIds.has(turn.message.durableOperationId)
+                              ? setModelRecoveryMessage
+                              : undefined}
                           />
                         </div>
                       )
@@ -1679,6 +1689,7 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
                         compactMode={compactMode}
                         sendMessageKey={sendMessageKey}
                         openAnnotationRequest={openAnnotationRequest}
+                        onReviewRecovery={compactMode ? undefined : setRecoveryActivity}
                         onBranch={session?.supportsBranching ? async (messageId: string, _options?: { newPanel?: boolean }) => {
                           if (!session) return
                           try {
@@ -1918,6 +1929,24 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
             }}
           />
           </div>
+
+          <RecoveryReconciliationDialog
+            open={recoveryActivity !== null}
+            sessionId={session.id}
+            activity={recoveryActivity}
+            onClose={() => setRecoveryActivity(null)}
+          />
+          <ModelRecoveryReconciliationDialog
+            open={modelRecoveryMessage !== null}
+            sessionId={session.id}
+            modelOperationId={modelRecoveryMessage?.durableOperationId}
+            onClose={() => setModelRecoveryMessage(null)}
+            onResolved={(operationId) => setResolvedModelOperationIds(previous => {
+              const next = new Set(previous)
+              next.add(operationId)
+              return next
+            })}
+          />
         </div>
       ) : null}
 
@@ -1954,6 +1983,7 @@ interface MessageBubbleProps {
   compactMode?: boolean
   /** Callback to resend the user message that preceded an error */
   onRetry?: () => void
+  onReconcileModel?: (message: Message) => void
 }
 
 /**
@@ -2041,6 +2071,7 @@ function MessageBubble({
   onPopOut,
   compactMode,
   onRetry,
+  onReconcileModel,
 }: MessageBubbleProps) {
   const { t } = useTranslation()
 
@@ -2166,6 +2197,14 @@ function MessageBubble({
             Warning
           </div>
           <p className="text-sm text-info">{message.content}</p>
+          {onReconcileModel && message.durableOperationId && (
+            <button
+              className="mt-2 rounded border border-info/30 px-2 py-1 text-xs text-info hover:border-info/60"
+              onClick={() => onReconcileModel(message)}
+            >
+              {t('recovery.model.review')}
+            </button>
+          )}
         </div>
       </div>
     )

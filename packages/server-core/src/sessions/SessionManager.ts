@@ -25,6 +25,10 @@ import type { MidStreamBehavior } from '@craft-agent/shared/config'
 import { PrivilegedExecutionBroker } from '@craft-agent/server-core/services'
 import { isValidWorkingDirectory } from '../utils/path-validation'
 import { InitGate } from '@craft-agent/server-core/domain'
+import { DurableRuntimeCoordinator } from '../durable-runtime/coordinator'
+import { createTaskNodeReconciliationAdapter } from '../durable-runtime/task-node-reconciliation'
+import { reportLegacyProjectionParity } from '../durable-runtime/audit'
+import { projectCanonicalSessionMessages, projectDurableUsage } from '../durable-runtime/projection'
 import { i18n } from '@craft-agent/shared/i18n'
 import {
   getWorkspaces,
@@ -753,6 +757,8 @@ interface ManagedSession {
   // Incremented each time a new message starts processing.
   // Used to detect if a follow-up message has superseded the current one (stale-request guard).
   processingGeneration: number
+  /** Current Runtime-Host-owned durable operation, cleared only after terminal commit or parking. */
+  activeDurableRunOperationId?: string
   // NOTE: Parent-child tracking state (pendingTools, parentToolStack, toolToParentMap,
   // pendingTextParent) has been removed. CraftAgent now provides parentToolUseId
   // directly on all events using the SDK's authoritative parent_tool_use_id field.
@@ -1159,6 +1165,17 @@ export function resolveMidStreamDeliveryOutcome(
 
 export class SessionManager implements ISessionManager {
   private sessions: Map<string, ManagedSession> = new Map()
+  private readonly durableRuntime = this.createDurableRuntime()
+  private durableMaintenanceTimer?: NodeJS.Timeout
+
+  private createDurableRuntime(): DurableRuntimeCoordinator {
+    const runtime = new DurableRuntimeCoordinator()
+    runtime.registerReconciliationAdapter('task_node_dispatch', createTaskNodeReconciliationAdapter(
+      () => [...this.sessions.values()],
+      session => this.ensureMessagesLoaded(session as ManagedSession),
+    ))
+    return runtime
+  }
   // Delta batching for performance - reduces IPC events from 50+/sec to ~20/sec
   private pendingDeltas: Map<string, PendingDelta> = new Map()
   private deltaFlushTimers: Map<string, NodeJS.Timeout> = new Map()
@@ -1958,8 +1975,24 @@ export class SessionManager implements ISessionManager {
       // ever connect, yet scheduled/event-driven automations must still fire.
       const workspaces = getWorkspaces()
       for (const workspace of workspaces) {
+        const integrity = this.durableRuntime.checkDatabaseIntegrity(workspace.rootPath)
+        if (!integrity.ok) {
+          throw new Error(`Runtime database integrity check failed for ${workspace.id}: ${integrity.messages.join('; ')}`)
+        }
+        this.runDurableDatabaseMaintenance(workspace.rootPath)
+        const recovery = this.durableRuntime.recoverWorkspace(workspace.rootPath)
+        if (recovery.items.length > 0) {
+          sessionLog.warn('Durable runtime recovered interrupted operations', {
+            workspaceId: workspace.id,
+            operations: recovery.items,
+          })
+        }
         this.setupConfigWatcher(workspace.rootPath, workspace.id)
       }
+      this.durableMaintenanceTimer ??= setInterval(() => {
+        for (const workspace of getWorkspaces()) this.runDurableDatabaseMaintenance(workspace.rootPath)
+      }, 6 * 60 * 60 * 1000)
+      this.durableMaintenanceTimer.unref?.()
 
       // Load existing sessions from disk
       this.loadSessionsFromDisk()
@@ -2075,7 +2108,9 @@ export class SessionManager implements ISessionManager {
     const stored = loadStoredSession(managed.workspace.rootPath, managed.id)
     if (stored) {
       managed.messages = (stored.messages || []).map(storedToMessage)
+      this.applyDurableRecoveryStatus(managed)
       managed.tokenUsage = stored.tokenUsage
+      this.applyDurableUsageProjection(managed)
       // Deferred-load fields (intentionally undefined after startup, see
       // loadSessionsFromDisk). Populate from disk only if not already set in
       // memory — a caller may have mutated them via setSessionSources etc.
@@ -2547,7 +2582,9 @@ export class SessionManager implements ISessionManager {
     const storedSession = loadStoredSession(managed.workspace.rootPath, managed.id)
     if (storedSession) {
       managed.messages = (storedSession.messages || []).map(storedToMessage)
+      this.applyDurableRecoveryStatus(managed)
       managed.tokenUsage = storedSession.tokenUsage
+      this.applyDurableUsageProjection(managed)
       managed.lastReadMessageId = storedSession.lastReadMessageId
       managed.hasUnread = storedSession.hasUnread  // Explicit unread flag for NEW badge state machine
       managed.enabledSourceSlugs = storedSession.enabledSourceSlugs
@@ -2592,6 +2629,345 @@ export class SessionManager implements ISessionManager {
       }
     }
     managed.messagesLoaded = true
+  }
+
+  /** Project unknown T1 tails into the legacy message cache for current UI clients. */
+  private applyDurableRecoveryStatus(managed: ManagedSession): void {
+    const store = this.durableRuntime.storeFor(managed.workspace.rootPath)
+    let canonicalProjectionReady = false
+    try {
+      // Advance the persisted canonical shadow projection on the production
+      // read path. Legacy messages remain the fallback during parity rollout.
+      this.durableRuntime.getCanonicalSessionProjection(managed.workspace.rootPath, managed.id)
+      canonicalProjectionReady = true
+    } catch (error) {
+      sessionLog.warn('Canonical session projection refresh failed; using compatibility cache', {
+        sessionId: managed.id,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
+    const unsettled = store
+      .listUnsettledToolOperations()
+      .filter(item => {
+        const runOperationId = item.dispatch?.runOperationId
+        return runOperationId
+          && this.durableRuntime.storeFor(managed.workspace.rootPath).getOperation(runOperationId)?.sessionId === managed.id
+      })
+    for (const evidence of unsettled) {
+      const dispatch = evidence.dispatch
+      if (!dispatch) continue
+      const message = managed.messages.find(item => item.toolUseId === dispatch.providerToolCallId)
+      if (!message) continue
+      message.toolStatus = 'unknown'
+      message.durableOperationId = dispatch.operationId
+      message.toolResult ||= 'Execution outcome is unknown after restart. Reconcile with the external system before retrying.'
+    }
+    for (const state of store.listOperations()) {
+      if (state.sessionId !== managed.id || state.phase !== 'recovery_parked') continue
+      const currentModel = (state.data as { currentModel?: { operationId?: string; provider?: string; model?: string } }).currentModel
+      if (!currentModel?.operationId) continue
+      if (managed.messages.some(message => message.durableOperationId === currentModel.operationId)) continue
+      managed.messages.push({
+        id: `recovery-${currentModel.operationId}`,
+        role: 'warning',
+        content: `A ${currentModel.provider ?? 'provider'} model request (${currentModel.model ?? 'unknown model'}) may have been billed, but its response was not durably committed. It will not be retried automatically.`,
+        timestamp: state.updatedAt,
+        durableOperationId: currentModel.operationId,
+      })
+    }
+    const events = store.listAllEvents({ sessionId: managed.id })
+    if (events.length > 0) {
+      const parity = reportLegacyProjectionParity(events, managed.messages)
+      try {
+        store.recordProjectionParity({
+          projection: 'canonical/sessions',
+          sessionId: managed.id,
+          cursor: Math.max(0, ...events.map(event => event.seq ?? 0)),
+          canonicalFacts: parity.canonicalFacts,
+          legacyMessages: parity.legacyMessages,
+          issueCount: parity.issueCount,
+          issueCounts: parity.issueCounts,
+          parityRatio: parity.parityRatio,
+          observedAt: Date.now(),
+        })
+      } catch (error) {
+        // Parity observations are disposable diagnostics. A metrics write must
+        // never prevent the authoritative event stream from being read.
+        sessionLog.warn('Failed to persist durable projection parity observation', {
+          sessionId: managed.id,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      }
+      if (parity.issueCount > 0) {
+        sessionLog.warn('Legacy session cache diverges from canonical runtime facts', {
+          sessionId: managed.id,
+          canonicalFacts: parity.canonicalFacts,
+          legacyMessages: parity.legacyMessages,
+          issueCount: parity.issueCount,
+          issueCounts: parity.issueCounts,
+          parityRatio: parity.parityRatio,
+          issues: parity.issues.slice(0, 50),
+        })
+      }
+      if (canonicalProjectionReady
+        && parity.canonicalFacts > 0
+        && parity.issueCount === 0
+        && this.shouldUseCanonicalSessionRead(managed)) {
+        managed.messages = projectCanonicalSessionMessages(events, managed.messages)
+        sessionLog.debug('Canonical runtime facts selected as session UI read authority', {
+          sessionId: managed.id,
+          canonicalFacts: parity.canonicalFacts,
+        })
+      }
+    }
+  }
+
+  private runDurableDatabaseMaintenance(workspaceRootPath: string): void {
+    try {
+      const day = new Date().toISOString().slice(0, 10)
+      const backupPath = join(workspaceRootPath, 'runtime', 'backups', `runtime-${day}.db`)
+      const createdDailyBackup = !existsSync(backupPath)
+      if (createdDailyBackup) this.durableRuntime.backupDatabase(workspaceRootPath, backupPath)
+      // Retention applies only to disposable projections. Immutable facts and
+      // usage are never expired by unattended maintenance.
+      this.durableRuntime.maintainDatabase(workspaceRootPath, {
+        projectionRetentionMs: 30 * 24 * 60 * 60 * 1000,
+        vacuum: createdDailyBackup && new Date().getUTCDay() === 0,
+      })
+    } catch (error) {
+      // A backup/maintenance failure is surfaced but cannot mutate or replace
+      // the live authority. Write paths continue to fail closed independently.
+      sessionLog.error('Durable runtime maintenance failed', {
+        workspaceRootPath,
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+
+  /**
+   * Rollout/rollback changes routing only. `legacy` is the emergency rollback;
+   * `shadow` observes parity; `canonical` cuts over only perfect-parity sessions.
+   * An optional comma-separated canary list accepts session/workspace ids or roots.
+   */
+  private shouldUseCanonicalSessionRead(managed: ManagedSession): boolean {
+    const mode = (process.env.CRAFT_DURABLE_SESSION_READ ?? 'canonical').toLowerCase()
+    if (mode !== 'canonical') return false
+    const canaries = (process.env.CRAFT_DURABLE_SESSION_CANARY ?? '')
+      .split(',')
+      .map(value => value.trim())
+      .filter(Boolean)
+    return canaries.length === 0
+      || canaries.includes(managed.id)
+      || canaries.includes(managed.workspace.id)
+      || canaries.includes(managed.workspace.rootPath)
+  }
+
+  /** Canonical usage ledger overrides compatibility JSONL totals when available. */
+  private applyDurableUsageProjection(managed: ManagedSession): void {
+    const rows = this.durableRuntime.storeFor(managed.workspace.rootPath)
+      .listUsage({ sessionId: managed.id })
+    if (rows.length === 0) return
+    const usage = projectDurableUsage(rows)
+    managed.tokenUsage = {
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
+      totalTokens: usage.totalTokens,
+      contextTokens: usage.inputTokens,
+      costUsd: usage.costUsd,
+      cacheReadTokens: usage.cacheReadTokens,
+      cacheCreationTokens: usage.cacheCreationTokens,
+      contextWindow: managed.tokenUsage?.contextWindow,
+    }
+    managed.lastFullUsage = usage.lastFullUsage as PiUsage | undefined
+  }
+
+  /** Read canonical recovery evidence, scoped to the owning session. */
+  getRecoveryEvidence(
+    sessionId: string,
+    toolOperationId: string,
+  ): import('@craft-agent/shared/durable-runtime').DurableRecoveryEvidenceSnapshot | null {
+    const managed = this.sessions.get(sessionId)
+    if (!managed) return null
+    const snapshot = this.durableRuntime.getRecoveryEvidence(managed.workspace.rootPath, toolOperationId)
+    if (!snapshot || snapshot.sessionId !== sessionId) return null
+    return snapshot
+  }
+
+  reconcileTool(
+    request: import('@craft-agent/shared/durable-runtime').ToolReconciliationRequest,
+  ): import('@craft-agent/shared/durable-runtime').ToolReconciliationResult {
+    const managed = this.sessions.get(request.sessionId)
+    if (!managed) throw new Error(`Session ${request.sessionId} not found`)
+    const result = this.durableRuntime.reconcileTool(managed.workspace.rootPath, request)
+    this.applyToolReconciliation(managed, result)
+    return result
+  }
+
+  async queryAndReconcileTool(
+    sessionId: string,
+    toolOperationId: string,
+    actor: import('@craft-agent/shared/durable-runtime').ToolReconciliationRequest['actor'],
+  ): Promise<import('@craft-agent/shared/durable-runtime').ToolReconciliationResult> {
+    const managed = this.sessions.get(sessionId)
+    if (!managed) throw new Error(`Session ${sessionId} not found`)
+    const result = await this.durableRuntime.queryAndReconcileTool(managed.workspace.rootPath, {
+      sessionId,
+      toolOperationId,
+      actor,
+    })
+    this.applyToolReconciliation(managed, result)
+    return result
+  }
+
+  reconcileModel(
+    request: import('@craft-agent/shared/durable-runtime').ModelReconciliationRequest,
+  ): import('@craft-agent/shared/durable-runtime').ModelReconciliationResult {
+    const managed = this.sessions.get(request.sessionId)
+    if (!managed) throw new Error(`Session ${request.sessionId} not found`)
+    const result = this.durableRuntime.reconcileModel(managed.workspace.rootPath, request)
+    const warning = managed.messages.find(message => message.durableOperationId === request.modelOperationId)
+    if (warning) {
+      warning.content = `Unknown provider attempt resolved as ${request.decision}: ${request.reason}`
+      warning.infoLevel = 'success'
+      warning.durableSeq = result.committedSeq
+      this.persistSession(managed)
+    }
+    return result
+  }
+
+  private applyToolReconciliation(
+    managed: ManagedSession,
+    result: import('@craft-agent/shared/durable-runtime').ToolReconciliationResult,
+  ): void {
+    const outcome = result.snapshot.evidence.outcome
+    const dispatch = result.snapshot.evidence.dispatch
+    if (outcome && dispatch) {
+      const message = managed.messages.find(item => item.toolUseId === dispatch.providerToolCallId)
+      const renderedResult = typeof outcome.result === 'string'
+        ? outcome.result
+        : JSON.stringify(outcome.result)
+      if (message) {
+        message.toolStatus = outcome.isError ? 'error' : 'completed'
+        message.toolResult = renderedResult
+        message.isError = outcome.isError
+        message.durableOperationId = outcome.operationId
+        message.durableSeq = result.committedSeq
+        this.persistSession(managed)
+      }
+      this.sendEvent({
+        type: 'tool_result',
+        sessionId: managed.id,
+        toolUseId: dispatch.providerToolCallId,
+        toolName: dispatch.toolName,
+        result: renderedResult,
+        turnId: result.snapshot.runOperation.turnId,
+        isError: outcome.isError,
+        timestamp: Date.now(),
+        durableOperationId: outcome.operationId,
+        durableSeq: result.committedSeq,
+      }, managed.workspace.id)
+    }
+  }
+
+  async prepareTaskNodeDispatch(input: {
+    workspaceRoot: string
+    taskSlug: string
+    runId: string
+    nodeId: string
+    attempt: number
+    orchestratorSessionId?: string
+  }): Promise<{
+    durableSessionId: string
+    runOperationId: string
+    operationId: string
+    providerToolCallId: string
+    canonicalArgsHash: string
+    created: boolean
+  }> {
+    const durableSessionId = input.orchestratorSessionId ?? `task:${input.taskSlug}:${input.runId}`
+    const runOperationId = `tasknode:${input.taskSlug}:${input.runId}:${input.nodeId}:${input.attempt}`
+    const providerToolCallId = `spawn:${input.nodeId}:${input.attempt}`
+    this.durableRuntime.acceptRun({
+      workspaceRootPath: input.workspaceRoot,
+      sessionId: durableSessionId,
+      turnId: runOperationId,
+      operationId: runOperationId,
+      userMessageId: `${runOperationId}:input`,
+      userMessage: `Dispatch task node ${input.nodeId} attempt ${input.attempt}`,
+      kind: 'task_node',
+    })
+    const prepared = await this.durableRuntime.prepareTool(input.workspaceRoot, {
+      sessionId: durableSessionId,
+      turnId: runOperationId,
+      runOperationId,
+      providerToolCallId,
+      toolName: 'task_node_dispatch',
+      args: {
+        taskSlug: input.taskSlug,
+        runId: input.runId,
+        nodeId: input.nodeId,
+        attempt: input.attempt,
+      },
+      recoveryMode: 'never_auto_retry',
+    })
+    return {
+      durableSessionId,
+      runOperationId,
+      operationId: prepared.operationId,
+      providerToolCallId,
+      canonicalArgsHash: prepared.canonicalArgsHash,
+      created: prepared.created,
+    }
+  }
+
+  commitTaskRunFact(input: {
+    workspaceRoot: string
+    sessionId: string
+    taskSlug: string
+    runId: string
+    ordinal: number
+    entry: import('@craft-agent/shared/tasks').RunLogEntry
+  }): void {
+    this.durableRuntime.commitTaskRunFact({
+      workspaceRootPath: input.workspaceRoot,
+      sessionId: input.sessionId,
+      taskSlug: input.taskSlug,
+      runId: input.runId,
+      ordinal: input.ordinal,
+      entry: input.entry,
+    })
+  }
+
+  listTaskRunFacts(
+    workspaceRoot: string,
+    taskSlug: string,
+    runId: string,
+  ): import('@craft-agent/shared/tasks').RunLogEntry[] {
+    return this.durableRuntime.listTaskRunFacts(workspaceRoot, taskSlug, runId)
+  }
+
+  async commitTaskNodeDispatch(input: {
+    workspaceRoot: string
+    durableSessionId: string
+    childSessionId: string
+    runOperationId: string
+    operationId: string
+    providerToolCallId: string
+    canonicalArgsHash: string
+  }): Promise<void> {
+    await this.durableRuntime.commitToolOutcome(input.workspaceRoot, {
+      sessionId: input.durableSessionId,
+      turnId: input.runOperationId,
+      runOperationId: input.runOperationId,
+      operationId: input.operationId,
+      providerToolCallId: input.providerToolCallId,
+      toolName: 'task_node_dispatch',
+      canonicalArgsHash: input.canonicalArgsHash,
+      result: { childSessionId: input.childSessionId },
+      isError: false,
+      externalReference: input.childSessionId,
+    })
+    this.durableRuntime.completeRun(input.workspaceRoot, input.runOperationId, 'complete')
   }
 
   /**
@@ -3040,6 +3416,13 @@ export class SessionManager implements ISessionManager {
     }
 
     this.sessions.set(storedSession.id, managed)
+    if (validatedBranch && managed.messages.length > 0) {
+      this.durableRuntime.importLegacyContext(
+        workspaceRootPath,
+        storedSession.id,
+        managed.messages,
+      )
+    }
 
     // Initialize session metadata in AutomationSystem for diffing
     const automationSystem = this.automationSystems.get(workspaceRootPath)
@@ -3579,6 +3962,37 @@ export class SessionManager implements ISessionManager {
         markTransferredSessionSummaryApplied,
         mcpPool: managed.mcpPool,
         poolServerUrl,
+        durableToolBoundary: this.durableRuntime.boundaryFor(managed.workspace.rootPath),
+        durableModelBoundary: this.durableRuntime.modelBoundaryFor(managed.workspace.rootPath),
+        getCanonicalModelContext: (excludeOperationId) => {
+          const events = this.durableRuntime.storeFor(managed.workspace.rootPath)
+            .listAllEvents({ sessionId: managed.id })
+          const parity = reportLegacyProjectionParity(events, managed.messages)
+          if (parity.canonicalFacts === 0 || parity.issueCount > 0) return undefined
+          return this.durableRuntime.getCanonicalModelContext(
+            managed.workspace.rootPath,
+            managed.id,
+            excludeOperationId,
+          )
+        },
+        beginDurableUtilityRun: ({ requestId, prompt, kind }) => {
+          const runOperationId = `utility:${managed.id}:${requestId}:${Date.now()}`
+          const turnId = runOperationId
+          this.durableRuntime.acceptRun({
+            workspaceRootPath: managed.workspace.rootPath,
+            sessionId: managed.id,
+            turnId,
+            operationId: runOperationId,
+            userMessageId: `${runOperationId}:input`,
+            userMessage: prompt,
+            kind: 'system',
+            modelVisible: false,
+          })
+          return { runOperationId, turnId }
+        },
+        completeDurableUtilityRun: (runOperationId, reason) => {
+          this.durableRuntime.completeRun(managed.workspace.rootPath, runOperationId, reason)
+        },
         envOverrides,
         // Shared backend runtime options
         isHeadless: !AGENT_FLAGS.defaultModesEnabled,
@@ -6442,7 +6856,20 @@ export class SessionManager implements ISessionManager {
       }
 
       sendSpan.mark('chat.starting')
-      const chatIterator = agent.chat(effectiveMessage, modelInputAttachments.attachments)
+      const durableRunOperationId = `run_${userMessage.id}_${myGeneration}`
+      this.durableRuntime.acceptRun({
+        workspaceRootPath,
+        sessionId,
+        turnId: userMessage.id,
+        operationId: durableRunOperationId,
+        userMessageId: userMessage.id,
+        userMessage: message,
+      })
+      managed.activeDurableRunOperationId = durableRunOperationId
+      const chatIterator = agent.chat(effectiveMessage, modelInputAttachments.attachments, {
+        durableRunOperationId,
+        durableTurnId: userMessage.id,
+      })
       sessionLog.info('Got chat iterator, starting iteration...')
 
       let sawFirstEvent = false
@@ -6856,6 +7283,18 @@ export class SessionManager implements ISessionManager {
     if (!managed) return
 
     sessionLog.info(`Processing stopped for session ${sessionId}: ${reason}`)
+
+    const durableRunOperationId = managed.activeDurableRunOperationId
+    if (durableRunOperationId) {
+      try {
+        this.durableRuntime.completeRun(managed.workspace.rootPath, durableRunOperationId, reason)
+        managed.activeDurableRunOperationId = undefined
+      } catch (error) {
+        // Fail closed: retain the active identity so a subsequent stop/recovery
+        // pass can retry convergence. Never hide a durability failure.
+        sessionLog.error(`Failed to settle durable run ${durableRunOperationId}:`, error)
+      }
+    }
 
     // 1. Cleanup state
     this.setProcessing(managed, false)
@@ -7908,6 +8347,41 @@ export class SessionManager implements ISessionManager {
           assistantMetrics: event.assistantMetrics,
           outputBlocks: event.outputBlocks,
         }
+        if (managed.activeDurableRunOperationId && (!event.isIntermediate || event.usage)) {
+          const modelUsageAlreadyCommitted = event.durableOperationId?.startsWith('modelop_') ?? false
+          const usageIdentity = event.usage && !modelUsageAlreadyCommitted ? [
+            managed.activeDurableRunOperationId,
+            event.requestSeq ?? event.sdkMessageId ?? assistantMessage.id,
+          ].join(':') : undefined
+          assistantMessage.durableOperationId = managed.activeDurableRunOperationId
+          assistantMessage.durableSeq = modelUsageAlreadyCommitted
+            ? event.durableSeq
+            : this.durableRuntime.commitAssistantMessage({
+                workspaceRootPath: managed.workspace.rootPath,
+                operationId: managed.activeDurableRunOperationId,
+                sessionId,
+                turnId: event.turnId,
+                messageId: assistantMessage.id,
+                content: event.text,
+                isIntermediate: event.isIntermediate,
+                usage: event.usage && usageIdentity ? {
+                  usageId: `model:${usageIdentity}`,
+                  provider: managed.llmConnection,
+                  model: managed.model,
+                  inputTokens: event.usage.input,
+                  outputTokens: event.usage.output,
+                  costUsd: event.usage.cost.total,
+                  payload: {
+                    kind: 'model_attempt',
+                    requestSeq: event.requestSeq,
+                    sdkMessageId: event.sdkMessageId,
+                    usage: event.usage,
+                  },
+                } : undefined,
+                createdAt: assistantMessage.timestamp,
+              })
+          this.applyDurableUsageProjection(managed)
+        }
         managed.messages.push(assistantMessage)
         managed.streamingText = ''
 
@@ -7938,7 +8412,7 @@ export class SessionManager implements ISessionManager {
           }
         }
 
-        this.sendEvent({ type: 'text_complete', sessionId, text: event.text, isIntermediate: event.isIntermediate, turnId: event.turnId, parentToolUseId: event.parentToolUseId, timestamp: assistantMessage.timestamp, messageId: assistantMessage.id, usage: event.usage, requestSeq: event.requestSeq, promptSnapshot: event.promptSnapshot, assistantMetrics: event.assistantMetrics, outputBlocks: event.outputBlocks }, workspaceId)
+        this.sendEvent({ type: 'text_complete', sessionId, text: event.text, isIntermediate: event.isIntermediate, turnId: event.turnId, parentToolUseId: event.parentToolUseId, timestamp: assistantMessage.timestamp, messageId: assistantMessage.id, usage: event.usage, requestSeq: event.requestSeq, promptSnapshot: event.promptSnapshot, assistantMetrics: event.assistantMetrics, outputBlocks: event.outputBlocks, durableOperationId: assistantMessage.durableOperationId, durableSeq: assistantMessage.durableSeq }, workspaceId)
 
         // Persist session after complete message to prevent data loss on quit
         this.persistSession(managed)
@@ -8033,6 +8507,8 @@ export class SessionManager implements ISessionManager {
           if (event.displayName && !existingStartMsg.toolDisplayName) {
             existingStartMsg.toolDisplayName = event.displayName
           }
+          existingStartMsg.durableOperationId ??= event.durableOperationId
+          existingStartMsg.durableSeq = Math.max(existingStartMsg.durableSeq ?? 0, event.durableSeq ?? 0) || undefined
         } else {
           // Add tool message immediately (will be updated on tool_result)
           // This ensures tool calls are persisted even if they don't complete
@@ -8050,6 +8526,8 @@ export class SessionManager implements ISessionManager {
             toolDisplayMeta,  // Includes base64 icon for viewer compatibility
             turnId: event.turnId,
             parentToolUseId,
+            durableOperationId: event.durableOperationId,
+            durableSeq: event.durableSeq,
           }
           managed.messages.push(toolStartMessage)
         }
@@ -8091,6 +8569,8 @@ export class SessionManager implements ISessionManager {
             turnId: event.turnId,
             parentToolUseId,
             timestamp,
+            durableOperationId: event.durableOperationId,
+            durableSeq: event.durableSeq,
           }, workspaceId)
         }
         break
@@ -8135,6 +8615,8 @@ export class SessionManager implements ISessionManager {
           existingToolMsg.toolResult = formattedResult
           existingToolMsg.toolStatus = inferredError ? 'error' : 'completed'
           existingToolMsg.isError = inferredError
+          existingToolMsg.durableOperationId ??= event.durableOperationId
+          existingToolMsg.durableSeq = Math.max(existingToolMsg.durableSeq ?? 0, event.durableSeq ?? 0) || undefined
           // If message doesn't have parent set, use event's parentToolUseId
           if (!existingToolMsg.parentToolUseId && event.parentToolUseId) {
             existingToolMsg.parentToolUseId = event.parentToolUseId
@@ -8161,6 +8643,8 @@ export class SessionManager implements ISessionManager {
             toolDisplayMeta: fallbackToolDisplayMeta,
             parentToolUseId,
             isError: inferredError,
+            durableOperationId: event.durableOperationId,
+            durableSeq: event.durableSeq,
           }
           managed.messages.push(toolMessage)
         }
@@ -8182,6 +8666,8 @@ export class SessionManager implements ISessionManager {
             isError: inferredError,
             timestamp: toolResultTimestamp,
             durationMs: event.durationMs,
+            durableOperationId: event.durableOperationId,
+            durableSeq: event.durableSeq,
           }, workspaceId)
         }
 
@@ -9306,6 +9792,10 @@ export class SessionManager implements ISessionManager {
 
     this.userThemeWatcher?.stop()
     this.userThemeWatcher = null
+    if (this.durableMaintenanceTimer) {
+      clearInterval(this.durableMaintenanceTimer)
+      this.durableMaintenanceTimer = undefined
+    }
 
     // Dispose all AutomationSystems (includes scheduler, handlers, and event loggers)
     for (const [workspacePath, automationSystem] of this.automationSystems) {
@@ -9334,6 +9824,8 @@ export class SessionManager implements ISessionManager {
     for (const sessionId of this.sessions.keys()) {
       unregisterSessionScopedToolCallbacks(sessionId)
     }
+
+    this.durableRuntime.closeAll()
 
     sessionLog.info('Cleanup complete')
   }

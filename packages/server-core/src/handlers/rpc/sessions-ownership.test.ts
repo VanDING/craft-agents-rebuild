@@ -46,6 +46,10 @@ function createHarness() {
     getSessions: () => SESSIONS,
     getSession: async (id: string) => SESSIONS.find(s => s.id === id) ?? null,
     getSessionPath: (id: string) => (SESSIONS.some(s => s.id === id) ? `/sessions/${id}` : null),
+    getRecoveryEvidence: (sessionId: string, toolOperationId: string) => ({ sessionId, toolOperationId }),
+    reconcileTool: (request: unknown) => request,
+    queryAndReconcileTool: (sessionId: string, toolOperationId: string, actor: unknown) => ({ sessionId, toolOperationId, actor }),
+    reconcileModel: (request: unknown) => request,
     waitForInit: async () => {},
   }
 
@@ -77,6 +81,10 @@ function createHarness() {
   })
 
   const getMessages = handlers.get(RPC_CHANNELS.sessions.GET_MESSAGES)
+  const getRecoveryEvidence = handlers.get(RPC_CHANNELS.sessions.GET_RECOVERY_EVIDENCE)
+  const reconcileTool = handlers.get(RPC_CHANNELS.sessions.RECONCILE_TOOL)
+  const queryReconcileTool = handlers.get(RPC_CHANNELS.sessions.QUERY_RECONCILE_TOOL)
+  const reconcileModel = handlers.get(RPC_CHANNELS.sessions.RECONCILE_MODEL)
   const sendMessage = handlers.get(RPC_CHANNELS.sessions.SEND_MESSAGE)
   const deleteSession = handlers.get(RPC_CHANNELS.sessions.DELETE)
   const command = handlers.get(RPC_CHANNELS.sessions.COMMAND)
@@ -84,7 +92,7 @@ function createHarness() {
   const setNotes = handlers.get(RPC_CHANNELS.sessions.SET_NOTES)
   const exportSession = handlers.get(RPC_CHANNELS.sessions.EXPORT)
 
-  return { getMessages, sendMessage, deleteSession, command, getFiles, setNotes, exportSession }
+  return { getMessages, getRecoveryEvidence, reconcileTool, queryReconcileTool, reconcileModel, sendMessage, deleteSession, command, getFiles, setNotes, exportSession }
 }
 
 function ctx(workspaceId: string | null): RequestContext {
@@ -93,18 +101,45 @@ function ctx(workspaceId: string | null): RequestContext {
 
 describe('sessions RPC workspace ownership (M-1)', () => {
   it('allows access to sessions in the calling client workspace', async () => {
-    const { getMessages, getFiles } = createHarness()
+    const { getMessages, getRecoveryEvidence, reconcileTool, queryReconcileTool, reconcileModel, getFiles } = createHarness()
 
     await expect(getMessages!(ctx('ws-1'), 'session-a')).resolves.toEqual(SESSIONS[0])
+    await expect(getRecoveryEvidence!(ctx('ws-1'), 'session-a', 'tool-op-1')).resolves.toEqual({
+      sessionId: 'session-a',
+      toolOperationId: 'tool-op-1',
+    })
+    await expect(reconcileTool!(ctx('ws-1'), 'session-a', {
+      toolOperationId: 'tool-op-1',
+      decision: 'manual_abandon',
+      reason: 'Operator accepts uncertainty',
+      evidence: [],
+      actor: { type: 'administrator', id: 'forged' },
+    })).resolves.toMatchObject({
+      sessionId: 'session-a',
+      actor: { type: 'user', id: 'client-1' },
+    })
+    await expect(queryReconcileTool!(ctx('ws-1'), 'session-a', 'tool-op-1')).resolves.toEqual({
+      sessionId: 'session-a',
+      toolOperationId: 'tool-op-1',
+      actor: { type: 'user', id: 'client-1' },
+    })
+    await expect(reconcileModel!(ctx('ws-1'), 'session-a', {
+      modelOperationId: 'model-op-1', decision: 'manual_abandon', reason: 'acknowledged', evidence: [],
+      actor: { type: 'administrator', id: 'forged' },
+    })).resolves.toMatchObject({ sessionId: 'session-a', actor: { type: 'user', id: 'client-1' } })
     // GET_FILES reaches scanSessionDirectory('/sessions/session-a') which
     // does not exist → caught → empty tree.
     await expect(getFiles!(ctx('ws-1'), 'session-a')).resolves.toEqual([])
   })
 
   it('rejects access to sessions in another workspace', async () => {
-    const { getMessages, sendMessage, deleteSession, command, setNotes, exportSession } = createHarness()
+    const { getMessages, getRecoveryEvidence, reconcileTool, queryReconcileTool, reconcileModel, sendMessage, deleteSession, command, setNotes, exportSession } = createHarness()
 
     await expect(getMessages!(ctx('ws-1'), 'session-b')).rejects.toThrow(/does not belong to workspace ws-1/)
+    await expect(getRecoveryEvidence!(ctx('ws-1'), 'session-b', 'tool-op-1')).rejects.toThrow(/does not belong to workspace ws-1/)
+    await expect(reconcileTool!(ctx('ws-1'), 'session-b', {})).rejects.toThrow(/does not belong to workspace ws-1/)
+    await expect(queryReconcileTool!(ctx('ws-1'), 'session-b', 'tool-op-1')).rejects.toThrow(/does not belong to workspace ws-1/)
+    await expect(reconcileModel!(ctx('ws-1'), 'session-b', {})).rejects.toThrow(/does not belong to workspace ws-1/)
     await expect(sendMessage!(ctx('ws-1'), 'session-b', 'hello')).rejects.toThrow(/does not belong to workspace ws-1/)
     await expect(deleteSession!(ctx('ws-1'), 'session-b')).rejects.toThrow(/does not belong to workspace ws-1/)
     await expect(command!(ctx('ws-1'), 'session-b', { type: 'flag' })).rejects.toThrow(/does not belong to workspace ws-1/)

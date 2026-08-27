@@ -228,6 +228,24 @@ describe('PiEventAdapter', () => {
       expect((events[0] as { sdkTurnAnchor?: string }).sdkTurnAnchor).toBeUndefined();
     });
 
+    it('should preserve the committed model T2 cursor on text_complete', () => {
+      collect(adapter.adaptEvent({ type: 'turn_start' } as any));
+      const events = collect(adapter.adaptEvent({
+        type: 'message_end',
+        durableOperationId: 'modelop_1',
+        durableSeq: 42,
+        requestSeq: 3,
+        message: { role: 'assistant', stopReason: 'stop', content: 'Durable output' },
+      } as any));
+
+      expect(events[0]).toMatchObject({
+        type: 'text_complete',
+        durableOperationId: 'modelop_1',
+        durableSeq: 42,
+        requestSeq: 3,
+      });
+    });
+
     it('should fall back to responseId when message_end carries no id (SDK 0.84 shape)', () => {
       collect(adapter.adaptEvent({ type: 'turn_start' } as any));
       // SDK 0.84 assistant messages at message_end have no `id` — only the

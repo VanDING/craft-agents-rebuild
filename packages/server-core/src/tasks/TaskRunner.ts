@@ -57,6 +57,35 @@ export interface ConductorSessionHost {
   getSessionFinalText(sessionId: string): string | undefined;
   /** Resolved working directory of a session, so children inherit the orchestrator's cwd. */
   getSessionWorkingDirectory(sessionId: string): string | undefined;
+  /** Optional Runtime Host boundary around child-session creation + first dispatch. */
+  prepareTaskNodeDispatch?(input: {
+    workspaceRoot: string;
+    taskSlug: string;
+    runId: string;
+    nodeId: string;
+    attempt: number;
+    orchestratorSessionId?: string;
+  }): Promise<{ durableSessionId: string; runOperationId: string; operationId: string; providerToolCallId: string; canonicalArgsHash: string; created: boolean }>;
+  commitTaskNodeDispatch?(input: {
+    workspaceRoot: string;
+    durableSessionId: string;
+    childSessionId: string;
+    runOperationId: string;
+    operationId: string;
+    providerToolCallId: string;
+    canonicalArgsHash: string;
+  }): Promise<void>;
+  /** Canonical TaskRunner fact sink. When present, it is authoritative and is
+   * committed before the JSONL compatibility projection is updated. */
+  commitTaskRunFact?(input: {
+    workspaceRoot: string;
+    sessionId: string;
+    taskSlug: string;
+    runId: string;
+    ordinal: number;
+    entry: RunLogEntry;
+  }): void;
+  listTaskRunFacts?(workspaceRoot: string, taskSlug: string, runId: string): RunLogEntry[];
 }
 
 export interface TaskRunnerDeps {
@@ -182,6 +211,7 @@ class ActiveRun {
   private settleResolvers: ((s: RunSnapshot) => void)[] = [];
   /** Wall-clock deadline timer for this run (see DEFAULT_RUN_TIMEOUT_MS). */
   private timeoutTimer?: NodeJS.Timeout;
+  private factOrdinal = 0;
 
   constructor(
     private readonly spec: TaskSpec,
@@ -242,10 +272,10 @@ class ActiveRun {
 
   /**
    * Rebuild run state from a persisted run-log (cross-restart resume). Done nodes reuse their
-   * recorded output and are NOT re-run; in-flight/cancelled nodes fall back to pending so they
-   * re-dispatch. A done node whose output file is missing also falls back to pending.
+   * recorded output and are NOT re-run. In-flight/cancelled nodes remain unknown
+   * and block automatic resume. A done node whose output file is missing falls back to pending.
    */
-  hydrate(log: RunLogEntry[], loadOutput: (nodeId: string) => NodeOutput | null): void {
+  hydrate(log: RunLogEntry[], loadOutput: (nodeId: string) => NodeOutput | null): string[] {
     for (const e of log) {
       if (e.kind === 'node-spawned') {
         const st = this.state.get(e.nodeId);
@@ -255,10 +285,16 @@ class ActiveRun {
         }
       } else if (e.kind === 'node-scheduled') {
         const st = this.state.get(e.nodeId);
-        if (st) st.attempt += 1;
+        if (st) {
+          st.state = 'running';
+          st.attempt += 1;
+        }
       } else if (e.kind === 'node-finished') {
         const st = this.state.get(e.nodeId);
-        if (st) st.state = e.state;
+        if (st) {
+          st.state = e.state;
+          if (e.output) this.outputs[e.nodeId] = e.output;
+        }
       } else if (e.kind === 'verdict') {
         // Reconstruct the durable repair counters so a cross-restart resume honors the cap rather
         // than restarting the budget from zero (the in-memory counters reset on a fresh process).
@@ -267,16 +303,21 @@ class ActiveRun {
         else if (e.result === 'pass') this.unparsedReAsks = 0;
       }
     }
+    this.factOrdinal = log.length;
+    const recoveryRequired: string[] = [];
     for (const [nodeId, st] of this.state) {
       if (st.state === 'done') {
-        const out = loadOutput(nodeId);
+        const out = this.outputs[nodeId] ?? loadOutput(nodeId);
         if (out) this.outputs[nodeId] = out;
         else st.state = 'pending'; // recorded output missing → must re-run
       } else if (st.state === 'running' || st.state === 'cancelled') {
-        st.state = 'pending'; // in-flight at shutdown / cancelled → re-dispatch on resume
+        // A durable scheduling record does not prove whether the child side
+        // effect happened. Never collapse this unknown state back to pending.
+        recoveryRequired.push(nodeId);
       }
     }
     this.inFlight = 0;
+    return recoveryRequired;
   }
 
   /** Resume a hydrated run: subscribe, log, and schedule the ready set (finished nodes are skipped). */
@@ -403,7 +444,25 @@ class ActiveRun {
   }
 
   private async dispatch(node: TaskNode): Promise<void> {
+    let durableDispatch: Awaited<ReturnType<NonNullable<ConductorSessionHost['prepareTaskNodeDispatch']>>> | undefined;
+    let durableCommitted = false;
     try {
+      const prepareDurableDispatch = this.deps.host.prepareTaskNodeDispatch;
+      const commitDurableDispatch = this.deps.host.commitTaskNodeDispatch;
+      if (!!prepareDurableDispatch !== !!commitDurableDispatch) {
+        throw new Error('task node durable boundary is only partially configured');
+      }
+      durableDispatch = await prepareDurableDispatch?.call(this.deps.host, {
+        workspaceRoot: this.deps.workspaceRoot,
+        taskSlug: this.slug,
+        runId: this.runId,
+        nodeId: node.id,
+        attempt: this.state.get(node.id)!.attempt,
+        orchestratorSessionId: this.opts.orchestratorSessionId,
+      });
+      if (durableDispatch && !durableDispatch.created) {
+        throw new Error(`task node ${node.id} already crossed durable T1 and requires recovery`);
+      }
       // Task-level skills ride as [skill:slug] mentions on every child prompt — the agent
       // pipeline resolves each SKILL.md and blocks tools until it is read (skills-as-context).
       const prompt = skillsPreamble(this.spec.skills) + (await this.buildPrompt(node));
@@ -447,8 +506,25 @@ class ActiveRun {
       this.log({ kind: 'node-spawned', nodeId: node.id, sessionId: child.id });
       await this.deps.host.setKanbanColumn(child.id, 'in-progress');
       await this.deps.host.sendMessage(child.id, prompt);
+      if (durableDispatch && commitDurableDispatch) {
+        await commitDurableDispatch.call(this.deps.host, {
+          workspaceRoot: this.deps.workspaceRoot,
+          durableSessionId: durableDispatch.durableSessionId,
+          childSessionId: child.id,
+          runOperationId: durableDispatch.runOperationId,
+          operationId: durableDispatch.operationId,
+          providerToolCallId: durableDispatch.providerToolCallId,
+          canonicalArgsHash: durableDispatch.canonicalArgsHash,
+        });
+        durableCommitted = true;
+      }
     } catch (err) {
-      this.failNode(node.id, `dispatch failed: ${(err as Error).message}`);
+      this.failNode(
+        node.id,
+        `dispatch failed: ${(err as Error).message}`,
+        undefined,
+        !(durableDispatch && !durableCommitted),
+      );
     }
   }
 
@@ -513,8 +589,9 @@ class ActiveRun {
       this.outputs[nodeId] = output;
       st.state = 'done';
       this.inFlight = Math.max(0, this.inFlight - 1);
+      this.log({ kind: 'node-finished', nodeId, sessionId: evt.sessionId, state: 'done', output });
+      // Compatibility projection only: canonical fact above is authoritative.
       writeNodeOutput(this.deps.workspaceRoot, this.slug, this.runId, nodeId, output);
-      this.log({ kind: 'node-finished', nodeId, sessionId: evt.sessionId, state: 'done' });
       void this.deps.host.setSessionStatus(evt.sessionId, DONE_STATUS);
       void this.deps.host.setKanbanColumn(evt.sessionId, 'done');
       this.scheduleReady();
@@ -532,7 +609,7 @@ class ActiveRun {
     }
   }
 
-  private failNode(nodeId: string, reason: string, sessionId?: string): void {
+  private failNode(nodeId: string, reason: string, sessionId?: string, allowRetry = true): void {
     const st = this.state.get(nodeId)!;
     const wasRunning = st.state === 'running';
     if (wasRunning) this.inFlight = Math.max(0, this.inFlight - 1);
@@ -542,7 +619,7 @@ class ActiveRun {
     // to the `error` retry trigger (empty/invalid detection is deferred).
     const node = this.spec.nodes.find((n) => n.id === nodeId);
     const retry = node?.retry;
-    if (retry && st.attempt <= retry.limit && retryMatches(retry.when, 'error')) {
+    if (allowRetry && retry && st.attempt <= retry.limit && retryMatches(retry.when, 'error')) {
       st.lastFailure = `Previous attempt failed: ${reason}. Address the cause before retrying.`;
       st.state = 'pending';
       const sid = sessionId ?? st.sessionId;
@@ -684,9 +761,10 @@ class ActiveRun {
    */
   private handleVerdict(text: string): void {
     if (this.runStatus !== 'verifying') return; // stopped/finalized while awaiting the verdict
-    writeNodeOutput(this.deps.workspaceRoot, this.slug, this.runId, '__verdict__', { text });
+    const verdictOutput = { text };
     const verdict = parseVerdict(text);
-    this.log({ kind: 'verdict', result: verdict.result, reason: verdict.reason, nodes: verdict.nodes });
+    this.log({ kind: 'verdict', result: verdict.result, reason: verdict.reason, nodes: verdict.nodes, output: verdictOutput });
+    writeNodeOutput(this.deps.workspaceRoot, this.slug, this.runId, '__verdict__', verdictOutput);
 
     if (verdict.result === 'pass') {
       this.unparsedReAsks = 0;
@@ -820,7 +898,17 @@ class ActiveRun {
 
   private log(entry: RunLogEntryInput): void {
     const t = this.deps.now ? this.deps.now() : new Date().toISOString();
-    appendRunLog(this.deps.workspaceRoot, this.slug, this.runId, { ...entry, t } as RunLogEntry);
+    const committed = { ...entry, t } as RunLogEntry;
+    this.deps.host.commitTaskRunFact?.({
+      workspaceRoot: this.deps.workspaceRoot,
+      sessionId: this.opts.orchestratorSessionId ?? `task:${this.slug}:${this.runId}`,
+      taskSlug: this.slug,
+      runId: this.runId,
+      ordinal: this.factOrdinal,
+      entry: committed,
+    });
+    this.factOrdinal += 1;
+    appendRunLog(this.deps.workspaceRoot, this.slug, this.runId, committed);
   }
 }
 
@@ -952,7 +1040,8 @@ export class TaskRunner {
     if (!loaded?.spec || !loaded.valid) {
       throw new Error(`Cannot resume "${slug}:${runId}": task.yaml is missing or invalid`);
     }
-    const log = readRunLog(this.deps.workspaceRoot, slug, runId);
+    const canonicalLog = this.deps.host.listTaskRunFacts?.(this.deps.workspaceRoot, slug, runId) ?? [];
+    const log = canonicalLog.length > 0 ? canonicalLog : readRunLog(this.deps.workspaceRoot, slug, runId);
     if (log.length === 0) throw new Error(`Cannot resume "${slug}:${runId}": no run-log found`);
     const started = log.find((e) => e.kind === 'run-started');
     const orchestratorSessionId = started && started.kind === 'run-started' ? started.orchestratorSessionId : undefined;
@@ -963,7 +1052,15 @@ export class TaskRunner {
       { orchestratorSessionId, params: resolveParams(loaded.spec), verifyOnComplete: true },
       this.deps,
     );
-    run.hydrate(log, (nodeId) => readNodeOutput(this.deps.workspaceRoot, slug, runId, nodeId));
+    const recoveryRequired = run.hydrate(
+      log,
+      (nodeId) => readNodeOutput(this.deps.workspaceRoot, slug, runId, nodeId),
+    );
+    if (recoveryRequired.length > 0) {
+      throw new Error(
+        `Cannot automatically resume "${slug}:${runId}": node outcome is unknown after restart (${recoveryRequired.join(', ')}). Reconcile it before retrying.`,
+      );
+    }
     this.runs.set(this.key(slug, runId), run);
     run.resumeFromHydrated();
     return run.snapshot();

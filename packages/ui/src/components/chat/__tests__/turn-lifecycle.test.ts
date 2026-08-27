@@ -264,6 +264,45 @@ describe('turn lifecycle scenarios', () => {
     })
   })
 
+  describe('tool with unknown recovery outcome', () => {
+    it('preserves unknown even when the recovery explanation is stored as toolResult', () => {
+      resetCounters()
+      turnIdCounter++
+
+      const messages: Message[] = [
+        createUserMessage(),
+        {
+          ...createToolMessage('running', 'SendEmail'),
+          toolStatus: 'unknown',
+          toolResult: 'The process exited after dispatch; external effect requires reconciliation.',
+        },
+      ]
+
+      const turn = getLastAssistantTurn(groupMessagesByTurn(messages))!
+      expect(turn.activities[0]?.status).toBe('unknown')
+      expect(turn.activities[0]?.content).toContain('requires reconciliation')
+      expect(deriveTurnPhase(turn)).toBe('awaiting')
+    })
+
+    it('never maps unknown to completed when isError is also present', () => {
+      resetCounters()
+      turnIdCounter++
+
+      const messages: Message[] = [
+        createUserMessage(),
+        {
+          ...createToolMessage('running', 'CreateResource'),
+          toolStatus: 'unknown',
+          toolResult: 'Outcome unknown',
+          isError: true,
+        },
+      ]
+
+      const turn = getLastAssistantTurn(groupMessagesByTurn(messages))!
+      expect(turn.activities[0]?.status).toBe('unknown')
+    })
+  })
+
   describe('interruption', () => {
     it('user message during tool_active marks turn complete', () => {
       resetCounters()

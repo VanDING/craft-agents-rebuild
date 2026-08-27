@@ -23,6 +23,7 @@ import {
   Pencil,
   FilePenLine,
   GitBranch,
+  CircleAlert,
 } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { Markdown } from '../markdown'
@@ -40,6 +41,7 @@ import { getDiffStats, getUnifiedDiffStats } from '../code-viewer'
 import { TurnCardActionsMenu } from './TurnCardActionsMenu'
 import { computeLastChildSet, groupActivitiesByParent, isActivityGroup, formatDuration, formatTokens, deriveTurnPhase, shouldShowThinkingIndicator, type ActivityGroup, type AssistantTurn } from './turn-utils'
 import { extractAnnotationSelectedText } from './follow-up-helpers'
+import { canBranchFromTurn } from './recovery-policy'
 import {
   formatAnnotationFollowUpTooltipText,
   getAnnotationNoteText,
@@ -216,7 +218,7 @@ export const SIZE_CONFIG = {
 // Types
 // ============================================================================
 
-export type ActivityStatus = 'pending' | 'running' | 'completed' | 'error' | 'backgrounded'
+export type ActivityStatus = 'pending' | 'running' | 'completed' | 'error' | 'backgrounded' | 'unknown'
 export type ActivityType = 'tool' | 'thinking' | 'intermediate' | 'status' | 'plan'
 export type AnnotationInteractionMode = 'interactive' | 'tooltip-only'
 
@@ -241,6 +243,7 @@ export interface ActivityItem {
   status: ActivityStatus
   toolName?: string
   toolUseId?: string  // For matching parent-child relationships
+  durableOperationId?: string
   toolInput?: Record<string, unknown>
   content?: string
   intent?: string
@@ -350,6 +353,8 @@ export interface TurnCardProps {
   compactMode?: boolean
   /** Callback to branch the session from a specific message */
   onBranch?: (messageId: string, options?: { newPanel?: boolean }) => void
+  /** Open trusted evidence review for an unresolved durable tool operation. */
+  onReviewRecovery?: (activity: ActivityItem) => void
   /** Callback to add an annotation to a response message */
   onAddAnnotation?: (messageId: string, annotation: AnnotationV1) => void
   /** Callback to remove a persisted annotation from a response message */
@@ -719,6 +724,12 @@ function getPreviewText(
   hasResponse?: boolean,
   isComplete?: boolean
 ): string {
+  // Unknown external effects outrank intent and completion summaries. The
+  // collapsed card must never look like an ordinarily completed turn.
+  if (activities.some(activity => activity.status === 'unknown')) {
+    return i18n.t('turnCard.recoveryRequired')
+  }
+
   // If we have an explicit intent, use it
   if (intent) return intent
 
@@ -849,6 +860,8 @@ export function ActivityStatusIcon({
         return <CheckCircle2 className={cn(SIZE_CONFIG.iconSize, "shrink-0 text-success")} />
       case 'error':
         return <XCircle className={cn(SIZE_CONFIG.iconSize, "shrink-0 text-destructive")} />
+      case 'unknown':
+        return <CircleAlert className={cn(SIZE_CONFIG.iconSize, "shrink-0 text-warning")} />
     }
   }
 
@@ -1011,7 +1024,7 @@ function ActivityRow({ activity, onOpenDetails, isLastChild, sessionFolderPath, 
   const intentOrDescription = activity.intent || (activity.toolInput?.description as string | undefined)
   const inputSummary = formatToolInput(activity.toolInput, activity.toolName, sessionFolderPath)
   const diffStats = computeEditWriteDiffStats(activity.toolName, activity.toolInput)
-  const isComplete = activity.status === 'completed' || activity.status === 'error'
+  const isComplete = activity.status === 'completed' || activity.status === 'error' || activity.status === 'unknown'
   const isBackgrounded = activity.status === 'backgrounded'
 
   // For backgrounded tasks, show task/shell ID and elapsed time
@@ -1152,6 +1165,21 @@ function ActivityRow({ activity, onOpenDetails, isLastChild, sessionFolderPath, 
             </TooltipContent>
           </Tooltip>
         )}
+        {activity.status === 'unknown' && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span
+                className="px-1.5 py-0.5 bg-warning/10 shadow-tinted rounded-[4px] text-[10px] text-warning font-medium cursor-default shrink-0"
+                style={{ '--shadow-color': 'var(--warning)' } as React.CSSProperties}
+              >
+                {i18n.t('turnCard.recoveryRequired')}
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="max-w-[400px]">
+              {activity.content || i18n.t('turnCard.recoveryRequiredDescription')}
+            </TooltipContent>
+          </Tooltip>
+        )}
         {/* Native tools: Compound label with description + params (flex-1) */}
         {/* In informative mode, hide inputSummary (command details) - only show description */}
         {!isMcpOrApiTool && !isBackgrounded && (intentOrDescription || (displayMode === 'detailed' && inputSummary)) && (
@@ -1251,7 +1279,7 @@ function ActivityGroupRow({ group, expandedGroups: externalExpandedGroups, onExp
 
   const description = group.parent.toolInput?.description as string | undefined
   const subagentType = group.parent.toolInput?.subagent_type as string | undefined
-  const isComplete = group.parent.status === 'completed' || group.parent.status === 'error'
+  const isComplete = group.parent.status === 'completed' || group.parent.status === 'error' || group.parent.status === 'unknown'
   const hasError = group.parent.status === 'error'
 
   return (
@@ -2795,6 +2823,7 @@ export const TurnCard = React.memo(function TurnCard({
   animateResponse = false,
   compactMode = false,
   onBranch,
+  onReviewRecovery,
   onAddAnnotation,
   onRemoveAnnotation,
   onUpdateAnnotation,
@@ -2958,6 +2987,11 @@ export const TurnCard = React.memo(function TurnCard({
   // This properly handles the "gap" state (awaiting) between tool completion and next action,
   // which was previously causing the turn card to "disappear".
   const isThinking = shouldShowThinkingIndicator(turnPhase, isBuffering)
+  const requiresRecovery = !canBranchFromTurn(activities)
+  // Branching from a response is the closest existing UI affordance to replaying
+  // the path. Keep it unavailable until a durable reconciliation resolves the
+  // unknown effect.
+  const safeOnBranch = requiresRecovery ? undefined : onBranch
 
   return (
     <div className="space-y-1">
@@ -3015,6 +3049,32 @@ export const TurnCard = React.memo(function TurnCard({
               />
             )}
           </button>
+          {requiresRecovery && (
+            <div className="mx-2.5 mb-1.5 flex items-start gap-2 rounded-md border border-warning/20 bg-warning/10 px-2.5 py-2 text-xs text-warning">
+              <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <div>
+                <div className="font-medium">{i18n.t('turnCard.recoveryRequired')}</div>
+                <div className="mt-0.5 text-muted-foreground">
+                  {i18n.t('turnCard.recoveryRequiredDescription')}
+                </div>
+                {onReviewRecovery && (() => {
+                  const activity = activities.find(item => item.status === 'unknown' && item.durableOperationId)
+                  return activity ? (
+                    <button
+                      type="button"
+                      className="mt-2 rounded-md border border-warning/30 bg-background/70 px-2 py-1 text-xs font-medium text-foreground hover:bg-background"
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        onReviewRecovery(activity)
+                      }}
+                    >
+                      {i18n.t('turnCard.reviewRecovery')}
+                    </button>
+                  ) : null
+                })()}
+              </div>
+            </div>
+          )}
 
           {/* Expanded Activity List */}
           <AnimatePresence initial={false}>
@@ -3160,7 +3220,7 @@ export const TurnCard = React.memo(function TurnCard({
             onAcceptWithCompact={onAcceptPlanWithCompact}
             isLastResponse={isLastResponse && index === planActivities.length - 1}
             compactMode={compactMode}
-            onBranch={onBranch ? (options?: { newPanel?: boolean }) => onBranch(planActivity.messageId ?? planActivity.id, options) : undefined}
+            onBranch={safeOnBranch ? (options?: { newPanel?: boolean }) => safeOnBranch(planActivity.messageId ?? planActivity.id, options) : undefined}
             sendMessageKey={sendMessageKey}
             hasActiveFollowUpAnnotations={hasActiveFollowUpAnnotations}
             openAnnotationRequest={openAnnotationRequest}
@@ -3199,7 +3259,7 @@ export const TurnCard = React.memo(function TurnCard({
                 onAcceptWithCompact={onAcceptPlanWithCompact}
                 isLastResponse={isLastResponse}
                 compactMode={compactMode}
-                onBranch={onBranch && response.messageId ? (options?: { newPanel?: boolean }) => onBranch(response.messageId!, options) : undefined}
+                onBranch={safeOnBranch && response.messageId ? (options?: { newPanel?: boolean }) => safeOnBranch(response.messageId!, options) : undefined}
                 sendMessageKey={sendMessageKey}
                 hasActiveFollowUpAnnotations={hasActiveFollowUpAnnotations}
                 openAnnotationRequest={openAnnotationRequest}
@@ -3231,7 +3291,7 @@ export const TurnCard = React.memo(function TurnCard({
             onAcceptWithCompact={onAcceptPlanWithCompact}
             isLastResponse={isLastResponse}
             compactMode={compactMode}
-            onBranch={onBranch && response.messageId ? (options?: { newPanel?: boolean }) => onBranch(response.messageId!, options) : undefined}
+            onBranch={safeOnBranch && response.messageId ? (options?: { newPanel?: boolean }) => safeOnBranch(response.messageId!, options) : undefined}
             sendMessageKey={sendMessageKey}
             hasActiveFollowUpAnnotations={hasActiveFollowUpAnnotations}
             openAnnotationRequest={openAnnotationRequest}

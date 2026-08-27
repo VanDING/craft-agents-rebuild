@@ -39,6 +39,8 @@ export function handleToolStart(
       toolDisplayMeta: event.toolDisplayMeta,
       turnId: event.turnId,
       parentToolUseId: event.parentToolUseId,
+      durableOperationId: event.durableOperationId,
+      durableSeq: event.durableSeq,
       // First event's timestamp is authoritative; never overwrite with the
       // duplicate event's (may be absent or later).
       ...(event.timestamp !== undefined ? { timestamp: event.timestamp } : {}),
@@ -61,6 +63,8 @@ export function handleToolStart(
     toolIntent: event.toolIntent,
     toolDisplayName: event.toolDisplayName,
     toolDisplayMeta: event.toolDisplayMeta,
+    durableOperationId: event.durableOperationId,
+    durableSeq: event.durableSeq,
   }
 
   return {
@@ -108,6 +112,8 @@ export function handleToolResult(
       errorCode: isPersistedOutput ? 'response_too_large' : undefined,
       // Wall-clock execution duration from server/adapter measurement.
       ...(event.durationMs !== undefined ? { toolDuration: event.durationMs } : {}),
+      durableOperationId: event.durableOperationId,
+      durableSeq: event.durableSeq,
     })
 
     // Safety net: when a parent Task completes, auto-complete any still-pending child tools.
@@ -164,6 +170,8 @@ export function handleToolResult(
     turnId: event.turnId,
     parentToolUseId: event.parentToolUseId,
     ...(event.durationMs !== undefined ? { toolDuration: event.durationMs } : {}),
+    durableOperationId: event.durableOperationId,
+    durableSeq: event.durableSeq,
   }
 
   return {

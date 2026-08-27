@@ -4,7 +4,7 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import type { TokenUsage } from '@craft-agent/core/types';
 import type { CreateSessionOptions } from '@craft-agent/shared/protocol';
-import { parseTaskSpec, saveTaskSpec, readRunLog, readNodeOutput, type TaskSpec } from '@craft-agent/shared/tasks';
+import { parseTaskSpec, saveTaskSpec, readRunLog, readNodeOutput, type RunLogEntry, type TaskSpec } from '@craft-agent/shared/tasks';
 import type { SessionCompletionEvent } from '../sessions/SessionManager';
 import { TaskRunner, type ConductorSessionHost } from './TaskRunner';
 
@@ -33,6 +33,10 @@ class MockHost implements ConductorSessionHost {
   readonly nodeCounts: { sessionId: string; count: number }[] = [];
   readonly cancelled: string[] = [];
   readonly finalTextById = new Map<string, string>();
+  prepareTaskNodeDispatch?: NonNullable<ConductorSessionHost['prepareTaskNodeDispatch']>;
+  commitTaskNodeDispatch?: NonNullable<ConductorSessionHost['commitTaskNodeDispatch']>;
+  commitTaskRunFact?: NonNullable<ConductorSessionHost['commitTaskRunFact']>;
+  listTaskRunFacts?: NonNullable<ConductorSessionHost['listTaskRunFacts']>;
 
   async createSession(_workspaceId: string, options: CreateSessionOptions): Promise<{ id: string }> {
     const id = `sess-${options.name}`;
@@ -484,6 +488,122 @@ describe('TaskRunner (Conductor)', () => {
     expect(r2.getRunState('res', 'r1')!.status).toBe('completed');
   });
 
+  it('refuses to replay an in-flight node whose external outcome is unknown after restart', async () => {
+    saveTaskSpec(root, specOf({ id: 'unknown', title: 'Unknown', goal: 'g', nodes: [{ id: 'a', prompt: 'a' }] }));
+    const r1 = makeRunner();
+    r1.run('unknown', { runId: 'r1', orchestratorSessionId: 'orch' });
+    await tick();
+
+    const host2 = new MockHost();
+    const r2 = new TaskRunner({ host: host2, workspaceId: 'ws', workspaceRoot: root });
+    expect(() => r2.resume('unknown', 'r1')).toThrow('outcome is unknown after restart')
+    expect(host2.dispatchedNames()).toEqual([])
+  });
+
+  it('rehydrates node output from canonical task facts without the run-log files', async () => {
+    saveTaskSpec(root, specOf({
+      id: 'canonical-resume',
+      title: 'Canonical resume',
+      goal: 'resume from runtime facts',
+      nodes: [
+        { id: 'first', prompt: 'first' },
+        { id: 'second', depends_on: ['first'], prompt: 'use ${nodes.first.output}' },
+      ],
+    }));
+    const facts: RunLogEntry[] = [
+      { t: '2026-08-26T00:00:00.000Z', kind: 'run-started', taskId: 'canonical-resume', runId: 'r1', orchestratorSessionId: 'orch' },
+      { t: '2026-08-26T00:00:01.000Z', kind: 'node-scheduled', nodeId: 'first' },
+      { t: '2026-08-26T00:00:02.000Z', kind: 'node-spawned', nodeId: 'first', sessionId: 'sess-first' },
+      { t: '2026-08-26T00:00:03.000Z', kind: 'node-finished', nodeId: 'first', sessionId: 'sess-first', state: 'done', output: { text: 'CANONICAL' } },
+      { t: '2026-08-26T00:00:04.000Z', kind: 'run-paused' },
+    ];
+    host.listTaskRunFacts = () => facts;
+    host.commitTaskRunFact = ({ entry }) => { facts.push(entry); };
+    const runner = makeRunner();
+
+    runner.resume('canonical-resume', 'r1');
+    await tick();
+
+    expect(host.promptFor('second')).toBe('use CANONICAL');
+    expect(readNodeOutput(root, 'canonical-resume', 'r1', 'first')).toBeNull();
+  });
+
+  it('wraps child dispatch in durable T1/T2 around the external send', async () => {
+    saveTaskSpec(root, specOf({ id: 'dur', title: 'Dur', goal: 'g', nodes: [{ id: 'a', prompt: 'a' }] }));
+    const order: string[] = [];
+    const originalCreate = host.createSession.bind(host);
+    const originalSend = host.sendMessage.bind(host);
+    host.prepareTaskNodeDispatch = async () => {
+      order.push('t1');
+      return {
+        durableSessionId: 'task:dur:r1',
+        runOperationId: 'tasknode:dur:r1:a:1',
+        operationId: 'toolop-a',
+        providerToolCallId: 'spawn:a:1',
+        canonicalArgsHash: 'hash-a',
+        created: true,
+      };
+    };
+    host.createSession = async (workspaceId, options) => {
+      order.push('create');
+      return originalCreate(workspaceId, options);
+    };
+    host.sendMessage = async (sessionId, message) => {
+      order.push('send');
+      return originalSend(sessionId, message);
+    };
+    host.commitTaskNodeDispatch = async (input) => {
+      order.push('t2');
+      expect(input).toMatchObject({
+        durableSessionId: 'task:dur:r1',
+        childSessionId: 'sess-a',
+        operationId: 'toolop-a',
+      });
+    };
+
+    makeRunner().run('dur', { runId: 'r1' });
+    await tick();
+
+    expect(order).toEqual(['t1', 'create', 'send', 't2']);
+  });
+
+  it('never retries a child dispatch after durable T1 when T2 is missing', async () => {
+    saveTaskSpec(
+      root,
+      specOf({ id: 'dur-fail', title: 'DurFail', goal: 'g', nodes: [{ id: 'a', prompt: 'a', retry: { limit: 3 } }] }),
+    );
+    let prepared = 0;
+    host.prepareTaskNodeDispatch = async () => {
+      prepared += 1;
+      return {
+        durableSessionId: 'task:dur-fail:r1',
+        runOperationId: 'tasknode:dur-fail:r1:a:1',
+        operationId: 'toolop-a',
+        providerToolCallId: 'spawn:a:1',
+        canonicalArgsHash: 'hash-a',
+        created: true,
+      };
+    };
+    host.commitTaskNodeDispatch = async () => {
+      throw new Error('T2 must not be reached after send failure');
+    };
+    host.sendMessage = async () => {
+      throw new Error('send crossed boundary');
+    };
+
+    const runner = makeRunner();
+    runner.run('dur-fail', { runId: 'r1' });
+    await tick();
+    await tick();
+
+    const snapshot = runner.getRunState('dur-fail', 'r1')!;
+    expect(snapshot.status).toBe('failed');
+    expect(snapshot.nodes[0]).toMatchObject({ state: 'failed', attempt: 1 });
+    expect(prepared).toBe(1);
+    expect(host.created).toHaveLength(1);
+    expect(readRunLog(root, 'dur-fail', 'r1').some((event) => event.kind === 'node-retry')).toBe(false);
+  });
+
   it('retries a failed node up to retry.limit, then fails', async () => {
     saveTaskSpec(
       root,
@@ -767,8 +887,13 @@ describe('TaskRunner (Conductor)', () => {
     host.completeSession('orch', { finalText: 'VERDICT: FAIL — redo' }); // consumes the one repair
     await tick();
     expect(r1.getRunState('hyd', 'r1')!.status).toBe('running');
+    // Finish the repaired node before the simulated restart. Restarting while
+    // it is in-flight is intentionally recovery-required and covered above.
+    host.complete('a', { finalText: 'repaired' });
+    await tick();
+    expect(r1.getRunState('hyd', 'r1')!.status).toBe('verifying');
 
-    // Restart: fresh host + runner with empty in-memory state, resume from the run-log.
+    // Restart at a durable checkpoint: fresh host + runner with empty in-memory state.
     const host2 = new MockHost();
     const r2 = new TaskRunner({ host: host2, workspaceId: 'ws', workspaceRoot: root, now: () => '2026-06-07T00:00:00.000Z' });
     r2.resume('hyd', 'r1');

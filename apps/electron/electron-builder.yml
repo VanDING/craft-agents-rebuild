@@ -71,6 +71,10 @@ extraResources:
   # the platform package must ship next to it.
   - from: node_modules/@vscode/ripgrep-darwin-${arch}
     to: app/node_modules/@vscode/ripgrep-darwin-${arch}
+  # Windows optional package. The wrapper above contains no binary and resolves
+  # rg.exe from this sibling package at runtime.
+  - from: node_modules/@vscode/ripgrep-win32-${arch}
+    to: app/node_modules/@vscode/ripgrep-win32-${arch}
   # WhatsApp worker subprocess (self-contained; Baileys bundled in).
   # Runtime resolves it at <resourcesPath>/messaging-whatsapp-worker/worker.cjs
   # (apps/electron/src/main/index.ts), so stage it flat under Resources — the
