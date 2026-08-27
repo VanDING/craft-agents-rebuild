@@ -12,7 +12,7 @@ import {
 import { canonicalJson } from './canonical-json.js'
 import { openSqliteDatabase, type SqliteDatabase } from './sqlite-driver.js'
 
-const SCHEMA_VERSION = 3
+const SCHEMA_VERSION = 4
 
 interface RuntimeEventRow {
   seq: number
@@ -44,6 +44,8 @@ interface ToolOperationRow {
   run_operation_id: string
   operation_id: string
   provider_tool_call_id: string
+  tool_batch_id: string | null
+  tool_batch_ordinal: number | null
   tool_name: string
   canonical_args_hash: string
   recovery_mode: ToolDispatchIntent['recoveryMode']
@@ -300,13 +302,15 @@ export class DurableRuntimeStore {
       const eventSeqs = input.events.map(event => this.appendEvent(event))
       this.db.prepare(`
         INSERT INTO tool_operations (
-          run_operation_id, operation_id, provider_tool_call_id, tool_name, canonical_args_hash,
-          recovery_mode, idempotency_key, status, prepared_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'effect_pending', ?)
+          run_operation_id, operation_id, provider_tool_call_id, tool_batch_id, tool_batch_ordinal,
+          tool_name, canonical_args_hash, recovery_mode, idempotency_key, status, prepared_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'effect_pending', ?)
       `).run(
         input.intent.runOperationId,
         input.intent.operationId,
         input.intent.providerToolCallId,
+        input.intent.toolBatchId ?? null,
+        input.intent.toolBatchOrdinal ?? null,
         input.intent.toolName,
         input.intent.canonicalArgsHash,
         input.intent.recoveryMode,
@@ -332,6 +336,9 @@ export class DurableRuntimeStore {
         const eventSeqs = input.events.map(event => this.getEventSeq(event.eventId) ?? this.appendEvent(event))
         return { created: false, eventSeqs }
       }
+      if (existing.status === 'reconciled') {
+        throw new Error(`Tool operation ${input.outcome.operationId} is already reconciled`)
+      }
 
       if (input.operationState.operationId !== input.outcome.runOperationId) {
         throw new Error('Tool outcome parent does not match the durable operation state')
@@ -349,6 +356,11 @@ export class DurableRuntimeStore {
         input.settledAt,
         input.outcome.operationId,
       )
+      const remaining = this.countUnsettledToolOperations(input.outcome.runOperationId)
+      const expectedPhase = remaining > 0 ? 'tool_effect_pending' : 'checkpoint'
+      if (input.operationState.phase !== expectedPhase) {
+        throw new Error(`Tool outcome aggregate expected phase ${expectedPhase}, found ${input.operationState.phase}`)
+      }
       this.writeOperationState(input.operationState)
       return { created: true, eventSeqs }
     })())
@@ -452,6 +464,8 @@ export class DurableRuntimeStore {
       runOperationId: row.run_operation_id,
       operationId: row.operation_id,
       providerToolCallId: row.provider_tool_call_id,
+      toolBatchId: row.tool_batch_id ?? undefined,
+      toolBatchOrdinal: row.tool_batch_ordinal ?? undefined,
       toolName: row.tool_name,
       canonicalArgsHash: row.canonical_args_hash,
       recoveryMode: row.recovery_mode,
@@ -803,6 +817,30 @@ export class DurableRuntimeStore {
       PRAGMA user_version = 3;
       COMMIT;
     `)
+    if (current < 4) {
+      const columns = new Set(
+        (this.db.prepare('PRAGMA table_info(tool_operations)').all() as Array<{ name: string }>)
+          .map(column => column.name),
+      )
+      this.db.exec('BEGIN IMMEDIATE')
+      try {
+        if (!columns.has('tool_batch_id')) {
+          this.db.exec('ALTER TABLE tool_operations ADD COLUMN tool_batch_id TEXT')
+        }
+        if (!columns.has('tool_batch_ordinal')) {
+          this.db.exec('ALTER TABLE tool_operations ADD COLUMN tool_batch_ordinal INTEGER CHECK(tool_batch_ordinal IS NULL OR tool_batch_ordinal >= 0)')
+        }
+        this.db.exec(`
+          CREATE INDEX IF NOT EXISTS ix_tool_operations_batch
+            ON tool_operations(run_operation_id, tool_batch_id, tool_batch_ordinal);
+          PRAGMA user_version = 4;
+          COMMIT;
+        `)
+      } catch (error) {
+        this.db.exec('ROLLBACK')
+        throw error
+      }
+    }
   }
 
   private appendEvent(event: RuntimeEvent): number {
@@ -892,6 +930,14 @@ export class DurableRuntimeStore {
       .get(operationId) as ToolOperationRow | undefined
   }
 
+  private countUnsettledToolOperations(runOperationId: string): number {
+    const row = this.db.prepare(`
+      SELECT COUNT(*) AS count FROM tool_operations
+      WHERE run_operation_id = ? AND status IN ('effect_pending', 'recovery_parked')
+    `).get(runOperationId) as { count: number }
+    return row.count
+  }
+
   private getEventSeq(eventId: string): number | undefined {
     const row = this.db.prepare('SELECT seq FROM runtime_events WHERE event_id = ?')
       .get(eventId) as { seq: number } | undefined
@@ -902,12 +948,16 @@ export class DurableRuntimeStore {
     runOperationId: string
     operationId: string
     providerToolCallId: string
+    toolBatchId?: string
+    toolBatchOrdinal?: number
     toolName: string
     canonicalArgsHash: string
   }): void {
     if (existing.run_operation_id !== identity.runOperationId
       || existing.operation_id !== identity.operationId
       || existing.provider_tool_call_id !== identity.providerToolCallId
+      || (existing.tool_batch_id ?? undefined) !== identity.toolBatchId
+      || (existing.tool_batch_ordinal ?? undefined) !== identity.toolBatchOrdinal
       || existing.tool_name !== identity.toolName
       || existing.canonical_args_hash !== identity.canonicalArgsHash) {
       throw new Error(`Tool operation ${identity.operationId} identity or arguments changed`)

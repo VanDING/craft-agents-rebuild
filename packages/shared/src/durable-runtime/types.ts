@@ -45,6 +45,10 @@ export interface ToolDispatchIntent {
   /** Stable identity of this individual external effect. */
   operationId: string
   providerToolCallId: string
+  /** Model response that emitted this group of tool calls. */
+  toolBatchId?: string
+  /** Zero-based source order within the model-emitted tool batch. */
+  toolBatchOrdinal?: number
   toolName: string
   canonicalArgsHash: string
   recoveryMode: ToolRecoveryMode
@@ -55,6 +59,8 @@ export interface ToolOutcome {
   runOperationId: string
   operationId: string
   providerToolCallId: string
+  toolBatchId?: string
+  toolBatchOrdinal?: number
   toolName: string
   canonicalArgsHash: string
   isError: boolean
@@ -171,6 +177,8 @@ export interface DurableToolPrepareRequest {
   turnId?: string
   runOperationId: string
   providerToolCallId: string
+  toolBatchId?: string
+  toolBatchOrdinal?: number
   toolName: string
   args: Record<string, unknown>
   recoveryMode?: ToolRecoveryMode
@@ -181,6 +189,8 @@ export interface DurableToolPrepareResponse {
   idempotencyKey: string
   canonicalArgsHash: string
   recoveryMode: ToolRecoveryMode
+  toolBatchId?: string
+  toolBatchOrdinal?: number
   created: boolean
   status: ToolRecoveryVerdict['kind']
   /** Sequence of the last fact atomically committed at T1. */
@@ -194,6 +204,8 @@ export interface DurableToolExecutionIdentity {
   idempotencyKey: string
   canonicalArgsHash: string
   recoveryMode: ToolRecoveryMode
+  toolBatchId?: string
+  toolBatchOrdinal?: number
 }
 
 export interface DurableToolOutcomeResponse {
@@ -207,6 +219,8 @@ export interface DurableToolOutcomeRequest {
   runOperationId: string
   operationId: string
   providerToolCallId: string
+  toolBatchId?: string
+  toolBatchOrdinal?: number
   toolName: string
   canonicalArgsHash: string
   result: unknown

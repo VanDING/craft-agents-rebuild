@@ -67,6 +67,19 @@ function nextState(
   }
 }
 
+function toolAggregateData(
+  state: DurableOperationState,
+  unsettledToolOperationIds: string[],
+): Record<string, unknown> {
+  const previous = state.data && typeof state.data === 'object'
+    ? state.data as Record<string, unknown>
+    : {}
+  const { currentTool: _legacyCurrentTool, unsettledToolOperationIds: _previousIds, ...rest } = previous
+  return unsettledToolOperationIds.length > 0
+    ? { ...rest, unsettledToolOperationIds }
+    : rest
+}
+
 export interface AcceptDurableRunInput {
   workspaceRootPath: string
   sessionId: string
@@ -445,6 +458,8 @@ export class DurableRuntimeCoordinator {
       runOperationId: dispatch.runOperationId,
       operationId: dispatch.operationId,
       providerToolCallId: dispatch.providerToolCallId,
+      toolBatchId: dispatch.toolBatchId,
+      toolBatchOrdinal: dispatch.toolBatchOrdinal,
       toolName: dispatch.toolName,
       canonicalArgsHash: dispatch.canonicalArgsHash,
       result,
@@ -458,9 +473,10 @@ export class DurableRuntimeCoordinator {
     const operationState = nextState(
       snapshot.runOperation,
       remaining.length > 0 ? 'recovery_parked' : 'checkpoint',
-      remaining.length > 0
-        ? { unsettledToolOperationIds: remaining, lastReconciliationDecision: request.decision }
-        : { currentTool: null, lastReconciliationDecision: request.decision },
+      {
+        ...toolAggregateData(snapshot.runOperation, remaining),
+        lastReconciliationDecision: request.decision,
+      },
       decidedAt,
     )
     const auditPayload = {
@@ -766,6 +782,10 @@ export class DurableRuntimeCoordinator {
     const runState = store.getOperation(request.runOperationId)
     if (!runState) throw new Error(`Durable run ${request.runOperationId} is not open`)
     if (runState.sessionId !== request.sessionId) throw new Error('Durable run belongs to another session')
+    const unsettledTools = store.listUnsettledToolOperations(request.runOperationId)
+    if (unsettledTools.length > 0) {
+      throw new Error(`Durable run ${request.runOperationId} still has ${unsettledTools.length} unsettled tool operation(s)`)
+    }
     const operationId = durableModelOperationId(request.runOperationId, request.providerRequestId)
     const outcomeEvent = store.getEvent(`${operationId}:outcome`)
     if (outcomeEvent) {
@@ -935,21 +955,24 @@ export class DurableRuntimeCoordinator {
       runOperationId: request.runOperationId,
       operationId,
       providerToolCallId: request.providerToolCallId,
+      toolBatchId: request.toolBatchId,
+      toolBatchOrdinal: request.toolBatchOrdinal,
       toolName: request.toolName,
       canonicalArgsHash,
       recoveryMode,
       idempotencyKey: operationId,
     }
     const now = Date.now()
-    const pendingState = nextState(runState, 'tool_effect_pending', {
-      currentTool: {
-        operationId,
-        providerToolCallId: request.providerToolCallId,
-        toolName: request.toolName,
-        canonicalArgsHash,
-        recoveryMode,
-      },
-    }, now)
+    const pendingIds = store.listUnsettledToolOperations(request.runOperationId)
+      .map(item => item.dispatch?.operationId)
+      .filter((item): item is string => Boolean(item))
+    if (!pendingIds.includes(operationId)) pendingIds.push(operationId)
+    const pendingState = nextState(
+      runState,
+      'tool_effect_pending',
+      toolAggregateData(runState, pendingIds),
+      now,
+    )
     const result = store.commitToolPrepared({
       events: [
         {
@@ -964,6 +987,8 @@ export class DurableRuntimeCoordinator {
           payload: {
             toolOperationId: operationId,
             providerToolCallId: request.providerToolCallId,
+            toolBatchId: request.toolBatchId,
+            toolBatchOrdinal: request.toolBatchOrdinal,
             toolName: request.toolName,
             args: redactDurablePayload(request.args),
           },
@@ -994,6 +1019,8 @@ export class DurableRuntimeCoordinator {
       idempotencyKey: operationId,
       canonicalArgsHash,
       recoveryMode,
+      toolBatchId: request.toolBatchId,
+      toolBatchOrdinal: request.toolBatchOrdinal,
       created: result.created,
       status: verdict.kind,
       committedSeq: result.eventSeqs.at(-1) ?? 0,
@@ -1007,14 +1034,13 @@ export class DurableRuntimeCoordinator {
     const store = this.storeFor(workspaceRootPath)
     const runState = store.getOperation(request.runOperationId)
     if (!runState) throw new Error(`Durable run ${request.runOperationId} is not open`)
-    const currentTool = (runState.data as { currentTool?: { operationId?: string } }).currentTool
-    if (currentTool?.operationId !== request.operationId) {
-      throw new Error(`Durable run ${request.runOperationId} is not awaiting ${request.operationId}`)
-    }
+    if (runState.sessionId !== request.sessionId) throw new Error('Durable run belongs to another session')
     const outcome: ToolOutcome = {
       runOperationId: request.runOperationId,
       operationId: request.operationId,
       providerToolCallId: request.providerToolCallId,
+      toolBatchId: request.toolBatchId,
+      toolBatchOrdinal: request.toolBatchOrdinal,
       toolName: request.toolName,
       canonicalArgsHash: request.canonicalArgsHash,
       result: redactDurablePayload(request.result),
@@ -1022,7 +1048,15 @@ export class DurableRuntimeCoordinator {
       externalReference: request.externalReference,
     }
     const now = Date.now()
-    const checkpoint = nextState(runState, 'checkpoint', { currentTool: null }, now)
+    const remainingIds = store.listUnsettledToolOperations(request.runOperationId)
+      .map(item => item.dispatch?.operationId)
+      .filter((item): item is string => Boolean(item) && item !== request.operationId)
+    const aggregateState = nextState(
+      runState,
+      remainingIds.length > 0 ? 'tool_effect_pending' : 'checkpoint',
+      toolAggregateData(runState, remainingIds),
+      now,
+    )
     const result = store.commitToolOutcome({
       events: [{
         eventId: `${request.operationId}:outcome`,
@@ -1037,7 +1071,7 @@ export class DurableRuntimeCoordinator {
         createdAt: now,
       }],
       outcome,
-      operationState: checkpoint,
+      operationState: aggregateState,
       expectedStateVersion: runState.stateVersion,
       settledAt: now,
     })

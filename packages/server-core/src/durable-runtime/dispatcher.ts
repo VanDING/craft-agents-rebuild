@@ -68,17 +68,20 @@ export function durableToolOperationId(runOperationId: string, providerToolCallI
 function advanceState(
   state: DurableOperationState,
   phase: DurableOperationState['phase'],
-  currentTool: Record<string, unknown> | null,
+  unsettledToolOperationIds: string[],
   now: number,
 ): DurableOperationState {
   const previousData = state.data && typeof state.data === 'object'
     ? state.data as Record<string, unknown>
     : { previousData: state.data }
+  const { currentTool: _legacyCurrentTool, unsettledToolOperationIds: _previousIds, ...rest } = previousData
   return {
     ...state,
     phase,
     stateVersion: state.stateVersion + 1,
-    data: { ...previousData, currentTool },
+    data: unsettledToolOperationIds.length > 0
+      ? { ...rest, unsettledToolOperationIds }
+      : rest,
     updatedAt: now,
   }
 }
@@ -116,13 +119,7 @@ export class DurableToolDispatcher {
       idempotencyKey: operationId,
     }
     const preparedAt = this.now()
-    const pendingState = advanceState(input.runState, 'tool_effect_pending', {
-      operationId,
-      providerToolCallId: input.providerToolCallId,
-      toolName: input.toolName,
-      canonicalArgsHash,
-      recoveryMode: intent.recoveryMode,
-    }, preparedAt)
+    const pendingState = advanceState(input.runState, 'tool_effect_pending', [operationId], preparedAt)
     const events: RuntimeEvent[] = [
       {
         eventId: `${operationId}:call`,
@@ -199,7 +196,7 @@ export class DurableToolDispatcher {
     await this.options.afterEffect?.(outcome)
 
     const settledAt = this.now()
-    const nextState = advanceState(pendingState, 'checkpoint', null, settledAt)
+    const nextState = advanceState(pendingState, 'checkpoint', [], settledAt)
     const outcomeEvent: RuntimeEvent = {
       eventId: `${operationId}:outcome`,
       sessionId: input.sessionId,

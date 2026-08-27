@@ -365,6 +365,41 @@ describe('PiEventAdapter', () => {
       });
     });
 
+    it('preserves length-limited output as intermediate and reports an incomplete turn at settle', () => {
+      collect(adapter.adaptEvent({ type: 'turn_start' } as any));
+      const messageEvents = collect(adapter.adaptEvent({
+        type: 'message_end',
+        message: {
+          role: 'assistant',
+          stopReason: 'length',
+          content: 'Partial answer',
+        },
+      } as any));
+      expect(messageEvents).toEqual([
+        expect.objectContaining({ type: 'text_complete', text: 'Partial answer', isIntermediate: true }),
+      ]);
+
+      const settledEvents = collect(adapter.adaptEvent({ type: 'agent_settled' } as any));
+      expect(settledEvents).toEqual([
+        expect.objectContaining({ type: 'error', message: expect.stringContaining('token limit') }),
+        expect.objectContaining({ type: 'complete' }),
+      ]);
+    });
+
+    it('clears a held length error when Pi continues to a complete response', () => {
+      collect(adapter.adaptEvent({
+        type: 'message_end',
+        message: { role: 'assistant', stopReason: 'length', content: [] },
+      } as any));
+      collect(adapter.adaptEvent({
+        type: 'message_end',
+        message: { role: 'assistant', stopReason: 'stop', content: 'Recovered' },
+      } as any));
+
+      expect(collect(adapter.adaptEvent({ type: 'agent_settled' } as any)))
+        .toEqual([expect.objectContaining({ type: 'complete' })]);
+    });
+
     it('should set isIntermediate: false when stopReason is stop', () => {
       collect(adapter.adaptEvent({ type: 'turn_start' } as any));
       const events = collect(adapter.adaptEvent({

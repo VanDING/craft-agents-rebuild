@@ -122,6 +122,7 @@ function durableStreamSimple(model: Model<any>, context: Context, options?: Simp
             durableSeq: committedSeq,
             durableRequestSeq: requestSeq,
           });
+          rememberDurableToolBatch(message, prepared.operationId);
         }
         target.push(event);
       }
@@ -319,6 +320,8 @@ interface OutboundDurableToolPrepareReq {
   turnId: string;
   runOperationId: string;
   providerToolCallId: string;
+  toolBatchId?: string;
+  toolBatchOrdinal?: number;
   toolName: string;
   args: Record<string, unknown>;
 }
@@ -330,6 +333,8 @@ interface OutboundDurableToolOutcomeReq {
   runOperationId: string;
   operationId: string;
   providerToolCallId: string;
+  toolBatchId?: string;
+  toolBatchOrdinal?: number;
   toolName: string;
   canonicalArgsHash: string;
   result: unknown;
@@ -477,6 +482,16 @@ const pendingDurableToolOutcomes = new Map<string, { resolve: (response: { ok: b
 const pendingDurableModelPrepares = new Map<string, { resolve: (response: { ok: boolean; prepared?: { operationId: string; idempotencyKey: string; created: boolean; status: string; committedSeq: number }; reason?: string }) => void }>();
 const pendingDurableModelOutcomes = new Map<string, { resolve: (response: { ok: boolean; committedSeq?: number; reason?: string }) => void }>();
 const durableToolCommits = new Map<string, { operationId: string; startSeq: number; outcomeSeq?: number }>();
+const durableToolBatches = new Map<string, { toolBatchId: string; toolBatchOrdinal: number }>();
+
+function rememberDurableToolBatch(message: AssistantMessage, toolBatchId: string): void {
+  let ordinal = 0;
+  for (const part of message.content) {
+    if (part.type !== 'toolCall') continue;
+    durableToolBatches.set(part.id, { toolBatchId, toolBatchOrdinal: ordinal });
+    ordinal += 1;
+  }
+}
 
 // Pending session MCP tool calls for completion detection
 const pendingSessionToolCalls = new Map<string, { toolName: string; arguments: Record<string, unknown> }>();
@@ -1023,6 +1038,8 @@ interface PreparedDurableTool {
   idempotencyKey: string;
   canonicalArgsHash: string;
   recoveryMode: ToolRecoveryMode;
+  toolBatchId?: string;
+  toolBatchOrdinal?: number;
   committedSeq: number;
 }
 
@@ -1035,6 +1052,7 @@ async function requestDurableToolPrepare(
     throw new Error(`Durable tool boundary is unavailable for "${toolName}"`);
   }
   const requestId = `pi-durable-t1-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const batch = durableToolBatches.get(toolCallId);
   const responsePromise = new Promise<{ ok: boolean; prepared?: PreparedDurableTool & { created: boolean; status: string }; reason?: string }>((resolve) => {
     pendingDurableToolPrepares.set(requestId, { resolve });
   });
@@ -1045,6 +1063,7 @@ async function requestDurableToolPrepare(
     turnId: currentDurableTurnId,
     runOperationId: currentDurableRunOperationId,
     providerToolCallId: toolCallId,
+    ...batch,
     toolName,
     args: input,
   });
@@ -1084,6 +1103,8 @@ async function requestDurableToolOutcome(
     runOperationId: currentDurableRunOperationId,
     operationId: prepared.operationId,
     providerToolCallId: toolCallId,
+    toolBatchId: prepared.toolBatchId,
+    toolBatchOrdinal: prepared.toolBatchOrdinal,
     toolName,
     canonicalArgsHash: prepared.canonicalArgsHash,
     result,
@@ -1235,6 +1256,8 @@ function wrapSingleTool(tool: ToolDefinition<any, any>): ToolDefinition<any, any
         idempotencyKey: durable.idempotencyKey,
         canonicalArgsHash: durable.canonicalArgsHash,
         recoveryMode: durable.recoveryMode,
+        toolBatchId: durable.toolBatchId,
+        toolBatchOrdinal: durable.toolBatchOrdinal,
       };
       const executionContext = attachDurableToolContext(ctx, durableTool) as typeof ctx;
       result = await originalExecute(toolCallId, inputObj, signal, onUpdate, executionContext);
@@ -1817,6 +1840,7 @@ function handleSessionEvent(event: AgentSessionEvent): void {
       ts: Date.now(),
     } as unknown as OutboundAgentEvent;
     durableToolCommits.delete(event.toolCallId);
+    durableToolBatches.delete(event.toolCallId);
   }
 
   if (event.type === 'agent_settled' && piSession) {
@@ -1831,6 +1855,7 @@ function handleSessionEvent(event: AgentSessionEvent): void {
   // Forward all events to main process
   send({ type: 'event', event: forwardedEvent });
   if (event.type === 'agent_settled') {
+    durableToolBatches.clear();
     currentDurableRunOperationId = undefined;
     currentDurableTurnId = undefined;
   }
@@ -1913,6 +1938,7 @@ async function waitForCompaction(session: { isCompacting: boolean }, timeoutMs =
 
 async function handlePrompt(msg: Extract<InboundMessage, { type: 'prompt' }>): Promise<void> {
   currentUserMessage = msg.message;
+  durableToolBatches.clear();
   currentDurableRunOperationId = msg.durableRunOperationId;
   currentDurableTurnId = msg.durableTurnId ?? msg.id;
 

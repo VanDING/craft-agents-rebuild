@@ -60,6 +60,82 @@ describe('DurableRuntimeCoordinator', () => {
     coordinator.closeAll()
   })
 
+  test('aggregates a parallel tool batch and accepts out-of-order T2 commits', async () => {
+    const { root, coordinator } = setup()
+    const boundary = coordinator.boundaryFor(root)
+    const calls = await Promise.all(['call-a', 'call-b', 'call-c'].map((providerToolCallId, toolBatchOrdinal) =>
+      boundary.prepare({
+        sessionId: 'session-1',
+        turnId: 'turn-1',
+        runOperationId: 'run-1',
+        providerToolCallId,
+        toolBatchId: 'modelop-batch-1',
+        toolBatchOrdinal,
+        toolName: 'read',
+        args: { path: `${providerToolCallId}.txt` },
+      })))
+
+    expect(coordinator.storeFor(root).getOperation('run-1')).toMatchObject({
+      phase: 'tool_effect_pending',
+      data: { unsettledToolOperationIds: calls.map(call => call.operationId) },
+    })
+    expect(coordinator.storeFor(root).getToolRecoveryEvidence(calls[1]!.operationId)?.dispatch)
+      .toMatchObject({ toolBatchId: 'modelop-batch-1', toolBatchOrdinal: 1 })
+
+    const commit = (index: number) => boundary.commitOutcome({
+      sessionId: 'session-1',
+      turnId: 'turn-1',
+      runOperationId: 'run-1',
+      operationId: calls[index]!.operationId,
+      providerToolCallId: `call-${String.fromCharCode(97 + index)}`,
+      toolBatchId: 'modelop-batch-1',
+      toolBatchOrdinal: index,
+      toolName: 'read',
+      canonicalArgsHash: calls[index]!.canonicalArgsHash,
+      result: { index },
+      isError: false,
+    })
+
+    await commit(1)
+    expect(coordinator.storeFor(root).getOperation('run-1')?.phase).toBe('tool_effect_pending')
+    await commit(0)
+    expect(coordinator.storeFor(root).getOperation('run-1')).toMatchObject({
+      phase: 'tool_effect_pending',
+      data: { unsettledToolOperationIds: [calls[2]!.operationId] },
+    })
+    await commit(2)
+    expect(coordinator.storeFor(root).getOperation('run-1')).toMatchObject({ phase: 'checkpoint' })
+    expect(coordinator.storeFor(root).getOperation('run-1')?.data).not.toHaveProperty('currentTool')
+    expect(coordinator.storeFor(root).getOperation('run-1')?.data).not.toHaveProperty('unsettledToolOperationIds')
+
+    coordinator.completeRun(root, 'run-1', 'complete')
+    expect(coordinator.storeFor(root).getOperation('run-1')).toBeUndefined()
+    coordinator.closeAll()
+  })
+
+  test('does not start the next model attempt while any tool effect is unsettled', async () => {
+    const { root, coordinator } = setup()
+    await coordinator.prepareTool(root, {
+      sessionId: 'session-1',
+      turnId: 'turn-1',
+      runOperationId: 'run-1',
+      providerToolCallId: 'call-1',
+      toolName: 'read',
+      args: { path: 'a.txt' },
+    })
+
+    await expect(coordinator.prepareModel(root, {
+      sessionId: 'session-1',
+      turnId: 'turn-1',
+      runOperationId: 'run-1',
+      providerRequestId: '2',
+      provider: 'openai',
+      model: 'gpt-test',
+      canonicalRequestHash: 'hash-2',
+    })).rejects.toThrow('still has 1 unsettled tool operation')
+    coordinator.closeAll()
+  })
+
   test('commits final assistant output before it is projected', () => {
     const { root, coordinator } = setup()
     const seq = coordinator.commitAssistantMessage({

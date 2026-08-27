@@ -92,6 +92,7 @@ export class PiEventAdapter extends BaseEventAdapter {
   // continuations are exhausted. Hold an overflow error until that boundary so
   // successful SDK recovery stays invisible while failed recovery remains useful.
   private pendingOverflowError: string | null = null;
+  private pendingLengthError: string | null = null;
 
   constructor() {
     super('pi-event');
@@ -200,6 +201,10 @@ export class PiEventAdapter extends BaseEventAdapter {
           if (this.pendingOverflowError) {
             yield { type: 'error', message: this.pendingOverflowError };
             this.pendingOverflowError = null;
+          }
+          if (this.pendingLengthError) {
+            yield { type: 'error', message: this.pendingLengthError };
+            this.pendingLengthError = null;
           }
           if (this.lastUsage) {
             const lastCallInputTokens = this.lastUsage.input + (this.lastUsage.cacheRead || 0);
@@ -313,14 +318,20 @@ export class PiEventAdapter extends BaseEventAdapter {
           break;
         }
 
-        // A successful assistant response means any held overflow was recovered.
-        this.pendingOverflowError = null;
+        const isLengthLimited = msg.stopReason === 'length';
+        if (isLengthLimited) {
+          this.pendingLengthError = 'Model output reached its token limit before the turn completed. The partial response was preserved; continue the task to resume.';
+        } else {
+          // A later complete assistant response means any held provider limit was recovered.
+          this.pendingOverflowError = null;
+          this.pendingLengthError = null;
+        }
 
         // Extract text content from the final assistant message
         const textContent = this.extractTextFromMessage(event.message);
         // Pi SDK stopReason: 'toolUse' means the model will call tools next (intermediate commentary),
         // 'stop'/'end_turn' means final response. Same logic as Claude's stop_reason === 'tool_use'.
-        const isIntermediate = msg.stopReason === 'toolUse';
+        const isIntermediate = msg.stopReason === 'toolUse' || isLengthLimited;
         if (textContent && (isIntermediate || !this.hasEmittedFinalText)) {
           if (!isIntermediate) this.hasEmittedFinalText = true;
 

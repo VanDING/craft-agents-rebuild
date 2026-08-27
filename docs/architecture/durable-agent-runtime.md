@@ -18,6 +18,9 @@ cutovers must use the shadow/audit path below and may retire Pi/session caches o
 parity. Existing pre-runtime sessions remain legacy inputs and are never assigned fabricated dispatch
 evidence.
 
+The deliberately deferred end-state is described in
+[durable-agent-runtime-target-architecture.md](./durable-agent-runtime-target-architecture.md).
+
 ## Decision
 
 Craft Agent's Runtime Host is the single authority for durable execution. Provider sessions,
@@ -46,6 +49,18 @@ After validation, policy, permission, and argument canonicalization, one T1 tran
 The implementation MUST NOT run if T1 fails. After the implementation settles, one T2 transaction
 persists the tool response, usage attributable to the attempt, and the complete next operation
 state. Events are published to clients only after their transaction commits.
+
+Tool calls are child operations, not a single slot on the parent run. A model response may emit a
+batch identified by its durable model operation ID; every child stores its batch ordinal and settles
+independently. The parent remains `tool_effect_pending` while any child is unsettled and advances to
+`checkpoint` only after the final child T2 commits. T2 completion order is intentionally unrestricted.
+The child-operation table is authoritative; the IDs on parent state are an aggregate observation.
+
+A provider `length` stop is not a successful final answer. Any partial text is projected as
+intermediate output; if Pi does not recover with a subsequent complete response before
+`agent_settled`, the adapter emits an explicit incomplete-turn error. Automatic bounded continuation
+is intentionally deferred to the target architecture because its budget and loop state must itself
+be durable.
 
 The interval after T1 and before T2 is inherently uncertain. A crash in this interval never proves
 that the effect did or did not happen.
