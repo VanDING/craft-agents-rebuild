@@ -61,6 +61,30 @@ describe('resolveScriptRuntime', () => {
     }
   });
 
+  it('treats CRAFT_IS_PACKAGED=true as packaged mode', () => {
+    const prevPackaged = process.env.CRAFT_IS_PACKAGED;
+    const prevUv = process.env.CRAFT_UV;
+    const prevBase = process.env.CRAFT_RESOURCES_BASE;
+    const prevRoot = process.env.CRAFT_APP_ROOT;
+    process.env.CRAFT_IS_PACKAGED = 'true';
+    delete process.env.CRAFT_UV;
+    delete process.env.CRAFT_RESOURCES_BASE;
+    delete process.env.CRAFT_APP_ROOT;
+
+    try {
+      expect(() => resolveScriptRuntime('python3')).toThrow('packaged app');
+    } finally {
+      if (prevPackaged === undefined) delete process.env.CRAFT_IS_PACKAGED;
+      else process.env.CRAFT_IS_PACKAGED = prevPackaged;
+      if (prevUv === undefined) delete process.env.CRAFT_UV;
+      else process.env.CRAFT_UV = prevUv;
+      if (prevBase === undefined) delete process.env.CRAFT_RESOURCES_BASE;
+      else process.env.CRAFT_RESOURCES_BASE = prevBase;
+      if (prevRoot === undefined) delete process.env.CRAFT_APP_ROOT;
+      else process.env.CRAFT_APP_ROOT = prevRoot;
+    }
+  });
+
   it('rejects bare CRAFT_NODE command in packaged mode', () => {
     const prev = process.env.CRAFT_NODE;
     process.env.CRAFT_NODE = 'node';

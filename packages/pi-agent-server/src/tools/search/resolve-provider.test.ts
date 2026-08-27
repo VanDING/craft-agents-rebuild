@@ -29,6 +29,26 @@ describe('resolveSearchProvider', () => {
     expect(provider.name).toBe('OpenAI');
   });
 
+  it('does not send a custom completions endpoint key to the OpenAI API', () => {
+    const provider = resolveSearchProvider({
+      provider: 'openai',
+      credential: { type: 'api_key', key: 'third-party-key' },
+      apiBase: 'https://example.test/v1',
+    });
+
+    expect(provider).toBeInstanceOf(DDGSearchProvider);
+  });
+
+  it('does not infer native search support from a custom Responses protocol', () => {
+    const provider = resolveSearchProvider({
+      provider: 'openai',
+      credential: { type: 'api_key', key: 'third-party-key' },
+      apiBase: 'https://example.test/v1/',
+    });
+
+    expect(provider).toBeInstanceOf(DDGSearchProvider);
+  });
+
   // --- ChatGPT Plus (OAuth) ---
 
   it('selects ChatGPTBackendSearchProvider for openai-codex + oauth with valid JWT', () => {

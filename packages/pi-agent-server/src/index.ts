@@ -826,10 +826,16 @@ async function ensureSession(): Promise<AgentSession> {
   // are used without recreating the session.
   const searchProvider = {
     get name() {
-      return resolveSearchProvider(initConfig?.piAuth).name;
+      return resolveSearchProvider({
+        ...initConfig?.piAuth,
+        apiBase: initConfig?.baseUrl,
+      }).name;
     },
     async search(query: string, count: number) {
-      return resolveSearchProvider(initConfig?.piAuth).search(query, count);
+      return resolveSearchProvider({
+        ...initConfig?.piAuth,
+        apiBase: initConfig?.baseUrl,
+      }).search(query, count);
     },
   };
   const searchTool = createSearchTool(searchProvider);
@@ -1185,13 +1191,6 @@ function wrapToolsWithHooks(tools: ToolDefinition<any, any>[]): ToolDefinition<a
   return tools.map(tool => wrapSingleTool(tool));
 }
 
-function makeErrorResult(message: string): AgentToolResult<any> {
-  return {
-    content: [{ type: 'text', text: message }],
-    details: { isError: true },
-  };
-}
-
 function wrapSingleTool(tool: ToolDefinition<any, any>): ToolDefinition<any, any> {
   const originalExecute = tool.execute;
   const parameters = allowCraftMetadataProperties(tool.parameters);
@@ -1256,6 +1255,20 @@ function wrapSingleTool(tool: ToolDefinition<any, any>): ToolDefinition<any, any
       .map(c => c.text)
       .join('');
 
+    // Compatibility guard for legacy/custom tools that encode failure in
+    // details instead of throwing. Pi only sets toolResult.isError for thrown
+    // executions, so commit the durable outcome and convert it here.
+    if (result.details?.isError === true) {
+      await requestDurableToolOutcome(
+        durable,
+        sdkToolName,
+        toolCallId,
+        result,
+        true,
+      );
+      throw new Error(resultText || `${sdkToolName} failed`);
+    }
+
     // Source the active model's contextWindow each call so the threshold
     // tracks set_model mid-session, not the model that was active at session
     // creation. Falls back to the fixed default when the model isn't set yet.
@@ -1299,7 +1312,7 @@ function wrapSingleTool(tool: ToolDefinition<any, any>): ToolDefinition<any, any
       sdkToolName,
       toolCallId,
       result,
-      result.details?.isError === true,
+      false,
     );
     return result;
   };
@@ -1347,9 +1360,10 @@ function buildProxyTools(): ToolDefinition<any, any>[] {
         prefetchCache.delete(toolCallId);
         debugLog(`Prefetch cache hit for ${def.name} (toolCallId: ${toolCallId})`);
         const result = await prefetched;
+        if (result.isError) throw new Error(result.content);
         return {
           content: [{ type: 'text', text: result.content }],
-          details: result.isError ? { isError: true } : undefined,
+          details: undefined,
         };
       }
 
@@ -1373,9 +1387,11 @@ function buildProxyTools(): ToolDefinition<any, any>[] {
         pendingToolExecutions.set(requestId, { resolve });
       });
 
+      if (result.isError) throw new Error(result.content);
+
       return {
         content: [{ type: 'text', text: result.content }],
-        details: result.isError ? { isError: true } : undefined,
+        details: undefined,
       };
     },
   }));

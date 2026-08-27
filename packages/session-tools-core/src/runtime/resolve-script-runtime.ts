@@ -64,7 +64,8 @@ function getPlatformRuntimeDir(): string {
 
 function inferPackagedMode(ctx?: ResolveScriptRuntimeContext): boolean {
   if (typeof ctx?.isPackaged === 'boolean') return ctx.isPackaged;
-  return process.env.CRAFT_IS_PACKAGED === '1';
+  const value = process.env.CRAFT_IS_PACKAGED?.trim().toLowerCase();
+  return value === '1' || value === 'true';
 }
 
 function getProcessResourcesPath(): string | undefined {

@@ -14,7 +14,7 @@ import type { WebSearchProvider } from './types.ts';
 import { ResponsesApiSearchProvider } from './providers/openai.ts';
 import { ChatGPTBackendSearchProvider, extractChatGptAccountId } from './providers/chatgpt.ts';
 import { GoogleSearchProvider } from './providers/google.ts';
-import { DDGSearchProvider } from './providers/ddg.ts';
+import { PublicWebSearchProvider } from './providers/ddg.ts';
 
 export type SearchProviderCredential =
   | { type: 'api_key'; key: string }
@@ -24,6 +24,8 @@ export type SearchProviderCredential =
 export interface SearchProviderAuthConfig {
   provider?: string;
   credential?: SearchProviderCredential;
+  /** Configured custom endpoint base URL, when this is not a first-party connection. */
+  apiBase?: string;
 }
 
 function getApiKey(piAuth?: SearchProviderAuthConfig): string | undefined {
@@ -53,6 +55,16 @@ export function resolveSearchProvider(piAuth?: SearchProviderAuthConfig): WebSea
   const provider = piAuth?.provider;
   const apiKey = getApiKey(piAuth);
   const openAiCodexAccess = getOpenAiCodexAccessToken(piAuth);
+  const customApiBase = piAuth?.apiBase?.trim().replace(/\/$/, '');
+
+  // A custom OpenAI-compatible connection still reports provider="openai".
+  // Never send that endpoint's credential to api.openai.com. A Responses wire
+  // protocol does not imply support for the provider-hosted web_search tool, so
+  // custom endpoints use the credential-free public fallback unless a future
+  // capability flag explicitly proves native search support.
+  if (customApiBase) {
+    return new PublicWebSearchProvider();
+  }
 
   // OpenAI with API key → standard Responses API
   if (provider === 'openai' && apiKey) {
@@ -90,5 +102,5 @@ export function resolveSearchProvider(piAuth?: SearchProviderAuthConfig): WebSea
   // It intentionally falls back to DDG until we add an explicit Responses API mapping.
 
   // Universal fallback — no API key required
-  return new DDGSearchProvider();
+  return new PublicWebSearchProvider();
 }

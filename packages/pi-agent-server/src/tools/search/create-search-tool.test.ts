@@ -77,11 +77,12 @@ describe('createSearchTool', () => {
     };
 
     const tool = createSearchTool(provider, fallbackProvider);
-    const result = await tool.execute('tool-3', { query: 'craft', count: -1 });
-
-    expect(result.details?.isError).toBe(true);
-    expect((result.content[0] as any).text).toContain('primary (OpenAI) failed');
-    expect((result.content[0] as any).text).toContain('fallback (DuckDuckGo) failed');
+    await expect(tool.execute('tool-3', { query: 'craft', count: -1 })).rejects.toThrow(
+      'primary (OpenAI) failed',
+    );
+    await expect(tool.execute('tool-3b', { query: 'craft', count: -1 })).rejects.toThrow(
+      'fallback (DuckDuckGo) failed',
+    );
   });
 
   it('does not recurse fallback when provider is already fallback provider', async () => {
@@ -93,10 +94,73 @@ describe('createSearchTool', () => {
     };
 
     const tool = createSearchTool(ddgProvider, ddgProvider);
-    const result = await tool.execute('tool-4', { query: 'craft' });
+    await expect(tool.execute('tool-4', { query: 'craft' })).rejects.toThrow(
+      'Search failed for "craft": ddg boom',
+    );
+  });
 
-    expect(result.details?.isError).toBe(true);
-    expect((result.content[0] as any).text).toContain('Search failed');
-    expect((result.content[0] as any).text).toContain('ddg boom');
+  it('routes explicit engine selection to the public provider and reports partial failures', async () => {
+    let primaryCalls = 0;
+    let capturedEngines: string[] | undefined;
+    const provider: WebSearchProvider = {
+      name: 'OpenAI',
+      async search() {
+        primaryCalls += 1;
+        return [];
+      },
+    };
+    const publicProvider: WebSearchProvider = {
+      name: 'Public Web',
+      async search(_query, _count, options) {
+        capturedEngines = options?.engines;
+        return {
+          engines: options?.engines,
+          results: [{
+            title: 'Bing hit',
+            url: 'https://example.com',
+            description: 'ok',
+            engine: 'bing',
+          }],
+          partialFailures: [{
+            engine: 'sogou',
+            code: 'engine_error',
+            message: 'verification page',
+          }],
+        };
+      },
+    };
+
+    const tool = createSearchTool(provider, publicProvider);
+    const result = await tool.execute('tool-multi', {
+      query: 'craft',
+      count: 5,
+      engines: ['bing', 'sogou'],
+    });
+    const text = (result.content[0] as any).text;
+
+    expect(primaryCalls).toBe(0);
+    expect(capturedEngines).toEqual(['bing', 'sogou']);
+    expect(text).toContain('(via Public Web: bing, sogou)');
+    expect(text).toContain('Partial engine failures: sogou (verification page).');
+    expect(text).toContain('**Bing hit** [bing]');
+  });
+
+  it('redacts credentials from surfaced provider errors', async () => {
+    const provider: WebSearchProvider = {
+      name: 'OpenAI',
+      async search() {
+        throw new Error('Incorrect API key provided: sk-secretvalue123456');
+      },
+    };
+
+    const tool = createSearchTool(provider, provider);
+    try {
+      await tool.execute('tool-5', { query: 'craft' });
+      throw new Error('expected search failure');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      expect(message).toContain('[REDACTED_API_KEY]');
+      expect(message).not.toContain('sk-secretvalue123456');
+    }
   });
 });

@@ -6,6 +6,7 @@ loadShellEnv()
 import { app, BrowserWindow, dialog, ipcMain, nativeImage, nativeTheme, shell } from 'electron'
 import type { IpcMainInvokeEvent } from 'electron'
 import { createHash, randomUUID } from 'crypto'
+import { spawnSync } from 'child_process'
 import { hostname, homedir } from 'os'
 import * as Sentry from '@sentry/electron/main'
 
@@ -154,14 +155,22 @@ if (isDebugMode) {
   const scriptsDir = join(resourcesBase, 'resources', 'scripts')
 
   const bundledUvExists = existsSync(uvBinary)
-  const fallbackUv = bundledUvExists ? null : 'uv'
+  const uvLocator = process.platform === 'win32' ? 'where.exe' : 'which'
+  const locatedUv = bundledUvExists
+    ? null
+    : spawnSync(uvLocator, ['uv'], { encoding: 'utf8', shell: false })
+        .stdout?.split(/\r?\n/).map(line => line.trim()).find(Boolean) ?? null
 
   // Runtime resolver hints for shared session tools
   process.env.CRAFT_IS_PACKAGED = app.isPackaged ? '1' : '0'
   process.env.CRAFT_RESOURCES_BASE = resourcesBase
   process.env.CRAFT_APP_ROOT = app.isPackaged ? app.getAppPath() : process.cwd()
 
-  process.env.CRAFT_UV = bundledUvExists ? uvBinary : (fallbackUv ?? uvBinary)
+  if (bundledUvExists || locatedUv) {
+    process.env.CRAFT_UV = bundledUvExists ? uvBinary : locatedUv!
+  } else {
+    delete process.env.CRAFT_UV
+  }
 
   // Bun runtime (packaged builds should prefer bundled runtime over PATH)
   const bunBinary = join(resourcesBase, 'vendor', 'bun', process.platform === 'win32' ? 'bun.exe' : 'bun')
@@ -182,7 +191,7 @@ if (isDebugMode) {
   if (!bundledUvExists) {
     mainLog.warn('Bundled uv binary missing, CLI document tools may fail unless uv is available on PATH.', {
       expectedUvPath: uvBinary,
-      usingCraftUv: process.env.CRAFT_UV,
+      usingCraftUv: process.env.CRAFT_UV ?? null,
     })
   }
 

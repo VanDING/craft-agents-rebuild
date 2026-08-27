@@ -263,16 +263,16 @@ export function isPowerShellAvailable(): boolean {
     return powershellAvailable;
   }
 
-  // Try pwsh first (PowerShell Core - cross-platform), then Windows PowerShell by name
-  const candidates: string[] = ['pwsh', 'powershell'];
+  const candidates: string[] = [];
 
-  // On Windows, also try the full path to powershell.exe as a fallback.
-  // Spawned subprocesses (e.g. from Electron) may not inherit the full system
-  // PATH, so 'powershell' by name can fail even though it's always installed.
+  // Prefer the stable absolute Windows PowerShell path. Electron may inherit a
+  // PATH containing unrelated `pwsh` shims; probing them through a shell can
+  // succeed while direct parser execution later prints CLI usage instead of JSON.
   if (process.platform === 'win32') {
     const systemRoot = process.env.SystemRoot || process.env.SYSTEMROOT || 'C:\\Windows';
     candidates.push(join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'));
   }
+  candidates.push('pwsh', 'powershell');
 
   for (const cmd of candidates) {
     try {
@@ -280,7 +280,7 @@ export function isPowerShellAvailable(): boolean {
         stdio: ['ignore', 'pipe', 'pipe'],
         timeout: 5000,
         encoding: 'utf8',
-        shell: true,
+        shell: false,
       });
 
       if (result.status === 0) {
@@ -324,9 +324,12 @@ function parseCommand(command: string): ParseResult {
   const scriptPath = getParserScriptPath();
 
   try {
+    const executionPolicyArgs = process.platform === 'win32'
+      ? ['-ExecutionPolicy', 'Bypass']
+      : [];
     const result = spawnSync(
       powershellPath,
-      ['-NoProfile', '-NonInteractive', '-File', scriptPath, '-Command', command],
+      ['-NoProfile', '-NonInteractive', ...executionPolicyArgs, '-File', scriptPath, '-Command', command],
       {
         stdio: ['ignore', 'pipe', 'pipe'],
         timeout: 10000,

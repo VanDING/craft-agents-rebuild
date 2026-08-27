@@ -152,9 +152,10 @@ async function readResponseText(response: Response, maxSize: number): Promise<st
 // ============================================================
 
 function result(text: string, isError = false): AgentToolResult<{ isError?: boolean }> {
+  if (isError) throw new Error(text);
   return {
     content: [{ type: 'text', text }],
-    details: isError ? { isError: true } : {},
+    details: {},
   };
 }
 
