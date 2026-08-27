@@ -8,6 +8,8 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
+import type { DurableToolExecutionIdentity } from '../durable-runtime/types.ts';
+import { durableToolMeta } from './durable-tool-meta.ts';
 
 /**
  * HTTP transport config for remote MCP servers
@@ -65,7 +67,7 @@ const BLOCKED_ENV_VARS = [
  */
 export interface PoolClient {
   listTools(): Promise<Tool[]>;
-  callTool(name: string, args: Record<string, unknown>): Promise<unknown>;
+  callTool(name: string, args: Record<string, unknown>, durableTool?: DurableToolExecutionIdentity): Promise<unknown>;
   close(): Promise<void>;
 }
 
@@ -145,12 +147,18 @@ export class CraftMcpClient {
     return { name: info.name, version: info.version };
   }
 
-  async callTool(name: string, args: Record<string, unknown>): Promise<unknown> {
+  async callTool(name: string, args: Record<string, unknown>, durableTool?: DurableToolExecutionIdentity): Promise<unknown> {
     if (!this.connected) {
       await this.connect();
     }
 
-    const result = await this.client.callTool({ name, arguments: args });
+    const result = await this.client.callTool({
+      name,
+      arguments: args,
+      ...(durableTool ? {
+        _meta: durableToolMeta(durableTool),
+      } : {}),
+    });
     return result;
   }
 

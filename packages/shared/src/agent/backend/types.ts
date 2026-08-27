@@ -29,7 +29,7 @@ import { AbortReason, type RecoveryMessage } from '../core/index.ts';
 export { AbortReason, type RecoveryMessage };
 
 import type { ModelProvider } from '../../config/models.ts';
-import type { DurableToolBoundary } from '../../durable-runtime/types.ts';
+import type { DurableCanonicalModelContext, DurableModelBoundary, DurableToolBoundary } from '../../durable-runtime/types.ts';
 
 // Import LLM connection types for auth
 import type { LlmAuthType, LlmProviderType } from '../../config/llm-connections.ts';
@@ -235,6 +235,16 @@ export interface CoreBackendConfig {
 
   /** Runtime-Host-owned durable T1/T2 boundary for all real tool effects. */
   durableToolBoundary?: DurableToolBoundary;
+
+  /** Runtime-Host-owned durable boundary for provider model attempts. */
+  durableModelBoundary?: DurableModelBoundary;
+
+  /** Canonical committed history for provider context; current accepted run is excluded by identity. */
+  getCanonicalModelContext?: (excludeOperationId?: string) => DurableCanonicalModelContext | undefined;
+
+  /** Open/close a non-chat model run so mini/title/compaction/query calls use the same T1/T2 ledger. */
+  beginDurableUtilityRun?: (input: { requestId: string; prompt: string; kind: 'mini_completion' | 'llm_query' | 'compaction' }) => { runOperationId: string; turnId: string };
+  completeDurableUtilityRun?: (runOperationId: string, reason: 'complete' | 'error' | 'timeout') => void;
 
   /** Callback when SDK session ID is captured/updated */
   onSdkSessionIdUpdate?: (sdkSessionId: string) => void;

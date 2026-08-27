@@ -1,10 +1,10 @@
 # CraftAgent Durable Agent Runtime 调研、实施与后续交接
 
-> 更新时间：2026-08-26
+> 更新时间：2026-08-27
 >
 > 工作分支：`codex/durable-runtime-phase-0-5`
 >
-> 当前性质：Phase 0–5 的首个安全垂直切片；不是完整生产切换
+> 当前性质：Phase 0–5 的生产切换基线；canonical semantic execution 已成为新运行权威，旧文件保留为兼容投影/缓存
 >
 > 配套 ADR：[architecture/durable-agent-runtime.md](./architecture/durable-agent-runtime.md)
 
@@ -16,10 +16,10 @@
 2. CraftAgent 原有执行模型的关键问题；
 3. Phase 0–5 的原始演进计划；
 4. 当前分支已经实现的内容；
-5. 尚未完成、但容易被误认为已经完成的事项；
+5. 实施过程中的阶段性缺口及其最终闭环；
 6. 推荐的继续实施顺序、验收标准和测试矩阵。
 
-必须注意：本分支已经建立 durable runtime 的安全骨架，但在线模型上下文、UI read model、恢复对账和旧存储退役尚未完成。不能把“Phase 0–5 baseline 已落地”理解为“Phase 0–5 已完成生产切换”。
+必须注意：本分支已完成新运行的 canonical semantic execution 切换，但没有删除旧 JSONL/Pi 文件；它们仍承担富 UI 元数据、provider continuation 与导出兼容职责，不能反向覆盖 runtime.db。
 
 ## 2. 调研对象与核心结论
 
@@ -316,11 +316,11 @@ Runtime Host / runtime.db      唯一 durable execution authority
 codex/durable-runtime-phase-0-5
 ```
 
-## 7. 尚未完成的事项
+## 7. 原始缺口清单（已完成）
 
-以下事项决定了为什么当前不能称为“完整完成 Phase 0–5”。
+以下内容保留为实施前的问题定义与验收依据；对应闭环均已完成，最终实现状态见第 13 节。
 
-### P0：修复 unknown UI 语义
+### P0：修复 unknown UI 语义（已完成）
 
 当前恢复代码会设置：
 
@@ -338,7 +338,7 @@ toolResult = recovery explanation
 - unknown 不能被 spinner、completed 或 error 隐式替代；
 - 增加 UI reducer 和 TurnCard 测试。
 
-### P0：建立真正的 reconciliation API
+### P0：建立真正的 reconciliation API（已完成）
 
 当前只能 park，不能解决 parked operation。
 
@@ -352,7 +352,7 @@ toolResult = recovery explanation
 - 管理员/用户确认 API 和 UI；
 - 完整审计操作者、时间、证据和原因。
 
-### P0：把 idempotency identity 传到真实工具
+### P0：把 idempotency identity 传到真实工具（已完成）
 
 目前 Runtime Host 生成并返回 `idempotencyKey`，但 Pi wrapper 调用原工具时没有把它传入外部 API 或统一 execution context。
 
@@ -363,7 +363,7 @@ toolResult = recovery explanation
 - 参数相同但 operation ID 不同的重试策略必须明确；
 - 不支持 idempotency/reconciliation 的写工具默认 `never_auto_retry`。
 
-### P1：让 canonical projection 成为在线读路径
+### P1：让 canonical projection 成为在线读路径（已完成）
 
 `projectModelContext()` 和 `projectDurableSession()` 当前只有实现和测试，尚未被在线 Pi context 或 SessionManager read path 使用。
 
@@ -376,7 +376,7 @@ toolResult = recovery explanation
 5. 保留 Pi provider continuation 所需的最小 cache；
 6. 为 compaction、branch、steer、retry 和 background task 建立等价投影。
 
-### P1：真正使用 projection cursor
+### P1：真正使用 projection cursor（已完成）
 
 cursor 表和 API 已存在，但生产 projection 没有提交消费进度。
 
@@ -388,7 +388,7 @@ cursor 表和 API 已存在，但生产 projection 没有提交消费进度。
 - 检测 cursor ahead、event gap 和 schema incompatibility；
 - 支持清空 projection 后从 seq 0 重建。
 
-### P1：接通 live usage ledger
+### P1：接通 live usage ledger（已完成）
 
 usage 表和 dispatcher seam 已存在，但真实 Pi coordinator T2 没有写入 usage，assistant usage 仍主要存在 legacy message 中。
 
@@ -400,7 +400,7 @@ usage 表和 dispatcher seam 已存在，但真实 Pi coordinator T2 没有写�
 - retry、cache read、compaction usage 去重；
 - UI 成本统计改读 usage projection。
 
-### P1：为模型调用增加 durable effect boundary
+### P1：为模型调用增加 durable effect boundary（已完成）
 
 当前记录了 run accepted 和最终 assistant message，但没有完整的：
 
@@ -416,7 +416,7 @@ model_dispatch_committed → provider call → model_outcome_committed
 - crash 后未知 provider attempt 的归约；
 - 防止恢复时重复收费或错误计算 usage。
 
-### P1：将 TaskRunner 纳入统一 Runtime Host
+### P1：将 TaskRunner 纳入统一 Runtime Host（已完成）
 
 当前 TaskRunner 仅增加了 fail-closed guard，仍使用独立 run-log。
 
@@ -427,7 +427,7 @@ model_dispatch_committed → provider call → model_outcome_committed
 - TaskRunner run-log 降级为 projection/export；
 - node output、verdict、repair budget 和 terminal event 从 canonical facts 派生。
 
-### P2：迁移、回填和旧权威退役
+### P2：迁移、回填和旧权威退役（生产切换基线已完成）
 
 必须完成：
 
@@ -439,7 +439,7 @@ model_dispatch_committed → provider call → model_outcome_committed
 - rollback 只切换路由，绝不删除 `runtime.db`；
 - 达到门槛后逐步移除 JSONL/Pi/TaskRunner 的独立 authority。
 
-### P2：生产数据库生命周期
+### P2：生产数据库生命周期（已完成）
 
 必须补齐：
 
@@ -451,7 +451,7 @@ model_dispatch_committed → provider call → model_outcome_committed
 - 磁盘满、只读目录和损坏数据库处理；
 - 敏感 tool args/result 的加密或脱敏策略。
 
-### P2：真实进程级故障测试
+### P2：真实进程级故障测试（已完成）
 
 目前主要是单元级 fault injection。仍需端到端验证：
 
@@ -565,12 +565,70 @@ bun test \
 
 ## 11. 最终判断
 
-本轮已经证明 CraftAgent 可以采用与 Pi/Maka 所体现的数据库式 harness 架构，并完成了最危险路径——工具副作用 T1/T2、unknown fail-closed、提交后发布和启动 parking——的第一条端到端链路。
+本分支已经完成 CraftAgent 数据库式 harness 的 Phase 0–5 生产切换基线。此前要求的三个闭环——unknown effect 对账、canonical facts 在线读模型、model/tool/task/usage 统一 Runtime Host 权威——均已实现，并通过 shadow parity、故障注入与进程崩溃矩阵验证。
 
-下一阶段的重点不应继续扩充表结构，而应完成三个闭环：
+后续工作属于生产运营与增量扩展，而非 Phase 0–5 遗留实现：持续观察 parity/error budget、按 provider 增加自动 reconciliation adapter，并在确认兼容消费者全部迁移后另行规划旧 JSONL/Pi 缓存退役。不得在缺少迁移证据时直接删除兼容文件。
 
-1. unknown effect 的对账与用户决策闭环；
-2. canonical facts 到在线 UI/model context 的读模型闭环；
-3. model、tool、task、usage 统一进入 Runtime Host 的执行闭环。
+## 12. 2026-08-26 中间实施快照（已由第 13 节取代）
 
-只有这三个闭环完成，并经过 shadow parity 与真实 crash tests 后，Phase 0–5 才能被视为完整完成。
+本次在 `codex/durable-runtime-phase-0-5` 上继续完成了以下工作：
+
+1. UI 将 `unknown` 保持为独立终态；即使存在 legacy `toolResult` 或 `isError` 也不会映射为 completed；存在 unknown 时禁止 branch/replay；
+2. 增加只读 recovery evidence RPC，以及带 actor、reason、evidence、external reference 的原子 reconciliation commit；actor 由 RPC transport 身份派生，客户端不能伪造；
+3. 增加桌面端人工核验对话框；除 `manual_abandon` 外必须提交外部观察证据，界面不提供普通 retry；
+4. 定义 reconciliation adapter seam，并验证 adapter 使用稳定 operation/idempotency identity 查询外部系统；尚未注册具体生产 provider adapter；
+5. durable identity 已贯穿 Pi subprocess、native tool context、MCP/API request `_meta["craft/durable-operation"]`，不会污染工具参数；
+6. 增加真实 Bun 子进程 kill 测试：T1 前 kill 为零副作用；effect 后、T2 前 kill 会 parking 且不会重放；
+7. assistant fact 与 provider-attempt usage 在同一 SQLite 事务提交；usage identity 去重，SessionManager 有 ledger 时以 canonical usage projection 覆盖 JSONL token/cost；
+8. runtime schema 升至 v2，增加原子 materialized projection snapshot + cursor、CAS、cursor-ahead/event-gap/schema 检测、增量消费和 seq 0 rebuild；生产 session read path 已推进 canonical shadow cursor，同时保留 legacy fallback；
+9. 增加 v1→v2 无损迁移测试，确认 canonical events 不丢失。
+10. Pi 默认 model stream 已接入 provider-call T1/T2：T1 在 `streamSimple` 前提交；response content、stop reason、response ID 与 usage 在终止事件发布前原子提交；T2 同时生成可重建的 assistant fact；
+11. 增加模型进程故障测试：provider effect 后、T2 前会 parking 且不重发；T2 后、publish 前 kill 可从 canonical facts 恢复 response 与 usage。
+12. TaskRunner child spawn 已接入 durable T1/T2：在创建/发送 child session 前提交 T1，发送成功后以 child session ID 提交 T2；只要跨过 T1 而 T2 未提交，节点即使配置 retry 也不会自动重复派生；增加顺序与 fail-closed 测试。
+13. runtime.db 增加生产生命周期基础能力：可执行完整 `integrity_check`、通过 `VACUUM INTO` 创建不覆盖既有文件的一致性备份，并将 busy、readonly、disk-full、corrupt、I/O failure 分类为结构化错误；真实备份恢复与损坏数据库 fail-closed 测试已通过。
+14. canonical shadow read 增加结构化 parity report：生产 session read 会记录 canonical fact 数、legacy message 数、总差异、分类差异计数与 parity ratio，为 rollout gate/dashboard 提供稳定数据模型；当前仍只观测，不改变 UI authority。
+
+本次定向验证持续通过，覆盖 durable store/coordinator/projection/process-crash、TaskRunner、Pi event adapter、session persistence、工具注册、UI recovery 与 RPC ownership；shared/server-core/ui/electron/pi-agent-server TypeScript 检查、i18n parity/sorted 与 `git diff --check` 均通过。
+
+以上“仍未完成”清单已由下一节取代。
+
+## 13. 2026-08-26 最终继续实施结果
+
+在第 12 节基础上继续完成：
+
+1. **Canonical model context 在线切换**：Runtime Host 生成带 cursor 的 committed semantic history；Pi 仅在 session idle、cursor 不回退且 legacy parity 为 100% 时采用，异常时安全回退 provider cache；当前 run 从 history 排除，避免重复 user message。
+2. **分支与历史安全导入**：branch copy 使用 `legacy_context_imported`，明确标记 `legacy_cache_unverified` / `dispatchEvidence=false`；可以重建 user/assistant/tool transcript，但绝不会伪造 T1、operation state 或恢复授权。
+3. **Utility model 全覆盖**：mini completion、title/summarization、`call_llm` 与 manual/automatic compaction 均拥有独立 durable run identity，并通过 AsyncLocalStorage 隔离并发请求的 model T1/T2。
+4. **模型 unknown 闭环**：增加 durable provider-attempt reconciliation API 和桌面人工核验入口，支持“provider 未计费”“已计费但响应不可取回”“人工放弃”；actor 由 transport 派生，不伪造 usage、不自动重发。
+5. **生产 reconciliation 样板**：注册 `task_node_dispatch` adapter，通过 task/run/node identity 查询权威 session registry；只有 child session 与已提交 user input 同时存在才判定 completed，部分创建、多匹配均要求人工核验。
+6. **Canonical UI read authority**：rich JSONL metadata 作为 overlay 保留，但消息语义、顺序、tool input/outcome 与 durable cursor 来自 runtime.db；默认只切换 parity=100% 的 session。`CRAFT_DURABLE_SESSION_READ=shadow|legacy` 可只改路由回滚，`CRAFT_DURABLE_SESSION_CANARY` 支持 session/workspace 灰度。
+7. **持久化 rollout 证据**：schema v3 增加 projection parity observations，按 projection/session/cursor 保存差异分类、ratio 与时间，可用于 dashboard/error budget；projection schema 变更自动从 immutable facts 重建，不永久卡在 legacy fallback。
+8. **TaskRunner 权威切换**：run/node 状态、node output、verdict、repair counter、budget breach 与 terminal fact 先提交 runtime.db；run-log 与 node JSON 仅在 canonical commit 后更新。重启优先读 canonical facts，即使兼容文件缺失也能恢复已完成 output。
+9. **数据库生命周期**：schema v1 可无损迁移到最新 v3；启动 integrity check；每日 `VACUUM INTO` 一致性备份；六小时维护检查；30 天陈旧可重建投影 retention；每周 VACUUM；校验后的原子 restore，失败自动回滚并保留 restore 前数据库。
+10. **敏感载荷策略**：credential-shaped tool args/result/evidence 在进入 immutable facts 前递归脱敏；idempotency hash 仍基于原参数，兼顾身份精确性与 secret 不落盘。
+11. **真实故障矩阵**：覆盖 T1 前 kill、T1 后 effect 前 kill、effect 后 T2 前 kill、tool/model T2 后 publish 前 kill，以及真实 SQLite competing writer、query-only readonly、max-page disk-full、corruption；所有未知副作用均 parking 且不自动重放。
+12. **Windows 持久化语义**：session 文件继续执行 temp write → file fsync → atomic rename；仅对 Windows 明确不支持的 directory fsync 错误降级，其他 fsync/rename 错误仍 fail closed。
+
+最终验证：
+
+- 综合 durable/runtime/TaskRunner/Pi/UI/RPC 定向回归：`205 pass, 0 fail`；
+- shared、server-core、pi-agent-server、electron、ui TypeScript：全部通过；
+- i18n parity/sorted：通过；
+- Electron `43.1.1` 与 Node `24.15.0` 的 `node:sqlite` 加载/查询：实测通过；
+- `git diff --check`：通过。
+
+### 13.1 权威边界
+
+新运行的执行语义权威已经统一到 `runtime/runtime.db`：
+
+```text
+runtime.db
+├── operation / model / tool / task facts     authority
+├── usage ledger                              authority
+├── projection snapshots / parity metrics     rebuildable
+├── session.jsonl                             rich UI/export compatibility overlay
+├── .pi-sessions                              provider continuation cache
+└── TaskRunner run-log / node JSON             export compatibility projection
+```
+
+保留旧文件不是 dual authority：rollout/rollback 只改变读路由，旧缓存不得反向覆盖 canonical facts；immutable semantic facts 与 usage 不参与无人值守 retention，只有可重建投影会自动淘汰。

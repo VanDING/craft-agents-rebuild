@@ -54,6 +54,70 @@ async function flushMicrotasks(): Promise<void> {
 }
 
 describe('PiAgent.queryLlm — subprocess RPC round-trip', () => {
+  it('wraps mini completion and compaction calls in isolated durable runs', async () => {
+    const completed: Array<{ id: string; reason: string }> = [];
+    const agent = new PiAgent(createConfig({
+      beginDurableUtilityRun: ({ requestId }) => ({ runOperationId: `utility:${requestId}`, turnId: `turn:${requestId}` }),
+      completeDurableUtilityRun: (id, reason) => completed.push({ id, reason }),
+    }));
+    const { sent } = installFakeSubprocess(agent);
+
+    const mini = agent.runMiniCompletion('title');
+    await flushMicrotasks();
+    const miniEnvelope = sent.at(-1)!;
+    expect(miniEnvelope).toMatchObject({
+      type: 'mini_completion',
+      durableRunOperationId: expect.stringContaining('utility:mini-'),
+      durableTurnId: expect.stringContaining('turn:mini-'),
+    });
+    (agent as any).handleLine(JSON.stringify({ type: 'mini_completion_result', id: miniEnvelope.id, text: 'Title' }));
+    expect(await mini).toBe('Title');
+
+    const compact = (agent as any).requestCompact('summarize');
+    await flushMicrotasks();
+    const compactEnvelope = sent.at(-1)!;
+    expect(compactEnvelope).toMatchObject({
+      type: 'compact',
+      durableRunOperationId: expect.stringContaining('utility:compact-'),
+      durableTurnId: expect.stringContaining('turn:compact-'),
+    });
+    (agent as any).handleLine(JSON.stringify({
+      type: 'compact_result', id: compactEnvelope.id, success: true,
+      result: { summary: 'summary', firstKeptEntryId: 'entry-1', tokensBefore: 100 },
+    }));
+    expect(await compact).toMatchObject({ summary: 'summary' });
+    expect(completed).toEqual([
+      { id: miniEnvelope.durableRunOperationId as string, reason: 'complete' },
+      { id: compactEnvelope.durableRunOperationId as string, reason: 'complete' },
+    ]);
+    agent.destroy();
+  });
+
+  it('wraps utility model calls in their own durable run identity', async () => {
+    const completed: Array<{ id: string; reason: string }> = [];
+    const agent = new PiAgent(createConfig({
+      beginDurableUtilityRun: ({ requestId }) => ({ runOperationId: `utility:${requestId}`, turnId: `turn:${requestId}` }),
+      completeDurableUtilityRun: (id, reason) => completed.push({ id, reason }),
+    }));
+    const { sent } = installFakeSubprocess(agent);
+
+    const pending = agent.queryLlm({ prompt: 'utility' });
+    await flushMicrotasks();
+    expect(sent[0]).toMatchObject({
+      type: 'llm_query',
+      durableRunOperationId: expect.stringContaining('utility:llm-'),
+      durableTurnId: expect.stringContaining('turn:llm-'),
+    });
+    (agent as any).handleLine(JSON.stringify({
+      type: 'llm_query_result',
+      id: sent[0]!.id,
+      result: { text: 'ok', model: 'mini' },
+    }));
+    await pending;
+    expect(completed).toEqual([{ id: sent[0]!.durableRunOperationId as string, reason: 'complete' }]);
+    agent.destroy();
+  });
+
   it('propagates the full LLMQueryRequest shape over the llm_query RPC unchanged', async () => {
     const agent = new PiAgent(createConfig());
     const { sent } = installFakeSubprocess(agent);

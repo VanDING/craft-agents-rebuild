@@ -186,11 +186,21 @@ class SessionPersistenceQueue {
       // platform cannot replace the target atomically, fail closed and leave
       // the fsynced .tmp available for startup recovery.
       await rename(tmpFile, filePath)
-      const directoryHandle = await open(dirname(filePath), 'r')
+      // Windows does not support fsync on directory handles (EPERM). The file
+      // itself was fsynced and rename is atomic on the same volume, so only
+      // suppress that documented platform limitation; every other failure is
+      // still fatal and leaves the caller aware persistence was incomplete.
+      let directoryHandle: Awaited<ReturnType<typeof open>> | undefined
       try {
+        directoryHandle = await open(dirname(filePath), 'r')
         await directoryHandle.sync()
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code
+        const unsupportedOnWindows = process.platform === 'win32'
+          && (code === 'EPERM' || code === 'EINVAL' || code === 'ENOTSUP')
+        if (!unsupportedOnWindows) throw error
       } finally {
-        await directoryHandle.close()
+        await directoryHandle?.close()
       }
       debug(`[PersistenceQueue] Wrote session ${sessionId}`)
     } catch (error) {

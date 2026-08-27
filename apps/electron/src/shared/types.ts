@@ -229,6 +229,16 @@ export interface ElectronAPI {
   getUnreadSummary(): Promise<UnreadSummary>
   markAllSessionsRead(workspaceId: string): Promise<void>
   getSessionMessages(sessionId: string): Promise<Session | null>
+  getRecoveryEvidence(sessionId: string, toolOperationId: string): Promise<import('@craft-agent/shared/durable-runtime').DurableRecoveryEvidenceSnapshot | null>
+  reconcileTool(
+    sessionId: string,
+    request: Omit<import('@craft-agent/shared/durable-runtime').ToolReconciliationRequest, 'sessionId' | 'actor'>,
+  ): Promise<import('@craft-agent/shared/durable-runtime').ToolReconciliationResult>
+  queryReconcileTool(sessionId: string, toolOperationId: string): Promise<import('@craft-agent/shared/durable-runtime').ToolReconciliationResult>
+  reconcileModel(
+    sessionId: string,
+    request: Omit<import('@craft-agent/shared/durable-runtime').ModelReconciliationRequest, 'sessionId' | 'actor'>,
+  ): Promise<import('@craft-agent/shared/durable-runtime').ModelReconciliationResult>
   createSession(workspaceId: string, options?: CreateSessionOptions): Promise<Session>
   deleteSession(sessionId: string): Promise<void>
   sendMessage(sessionId: string, message: string, attachments?: FileAttachment[], storedAttachments?: StoredAttachmentType[], options?: SendMessageOptions): Promise<void>

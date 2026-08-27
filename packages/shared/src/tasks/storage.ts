@@ -6,8 +6,8 @@
  *   {workspaceRoot}/tasks/<slug>/runs/<runId>/run-log.jsonl   — append-only run log
  *   {workspaceRoot}/tasks/<slug>/runs/<runId>/nodes/<id>.json — per-node output
  *
- * The run log is the durability substrate: replaying it re-derives scheduling
- * decisions and reuses recorded node outputs (it never re-runs a node body).
+ * For new runs runtime.db is the durability substrate. These files are a
+ * compatibility/export projection that can be rebuilt from canonical facts.
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, appendFileSync } from 'fs';
 import { join } from 'path';
@@ -36,10 +36,10 @@ export type RunLogEntry =
   | { t: string; kind: 'run-started'; taskId: string; runId: string; orchestratorSessionId?: string }
   | { t: string; kind: 'node-scheduled'; nodeId: string }
   | { t: string; kind: 'node-spawned'; nodeId: string; sessionId: string }
-  | { t: string; kind: 'node-finished'; nodeId: string; sessionId: string; state: NodeRunState; reason?: string }
+  | { t: string; kind: 'node-finished'; nodeId: string; sessionId: string; state: NodeRunState; reason?: string; output?: NodeOutput }
   | { t: string; kind: 'node-retry'; nodeId: string; attempt: number; reason: string }
   | { t: string; kind: 'run-paused' | 'run-resumed' | 'run-stopped' | 'run-completed' | 'run-failed' | 'run-verifying' }
-  | { t: string; kind: 'verdict'; result: 'pass' | 'fail' | 'unparsed'; reason?: string; nodes?: string[] }
+  | { t: string; kind: 'verdict'; result: 'pass' | 'fail' | 'unparsed'; reason?: string; nodes?: string[]; output?: NodeOutput }
   | { t: string; kind: 'budget-breach'; metric: 'tokens' | 'parallel' | 'iterations'; value: number; limit: number };
 
 // ---------------------------------------------------------------------------

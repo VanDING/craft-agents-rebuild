@@ -43,6 +43,30 @@ export interface ISessionManager {
 
   getSessions(workspaceId?: string): Session[]
   getSession(sessionId: string): Promise<Session | null>
+  getRecoveryEvidence(
+    sessionId: string,
+    toolOperationId: string,
+  ): import('@craft-agent/shared/durable-runtime').DurableRecoveryEvidenceSnapshot | null
+  reconcileTool(
+    request: import('@craft-agent/shared/durable-runtime').ToolReconciliationRequest,
+  ): import('@craft-agent/shared/durable-runtime').ToolReconciliationResult
+  queryAndReconcileTool(
+    sessionId: string,
+    toolOperationId: string,
+    actor: import('@craft-agent/shared/durable-runtime').ToolReconciliationRequest['actor'],
+  ): Promise<import('@craft-agent/shared/durable-runtime').ToolReconciliationResult>
+  reconcileModel(
+    request: import('@craft-agent/shared/durable-runtime').ModelReconciliationRequest,
+  ): import('@craft-agent/shared/durable-runtime').ModelReconciliationResult
+  commitTaskRunFact(input: {
+    workspaceRoot: string
+    sessionId: string
+    taskSlug: string
+    runId: string
+    ordinal: number
+    entry: import('@craft-agent/shared/tasks').RunLogEntry
+  }): void
+  listTaskRunFacts(workspaceRoot: string, taskSlug: string, runId: string): import('@craft-agent/shared/tasks').RunLogEntry[]
   /** Creates a session and (unless `internal.emitCreatedEvent === false`) announces it to the
    *  renderer so it hydrates full metadata instead of fabricating a "New Chat" placeholder. */
   createSession(

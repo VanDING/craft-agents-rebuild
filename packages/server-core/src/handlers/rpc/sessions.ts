@@ -110,6 +110,8 @@ export const HANDLED_CHANNELS = [
   RPC_CHANNELS.sessions.CREATE,
   RPC_CHANNELS.sessions.DELETE,
   RPC_CHANNELS.sessions.GET_MESSAGES,
+  RPC_CHANNELS.sessions.GET_RECOVERY_EVIDENCE,
+  RPC_CHANNELS.sessions.RECONCILE_TOOL,
   RPC_CHANNELS.sessions.SEND_MESSAGE,
   RPC_CHANNELS.sessions.CANCEL,
   RPC_CHANNELS.sessions.KILL_SHELL,
@@ -226,6 +228,58 @@ export function registerSessionsHandlers(server: RpcServer, deps: HandlerDeps): 
     const session = await sessionManager.getSession(sessionId)
     end()
     return session
+  })
+
+  // Read-only canonical evidence for a parked/settled tool operation. Session
+  // ownership is checked before the runtime database is queried.
+  server.handle(RPC_CHANNELS.sessions.GET_RECOVERY_EVIDENCE, async (
+    ctx,
+    sessionId: string,
+    toolOperationId: string,
+  ) => {
+    assertSessionWorkspaceOwnership(sessionManager, ctx, sessionId)
+    return sessionManager.getRecoveryEvidence(sessionId, toolOperationId)
+  })
+
+  server.handle(RPC_CHANNELS.sessions.RECONCILE_TOOL, async (
+    ctx,
+    sessionId: string,
+    request: Omit<import('@craft-agent/shared/durable-runtime').ToolReconciliationRequest, 'sessionId' | 'actor'>,
+  ) => {
+    assertSessionWorkspaceOwnership(sessionManager, ctx, sessionId)
+    return sessionManager.reconcileTool({
+      ...request,
+      sessionId,
+      // Actor identity is transport-derived and cannot be forged by the client payload.
+      actor: { type: 'user', id: ctx.clientId },
+    })
+  })
+
+  server.handle(RPC_CHANNELS.sessions.QUERY_RECONCILE_TOOL, async (
+    ctx,
+    sessionId: string,
+    toolOperationId: string,
+  ) => {
+    assertSessionWorkspaceOwnership(sessionManager, ctx, sessionId)
+    await sessionManager.waitForInit()
+    return sessionManager.queryAndReconcileTool(
+      sessionId,
+      toolOperationId,
+      { type: 'user', id: ctx.clientId },
+    )
+  })
+
+  server.handle(RPC_CHANNELS.sessions.RECONCILE_MODEL, async (
+    ctx,
+    sessionId: string,
+    request: Omit<import('@craft-agent/shared/durable-runtime').ModelReconciliationRequest, 'sessionId' | 'actor'>,
+  ) => {
+    assertSessionWorkspaceOwnership(sessionManager, ctx, sessionId)
+    return sessionManager.reconcileModel({
+      ...request,
+      sessionId,
+      actor: { type: 'user', id: ctx.clientId },
+    })
   })
 
   // Create a new session

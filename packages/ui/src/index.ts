@@ -46,6 +46,7 @@ export {
   mapToolEventToActivity,
   SIZE_CONFIG,
   ActivityStatusIcon,
+  canBranchFromTurn,
   type SessionViewerProps,
   type SessionViewerMode,
   type TurnCardProps,

@@ -15,8 +15,9 @@
  */
 
 import http from 'node:http';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { createInterface } from 'node:readline';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { join } from 'node:path';
 import { mkdirSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -44,8 +45,8 @@ import type {
   CreateAgentSessionOptions,
   ToolDefinition,
 } from '@earendil-works/pi-coding-agent';
-import type { Credential } from '@earendil-works/pi-ai';
-import { InMemoryCredentialStore } from '@earendil-works/pi-ai';
+import type { AssistantMessage, Context, Credential, Model, SimpleStreamOptions } from '@earendil-works/pi-ai';
+import { createAssistantMessageEventStream, InMemoryCredentialStore } from '@earendil-works/pi-ai';
 
 // Pi AI types
 import type { TextContent as PiTextContent } from '@earendil-works/pi-ai';
@@ -76,7 +77,73 @@ registerBunOAuthFlows();
 // the call is idempotent.
 import { setDefaultStreamFn } from '@earendil-works/pi-agent-core';
 import { streamSimple } from '@earendil-works/pi-ai/compat';
-setDefaultStreamFn(streamSimple);
+
+function canonicalModelRequestHash(model: Model<any>, context: Context): string {
+  return createHash('sha256').update(JSON.stringify({
+    provider: model.provider,
+    model: model.id,
+    systemPrompt: context.systemPrompt,
+    messages: context.messages,
+    tools: context.tools?.map(tool => ({ name: tool.name, description: tool.description, parameters: tool.parameters })),
+  })).digest('hex');
+}
+
+function durableStreamSimple(model: Model<any>, context: Context, options?: SimpleStreamOptions) {
+  if (!initConfig || !currentDurableModelRun()) {
+    return streamSimple(model, context, options);
+  }
+  const target = createAssistantMessageEventStream();
+  void (async () => {
+    try {
+      const requestSeq = ++promptSnapshotSeq;
+      rememberPromptSnapshot(requestSeq, context.systemPrompt ?? '');
+      const providerRequestId = String(requestSeq);
+      const canonicalRequestHash = canonicalModelRequestHash(model, context);
+      const prepared = await requestDurableModelPrepare(
+        providerRequestId,
+        model.provider,
+        model.id,
+        canonicalRequestHash,
+      );
+      const source = streamSimple(model, context, options);
+      for await (const event of source) {
+        if (event.type === 'done' || event.type === 'error') {
+          const message = event.type === 'done' ? event.message : event.error;
+          const committedSeq = await requestDurableModelOutcome({
+            prepared,
+            providerRequestId,
+            provider: model.provider,
+            model: model.id,
+            canonicalRequestHash,
+            message,
+          });
+          Object.assign(message as object, {
+            durableOperationId: prepared.operationId,
+            durableSeq: committedSeq,
+            durableRequestSeq: requestSeq,
+          });
+        }
+        target.push(event);
+      }
+    } catch (error) {
+      const failed: AssistantMessage = {
+        role: 'assistant',
+        content: [],
+        api: model.api,
+        provider: model.provider,
+        model: model.id,
+        usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+        stopReason: 'error',
+        errorMessage: error instanceof Error ? error.message : String(error),
+        timestamp: Date.now(),
+      };
+      target.push({ type: 'error', reason: 'error', error: failed });
+    }
+  })();
+  return target;
+}
+
+setDefaultStreamFn(durableStreamSimple);
 
 // Model resolution (extracted for testability + custom-endpoint precedence)
 import { resolvePiModel, isDeniedMiniModelId, isModelNotFoundError } from './model-resolution.ts';
@@ -103,6 +170,9 @@ import { allowCraftMetadataProperties, stripCraftMetadata } from './craft-metada
 import { createCraftResourceLoader, setCraftSystemPrompt } from './craft-resource-loader.ts';
 import { guardCallbackToken } from './callback-auth.ts';
 import { proxyToolDefinitionsChanged } from './proxy-tool-sync.ts';
+import type { DurableCanonicalModelContext, DurableToolExecutionIdentity, ToolRecoveryMode } from '../../shared/src/durable-runtime/types.ts';
+import { attachDurableToolContext, durableToolFromContext } from './durable-tool-context.ts';
+import { canonicalContextToPiMessages } from './canonical-model-context.ts';
 import {
   hasSupportedBaseUrlScheme,
   isLocalhostUrl,
@@ -164,19 +234,21 @@ interface RuntimeConfigUpdateMessage {
 /** Messages from main process (stdin) */
 type InboundMessage =
   | InitMessage
-  | { type: 'prompt'; id: string; message: string; systemPrompt: string; durableRunOperationId?: string; durableTurnId?: string; images?: Array<{ type: 'image'; data: string; mimeType: string }> }
+  | { type: 'prompt'; id: string; message: string; systemPrompt: string; durableRunOperationId?: string; durableTurnId?: string; canonicalContext?: DurableCanonicalModelContext; images?: Array<{ type: 'image'; data: string; mimeType: string }> }
   | { type: 'sync_tools'; tools: ProxyToolDef[] }
   | { type: 'tool_execute_response'; requestId: string; result: { content: string; isError: boolean } }
   | { type: 'pre_tool_use_response'; requestId: string; action: 'allow' | 'block' | 'modify'; input?: Record<string, unknown>; reason?: string }
-  | { type: 'durable_tool_prepare_response'; requestId: string; ok: boolean; prepared?: { operationId: string; idempotencyKey: string; canonicalArgsHash: string; created: boolean; status: string; committedSeq: number }; reason?: string }
+  | { type: 'durable_tool_prepare_response'; requestId: string; ok: boolean; prepared?: { operationId: string; idempotencyKey: string; canonicalArgsHash: string; recoveryMode: ToolRecoveryMode; created: boolean; status: string; committedSeq: number }; reason?: string }
   | { type: 'durable_tool_outcome_response'; requestId: string; ok: boolean; committedSeq?: number; reason?: string }
+  | { type: 'durable_model_prepare_response'; requestId: string; ok: boolean; prepared?: { operationId: string; idempotencyKey: string; created: boolean; status: string; committedSeq: number }; reason?: string }
+  | { type: 'durable_model_outcome_response'; requestId: string; ok: boolean; committedSeq?: number; reason?: string }
   | { type: 'abort' }
-  | { type: 'mini_completion'; id: string; prompt: string }
-  | { type: 'llm_query'; id: string; request: LLMQueryRequest }
+  | { type: 'mini_completion'; id: string; prompt: string; durableRunOperationId?: string; durableTurnId?: string }
+  | { type: 'llm_query'; id: string; request: LLMQueryRequest; durableRunOperationId?: string; durableTurnId?: string }
   | { type: 'ensure_session_ready'; id: string }
   | { type: 'set_model'; model: string }
   | { type: 'set_thinking_level'; level: string }
-  | { type: 'compact'; id: string; customInstructions?: string }
+  | { type: 'compact'; id: string; customInstructions?: string; durableRunOperationId?: string; durableTurnId?: string }
   | { type: 'set_auto_compaction'; id: string; enabled: boolean }
   | { type: 'set_browser_tool_enabled'; enabled: boolean }
   | RuntimeConfigUpdateMessage
@@ -239,7 +311,7 @@ interface OutboundPreToolUseReq {
   toolCallId?: string;
   input: Record<string, unknown>;
 }
-interface OutboundToolExecReq { type: 'tool_execute_request'; requestId: string; toolName: string; args: Record<string, unknown> }
+interface OutboundToolExecReq { type: 'tool_execute_request'; requestId: string; toolName: string; args: Record<string, unknown>; durableTool?: DurableToolExecutionIdentity }
 interface OutboundDurableToolPrepareReq {
   type: 'durable_tool_prepare_request';
   requestId: string;
@@ -262,6 +334,34 @@ interface OutboundDurableToolOutcomeReq {
   canonicalArgsHash: string;
   result: unknown;
   isError: boolean;
+}
+interface OutboundDurableModelPrepareReq {
+  type: 'durable_model_prepare_request';
+  requestId: string;
+  sessionId: string;
+  turnId: string;
+  runOperationId: string;
+  providerRequestId: string;
+  provider: string;
+  model: string;
+  canonicalRequestHash: string;
+}
+interface OutboundDurableModelOutcomeReq {
+  type: 'durable_model_outcome_request';
+  requestId: string;
+  sessionId: string;
+  turnId: string;
+  runOperationId: string;
+  operationId: string;
+  providerRequestId: string;
+  provider: string;
+  model: string;
+  canonicalRequestHash: string;
+  stopReason: string;
+  responseId?: string;
+  content: unknown;
+  text?: string;
+  usage?: { inputTokens?: number; outputTokens?: number; costUsd?: number; payload?: unknown };
 }
 interface OutboundSessionToolCompleted { type: 'session_tool_completed'; toolName: string; args: Record<string, unknown>; isError: boolean }
 interface OutboundMiniResult { type: 'mini_completion_result'; id: string; text: string | null }
@@ -319,6 +419,8 @@ type OutboundMessage =
   | OutboundToolExecReq
   | OutboundDurableToolPrepareReq
   | OutboundDurableToolOutcomeReq
+  | OutboundDurableModelPrepareReq
+  | OutboundDurableModelOutcomeReq
   | OutboundSessionToolCompleted
   | OutboundMiniResult
   | OutboundLlmQueryResult
@@ -348,6 +450,15 @@ let initConfig: Extract<InboundMessage, { type: 'init' }> | null = null;
 let currentUserMessage = '';
 let currentDurableRunOperationId: string | undefined;
 let currentDurableTurnId: string | undefined;
+let lastCanonicalContextCursor = 0;
+const durableModelRunStorage = new AsyncLocalStorage<{ runOperationId: string; turnId: string }>();
+
+function currentDurableModelRun(): { runOperationId: string; turnId: string } | undefined {
+  return durableModelRunStorage.getStore()
+    ?? (currentDurableRunOperationId && currentDurableTurnId
+      ? { runOperationId: currentDurableRunOperationId, turnId: currentDurableTurnId }
+      : undefined);
+}
 
 function sendThinkingLevelState(): void {
   if (!piSession) return;
@@ -361,8 +472,10 @@ function sendThinkingLevelState(): void {
 // Pending promises for async handshakes
 const pendingPreToolUse = new Map<string, { resolve: (response: { action: string; input?: Record<string, unknown>; reason?: string }) => void }>();
 const pendingToolExecutions = new Map<string, { resolve: (result: { content: string; isError: boolean }) => void }>();
-const pendingDurableToolPrepares = new Map<string, { resolve: (response: { ok: boolean; prepared?: { operationId: string; idempotencyKey: string; canonicalArgsHash: string; created: boolean; status: string; committedSeq: number }; reason?: string }) => void }>();
+const pendingDurableToolPrepares = new Map<string, { resolve: (response: { ok: boolean; prepared?: PreparedDurableTool & { created: boolean; status: string }; reason?: string }) => void }>();
 const pendingDurableToolOutcomes = new Map<string, { resolve: (response: { ok: boolean; committedSeq?: number; reason?: string }) => void }>();
+const pendingDurableModelPrepares = new Map<string, { resolve: (response: { ok: boolean; prepared?: { operationId: string; idempotencyKey: string; created: boolean; status: string; committedSeq: number }; reason?: string }) => void }>();
+const pendingDurableModelOutcomes = new Map<string, { resolve: (response: { ok: boolean; committedSeq?: number; reason?: string }) => void }>();
 const durableToolCommits = new Map<string, { operationId: string; startSeq: number; outcomeSeq?: number }>();
 
 // Pending session MCP tool calls for completion detection
@@ -407,9 +520,7 @@ let promptSnapshotSeq = 0;
  * request ordinal. Returns the seq so the caller can attach it to the
  * forwarded message_end event.
  */
-function capturePromptSnapshot(session: AgentSession): number {
-  const seq = ++promptSnapshotSeq;
-  const prompt = session.systemPrompt ?? '';
+function rememberPromptSnapshot(seq: number, prompt: string): void {
   promptSnapshots.set(seq, { seq, prompt });
 
   // Bounded ring: drop oldest once over the cap.
@@ -417,6 +528,11 @@ function capturePromptSnapshot(session: AgentSession): number {
     const oldest = promptSnapshots.keys().next().value;
     if (oldest !== undefined) promptSnapshots.delete(oldest);
   }
+}
+
+function capturePromptSnapshot(session: AgentSession): number {
+  const seq = ++promptSnapshotSeq;
+  rememberPromptSnapshot(seq, session.systemPrompt ?? '');
   return seq;
 }
 
@@ -900,6 +1016,7 @@ interface PreparedDurableTool {
   operationId: string;
   idempotencyKey: string;
   canonicalArgsHash: string;
+  recoveryMode: ToolRecoveryMode;
   committedSeq: number;
 }
 
@@ -977,6 +1094,93 @@ async function requestDurableToolOutcome(
   return response.committedSeq;
 }
 
+interface PreparedDurableModel {
+  operationId: string;
+  idempotencyKey: string;
+  committedSeq: number;
+}
+
+async function requestDurableModelPrepare(
+  providerRequestId: string,
+  provider: string,
+  model: string,
+  canonicalRequestHash: string,
+): Promise<PreparedDurableModel> {
+  const durableRun = currentDurableModelRun();
+  if (!initConfig || !durableRun) {
+    throw new Error('Durable model boundary is unavailable');
+  }
+  const requestId = `pi-model-t1-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const responsePromise = new Promise<{ ok: boolean; prepared?: PreparedDurableModel & { created: boolean; status: string }; reason?: string }>((resolve) => {
+    pendingDurableModelPrepares.set(requestId, { resolve });
+  });
+  send({
+    type: 'durable_model_prepare_request',
+    requestId,
+    sessionId: initConfig.sessionId,
+    turnId: durableRun.turnId,
+    runOperationId: durableRun.runOperationId,
+    providerRequestId,
+    provider,
+    model,
+    canonicalRequestHash,
+  });
+  const response = await responsePromise;
+  if (!response.ok || !response.prepared) throw new Error(response.reason || 'Durable model T1 failed');
+  if (!response.prepared.created) {
+    throw new Error(`Model operation ${response.prepared.operationId} already crossed T1 and requires recovery`);
+  }
+  return response.prepared;
+}
+
+async function requestDurableModelOutcome(input: {
+  prepared: PreparedDurableModel;
+  providerRequestId: string;
+  provider: string;
+  model: string;
+  canonicalRequestHash: string;
+  message: AssistantMessage;
+}): Promise<number> {
+  const durableRun = currentDurableModelRun();
+  if (!initConfig || !durableRun) {
+    throw new Error('Durable model outcome boundary is unavailable');
+  }
+  const requestId = `pi-model-t2-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const responsePromise = new Promise<{ ok: boolean; committedSeq?: number; reason?: string }>((resolve) => {
+    pendingDurableModelOutcomes.set(requestId, { resolve });
+  });
+  send({
+    type: 'durable_model_outcome_request',
+    requestId,
+    sessionId: initConfig.sessionId,
+    turnId: durableRun.turnId,
+    runOperationId: durableRun.runOperationId,
+    operationId: input.prepared.operationId,
+    providerRequestId: input.providerRequestId,
+    provider: input.provider,
+    model: input.model,
+    canonicalRequestHash: input.canonicalRequestHash,
+    stopReason: input.message.stopReason,
+    responseId: input.message.responseId,
+    content: input.message.content,
+    text: input.message.content
+      .filter(part => part.type === 'text')
+      .map(part => part.text)
+      .join(''),
+    usage: {
+      inputTokens: input.message.usage.input,
+      outputTokens: input.message.usage.output,
+      costUsd: input.message.usage.cost.total,
+      payload: { kind: 'model_attempt', requestSeq: Number(input.providerRequestId), usage: input.message.usage },
+    },
+  });
+  const response = await responsePromise;
+  if (!response.ok || response.committedSeq === undefined) {
+    throw new Error(response.reason || 'Durable model T2 failed');
+  }
+  return response.committedSeq;
+}
+
 function wrapToolsWithHooks(tools: ToolDefinition<any, any>[]): ToolDefinition<any, any>[] {
   return tools.map(tool => wrapSingleTool(tool));
 }
@@ -1026,7 +1230,15 @@ function wrapSingleTool(tool: ToolDefinition<any, any>): ToolDefinition<any, any
     // the result is returned to Pi, so the next model request cannot outrun durability.
     let result: AgentToolResult<any>;
     try {
-      result = await originalExecute(toolCallId, inputObj, signal, onUpdate, ctx);
+      const durableTool: DurableToolExecutionIdentity = {
+        operationId: durable.operationId,
+        runOperationId: currentDurableRunOperationId!,
+        idempotencyKey: durable.idempotencyKey,
+        canonicalArgsHash: durable.canonicalArgsHash,
+        recoveryMode: durable.recoveryMode,
+      };
+      const executionContext = attachDurableToolContext(ctx, durableTool) as typeof ctx;
+      result = await originalExecute(toolCallId, inputObj, signal, onUpdate, executionContext);
     } catch (error) {
       await requestDurableToolOutcome(
         durable,
@@ -1123,6 +1335,9 @@ function buildProxyTools(): ToolDefinition<any, any>[] {
     execute: async (
       toolCallId: string,
       params: any,
+      _signal,
+      _onUpdate,
+      ctx,
     ): Promise<AgentToolResult<any>> => {
       // Check speculative prefetch cache first (parallel call_llm optimization).
       // If this tool was prefetched on message_end, the request is already in-flight —
@@ -1151,6 +1366,7 @@ function buildProxyTools(): ToolDefinition<any, any>[] {
         requestId,
         toolName: def.name,
         args: approvedInput,
+        durableTool: durableToolFromContext(ctx),
       });
 
       const result = await new Promise<{ content: string; isError: boolean }>((resolve) => {
@@ -1435,7 +1651,14 @@ function handleSessionEvent(event: AgentSessionEvent): void {
 
   // Log API errors for debugging and attach provider-native turn anchor for branch cutoffs.
   if (event.type === 'message_end') {
-    const msg = event.message as { role?: string; stopReason?: string; errorMessage?: string } | undefined;
+    const msg = event.message as {
+      role?: string;
+      stopReason?: string;
+      errorMessage?: string;
+      durableOperationId?: string;
+      durableSeq?: number;
+      durableRequestSeq?: number;
+    } | undefined;
     if (msg?.stopReason === 'error') {
       debugLog(`API error in message_end: ${msg.errorMessage || 'unknown'}`);
     }
@@ -1471,12 +1694,17 @@ function handleSessionEvent(event: AgentSessionEvent): void {
       // earliest point after the request completed.
       // Deliberately NOT gated on sdkMessageId: the enrichment is independent
       // of the anchor correlation and must survive providers that omit ids.
-      const requestSeq = capturePromptSnapshot(piSession);
+      const requestSeq = typeof msg.durableRequestSeq === 'number'
+        ? msg.durableRequestSeq
+        : capturePromptSnapshot(piSession);
+      if (!promptSnapshots.has(requestSeq)) rememberPromptSnapshot(requestSeq, piSession.systemPrompt ?? '');
       const snapshot = promptSnapshots.get(requestSeq);
       forwardedEvent = {
         ...(event as Record<string, unknown>),
         ...(sdkMessageId ? { sdkMessageId } : {}),
         requestSeq,
+        ...(msg.durableOperationId ? { durableOperationId: msg.durableOperationId } : {}),
+        ...(typeof msg.durableSeq === 'number' ? { durableSeq: msg.durableSeq } : {}),
         ...(snapshot ? { promptSnapshot: snapshot.prompt } : {}),
       } as unknown as OutboundAgentEvent;
 
@@ -1586,6 +1814,10 @@ function handleSessionEvent(event: AgentSessionEvent): void {
 
   // Forward all events to main process
   send({ type: 'event', event: forwardedEvent });
+  if (event.type === 'agent_settled') {
+    currentDurableRunOperationId = undefined;
+    currentDurableTurnId = undefined;
+  }
 }
 
 // ============================================================
@@ -1606,6 +1838,8 @@ async function handleInit(msg: Extract<InboundMessage, { type: 'init' }>): Promi
   }
 
   initConfig = msg;
+  clearPromptSnapshots();
+  lastCanonicalContextCursor = 0;
 
   // Audit M-4: custom endpoint base URLs must use http/https. Reject other
   // schemes early and neutralize the config so the invalid URL is never
@@ -1682,6 +1916,18 @@ async function handlePrompt(msg: Extract<InboundMessage, { type: 'prompt' }>): P
 
     const session = await ensureSession();
 
+    if (msg.canonicalContext) {
+      if (!session.isIdle) {
+        debugLog('[canonical-context] session is active; retaining current Pi transcript');
+      } else if (msg.canonicalContext.cursor < lastCanonicalContextCursor) {
+        debugLog(`[canonical-context] stale cursor ${msg.canonicalContext.cursor} < ${lastCanonicalContextCursor}; retaining Pi transcript`);
+      } else {
+        session.agent.state.messages = canonicalContextToPiMessages(msg.canonicalContext, session.agent.state.model);
+        lastCanonicalContextCursor = msg.canonicalContext.cursor;
+        debugLog(`[canonical-context] applied ${msg.canonicalContext.items.length} committed facts at cursor ${msg.canonicalContext.cursor}`);
+      }
+    }
+
     // Supply the Craft-built system prompt via the loader's before_agent_start
     // hook — re-applied every turn, surviving the SDK's per-turn reset and
     // tool-change rebuilds (see craft-resource-loader.ts).
@@ -1700,10 +1946,18 @@ async function handlePrompt(msg: Extract<InboundMessage, { type: 'prompt' }>): P
 
     // Fire prompt — use followUp when session is already streaming so the
     // message is queued instead of throwing "Agent is already processing".
-    await session.prompt(msg.message, {
+    const invokePrompt = () => session.prompt(msg.message, {
       images: msg.images && msg.images.length > 0 ? msg.images : undefined,
       streamingBehavior: 'followUp',
     });
+    if (msg.durableRunOperationId) {
+      await durableModelRunStorage.run({
+        runOperationId: msg.durableRunOperationId,
+        turnId: msg.durableTurnId ?? msg.id,
+      }, invokePrompt);
+    } else {
+      await invokePrompt();
+    }
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
 
@@ -1798,6 +2052,24 @@ function handleDurableToolOutcomeResponse(
   pending.resolve({ ok: msg.ok, committedSeq: msg.committedSeq, reason: msg.reason });
 }
 
+function handleDurableModelPrepareResponse(
+  msg: Extract<InboundMessage, { type: 'durable_model_prepare_response' }>,
+): void {
+  const pending = pendingDurableModelPrepares.get(msg.requestId);
+  if (!pending) return;
+  pendingDurableModelPrepares.delete(msg.requestId);
+  pending.resolve({ ok: msg.ok, prepared: msg.prepared, reason: msg.reason });
+}
+
+function handleDurableModelOutcomeResponse(
+  msg: Extract<InboundMessage, { type: 'durable_model_outcome_response' }>,
+): void {
+  const pending = pendingDurableModelOutcomes.get(msg.requestId);
+  if (!pending) return;
+  pendingDurableModelOutcomes.delete(msg.requestId);
+  pending.resolve({ ok: msg.ok, committedSeq: msg.committedSeq, reason: msg.reason });
+}
+
 async function handleAbort(): Promise<void> {
   if (piSession) {
     try {
@@ -1817,12 +2089,24 @@ async function handleAbort(): Promise<void> {
   prefetchCache.clear();
 }
 
+function runWithDurableUtilityContext<T>(
+  msg: { id: string; durableRunOperationId?: string; durableTurnId?: string },
+  operation: () => Promise<T>,
+): Promise<T> {
+  return msg.durableRunOperationId
+    ? durableModelRunStorage.run({
+        runOperationId: msg.durableRunOperationId,
+        turnId: msg.durableTurnId ?? msg.id,
+      }, operation)
+    : operation();
+}
+
 async function handleMiniCompletion(msg: Extract<InboundMessage, { type: 'mini_completion' }>): Promise<void> {
   // Call queryLlm directly (not runMiniCompletion) so auth errors propagate
   // as 'error' messages instead of being swallowed and returned as null.
   // runMiniCompletion is kept for the summarize callback where null is acceptable.
   try {
-    const result = await queryLlm({ prompt: msg.prompt });
+    const result = await runWithDurableUtilityContext(msg, () => queryLlm({ prompt: msg.prompt }));
     send({ type: 'mini_completion_result', id: msg.id, text: result.text || null });
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
@@ -1837,7 +2121,7 @@ async function handleMiniCompletion(msg: Extract<InboundMessage, { type: 'mini_c
 // request-propagation + request-honoring are independent (see #596).
 async function handleLlmQuery(msg: Extract<InboundMessage, { type: 'llm_query' }>): Promise<void> {
   try {
-    const result = await queryLlm(msg.request);
+    const result = await runWithDurableUtilityContext(msg, () => queryLlm(msg.request));
     send({ type: 'llm_query_result', id: msg.id, result });
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
@@ -1869,7 +2153,7 @@ async function handleCompact(msg: Extract<InboundMessage, { type: 'compact' }>):
     // before starting a manual one. waitForCompaction has its own timeout
     // fallback so we don't deadlock on a stuck subprocess.
     await waitForCompaction(session);
-    const result = await session.compact(msg.customInstructions);
+    const result = await runWithDurableUtilityContext(msg, () => session.compact(msg.customInstructions));
     send({
       type: 'compact_result',
       id: msg.id,
@@ -2099,6 +2383,14 @@ async function processMessage(msg: InboundMessage): Promise<void> {
 
     case 'durable_tool_outcome_response':
       handleDurableToolOutcomeResponse(msg);
+      break;
+
+    case 'durable_model_prepare_response':
+      handleDurableModelPrepareResponse(msg);
+      break;
+
+    case 'durable_model_outcome_response':
+      handleDurableModelOutcomeResponse(msg);
       break;
 
     case 'abort':

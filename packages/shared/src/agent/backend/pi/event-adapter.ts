@@ -365,6 +365,7 @@ export class PiEventAdapter extends BaseEventAdapter {
             promptSnapshot: (event as { promptSnapshot?: unknown }).promptSnapshot as string | undefined,
             assistantMetrics,
             outputBlocks: this.extractSourceBlocks(event.message),
+            ...this.durableAttachments(event),
           };
           this.hasStreamedDeltas = false;
         }
