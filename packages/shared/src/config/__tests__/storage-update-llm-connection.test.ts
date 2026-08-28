@@ -79,6 +79,13 @@ function makeConnection(overrides: Record<string, unknown> = {}) {
 }
 
 describe('updateLlmConnection – customEndpoint', () => {
+  it('persists brand identity independently from the endpoint protocol', () => {
+    const { runUpdate, readConnection } = setup([makeConnection()])
+
+    expect(runUpdate('custom-compat', { brandId: 'deepseek' })).toBe(true)
+    expect(readConnection('custom-compat').brandId).toBe('deepseek')
+  })
+
   it('preserves customEndpoint when provided in updates', () => {
     const { runUpdate, readConnection } = setup([makeConnection()])
     const customEndpoint = { api: 'anthropic-messages' }

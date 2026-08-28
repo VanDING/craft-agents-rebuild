@@ -845,7 +845,7 @@ interface ManagedSession {
   sharedId?: string
   // Model to use for this session (overrides global config if set)
   model?: string
-  // LLM connection slug for this session (locked after first message)
+  // Persisted LLM connection slug; switchable while the session is idle.
   llmConnection?: string
   // Whether the connection is locked (cannot be changed after first agent creation)
   connectionLocked?: boolean
@@ -3703,7 +3703,7 @@ export class SessionManager implements ISessionManager {
    * Creates the appropriate backend agent based on LLM connection.
    *
    * Provider resolution order:
-   * 1. session.llmConnection (locked after first message)
+   * 1. session.llmConnection (persisted per session)
    * 2. workspace.defaults.defaultLlmConnection
    * 3. global defaultLlmConnection
    * 4. fallback: no connection configured
@@ -5357,8 +5357,8 @@ export class SessionManager implements ISessionManager {
 
   /**
    * Set the LLM connection for a session.
-   * Can only be changed before the first message is sent (connection is locked after).
-   * This determines which LLM provider/backend will be used for this session.
+   * Idle sessions may switch at any point. A provider/auth change disposes the
+   * current runtime and the next send recreates it against the new connection.
    */
   async setSessionConnection(sessionId: string, connectionSlug: string): Promise<void> {
     const managed = this.sessions.get(sessionId)
@@ -5367,10 +5367,9 @@ export class SessionManager implements ISessionManager {
       throw new Error(`Session ${sessionId} not found`)
     }
 
-    // Only allow changing connection before first message (session hasn't started)
-    if (managed.messages && managed.messages.length > 0) {
-      sessionLog.warn(`setSessionConnection: cannot change connection after session has started (${sessionId})`)
-      throw new Error('Cannot change connection after session has started')
+    if (managed.isProcessing || managed.agent?.isProcessing()) {
+      sessionLog.warn(`setSessionConnection: cannot change connection while session is processing (${sessionId})`)
+      throw new Error('Cannot change LLM connection while the session is processing')
     }
 
     // Validate connection exists
@@ -5381,19 +5380,12 @@ export class SessionManager implements ISessionManager {
       throw new Error(`LLM connection "${connectionSlug}" not found`)
     }
 
-    managed.llmConnection = connectionSlug
-    // Persist in-memory state directly to avoid race with pending queue writes
-    this.persistSession(managed)
-    await this.flushSession(managed.id)
-    sessionLog.info(`Set LLM connection for session ${sessionId} to ${connectionSlug}`)
-
-    // Notify UI that connection changed (triggers capabilities refresh)
-    this.sendEvent({
-      type: 'connection_changed',
+    await this.updateSessionModel(
       sessionId,
+      managed.workspace.id,
+      connection.defaultModel ?? null,
       connectionSlug,
-      supportsBranching: resolveSupportsBranching(managed),
-    }, managed.workspace.id)
+    )
   }
 
   // ============================================
@@ -6077,23 +6069,42 @@ export class SessionManager implements ISessionManager {
   /**
    * Update the model for a session
    * Pass null to clear the session-specific model (will use global config)
-   * @param connection - Optional LLM connection slug (only applied if not already locked)
+   * @param connection - Optional LLM connection slug. Cross-provider changes
+   * are allowed while idle and rebuild the backend runtime when required.
    */
   async updateSessionModel(sessionId: string, workspaceId: string, model: string | null, connection?: string): Promise<void> {
     sessionLog.info(`[updateSessionModel] sessionId=${sessionId}, model=${model}, connection=${connection}`)
     const managed = this.sessions.get(sessionId)
     if (managed) {
-      managed.model = model ?? undefined
-      // Also update connection if provided and not already locked
-      if (connection && !managed.connectionLocked) {
+      const connectionChanged = !!connection && connection !== managed.llmConnection
+      if (connectionChanged && (managed.isProcessing || managed.agent?.isProcessing())) {
+        throw new Error('Cannot change LLM connection while the session is processing')
+      }
+
+      if (connectionChanged) {
+        const { getLlmConnection } = await import('@craft-agent/shared/config/storage')
+        const targetConnection = getLlmConnection(connection)
+        if (!targetConnection) {
+          throw new Error(`LLM connection "${connection}" not found`)
+        }
+        const targetModelIds = (targetConnection.models ?? []).map(item => typeof item === 'string' ? item : item.id)
+        if (model && targetModelIds.length > 0 && !targetModelIds.includes(model)) {
+          throw new Error(`Model "${model}" is not available on connection "${connection}"`)
+        }
         managed.llmConnection = connection
       }
-      // Persist to disk (include connection if it was updated)
+
+      managed.model = model ?? undefined
       const updates: { model?: string; llmConnection?: string } = { model: model ?? undefined }
-      if (connection && !managed.connectionLocked) {
+      if (connectionChanged && connection) {
         updates.llmConnection = connection
       }
       await updateSessionMetadata(managed.workspace.rootPath, sessionId, updates)
+
+      if (connectionChanged) {
+        await this.tryRefreshAgentRuntime(managed, 'session connection switch')
+      }
+
       // Update agent model if it already exists (takes effect on next query)
       if (managed.agent) {
         // Fallback chain: session model > workspace default > connection default
@@ -6107,6 +6118,14 @@ export class SessionManager implements ISessionManager {
       }
       // Notify renderer of the model change
       this.sendEvent({ type: 'session_model_changed', sessionId, model }, managed.workspace.id)
+      if (connectionChanged && connection) {
+        this.sendEvent({
+          type: 'connection_changed',
+          sessionId,
+          connectionSlug: connection,
+          supportsBranching: resolveSupportsBranching(managed),
+        }, managed.workspace.id)
+      }
       sessionLog.info(`Session ${sessionId} model updated to: ${model ?? '(global config)'}`)
     }
   }
@@ -8058,9 +8077,8 @@ export class SessionManager implements ISessionManager {
     const cwdChanged = Boolean(reconcile?.workingDirectory && reconcile.workingDirectory !== managed.workingDirectory)
     const modeChanged = Boolean(reconcile?.permissionMode && reconcile.permissionMode !== managed.permissionMode)
 
-    // Promote task metadata (no canonical mutator for these). Connection is set directly because
-    // setSessionConnection() refuses a session that has already sent messages (a generate draft has);
-    // the connection_changed event below keeps the renderer in sync.
+    // Promote task metadata (no canonical mutator for these). Connection is reconciled directly as
+    // part of this multi-field promotion; the connection_changed event below keeps the renderer in sync.
     managed.taskSlug = taskSlug
     managed.taskDraft = false
     if (reconcile?.projectId !== undefined) managed.projectId = reconcile.projectId
@@ -8149,9 +8167,8 @@ export class SessionManager implements ISessionManager {
     const cwdChanged = Boolean(reconcile?.workingDirectory && reconcile.workingDirectory !== managed.workingDirectory)
     const modeChanged = Boolean(reconcile?.permissionMode && reconcile.permissionMode !== managed.permissionMode)
 
-    // Promote task metadata (no canonical mutator for these). Connection is set directly because
-    // setSessionConnection() refuses a session that has already sent messages (a quick-add tile has);
-    // the connection_changed event below keeps the renderer in sync.
+    // Promote task metadata (no canonical mutator for these). Connection is reconciled directly as
+    // part of this multi-field bind; the connection_changed event below keeps the renderer in sync.
     managed.taskSlug = taskSlug
     managed.taskDraft = false
     if (reconcile?.projectId !== undefined) managed.projectId = reconcile.projectId

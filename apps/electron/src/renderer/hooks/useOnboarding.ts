@@ -153,7 +153,9 @@ export function apiSetupMethodToConnectionSetup(
   options: {
     credential?: string
     baseUrl?: string
+    brandId?: string
     connectionDefaultModel?: string
+    utilityModel?: string | null
     models?: string[]
     piAuthProvider?: string
     modelSelectionMode?: 'automaticallySyncedFromProvider' | 'userDefined3Tier'
@@ -174,7 +176,9 @@ export function apiSetupMethodToConnectionSetup(
         slug,
         credential: options.credential,
         baseUrl: options.baseUrl,
+        brandId: options.brandId,
         defaultModel: options.connectionDefaultModel,
+        utilityModel: options.utilityModel,
         models: options.models,
         customEndpoint: options.customEndpoint,
       }
@@ -199,7 +203,9 @@ export function apiSetupMethodToConnectionSetup(
         slug,
         credential: options.credential,
         baseUrl: options.baseUrl,
+        brandId: options.brandId,
         defaultModel: options.connectionDefaultModel,
+        utilityModel: options.utilityModel,
         models: options.models,
         piAuthProvider: options.piAuthProvider,
         modelSelectionMode: options.modelSelectionMode,
@@ -264,7 +270,9 @@ export function useOnboarding({
     credential?: string,
     options?: {
       baseUrl?: string
+      brandId?: string
       connectionDefaultModel?: string
+      utilityModel?: string | null
       models?: string[]
       piAuthProvider?: string
       modelSelectionMode?: 'automaticallySyncedFromProvider' | 'userDefined3Tier'
@@ -290,7 +298,9 @@ export function useOnboarding({
       const setup = apiSetupMethodToConnectionSetup(method, {
         credential,
         baseUrl: options?.baseUrl,
+        brandId: options?.brandId,
         connectionDefaultModel: options?.connectionDefaultModel,
+        utilityModel: options?.utilityModel,
         models: options?.models,
         piAuthProvider: options?.piAuthProvider,
         modelSelectionMode: options?.modelSelectionMode,
@@ -409,7 +419,9 @@ export function useOnboarding({
       if (data.bedrockAuthMethod) {
         const saved = await handleSaveConfig(undefined, {
           baseUrl: data.baseUrl,
+          brandId: data.brandId,
           connectionDefaultModel: data.connectionDefaultModel,
+          utilityModel: data.utilityModel,
           models: data.models,
           piAuthProvider: data.piAuthProvider,
           modelSelectionMode: data.modelSelectionMode,
@@ -429,7 +441,9 @@ export function useOnboarding({
       if (!data.apiKey.trim() && editingSlug) {
         const saved = await handleSaveConfig(undefined, {
           baseUrl: data.baseUrl,
+          brandId: data.brandId,
           connectionDefaultModel: data.connectionDefaultModel,
+          utilityModel: data.utilityModel,
           models: data.models,
           piAuthProvider: data.piAuthProvider,
           modelSelectionMode: data.modelSelectionMode,
@@ -490,7 +504,9 @@ export function useOnboarding({
 
       const saved = await handleSaveConfig(data.apiKey, {
         baseUrl: data.baseUrl,
+        brandId: data.brandId,
         connectionDefaultModel: data.connectionDefaultModel,
+        utilityModel: data.utilityModel,
         models: data.models,
         piAuthProvider: data.piAuthProvider,
         modelSelectionMode: data.modelSelectionMode,

@@ -14,12 +14,12 @@
   --task-check-svg-offset-y: -0.005rem;
   --task-check-stroke-width: 2;
 
-  --task-check-draw-duration: 360ms;
-  --task-check-draw-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --task-check-draw-duration: var(--motion-duration-spatial);
+  --task-check-draw-ease: var(--motion-ease-enter);
 
-  --task-text-fade-duration: 200ms;
-  --task-strike-duration: 400ms;
-  --task-strike-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --task-text-fade-duration: var(--motion-duration-standard);
+  --task-strike-duration: var(--motion-duration-emphasis);
+  --task-strike-ease: var(--motion-ease-enter);
 }
 
 .tiptap-editor .tiptap-prose ul[data-type="taskList"] {

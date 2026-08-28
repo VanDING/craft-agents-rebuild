@@ -34,8 +34,8 @@ export function FabNewChat({ onClick, className }: FabNewChatProps) {
         "flex items-center justify-center",
         // Shadow via approved utilities: shadow-tinted takes a --shadow-color
         "shadow-tinted",
-        "transition-all duration-150",
-        "hover:scale-105",
+        "motion-content transition-[transform,box-shadow,opacity]",
+        "hover:scale-[1.03]",
         "active:scale-95",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         "bottom-[calc(env(safe-area-inset-bottom,0px)+1rem)]",

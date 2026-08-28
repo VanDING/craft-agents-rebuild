@@ -228,7 +228,7 @@ export function MarkdownImageBlock({ code, className, onCreateRegionAnnotation: 
           <button
             onClick={() => setIsFullscreen(true)}
             className={cn(
-              'absolute right-2 top-2 z-10 p-1 rounded-[6px] transition-all select-none',
+              'motion-interactive absolute right-2 top-2 z-10 p-1 rounded-[6px] transition-[color,background-color,box-shadow,opacity,transform] select-none',
               'bg-background/90 shadow-minimal',
               'text-muted-foreground/60 hover:text-foreground',
               'focus:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:opacity-100',

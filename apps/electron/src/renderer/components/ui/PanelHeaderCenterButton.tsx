@@ -22,7 +22,7 @@ export const PanelHeaderCenterButton = forwardRef<HTMLButtonElement, PanelHeader
           "p-1.5 shrink-0 rounded-md titlebar-no-drag",
           "bg-background shadow-minimal",
           "opacity-70 hover:opacity-100",
-          "transition-opacity focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+          "motion-interactive transition-[opacity,transform] active:scale-[var(--motion-scale-pressed)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
           "disabled:pointer-events-none disabled:opacity-50",
           className
         )}

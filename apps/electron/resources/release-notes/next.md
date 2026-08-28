@@ -4,10 +4,12 @@ This file accumulates release notes for the next unreleased version. PRs that ad
 
 ## Features
 
-- **OpenAI Responses protocol for custom endpoints** — the custom-endpoint protocol picker now offers "OpenAI Responses" alongside Chat Completions and Anthropic Messages. Third-party APIs that implement the Responses format (e.g. DeepSeek's `https://api.deepseek.com`) route through the Pi SDK's Responses adapter. Configured as `customEndpoint.api = 'openai-responses'`; the SDK side needed no changes — its built-in adapter registry already knew the protocol.
+- **Switch providers within an existing conversation** — idle sessions can now change connection and model without losing their transcript. Cross-provider changes safely recreate the Pi runtime, while the selector is disabled during an active turn.
 
 ## Improvements
 
+- **Provider-owned model catalogs** — API-key setup now keeps the complete discovered model catalog synchronized and asks for one clear default model instead of the misleading Best, Balanced, and Fast tiers. Legacy three-tier connections migrate on their next catalog refresh.
+- **Accurate custom-endpoint branding** — connection icons now keep visual brand identity separate from OpenAI/Anthropic transport compatibility, with URL and model-family inference plus a neutral fallback for unknown endpoints.
 - **Unified full-page task and schedule editing** — New Task and WorkItem details now share one full-page editor, standalone schedules use the same navigation pattern instead of a modal, and Calendar supports empty-slot creation, drag-to-reschedule, duration resizing, and overlap layout. Project views also remove the redundant “All Tasks” and List create rows, replace native dropdowns, center titles against the full panel, and retire the premature Saved View feature.
 - **Session list control moved beside the sidebar toggle** — the session list button now sits with the other navigation controls on the left side of the top bar and behaves as a simple action without a persistent selected state.
 - **Automatic custom-endpoint models and model-aware thinking levels** — compatible endpoints now discover models from OpenAI, Anthropic, and Ollama list APIs, while keeping manual IDs as a fallback. Pi capability metadata drives each model's exact reasoning choices (including Minimal and model-specific Extra High/Max), and Pi's effective clamped level is synchronized back to the session UI.
@@ -23,6 +25,7 @@ This file accumulates release notes for the next unreleased version. PRs that ad
 
 ## Bug Fixes
 
+- **Retired custom Responses setup** — new custom endpoints can use OpenAI Compatible or Anthropic Compatible protocols; the incomplete custom Responses option is rejected while official and internal Responses providers remain supported. Existing custom Responses connections remain readable and migrate when edited.
 - **Default composer surface restored** — the default theme again uses the original canvas-colored composer instead of the darker generic form-input token; named themes can still provide a dedicated composer surface.
 - **New Session panel spacing restored** — the session panel once again keeps a fixed inset below the 48 px title bar, preventing its upper edge from touching the window chrome.
 - **Fix ChatGPT Plus (OAuth) chat failing with "No API key found for openai-codex"** — the ChatGPT OAuth bearer token was passed to the Pi SDK as an `api_key` credential, but the SDK's `openai-codex` provider is OAuth-only and rejected it. It now arrives as a full `oauth` credential (access + refresh + expiry), matching what the SDK's provider-aware auth resolution expects.

@@ -21,6 +21,15 @@ function makeConnection(providerType: LlmProviderType, models: string[], piAuthP
 // ============================================================
 
 describe('getMiniModel()', () => {
+  it('honors an explicit utility model from the provider catalog', () => {
+    const conn = {
+      ...makeConnection('pi', ['pi/large', 'pi/small']),
+      utilityModel: 'pi/small',
+    };
+    expect(getMiniModel(conn)).toBe('pi/small');
+    expect(getSummarizationModel(conn)).toBe('pi/small');
+  });
+
   // --- Anthropic providers ---
 
   it('finds haiku for anthropic provider', () => {

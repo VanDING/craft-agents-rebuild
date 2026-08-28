@@ -4,6 +4,7 @@ import { useEffect, useMemo, useReducer, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import * as Icons from 'lucide-react'
 import { motion, AnimatePresence } from 'motion/react'
+import { MOTION_DURATION, MOTION_SPRING } from '@craft-agent/ui/motion'
 import { useRegisterDismissibleLayer } from '@/context/DismissibleLayerContext'
 import { CraftAgentsSymbol } from '../icons/CraftAgentsSymbol'
 import { SquarePenRounded } from '../icons/SquarePenRounded'
@@ -19,8 +20,8 @@ import {
 } from './mobile-menu-pages'
 import type { AppMenuProps } from './types'
 
-const SNAPPY_SPRING = { type: 'spring' as const, stiffness: 400, damping: 36, mass: 0.8 }
-const BACKDROP_FADE = { duration: 0.18 }
+const SNAPPY_SPRING = MOTION_SPRING.spatial
+const BACKDROP_FADE = { duration: MOTION_DURATION.standard }
 
 type StackAction =
   | { type: 'open' }

@@ -125,7 +125,7 @@ export function ProviderSelectStep({ onSelect, onSkip }: ProviderSelectStepProps
             key={option.id}
             onClick={() => onSelect(option.id)}
             className={cn(
-              "flex flex-col items-center gap-2 rounded-xl bg-foreground-2 p-4 text-center transition-all",
+              "motion-content flex flex-col items-center gap-2 rounded-xl bg-foreground-2 p-4 text-center transition-[color,background-color,border-color,box-shadow,opacity,transform]",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
               "hover:bg-foreground/[0.02] shadow-minimal cursor-pointer"
             )}

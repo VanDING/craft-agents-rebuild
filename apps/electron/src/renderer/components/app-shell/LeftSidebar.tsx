@@ -1,6 +1,7 @@
 import type { LucideIcon } from "lucide-react"
 import * as React from "react"
 import { AnimatePresence, motion, type Variants } from "motion/react"
+import { MOTION_DURATION, MOTION_EASE } from '@craft-agent/ui/motion'
 import { ChevronRight } from "lucide-react"
 
 import { cn } from "@/lib/utils"
@@ -134,12 +135,12 @@ const itemVariants: Variants = {
   visible: {
     opacity: 1,
     x: 0,
-    transition: { duration: 0.15, ease: 'easeOut' },
+    transition: { duration: MOTION_DURATION.standard, ease: MOTION_EASE.enter },
   },
   exit: {
     opacity: 0,
     x: -8,
-    transition: { duration: 0.1, ease: 'easeIn' },
+    transition: { duration: MOTION_DURATION.fast, ease: MOTION_EASE.exit },
   },
 }
 
@@ -267,7 +268,7 @@ export function LeftSidebar({ links, isCollapsed, getItemProps, focusedItemId, i
                       initial={{ height: 0, opacity: 0, marginTop: 0, marginBottom: 0 }}
                       animate={{ height: 'auto', opacity: 1, marginTop: 2, marginBottom: isNested ? 4 : 8 }}
                       exit={{ height: 0, opacity: 0, marginTop: 0, marginBottom: 0 }}
-                      transition={{ duration: 0.2, ease: 'easeInOut' }}
+                      transition={{ duration: MOTION_DURATION.emphasis, ease: MOTION_EASE.move }}
                       className="overflow-hidden"
                     >
                       {expandedContent}

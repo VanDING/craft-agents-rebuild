@@ -583,7 +583,9 @@ export interface LlmConnectionSetup {
   slug: string
   credential?: string
   baseUrl?: string | null
+  brandId?: string
   defaultModel?: string | null
+  utilityModel?: string | null
   models?: string[] | null
   piAuthProvider?: string
   modelSelectionMode?: 'automaticallySyncedFromProvider' | 'userDefined3Tier'

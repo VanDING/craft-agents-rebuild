@@ -1,5 +1,6 @@
 import * as React from 'react'
-import { motion, AnimatePresence, useMotionValue, useMotionValueEvent, animate } from 'motion/react'
+import { motion, AnimatePresence, useMotionValue, useMotionValueEvent, animate, useReducedMotion } from 'motion/react'
+import { MOTION_DURATION, MOTION_EASE, motionTween } from '@craft-agent/ui/motion'
 import { cn } from '@/lib/utils'
 import { FreeFormInput, type FreeFormInputProps } from './FreeFormInput'
 import { StructuredInput } from './StructuredInput'
@@ -21,8 +22,7 @@ interface InputContainerProps extends Omit<FreeFormInputProps, 'inputRef'> {
 }
 
 // Animation timing - synced across height and opacity
-const TRANSITION_DURATION = 0.25
-const TRANSITION_EASE = [0.4, 0, 0.2, 1] as const
+const TRANSITION_DURATION = MOTION_DURATION.emphasis
 
 // Fallback heights (used on first render before measurement)
 const FALLBACK_HEIGHTS: Record<InputMode | string, number> = {
@@ -52,6 +52,7 @@ export function InputContainer({
   ...freeFormProps
 }: InputContainerProps) {
   const appShellContext = useOptionalAppShellContext()
+  const reduceMotion = useReducedMotion()
   const isFocusedPanel = appShellContext?.isFocusedPanel ?? true
   const mode: InputMode = structuredInput ? 'structured' : 'freeform'
   const measureRef = React.useRef<HTMLDivElement>(null)
@@ -202,17 +203,18 @@ export function InputContainer({
 
   // Animate height changes using motion value
   React.useEffect(() => {
-    if (shouldAnimateHeight) {
-      animate(heightMotionValue, targetHeight, {
+    if (shouldAnimateHeight && !reduceMotion) {
+      const controls = animate(heightMotionValue, targetHeight, {
         duration: TRANSITION_DURATION,
-        ease: TRANSITION_EASE
+        ease: MOTION_EASE.move,
       })
+      return () => controls.stop()
     } else {
       // Instant update - no animation
       heightMotionValue.set(targetHeight)
       prevAnimatedHeightRef.current = targetHeight
     }
-  }, [targetHeight, shouldAnimateHeight, heightMotionValue])
+  }, [targetHeight, shouldAnimateHeight, reduceMotion, heightMotionValue])
 
   const handleStructuredResponse = (response: StructuredResponse) => {
     onStructuredResponse?.(response)
@@ -278,7 +280,7 @@ export function InputContainer({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: TRANSITION_DURATION, ease: TRANSITION_EASE }}
+            transition={motionTween(reduceMotion, 'standard', 'enter')}
           >
             {renderContent(false)}
           </motion.div>

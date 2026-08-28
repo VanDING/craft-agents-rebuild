@@ -19,9 +19,8 @@
 
 import * as React from 'react'
 import { motion, useReducedMotion } from 'motion/react'
+import { motionSpring } from '@craft-agent/ui/motion'
 
-const SNAPPY_SPRING = { type: 'spring' as const, stiffness: 400, damping: 36, mass: 0.8 }
-const REDUCED_TWEEN = { type: 'tween' as const, duration: 0.12 }
 
 export type CompactPanelRole = 'navigator' | 'detail'
 
@@ -45,7 +44,7 @@ export function CompactPanelTransition({
   children,
 }: CompactPanelTransitionProps) {
   const reduceMotion = useReducedMotion()
-  const transition = reduceMotion ? REDUCED_TWEEN : SNAPPY_SPRING
+  const transition = motionSpring(reduceMotion, 'spatial')
 
   const isOffscreen = role === 'navigator' ? isDetailActive : !isDetailActive
   // Navigator parallaxes (-30%) to feel layered behind the incoming detail panel.
@@ -66,7 +65,7 @@ export function CompactPanelTransition({
       }}
       aria-hidden={isOffscreen || undefined}
       initial={false}
-      animate={{ x: isOffscreen ? offscreenX : '0%' }}
+      animate={{ x: reduceMotion ? '0%' : (isOffscreen ? offscreenX : '0%'), opacity: isOffscreen ? 0 : 1 }}
       transition={transition}
     >
       {children}

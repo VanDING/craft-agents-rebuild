@@ -29,7 +29,8 @@
 
 import * as React from 'react'
 import { useState } from 'react'
-import { motion } from 'motion/react'
+import { motion, useReducedMotion } from 'motion/react'
+import { motionSpring, motionTween } from '@craft-agent/ui/motion'
 import { ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useCompensateForStoplight } from '@/context/StoplightContext'
@@ -39,9 +40,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { StyledDropdownMenuContent } from '@/components/ui/styled-dropdown'
-
-// Spring transition for smooth animations (matches sidebar)
-const springTransition = { type: 'spring' as const, stiffness: 300, damping: 30 }
 
 // Padding to compensate for macOS traffic lights (stoplight buttons)
 // Traffic lights positioned at x:18, ~52px wide = 70px + 14px gap
@@ -118,6 +116,7 @@ export function PanelHeader({
   isRegeneratingTitle,
   centerTitleInPanel = false,
 }: PanelHeaderProps) {
+  const reduceMotion = useReducedMotion()
   // Fall back to AppShellContext.leadingAction so per-panel back buttons (set by
   // SurfaceSlot in compact mode) propagate to every page's PanelHeader without each
   // page having to forward the prop manually. ChatPage explicitly passes its own
@@ -156,7 +155,7 @@ export function PanelHeader({
     <motion.div
       initial={false}
       animate={{ opacity: title ? 1 : 0 }}
-      transition={{ duration: 0.15 }}
+      transition={motionTween(reduceMotion, 'standard', 'enter')}
       className="flex items-center gap-1"
     >
       <h1 className={cn(
@@ -311,7 +310,7 @@ export function PanelHeader({
     <motion.div
       initial={false}
       animate={{ paddingLeft: shouldCompensate ? STOPLIGHT_PADDING : basePadding }}
-      transition={springTransition}
+      transition={motionSpring(reduceMotion, 'responsive')}
       className={baseClassName}
     >
       {content}

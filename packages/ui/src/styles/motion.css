@@ -1,0 +1,71 @@
+/*
+ * Craft motion language
+ *
+ * Durations and easing are semantic product behavior, not theme decoration.
+ * Components should consume these tokens instead of introducing local timings.
+ */
+:root {
+  --motion-duration-instant: 60ms;
+  --motion-duration-fast: 100ms;
+  --motion-duration-standard: 160ms;
+  --motion-duration-emphasis: 220ms;
+  --motion-duration-spatial: 280ms;
+
+  --motion-ease-enter: cubic-bezier(0.16, 1, 0.3, 1);
+  --motion-ease-move: cubic-bezier(0.2, 0, 0, 1);
+  --motion-ease-exit: cubic-bezier(0.4, 0, 1, 1);
+
+  --motion-distance-micro: 2px;
+  --motion-distance-floating: 6px;
+  --motion-distance-content: 12px;
+  --motion-scale-pressed: 0.98;
+  --motion-scale-floating: 0.98;
+  --motion-scale-dialog: 0.96;
+}
+
+@layer utilities {
+  .motion-interactive {
+    transition-duration: var(--motion-duration-fast);
+    transition-timing-function: var(--motion-ease-enter);
+  }
+
+  .motion-content {
+    transition-duration: var(--motion-duration-standard);
+    transition-timing-function: var(--motion-ease-enter);
+  }
+
+  .motion-surface {
+    transition-duration: var(--motion-duration-emphasis);
+    transition-timing-function: var(--motion-ease-enter);
+  }
+}
+
+/*
+ * Reduced motion is a global product contract. State remains perceivable, but
+ * spatial movement, springs, smooth scrolling, shimmer and repeated animation
+ * stop. The tiny non-zero duration preserves animationend-driven libraries.
+ */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-duration-instant: 1ms;
+    --motion-duration-fast: 1ms;
+    --motion-duration-standard: 1ms;
+    --motion-duration-emphasis: 1ms;
+    --motion-duration-spatial: 1ms;
+  }
+
+  html:focus-within {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-delay: 0ms !important;
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-delay: 0ms !important;
+    transition-duration: 1ms !important;
+  }
+}

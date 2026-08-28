@@ -186,7 +186,7 @@ export function TaskActionMenu({ task, sessionId, onKillTask, onInsertMessage, o
           className={cn(
             "h-[30px] pl-2.5 pr-2 text-xs font-medium rounded-[8px]",
             "flex items-center gap-1.5 shrink-0 select-none",
-            "transition-all shadow-minimal cursor-pointer",
+            "motion-interactive transition-[color,background-color,border-color,box-shadow,opacity,transform] shadow-minimal cursor-pointer",
             statusTint,
             className
           )}

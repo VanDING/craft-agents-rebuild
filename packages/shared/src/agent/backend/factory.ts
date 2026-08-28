@@ -231,7 +231,7 @@ export function resolveSessionConnection(
   sessionConnection?: string,
   workspaceDefaultConnection?: string
 ): LlmConnection | null {
-  // 1. Session-level connection (locked after first message)
+  // 1. Session-level connection (persisted per session)
   if (sessionConnection) {
     const connection = getLlmConnection(sessionConnection);
     if (connection) return connection;

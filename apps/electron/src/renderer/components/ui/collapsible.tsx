@@ -1,6 +1,7 @@
 import * as CollapsiblePrimitive from "@radix-ui/react-collapsible"
 import { motion, AnimatePresence } from "motion/react"
 import * as React from "react"
+import { MOTION_SPRING } from '@craft-agent/ui/motion'
 
 // Radix primitives (unchanged)
 const Collapsible = CollapsiblePrimitive.Root
@@ -8,11 +9,7 @@ const CollapsibleTrigger = CollapsiblePrimitive.CollapsibleTrigger
 const CollapsibleContent = CollapsiblePrimitive.CollapsibleContent
 
 // Spring config - snappy, no bounce
-const springTransition = {
-  type: "spring" as const,
-  stiffness: 1400,
-  damping: 75,
-}
+const springTransition = MOTION_SPRING.responsive
 
 interface AnimatedCollapsibleContentProps {
   isOpen: boolean

@@ -13,6 +13,7 @@ import {
   X,
 } from "lucide-react"
 import { motion, AnimatePresence } from "motion/react"
+import { MOTION_DURATION, MOTION_EASE } from '@craft-agent/ui/motion'
 import { toast } from "sonner"
 import { useSetAtom } from "jotai"
 
@@ -103,7 +104,7 @@ interface ChatDisplayProps {
   // Model selection
   currentModel: string
   onModelChange: (model: string, connection?: string) => void
-  // Connection selection (locked after first message)
+  // Connection selection (switchable while the session is idle)
   /** Callback when LLM connection changes (only works when session is empty) */
   onConnectionChange?: (connectionSlug: string) => void
   /** Ref for the input, used for external focus control */
@@ -355,7 +356,7 @@ function ProcessingIndicator({ startTime, statusMessage }: ProcessingIndicatorPr
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.4, ease: 'easeInOut' }}
+            transition={{ duration: MOTION_DURATION.standard, ease: MOTION_EASE.enter }}
           >
             {displayMessage}
           </motion.span>
@@ -1472,7 +1473,7 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
-                    transition={compactMode ? { duration: 0 } : { duration: 0.1, ease: 'easeOut' }}
+                    transition={compactMode ? { duration: 0 } : { duration: MOTION_DURATION.fast, ease: MOTION_EASE.enter }}
                   >
                     {/* Loading/Content AnimatePresence: sync mode avoids stale loading exits masking ready content */}
                     <AnimatePresence mode="sync" initial={false}>
@@ -1483,7 +1484,7 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
-                        transition={compactMode ? { duration: 0 } : { duration: 0.1 }}
+                        transition={compactMode ? { duration: 0 } : { duration: MOTION_DURATION.fast, ease: MOTION_EASE.enter }}
                         className="flex items-center justify-center h-64"
                       >
                         <Spinner className="text-foreground/30" />
@@ -1494,7 +1495,7 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
-                        transition={compactMode ? { duration: 0 } : { duration: 0.1 }}
+                        transition={compactMode ? { duration: 0 } : { duration: MOTION_DURATION.fast, ease: MOTION_EASE.enter }}
                         className="flex items-center justify-center h-64 px-4"
                       >
                         <div
@@ -1527,7 +1528,7 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
                       exit={{ opacity: 0 }}
-                      transition={compactMode ? { duration: 0 } : { duration: 0.1, ease: 'easeOut' }}
+                      transition={compactMode ? { duration: 0 } : { duration: MOTION_DURATION.fast, ease: MOTION_EASE.enter }}
                     >
                   {/* Scroll to bottom before paint - fires via useLayoutEffect */}
                   {/* Skip when search is active on session switch - scroll to first match instead */}
@@ -1575,7 +1576,7 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
                           ref={el => { if (el) turnRefs.current.set(turnKey, el); else turnRefs.current.delete(turnKey) }}
                           className={cn(
                             compactMode ? "pt-2 pb-1" : CHAT_LAYOUT.userMessagePadding,
-                            "rounded-lg transition-all duration-200",
+                            "motion-content rounded-lg transition-[box-shadow,background-color]",
                             isCurrentMatch && "ring-2 ring-info ring-offset-2 ring-offset-background",
                             isAnyMatch && !isCurrentMatch && "ring-1 ring-info/30"
                           )}
@@ -1598,7 +1599,7 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
                           key={turnKey}
                           ref={el => { if (el) turnRefs.current.set(turnKey, el); else turnRefs.current.delete(turnKey) }}
                           className={cn(
-                            "rounded-lg transition-all duration-200",
+                            "motion-content rounded-lg transition-[box-shadow,background-color]",
                             isCurrentMatch && "ring-2 ring-info ring-offset-2 ring-offset-background",
                             isAnyMatch && !isCurrentMatch && "ring-1 ring-info/30"
                           )}
@@ -1637,7 +1638,7 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
                           key={turnKey}
                           ref={el => { if (el) turnRefs.current.set(turnKey, el); else turnRefs.current.delete(turnKey) }}
                           className={cn(
-                            "mt-2 rounded-lg transition-all duration-200",
+                            "motion-content mt-2 rounded-lg transition-[box-shadow,background-color]",
                             isCurrentMatch && "ring-2 ring-info ring-offset-2 ring-offset-background",
                             isAnyMatch && !isCurrentMatch && "ring-1 ring-info/30"
                           )}
@@ -1663,7 +1664,7 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
                         ref={el => { if (el) turnRefs.current.set(turnKey, el); else turnRefs.current.delete(turnKey) }}
                         className={cn(
                           "pt-2",
-                          "rounded-lg transition-all duration-200",
+                          "motion-content rounded-lg transition-[box-shadow,background-color]",
                           isCurrentMatch && "ring-2 ring-info ring-offset-2 ring-offset-background",
                           isAnyMatch && !isCurrentMatch && "ring-1 ring-info/30"
                         )}

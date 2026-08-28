@@ -40,6 +40,7 @@ export const providerIcons = {
   openrouter: openrouterIcon,
   pi: piIcon,
   vercel: vercelIcon,
+  deepseek: 'https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&size=128&url=https://deepseek.com',
 } as const
 
 export type ProviderIconKey = keyof typeof providerIcons
@@ -72,6 +73,7 @@ export function getProviderDisplayName(providerType: string, baseUrl?: string | 
     if (url.includes('minimax.io') || url.includes('minimaxi.com')) return 'Minimax'
     if (url.includes('v0.dev') || url.includes('vercel')) return 'Vercel'
     if (url.includes('manifest.build')) return 'Manifest'
+    if (url.includes('deepseek.com')) return 'DeepSeek'
   }
   return providerDisplayNames[providerType] || providerType
 }
@@ -86,6 +88,7 @@ function detectProviderFromUrl(baseUrl: string): ProviderIconKey | null {
   if (url.includes('ollama')) return 'ollama'
   if (url.includes('api.anthropic.com')) return 'anthropic'
   if (url.includes('api.openai.com')) return 'openai'
+  if (url.includes('deepseek.com')) return 'deepseek'
   if (url.includes('v0.dev') || url.includes('vercel')) return 'vercel'
   if (url.includes('generativelanguage.googleapis.com') || url.includes('ai.google')) return 'google'
   if (url.includes('kimi.com')) return 'kimi'
@@ -95,6 +98,20 @@ function detectProviderFromUrl(baseUrl: string): ProviderIconKey | null {
   if (url.includes('bedrock')) return 'aws'
   if (url.includes('huggingface.co')) return 'huggingface'
 
+  return null
+}
+
+/** Infer the model vendor independently from the endpoint transport protocol. */
+function detectProviderFromModel(modelId?: string | null): ProviderIconKey | null {
+  if (!modelId) return null
+  const model = modelId.toLowerCase()
+  if (model.includes('deepseek')) return 'deepseek'
+  if (model.includes('claude')) return 'anthropic'
+  if (model.includes('gemini')) return 'google'
+  if (model.includes('gpt-') || model.includes('o1') || model.includes('o3') || model.includes('o4')) return 'openai'
+  if (model.includes('mistral') || model.includes('codestral')) return 'mistral'
+  if (model.includes('kimi') || model.includes('moonshot')) return 'kimi'
+  if (model.includes('minimax')) return 'minimax'
   return null
 }
 
@@ -164,14 +181,27 @@ const PI_AUTH_PROVIDER_DOMAINS: Record<string, string> = {
 export function getProviderIcon(
   providerType: LlmProviderType | string,
   baseUrl?: string | null,
-  piAuthProvider?: string | null
+  piAuthProvider?: string | null,
+  modelId?: string | null,
+  brandId?: string | null,
 ): string | null {
+  if (brandId) {
+    if (brandId in providerIcons) return providerIcons[brandId as ProviderIconKey]
+    const brandKey = piAuthProviderToIcon(brandId)
+    if (brandKey) return providerIcons[brandKey]
+    const brandDomain = PI_AUTH_PROVIDER_DOMAINS[brandId]
+    if (brandDomain) {
+      return `https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&size=128&url=https://${brandDomain}`
+    }
+  }
   // For compatible providers, try to detect from URL first
   if (baseUrl && (providerType === 'openai_compat' || providerType === 'pi_compat')) {
     const detectedProvider = detectProviderFromUrl(baseUrl)
     if (detectedProvider) {
       return providerIcons[detectedProvider]
     }
+    const modelProvider = detectProviderFromModel(modelId)
+    if (modelProvider) return providerIcons[modelProvider]
     // Manifest has no bundled SVG — fall back to Google Favicon V2 (same trick used for groq/xai elsewhere).
     if (baseUrl.toLowerCase().includes('manifest.build')) {
       return 'https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&size=128&url=https://app.manifest.build'
@@ -187,8 +217,11 @@ export function getProviderIcon(
       return providerIcons.openai
     case 'copilot':
       return providerIcons.copilot
-    case 'pi':
-    case 'pi_compat': {
+    case 'pi_compat':
+      // A custom endpoint's OpenAI/Anthropic adapter is transport metadata,
+      // not its brand. Unknown endpoints deliberately use the neutral fallback.
+      return null
+    case 'pi': {
       // Resolve to actual upstream provider icon
       if (piAuthProvider) {
         const iconKey = piAuthProviderToIcon(piAuthProvider)

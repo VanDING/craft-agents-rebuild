@@ -109,7 +109,7 @@ function OptionButton({
     <button
       onClick={() => onSelect(option.id)}
       className={cn(
-        "flex w-full items-start gap-4 rounded-xl p-4 text-left transition-all",
+        "motion-content flex w-full items-start gap-4 rounded-xl p-4 text-left transition-[color,background-color,border-color,box-shadow,opacity,transform]",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         "hover:bg-foreground/[0.02] shadow-minimal",
         isSelected
@@ -173,7 +173,7 @@ function ProviderSegmentedControl({
           key={segment}
           onClick={() => onSegmentChange(segment)}
           className={cn(
-            "flex-1 px-4 py-2 text-sm font-medium rounded-lg transition-all",
+            "motion-content flex-1 px-4 py-2 text-sm font-medium rounded-lg transition-[color,background-color,border-color,box-shadow,opacity,transform]",
             activeSegment === segment
               ? "bg-background shadow-minimal text-foreground"
               : "text-muted-foreground hover:text-foreground"

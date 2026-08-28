@@ -3,7 +3,7 @@ import {
   resolveCustomEndpointPayload,
   resolvePiAuthProviderForSubmit,
 } from '../submit-helpers'
-import { pickTierDefaults, resolveTierModels } from '../tier-models'
+import { resolveDefaultCatalogModel } from '../tier-models'
 
 const MODELS = [
   { id: 'pi/zai-best', name: 'Best', costInput: 10, costOutput: 20, contextWindow: 200000, reasoning: true },
@@ -11,38 +11,17 @@ const MODELS = [
   { id: 'pi/zai-fast', name: 'Fast', costInput: 1, costOutput: 2, contextWindow: 128000, reasoning: false },
 ]
 
-describe('ApiKeyInput tier hydration helpers', () => {
-  it('resolveTierModels keeps saved tier selections when all are valid', () => {
-    const saved = ['pi/zai-fast', 'pi/zai-balanced', 'pi/zai-best']
-    const resolved = resolveTierModels(MODELS, saved)
-
-    expect(resolved).toEqual({
-      best: 'pi/zai-fast',
-      default_: 'pi/zai-balanced',
-      cheap: 'pi/zai-best',
-    })
+describe('ApiKeyInput catalog default hydration', () => {
+  it('keeps a saved default when it remains in the provider catalog', () => {
+    expect(resolveDefaultCatalogModel(MODELS, 'pi/zai-fast')).toBe('pi/zai-fast')
   })
 
-  it('resolveTierModels preserves duplicate tiers when saved models are valid', () => {
-    const saved = ['pi/zai-best', 'pi/zai-best', 'pi/zai-fast']
-    const resolved = resolveTierModels(MODELS, saved)
-
-    expect(resolved).toEqual({
-      best: 'pi/zai-best',
-      default_: 'pi/zai-best',
-      cheap: 'pi/zai-fast',
-    })
+  it('falls back to the first provider model when the saved model disappeared', () => {
+    expect(resolveDefaultCatalogModel(MODELS, 'pi/not-real')).toBe('pi/zai-best')
   })
 
-  it('resolveTierModels falls back per-slot for invalid/missing saved values', () => {
-    const resolved = resolveTierModels(MODELS, ['pi/zai-best', 'pi/not-real'])
-    const defaults = pickTierDefaults(MODELS)
-
-    expect(resolved).toEqual({
-      best: 'pi/zai-best',
-      default_: defaults.default_,
-      cheap: defaults.cheap,
-    })
+  it('returns an empty default for an empty catalog', () => {
+    expect(resolveDefaultCatalogModel([], 'pi/zai-best')).toBe('')
   })
 })
 

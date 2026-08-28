@@ -86,6 +86,12 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
   // Unified handler for LLM connection setup
   server.handle(RPC_CHANNELS.settings.SETUP_LLM_CONNECTION, async (_ctx, setup: LlmConnectionSetup): Promise<{ success: boolean; error?: string }> => {
     try {
+      if (setup.customEndpoint?.api === 'openai-responses') {
+        return {
+          success: false,
+          error: 'OpenAI Responses is no longer available for custom endpoints. Choose OpenAI Compatible instead.',
+        }
+      }
       const manager = getCredentialManager()
 
       // Ensure connection exists in config
@@ -129,6 +135,9 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
 
       if (setup.defaultModel !== undefined) {
         updates.defaultModel = setup.defaultModel ?? undefined
+      }
+      if (setup.utilityModel !== undefined) {
+        updates.utilityModel = setup.utilityModel ?? undefined
       }
       if (setup.models !== undefined) {
         updates.models = setup.models ?? undefined
@@ -290,12 +299,13 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
         })
       }
 
-      if (pendingConnection.providerType === 'pi' && pendingConnection.piAuthProvider && !pendingConnection.modelSelectionMode) {
-        const inferredMode = setup.models?.length
-          ? 'userDefined3Tier'
-          : 'automaticallySyncedFromProvider'
-        pendingConnection.modelSelectionMode = inferredMode
-        updates.modelSelectionMode = inferredMode
+      if (pendingConnection.providerType === 'pi' && pendingConnection.piAuthProvider) {
+        pendingConnection.modelSelectionMode = 'automaticallySyncedFromProvider'
+        updates.modelSelectionMode = 'automaticallySyncedFromProvider'
+      }
+      if (setup.brandId !== undefined) {
+        pendingConnection.brandId = setup.brandId
+        updates.brandId = setup.brandId
       }
 
       if (updates.models && updates.models.length > 0) {
@@ -524,6 +534,12 @@ export function registerLlmConnectionsHandlers(server: RpcServer, deps: HandlerD
   // If connection.slug exists and is found, updates it; otherwise creates new
   server.handle(RPC_CHANNELS.llmConnections.SAVE, async (_ctx, connection: LlmConnection): Promise<{ success: boolean; error?: string }> => {
     try {
+      if (connection.customEndpoint?.api === 'openai-responses') {
+        return {
+          success: false,
+          error: 'OpenAI Responses is no longer available for custom endpoints. Choose OpenAI Compatible instead.',
+        }
+      }
       // Check if this is an update or create
       const existing = getLlmConnection(connection.slug)
       if (existing) {

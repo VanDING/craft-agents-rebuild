@@ -67,7 +67,7 @@ export function SettingsSegmentedControl<T extends string = string>({
             aria-checked={isSelected}
             onClick={() => onValueChange(option.value)}
             className={cn(
-              'flex items-center gap-1.5 rounded-lg transition-all',
+              'motion-content flex items-center gap-1.5 rounded-lg transition-[color,background-color,box-shadow,opacity,transform]',
               size === 'sm' ? 'px-2 py-1 text-xs' : 'px-3 py-1.5 text-sm',
               isSelected
                 ? 'bg-secondary text-secondary-foreground shadow-minimal'

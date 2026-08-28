@@ -24,6 +24,7 @@
  */
 
 @import "tailwindcss";
+@import "./motion.css";
 @plugin "@tailwindcss/typography";
 
 /* =============================================================================

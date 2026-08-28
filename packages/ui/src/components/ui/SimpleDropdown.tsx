@@ -319,7 +319,7 @@ export function SimpleDropdown({
             className={cn(
               'fixed z-50 min-w-[140px] p-1',
               'bg-background rounded-[8px] shadow-strong border border-border/50',
-              'animate-in fade-in-0 zoom-in-95 duration-100',
+              'motion-interactive animate-in fade-in-0 zoom-in-95',
               className
             )}
             style={{ top: position.top, left: position.left }}

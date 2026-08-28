@@ -283,6 +283,17 @@ export {
 // Utilities
 export { cn } from './lib/utils'
 export {
+  MOTION_DURATION,
+  MOTION_EASE,
+  MOTION_DISTANCE,
+  MOTION_SCALE,
+  MOTION_SPRING,
+  motionTween,
+  motionSpring,
+  type MotionPace,
+  type MotionEase,
+} from './lib/motion'
+export {
   openExternalUrl,
   type OpenExternalUrlResult,
 } from './lib/open-external-url'

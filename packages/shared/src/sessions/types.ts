@@ -150,7 +150,7 @@ export interface SessionConfig {
   sharedId?: string;
   /** Model to use for this session (overrides global config if set) */
   model?: string;
-  /** LLM connection slug for this session (locked after first message) */
+  /** Persisted LLM connection slug; switchable while the session is idle. */
   llmConnection?: string;
   /** Whether the connection is locked (cannot be changed after first agent creation) */
   connectionLocked?: boolean;
@@ -282,7 +282,7 @@ export interface SessionHeader {
   sharedId?: string;
   /** Model to use for this session (overrides global config if set) */
   model?: string;
-  /** LLM connection slug for this session (locked after first message) */
+  /** Persisted LLM connection slug; switchable while the session is idle. */
   llmConnection?: string;
   /** Whether the connection is locked (cannot be changed after first agent creation) */
   connectionLocked?: boolean;
@@ -385,7 +385,7 @@ export interface SessionMetadata {
   lastMessageRole?: 'user' | 'assistant' | 'plan' | 'tool' | 'error';
   /** Model to use for this session (overrides global config if set) */
   model?: string;
-  /** LLM connection slug for this session (locked after first message) */
+  /** Persisted LLM connection slug; switchable while the session is idle. */
   llmConnection?: string;
   /** Whether the connection is locked (cannot be changed after first agent creation) */
   connectionLocked?: boolean;

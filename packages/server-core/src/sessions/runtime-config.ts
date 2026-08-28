@@ -43,7 +43,8 @@ function normalizeCustomModels(connection: LlmConnection): Array<Record<string, 
  * Concretely, `update_runtime_config` (see `pi-agent.ts:requestRuntimeConfigUpdate`
  * and the matching handler at `pi-agent-server/src/index.ts:handleUpdateRuntimeConfig`)
  * carries `model, providerType, authType, baseUrl, customEndpoint, customModels` —
- * but NOT `piAuthProvider`, and switching `slug`/`providerType`/`authType` mid-life
+ * but NOT `piAuthProvider` or the utility model, and switching
+ * `slug`/`providerType`/`authType` mid-life
  * pulls in credential routing and provider-registry state the subprocess doesn't
  * fully reset on a runtime update.
  */
@@ -55,6 +56,7 @@ export function buildRestartRequiredSignature(input: BackendRuntimeSignatureInpu
     slug: connection?.slug,
     providerType: connection?.providerType,
     piAuthProvider: connection?.piAuthProvider,
+    utilityModel: connection?.utilityModel,
   }))
 }
 

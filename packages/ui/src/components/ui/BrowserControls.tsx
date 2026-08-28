@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect, forwardRef, type ReactNode } from 'react'
 import { ChevronLeft, ChevronRight, RotateCw, X, Globe, AlertTriangle } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
+import { MOTION_DURATION, MOTION_EASE } from '../../lib/motion'
 import { cn } from '../../lib/utils'
 import { useTranslation } from 'react-i18next'
 import { Spinner } from './LoadingIndicator'
@@ -254,7 +255,7 @@ export function BrowserControls({
           onKeyDown={handleKeyDown}
           placeholder={t('browser.urlPlaceholder')}
           className={cn(
-            'w-full rounded-[8px] bg-transparent px-3 pl-8 text-[13px] text-foreground/70 outline-none transition-all',
+            'motion-interactive w-full rounded-[8px] bg-transparent px-3 pl-8 text-[13px] text-foreground/70 outline-none transition-[color,background-color,border-color,box-shadow]',
             compact ? 'h-[28px]' : 'h-[30px]',
             !safeThemeColor && (isFocused
               ? 'bg-background border border-transparent shadow-minimal'
@@ -298,8 +299,8 @@ export function BrowserControls({
           }}
           exit={{ opacity: 0 }}
           transition={{
-            opacity: { duration: 0.2, ease: 'easeOut' },
-            backgroundPosition: { duration: 1.6, repeat: Infinity, ease: 'easeInOut' },
+            opacity: { duration: MOTION_DURATION.emphasis, ease: MOTION_EASE.enter },
+            backgroundPosition: { duration: 1.6, repeat: Infinity, ease: MOTION_EASE.move },
           }}
         />
       )}

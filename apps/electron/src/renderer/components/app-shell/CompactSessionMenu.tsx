@@ -26,6 +26,7 @@
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 import { motion } from 'motion/react'
+import { MOTION_DURATION, MOTION_EASE } from '@craft-agent/ui/motion'
 import {
   Archive,
   ArchiveRestore,
@@ -246,7 +247,7 @@ export function CompactSessionMenu({
             <motion.div
               initial={false}
               animate={{ opacity: title ? 1 : 0 }}
-              transition={{ duration: 0.15 }}
+              transition={{ duration: MOTION_DURATION.standard, ease: MOTION_EASE.enter }}
               className="flex items-center gap-1 min-w-0"
             >
               <h1

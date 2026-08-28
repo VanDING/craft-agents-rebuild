@@ -2803,8 +2803,12 @@ export function updateLlmConnection(slug: string, updates: Partial<Omit<LlmConne
     createdAt: updates.createdAt ?? existing.createdAt,
     // Optional fields from updates or existing
     baseUrl: updates.baseUrl !== undefined ? updates.baseUrl : existing.baseUrl,
+    brandId: updates.brandId !== undefined ? updates.brandId : existing.brandId,
     models: updates.models !== undefined ? updates.models : existing.models,
     defaultModel: updates.defaultModel !== undefined ? updates.defaultModel : existing.defaultModel,
+    utilityModel: Object.prototype.hasOwnProperty.call(updates, 'utilityModel')
+      ? updates.utilityModel
+      : existing.utilityModel,
     modelSelectionMode: updates.modelSelectionMode !== undefined ? updates.modelSelectionMode : existing.modelSelectionMode,
     // Pi auth provider
     piAuthProvider: updates.piAuthProvider !== undefined ? updates.piAuthProvider : existing.piAuthProvider,

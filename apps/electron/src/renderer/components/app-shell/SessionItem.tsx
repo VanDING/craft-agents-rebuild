@@ -191,7 +191,7 @@ export function SessionItem({
           <SessionStatusIcon item={item} />
           <div className={cn(
             "flex items-center justify-center overflow-hidden gap-1",
-            "transition-all duration-200 ease-out",
+            "motion-content transition-[width,margin,opacity]",
             (item.isProcessing || hasUnreadMeta(item) || item.lastMessageRole === 'plan' || hasPendingPrompt)
               ? "opacity-100 ml-0"
               : "!w-0 opacity-0 -ml-[10px]"

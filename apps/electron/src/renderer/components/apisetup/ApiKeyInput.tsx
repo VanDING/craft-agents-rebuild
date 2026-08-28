@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/styled-dropdown"
 import { cn } from "@/lib/utils"
 import { Check, ChevronDown, Eye, EyeOff, Loader2 } from "lucide-react"
-import { pickTierDefaults, resolveTierModels, type PiModelInfo } from "./tier-models"
+import { resolveDefaultCatalogModel, type PiModelInfo } from "./tier-models"
 import {
   resolveCustomEndpointPayload,
   resolvePiAuthProviderForSubmit,
@@ -39,7 +39,9 @@ export type { CustomEndpointApi }
 export interface ApiKeySubmitData {
   apiKey: string
   baseUrl?: string
+  brandId?: string
   connectionDefaultModel?: string
+  utilityModel?: string | null
   models?: string[]
   piAuthProvider?: string
   modelSelectionMode?: 'automaticallySyncedFromProvider' | 'userDefined3Tier'
@@ -75,6 +77,7 @@ export interface ApiKeyInputProps {
     apiKey?: string
     baseUrl?: string
     connectionDefaultModel?: string
+    utilityModel?: string
     activePreset?: string
     models?: string[]
     /** Pre-fill the protocol toggle for custom endpoints */
@@ -212,7 +215,10 @@ export function ApiKeyInput({
     initialPreset !== 'custom' ? initialPreset : defaultPreset.key
   )
   const [connectionDefaultModel, setConnectionDefaultModel] = useState(initialValues?.connectionDefaultModel ?? '')
-  const [customApi, setCustomApi] = useState<CustomEndpointApi>(initialValues?.customApi ?? 'openai-completions')
+  const isLegacyCustomResponses = initialValues?.customApi === 'openai-responses'
+  const [customApi, setCustomApi] = useState<CustomEndpointApi>(
+    isLegacyCustomResponses ? 'openai-completions' : (initialValues?.customApi ?? 'openai-completions'),
+  )
   const [modelError, setModelError] = useState<string | null>(null)
 
   // Bedrock auth state
@@ -222,12 +228,12 @@ export function ApiKeyInput({
   const [awsSessionToken, setAwsSessionToken] = useState('')
   const [awsRegion, setAwsRegion] = useState('us-east-1')
 
-  // Pi model tier state (for providers with many models like OpenRouter, Vercel)
+  // Pi model catalog state. The provider owns the full catalog; the user only
+  // selects the default model used for main conversations.
   const [piModels, setPiModels] = useState<PiModelInfo[]>([])
   const [piModelsLoading, setPiModelsLoading] = useState(false)
-  const [bestModel, setBestModel] = useState('')
-  const [defaultModel, setDefaultModel] = useState('')
-  const [cheapModel, setCheapModel] = useState('')
+  const [selectedDefaultModel, setSelectedDefaultModel] = useState('')
+  const [selectedUtilityModel, setSelectedUtilityModel] = useState(initialValues?.utilityModel ?? '')
   const [openTier, setOpenTier] = useState<string | null>(null)
   const [tierFilter, setTierFilter] = useState('')
   const [tierDropdownPosition, setTierDropdownPosition] = useState<{ top: number; left: number; width: number } | null>(null)
@@ -263,10 +269,12 @@ export function ApiKeyInput({
       setPiModels(result.models)
 
       if (hydratedTierProviderRef.current !== provider) {
-        const tiers = resolveTierModels(result.models, provider === initialPreset ? initialValues?.models : undefined)
-        setBestModel(tiers.best)
-        setDefaultModel(tiers.default_)
-        setCheapModel(tiers.cheap)
+        const savedDefault = provider === initialPreset
+          ? initialValues?.connectionDefaultModel ?? initialValues?.models?.[0]
+          : undefined
+        setSelectedDefaultModel(resolveDefaultCatalogModel(result.models, savedDefault))
+        const savedUtility = provider === initialPreset ? initialValues?.utilityModel : undefined
+        setSelectedUtilityModel(savedUtility && result.models.some(model => model.id === savedUtility) ? savedUtility : '')
         hydratedTierProviderRef.current = provider
       }
     } catch (err) {
@@ -281,7 +289,8 @@ export function ApiKeyInput({
     loadPiModels(activePreset)
   }, [activePreset, loadPiModels])
 
-  // Whether to show 3 tier dropdowns instead of text input
+  // Whether to show the provider-backed default-model picker instead of the
+  // manual model input used for arbitrary compatible endpoints.
   const hasPiModels = isPiApiKeyFlow && piModels.length > 0 && !isDefaultProviderPreset && activePreset !== 'custom' && !isBedrock
 
   const handlePresetSelect = (preset: Preset) => {
@@ -333,20 +342,22 @@ export function ApiKeyInput({
       ? resolvePiAuthProviderForSubmit(activePreset, lastNonCustomPreset)
       : undefined
 
-    // Pi API key flow with tier dropdowns — submit selected models
+    // Pi API key flow — persist the complete discovered catalog and one
+    // explicit default. Background refresh remains authoritative afterwards.
     if (hasPiModels) {
-      if (!bestModel || !defaultModel || !cheapModel) {
-        setModelError('Please select a model for each tier.')
+      if (!selectedDefaultModel) {
+        setModelError('Please select a default model.')
         return
       }
-      const models: string[] = [bestModel, defaultModel, cheapModel]
       onSubmit({
         apiKey: apiKey.trim(),
         baseUrl: baseUrl.trim() || undefined,
-        connectionDefaultModel: bestModel,
-        models,
+        brandId: activePreset,
+        connectionDefaultModel: selectedDefaultModel,
+        utilityModel: selectedUtilityModel || null,
+        models: piModels.map(model => model.id),
         piAuthProvider: effectivePiAuthProvider,
-        modelSelectionMode: 'userDefined3Tier',
+        modelSelectionMode: 'automaticallySyncedFromProvider',
       })
       return
     }
@@ -400,22 +411,14 @@ export function ApiKeyInput({
     onSubmit({
       apiKey: apiKey.trim(),
       baseUrl: isUsingDefaultEndpoint ? undefined : effectiveBaseUrl,
+      brandId: activePreset !== 'custom' ? activePreset : undefined,
       connectionDefaultModel: parsedModels[0],
       models: parsedModels.length > 0 ? parsedModels : undefined,
       piAuthProvider: resolvedPiAuthProvider,
-      modelSelectionMode: isPiApiKeyFlow
-        ? (parsedModels.length > 0 ? 'userDefined3Tier' : 'automaticallySyncedFromProvider')
-        : undefined,
+      modelSelectionMode: isPiApiKeyFlow ? 'automaticallySyncedFromProvider' : undefined,
       customEndpoint,
     })
   }
-
-  const tierConfigs = [
-    { label: 'Best', desc: 'most capable', value: bestModel, onChange: setBestModel },
-    { label: 'Balanced', desc: 'good for everyday use', value: defaultModel, onChange: setDefaultModel },
-    { label: 'Fast', desc: 'summarization & utility', value: cheapModel, onChange: setCheapModel },
-  ]
-  const activeTierConfig = openTier ? tierConfigs.find(t => t.label === openTier) : null
 
   return (
     <form id={formId} onSubmit={handleSubmit} className="space-y-6">
@@ -512,7 +515,6 @@ export function ApiKeyInput({
           )}>
             {([
               { value: 'openai-completions' as const, label: 'OpenAI Compatible' },
-              { value: 'openai-responses' as const, label: 'OpenAI Responses' },
               { value: 'anthropic-messages' as const, label: 'Anthropic Compatible' },
             ]).map(({ value, label }) => (
               <button
@@ -532,7 +534,9 @@ export function ApiKeyInput({
             ))}
           </div>
           <p className="text-xs text-foreground/30">
-            Most third-party APIs (Ollama, vLLM, DashScope) use OpenAI Compatible.
+            {isLegacyCustomResponses
+              ? 'This connection used the retired custom Responses adapter. Saving migrates it to OpenAI Compatible.'
+              : 'Most third-party APIs (Ollama, vLLM, DashScope) use OpenAI Compatible.'}
           </p>
         </div>
       )}
@@ -662,7 +666,7 @@ export function ApiKeyInput({
         </>
       )}
 
-      {/* Model Selection — 3 tier dropdowns for Pi providers, text input for custom/compat */}
+      {/* Model Selection — provider catalog for Pi, manual input for custom/compat */}
       {hasPiModels ? (
         <div className="space-y-3">
           {piModelsLoading ? (
@@ -672,23 +676,21 @@ export function ApiKeyInput({
             </div>
           ) : (
             <>
-              {tierConfigs.map(({ label, desc, value }) => (
-                <div key={label} className="space-y-1.5">
+                <div className="space-y-1.5">
                   <Label className="text-muted-foreground font-normal text-xs">
-                    {label}{' '}
-                    <span className="text-foreground/30">· {desc}</span>
+                    Default model <span className="text-foreground/30">· main conversations</span>
                   </Label>
                   <button
                     type="button"
                     disabled={isDisabled}
                     onClick={(e) => {
-                      if (openTier === label) {
+                      if (openTier === 'default') {
                         setOpenTier(null)
                         setTierFilter('')
                       } else {
                         const rect = e.currentTarget.getBoundingClientRect()
                         setTierDropdownPosition({ top: rect.bottom + 4, left: rect.left, width: rect.width })
-                        setOpenTier(label)
+                        setOpenTier('default')
                         setTierFilter('')
                         setTimeout(() => tierFilterInputRef.current?.focus(), 0)
                       }
@@ -701,13 +703,46 @@ export function ApiKeyInput({
                     )}
                   >
                     <span className="truncate text-foreground">
-                      {piModels.find(m => m.id === value)?.name ?? 'Select model...'}
+                      {piModels.find(m => m.id === selectedDefaultModel)?.name ?? 'Select model...'}
                     </span>
                     <ChevronDown className="size-3 opacity-50 shrink-0" />
                   </button>
                 </div>
-              ))}
-              {activeTierConfig && tierDropdownPosition && (
+                <div className="space-y-1.5">
+                  <Label className="text-muted-foreground font-normal text-xs">
+                    Utility model <span className="text-foreground/30">· automatic by default</span>
+                  </Label>
+                  <button
+                    type="button"
+                    disabled={isDisabled}
+                    onClick={(e) => {
+                      if (openTier === 'utility') {
+                        setOpenTier(null)
+                        setTierFilter('')
+                      } else {
+                        const rect = e.currentTarget.getBoundingClientRect()
+                        setTierDropdownPosition({ top: rect.bottom + 4, left: rect.left, width: rect.width })
+                        setOpenTier('utility')
+                        setTierFilter('')
+                        setTimeout(() => tierFilterInputRef.current?.focus(), 0)
+                      }
+                    }}
+                    className={cn(
+                      "flex h-9 w-full items-center justify-between rounded-md px-3 text-sm",
+                      "bg-foreground-2 shadow-minimal transition-colors",
+                      "hover:bg-background focus:outline-none focus:bg-background",
+                      isDisabled && "opacity-50 pointer-events-none"
+                    )}
+                  >
+                    <span className="truncate text-foreground">
+                      {selectedUtilityModel
+                        ? (piModels.find(m => m.id === selectedUtilityModel)?.name ?? selectedUtilityModel)
+                        : 'Automatic'}
+                    </span>
+                    <ChevronDown className="size-3 opacity-50 shrink-0" />
+                  </button>
+                </div>
+              {openTier && tierDropdownPosition && (
                 <>
                   <div
                     className="fixed inset-0 z-floating-backdrop"
@@ -736,6 +771,20 @@ export function ApiKeyInput({
                         />
                       </div>
                       <CommandPrimitive.List className="max-h-[240px] overflow-y-auto p-1">
+                        {openTier === 'utility' && (
+                          <CommandPrimitive.Item
+                            value="automatic"
+                            onSelect={() => {
+                              setSelectedUtilityModel('')
+                              setOpenTier(null)
+                              setTierFilter('')
+                            }}
+                            className="flex cursor-pointer select-none items-center justify-between gap-3 rounded-[6px] px-3 py-2 text-[13px] outline-none data-[selected=true]:bg-foreground/5"
+                          >
+                            <span>Automatic</span>
+                            <Check className={cn("size-3 shrink-0", !selectedUtilityModel ? "opacity-100" : "opacity-0")} />
+                          </CommandPrimitive.Item>
+                        )}
                         {piModels
                           .filter(m => m.name.toLowerCase().includes(tierFilter.toLowerCase()))
                           .map((model) => (
@@ -743,7 +792,8 @@ export function ApiKeyInput({
                               key={model.id}
                               value={model.id}
                               onSelect={() => {
-                                activeTierConfig.onChange(model.id)
+                                if (openTier === 'utility') setSelectedUtilityModel(model.id)
+                                else setSelectedDefaultModel(model.id)
                                 setOpenTier(null)
                                 setTierFilter('')
                               }}
@@ -758,7 +808,12 @@ export function ApiKeyInput({
                                   <span className="text-[10px] text-foreground/30 shrink-0">reasoning</span>
                                 )}
                               </div>
-                              <Check className={cn("size-3 shrink-0", activeTierConfig.value === model.id ? "opacity-100" : "opacity-0")} />
+                              <Check className={cn(
+                                "size-3 shrink-0",
+                                (openTier === 'utility' ? selectedUtilityModel : selectedDefaultModel) === model.id
+                                  ? "opacity-100"
+                                  : "opacity-0",
+                              )} />
                             </CommandPrimitive.Item>
                           ))}
                       </CommandPrimitive.List>

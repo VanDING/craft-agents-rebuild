@@ -13,6 +13,7 @@ import { useTranslation } from 'react-i18next'
 import i18n from 'i18next'
 import { GripHorizontal } from 'lucide-react'
 import { motion, AnimatePresence } from 'motion/react' // motion used for backdrop only
+import { MOTION_DURATION, MOTION_EASE } from '@craft-agent/ui/motion'
 import { Popover, PopoverTrigger, PopoverContent } from './popover'
 import { Button } from './button'
 import { cn } from '@/lib/utils'
@@ -1006,7 +1007,7 @@ export function EditPopover({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.5, ease: 'easeInOut' }}
+            transition={{ duration: MOTION_DURATION.standard, ease: MOTION_EASE.enter }}
             className="fixed inset-0 bg-black/5 z-40"
           />
         )}

@@ -2,7 +2,7 @@
  * LLM Connections
  *
  * Named provider configurations that users can add, configure, and switch between.
- * Each session locks to a specific connection after the first message.
+ * Sessions persist a connection and may switch it while idle.
  * Workspaces can set a default connection.
  */
 
@@ -91,7 +91,7 @@ export type LlmAuthType =
 /**
  * Ownership mode for a connection's model list.
  * - automaticallySyncedFromProvider: provider defaults are synced automatically.
- * - userDefined3Tier: user-picked Best/Balanced/Fast list is preserved.
+ * - userDefined3Tier: legacy value retained only for config compatibility.
  */
 export type ModelSelectionMode = 'automaticallySyncedFromProvider' | 'userDefined3Tier';
 
@@ -99,7 +99,11 @@ export type ModelSelectionMode = 'automaticallySyncedFromProvider' | 'userDefine
  * Protocol for custom API endpoints.
  * Determines which streaming adapter the Pi SDK uses for requests.
  */
-export type CustomEndpointApi = 'openai-completions' | 'openai-responses' | 'anthropic-messages';
+export type CustomEndpointApi =
+  | 'openai-completions'
+  /** @deprecated Legacy custom configs remain readable but new setup is rejected. */
+  | 'openai-responses'
+  | 'anthropic-messages';
 
 /**
  * Custom endpoint protocol config.
@@ -150,6 +154,9 @@ export interface LlmConnection {
   /** Custom base URL (required for *_compat providers, optional override for others) */
   baseUrl?: string;
 
+  /** Visual brand identity, independent from transport/auth protocol. */
+  brandId?: string;
+
   /** Authentication mechanism */
   authType: LlmAuthType;
 
@@ -159,10 +166,13 @@ export interface LlmConnection {
   /** Default model for this connection */
   defaultModel?: string;
 
+  /** Optional explicit model for titles, summaries, and other utility calls. */
+  utilityModel?: string;
+
   /**
    * Ownership mode for the model list.
    * - automaticallySyncedFromProvider: provider defaults are kept in sync.
-   * - userDefined3Tier: preserve user-selected Best/Balanced/Fast list.
+   * - userDefined3Tier: legacy value migrated to automatic synchronization.
    */
   modelSelectionMode?: ModelSelectionMode;
 
@@ -258,7 +268,7 @@ export function isDeniedMiniModelId(modelId: string, piAuthProvider?: string): b
  * Used for mini agent, title generation, and mini completions.
  */
 export function getMiniModel(
-  connection: Pick<LlmConnection, 'models' | 'providerType' | 'piAuthProvider'>,
+  connection: Pick<LlmConnection, 'models' | 'providerType' | 'piAuthProvider' | 'utilityModel'>,
 ): string | undefined {
   return findSmallModel(connection);
 }
@@ -271,7 +281,7 @@ export function getMiniModel(
  * Used for response summarization and API tool summarization.
  */
 export function getSummarizationModel(
-  connection: Pick<LlmConnection, 'models' | 'providerType' | 'piAuthProvider'>,
+  connection: Pick<LlmConnection, 'models' | 'providerType' | 'piAuthProvider' | 'utilityModel'>,
 ): string | undefined {
   return findSmallModel(connection);
 }
@@ -288,7 +298,7 @@ export function getSummarizationModel(
  * auth flavor.
  */
 function findSmallModel(
-  connection: Pick<LlmConnection, 'models' | 'providerType' | 'piAuthProvider'>,
+  connection: Pick<LlmConnection, 'models' | 'providerType' | 'piAuthProvider' | 'utilityModel'>,
 ): string | undefined {
   if (!connection.models || connection.models.length === 0) return undefined;
 
@@ -299,6 +309,11 @@ function findSmallModel(
 
   const isAllowedModel = (m: ModelDefinition | string): boolean =>
     !isDeniedMiniModelId(toId(m), connection.piAuthProvider);
+
+  if (connection.utilityModel) {
+    const explicit = connection.models.find(model => toId(model) === connection.utilityModel)
+    if (explicit && isAllowedModel(explicit)) return connection.utilityModel
+  }
 
   const keywords: string[] = ['mini', 'flash', 'haiku'];
 
@@ -651,7 +666,7 @@ export function getDefaultModelForConnection(providerType: LlmProviderType, piAu
  * Resolve the effective LLM connection slug from available fallbacks.
  *
  * Single source of truth for the fallback chain used everywhere in the UI:
- *   1. Explicit session connection (locked after first message)
+ *   1. Explicit session connection (persisted per session)
  *   2. Workspace-level default override
  *   3. Global default (isDefault flag on a connection)
  *   4. First available connection

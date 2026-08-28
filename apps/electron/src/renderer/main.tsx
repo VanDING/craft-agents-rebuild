@@ -4,6 +4,7 @@ import { init as sentryInit, type ErrorEvent } from '@sentry/electron/renderer'
 import * as Sentry from '@sentry/react'
 import { captureConsoleIntegration } from '@sentry/react'
 import { Provider as JotaiProvider, useAtomValue } from 'jotai'
+import { MotionConfig } from 'motion/react'
 import App from './App'
 import { ThemeProvider } from './context/ThemeContext'
 import { windowWorkspaceIdAtom } from './atoms/sessions'
@@ -127,7 +128,9 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <Sentry.ErrorBoundary fallback={<CrashFallback />}>
       <JotaiProvider>
-        <Root />
+        <MotionConfig reducedMotion="user">
+          <Root />
+        </MotionConfig>
       </JotaiProvider>
     </Sentry.ErrorBoundary>
   </React.StrictMode>

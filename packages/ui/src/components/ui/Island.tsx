@@ -1,6 +1,7 @@
 import * as React from 'react'
 import * as ReactDOM from 'react-dom'
 import { AnimatePresence, motion } from 'motion/react'
+import { MOTION_DURATION, MOTION_SCALE } from '../../lib/motion'
 import { cn } from '../../lib/utils'
 import { getDismissibleLayerBridge } from '../../lib/dismissible-layer-bridge'
 
@@ -93,12 +94,12 @@ export interface IslandProps {
 }
 
 const DEFAULT_TRANSITION: Required<IslandTransitionConfig> = {
-  duration: 0.4,
-  bounce: 0.2,
-  blurPx: 7,
+  duration: MOTION_DURATION.spatial,
+  bounce: 0.05,
+  blurPx: 4,
   entryAngleDeg: 0,
   entryDistancePx: 0,
-  entryStartScale: 0.25,
+  entryStartScale: MOTION_SCALE.dialog,
 }
 
 const IslandAnimationContext = React.createContext<Required<IslandTransitionConfig>>(DEFAULT_TRANSITION)

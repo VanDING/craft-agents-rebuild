@@ -1,4 +1,5 @@
 import { motion } from 'motion/react'
+import { MOTION_DURATION, MOTION_EASE } from '@craft-agent/ui/motion'
 import { CraftAgentsSymbol } from './icons/CraftAgentsSymbol'
 
 interface SplashScreenProps {
@@ -10,7 +11,7 @@ interface SplashScreenProps {
  * SplashScreen - Shows Craft symbol during app initialization
  *
  * Displays centered symbol on app background, fades out when app is fully ready.
- * On exit, the symbol scales up and fades out quickly while the background fades slower.
+ * On exit, the symbol lifts subtly while the background fades away.
  */
 export function SplashScreen({ isExiting, onExitComplete }: SplashScreenProps) {
   return (
@@ -18,7 +19,7 @@ export function SplashScreen({ isExiting, onExitComplete }: SplashScreenProps) {
       className="fixed inset-0 z-splash flex items-center justify-center bg-background"
       initial={{ opacity: 1 }}
       animate={{ opacity: isExiting ? 0 : 1 }}
-      transition={{ duration: 0.5, ease: 'easeOut' }}
+      transition={{ duration: MOTION_DURATION.emphasis, ease: MOTION_EASE.exit }}
       onAnimationComplete={() => {
         if (isExiting && onExitComplete) {
           onExitComplete()
@@ -28,12 +29,12 @@ export function SplashScreen({ isExiting, onExitComplete }: SplashScreenProps) {
       <motion.div
         initial={{ scale: 1.5, opacity: 1 }}
         animate={{
-          scale: isExiting ? 3 : 1.5,
+          scale: isExiting ? 1.65 : 1.5,
           opacity: isExiting ? 0 : 1
         }}
         transition={{
-          duration: 0.2,
-          ease: [0.16, 1, 0.3, 1] // Exponential out curve
+          duration: MOTION_DURATION.standard,
+          ease: MOTION_EASE.enter,
         }}
       >
         <CraftAgentsSymbol className="h-8 text-accent" />

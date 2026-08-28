@@ -542,7 +542,7 @@ export function MarkdownDatatableBlock({ code, className }: MarkdownDatatableBlo
       <DropdownMenuTrigger asChild>
         <button
           className={cn(
-            'p-1 rounded-[6px] transition-all select-none',
+            'motion-interactive p-1 rounded-[6px] transition-[color,background-color,box-shadow,opacity,transform] select-none',
             'bg-background shadow-minimal',
             'data-[state=open]:opacity-100',
             hasActiveControls
@@ -674,7 +674,7 @@ export function MarkdownDatatableBlock({ code, className }: MarkdownDatatableBlo
         <button
           onClick={() => setIsFullscreen(true)}
           className={cn(
-            "absolute top-[7px] right-2 p-1 rounded-[6px] transition-all z-10 select-none",
+            "motion-interactive absolute top-[7px] right-2 p-1 rounded-[6px] transition-[color,background-color,box-shadow,opacity,transform] z-10 select-none",
             "bg-background shadow-minimal",
             hasActiveControls ? "opacity-100" : "opacity-0 group-hover:opacity-100",
             "text-muted-foreground/50 hover:text-foreground",

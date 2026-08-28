@@ -1,6 +1,7 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { Provider as JotaiProvider, useAtomValue } from 'jotai'
+import { MotionConfig } from 'motion/react'
 import App from './App'
 import { ThemeProvider } from '@/context/ThemeContext'
 import { windowWorkspaceIdAtom } from '@/atoms/sessions'
@@ -53,7 +54,9 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <ErrorBoundary>
       <JotaiProvider>
-        <Root />
+        <MotionConfig reducedMotion="user">
+          <Root />
+        </MotionConfig>
       </JotaiProvider>
     </ErrorBoundary>
   </React.StrictMode>,

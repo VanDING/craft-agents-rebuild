@@ -111,7 +111,7 @@ describe('adopt/bind route changed fields through canonical live-update mutators
     expect(calls.model).toEqual(['new-model'])
     expect(calls.cwd).toEqual(['/new/dir'])
     expect(calls.mode).toEqual(['allow-all'])
-    // Connection can't go through setSessionConnection (session has started) → set directly + event.
+    // Draft adoption reconciles its seeded connection directly + emits the event.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     expect((sm as any).sessions.get('s').llmConnection).toBe('new-conn')
     expect(events).toContain('connection_changed')

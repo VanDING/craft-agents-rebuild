@@ -35,6 +35,7 @@ import { useAtomValue, useSetAtom } from 'jotai'
 import { AnimatePresence, motion } from 'motion/react'
 import { CheckCircle2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { MOTION_SPRING } from '@craft-agent/ui/motion'
 import { NavigationContext } from '@/contexts/NavigationContext'
 import { navigate, routes } from '@/lib/navigate'
 import { primarySessionIdAtom } from '@/atoms/workbench'
@@ -46,7 +47,7 @@ import {
 
 // Snappy UI spring (see apps/electron/CLAUDE.md → Animations). Only opacity and
 // transform are animated, per the GPU-accelerated-properties guidance.
-const chipSpring = { type: 'spring' as const, stiffness: 400, damping: 30, mass: 0.8 }
+const chipSpring = MOTION_SPRING.spatial
 
 export interface BackgroundFinishedChipProps {
   /**
@@ -129,7 +130,7 @@ export function BackgroundFinishedChip({ sessionId }: BackgroundFinishedChipProp
             aria-label={`${entry.title} — ${t('chat.backgroundSessionFinished')}`}
             className={cn(
               'flex items-center gap-1.5 h-[26px] pl-2 pr-2.5 rounded-full',
-              'text-xs font-medium select-none outline-none transition-colors',
+              'motion-interactive text-xs font-medium select-none outline-none transition-[color,background-color,box-shadow,transform] active:scale-[var(--motion-scale-pressed)]',
               'text-purple-700 dark:text-purple-200',
               'bg-purple-500/12 hover:bg-purple-500/20',
               'ring-1 ring-inset ring-purple-400/30 dark:ring-purple-300/25',

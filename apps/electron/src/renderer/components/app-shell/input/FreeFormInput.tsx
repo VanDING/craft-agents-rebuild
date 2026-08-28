@@ -13,6 +13,7 @@ import {
   Image as ImageIcon,
 } from 'lucide-react'
 import { Icon_Home, Spinner } from '@craft-agent/ui'
+import { MOTION_DURATION, MOTION_EASE } from '@craft-agent/ui/motion'
 
 import * as storage from '@/lib/local-storage'
 import { Button } from '@/components/ui/button'
@@ -232,9 +233,9 @@ export interface FreeFormInputProps {
    */
   enableCompactModelPicker?: boolean
   // Connection selection (hierarchical connection → model selector)
-  /** Current LLM connection slug (locked after first message) */
+  /** Current LLM connection slug */
   currentConnection?: string
-  /** Callback when connection changes (only works when session is empty) */
+  /** Callback when connection changes */
   onConnectionChange?: (connectionSlug: string) => void
   /** When true, the session's locked connection has been removed */
   connectionUnavailable?: boolean
@@ -1588,7 +1589,7 @@ export function FreeFormInput({
       <div
         ref={containerRef}
         className={cn(
-          'overflow-hidden transition-all',
+          'motion-content overflow-hidden transition-[background-color,box-shadow,border-color]',
           // Container styling - only when not wrapped by InputContainer
           !unstyled && 'rounded-[16px] shadow-middle',
           !unstyled && 'bg-background',
@@ -1689,7 +1690,7 @@ export function FreeFormInput({
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: 'auto' }}
               exit={{ opacity: 0, height: 0 }}
-              transition={{ duration: 0.18, ease: [0.2, 0, 0.2, 1] }}
+              transition={{ duration: MOTION_DURATION.emphasis, ease: MOTION_EASE.move }}
               className="overflow-hidden"
             >
               <motion.div layout={animateFollowUpLayout} className="px-3 pt-3.5 pb-0">
@@ -1709,7 +1710,7 @@ export function FreeFormInput({
                           initial={{ opacity: 0, y: 6, scale: 0.98 }}
                           animate={{ opacity: 1, y: 0, scale: 1 }}
                           exit={{ opacity: 0, y: -4, scale: 0.98 }}
-                          transition={{ duration: 0.16, ease: [0.2, 0, 0.2, 1] }}
+                          transition={{ duration: MOTION_DURATION.standard, ease: MOTION_EASE.move }}
                           className="inline-flex max-w-full items-center gap-1.5 overflow-hidden rounded-[6px] bg-foreground/2 pl-1.5 pr-2 py-1 text-[13px] text-foreground/80 select-none transition-colors hover:bg-foreground/5 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                           onClick={(event) => {
                             const rect = event.currentTarget.getBoundingClientRect()
@@ -1835,6 +1836,7 @@ export function FreeFormInput({
               onThinkingLevelChange={onThinkingLevelChange}
               isEmptySession={isEmptySession}
               connectionUnavailable={connectionUnavailable}
+              isProcessing={isProcessing}
               contextStatus={contextStatus}
             />
           )}
@@ -2069,10 +2071,12 @@ export function FreeFormInput({
                 <DropdownMenuTrigger asChild>
                   <button
                     type="button"
+                    disabled={isProcessing}
                     className={cn(
                       "input-toolbar-btn inline-flex items-center h-7 px-1.5 gap-0.5 text-[13px] shrink-0 rounded-[6px] hover:bg-foreground/5 transition-colors select-none",
                       modelDropdownOpen && "bg-foreground/5",
                       connectionUnavailable && "text-destructive",
+                      isProcessing && "pointer-events-none opacity-50",
                     )}
                   >
                     {connectionUnavailable ? (
@@ -2165,7 +2169,7 @@ export function FreeFormInput({
                   )
                 })()
               ) : pickerMode === 'switcher' ? (
-                /* Hierarchical view: Provider → Connection → Models (empty session with multiple connections — lets the user switch BEFORE the first message locks the connection) */
+                /* Hierarchical view: Provider → Connection → Models */
                 connectionsByProvider.map(([providerName, connections], index) => (
                   <React.Fragment key={providerName}>
                     {/* Provider group label */}
@@ -2210,11 +2214,7 @@ export function FreeFormInput({
                                   <StyledDropdownMenuItem
                                     key={modelId}
                                     onSelect={() => {
-                                      // If selecting a different connection, update both connection and model
-                                      if (!isCurrentConnection && onConnectionChange) {
-                                        onConnectionChange(conn.slug)
-                                      }
-                                      // Always pass connection with model for proper persistence
+                                      // Model + connection are persisted atomically by the backend.
                                       onModelChange(modelId, conn.slug)
                                     }}
                                     className="flex items-center justify-between px-2 py-2 rounded-lg cursor-pointer"

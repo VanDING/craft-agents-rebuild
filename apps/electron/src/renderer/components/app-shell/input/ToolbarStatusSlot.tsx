@@ -14,6 +14,7 @@
 
 import * as React from 'react'
 import { motion, AnimatePresence } from 'motion/react'
+import { MOTION_DURATION, MOTION_EASE } from '@craft-agent/ui/motion'
 import { Globe } from 'lucide-react'
 import { useAtomValue } from 'jotai'
 import { useTranslation, Trans } from 'react-i18next'
@@ -77,7 +78,7 @@ export function ToolbarStatusSlot({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          transition={{ duration: 0.15 }}
+          transition={{ duration: MOTION_DURATION.standard, ease: MOTION_EASE.enter }}
           className={cn(
             "absolute inset-0 z-10",
             "rounded-b-[12px]",
@@ -149,7 +150,7 @@ function BrowserStatusBar({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      transition={{ duration: 0.15 }}
+      transition={{ duration: MOTION_DURATION.standard, ease: MOTION_EASE.enter }}
       className={cn(
         "absolute inset-0 z-10",
         "rounded-b-[12px]",

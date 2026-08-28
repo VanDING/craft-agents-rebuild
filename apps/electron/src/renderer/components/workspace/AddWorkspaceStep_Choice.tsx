@@ -24,7 +24,7 @@ function ChoiceCard({ icon, title, description, onClick, variant = 'secondary' }
       className={cn(
         "flex items-center gap-4 w-full p-4 rounded-lg text-left",
         "bg-background shadow-minimal",
-        "transition-all duration-150",
+        "motion-content transition-[color,background-color,border-color,box-shadow,opacity,transform]",
         "focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
         variant === 'primary'
           ? "hover:bg-accent/5"

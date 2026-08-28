@@ -10,6 +10,7 @@ import babelParser from '@babel/eslint-parser'
 import noHardcodedZIndex from './eslint-rules/no-hardcoded-z-index.cjs'
 import noFloatingZTokensInIsland from './eslint-rules/no-floating-z-tokens-in-island.cjs'
 import noNonstandardShadows from './eslint-rules/no-nonstandard-shadows.cjs'
+import noTransitionAll from '../../scripts/eslint-rules/no-transition-all.cjs'
 
 export default [
   // Ignore patterns
@@ -41,6 +42,7 @@ export default [
           'no-hardcoded-z-index': noHardcodedZIndex,
           'no-floating-z-tokens-in-island': noFloatingZTokensInIsland,
           'no-nonstandard-shadows': noNonstandardShadows,
+          'no-transition-all': noTransitionAll,
         },
       },
     },
@@ -78,6 +80,8 @@ export default [
         ],
         allowInlineNone: true,
       }],
+
+      'craft-styles/no-transition-all': 'error',
     },
   },
 

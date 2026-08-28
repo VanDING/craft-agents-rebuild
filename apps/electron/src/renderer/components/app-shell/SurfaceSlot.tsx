@@ -12,6 +12,7 @@ import { useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAtomValue, useSetAtom } from 'jotai'
 import { motion, useReducedMotion } from 'motion/react'
+import { motionTween } from '@craft-agent/ui/motion'
 import { cn } from '@/lib/utils'
 import { X, ChevronLeft, Maximize2, Minimize2 } from 'lucide-react'
 import { parseRouteToNavigationState } from '../../../shared/route-parser'
@@ -199,7 +200,7 @@ export function SurfaceSlot({
                   className="h-full min-h-0"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
-                  transition={{ duration: 0.15, ease: 'easeOut' }}
+                  transition={motionTween(reduceMotion, 'standard', 'enter')}
                 >
                   <BoundPanelContent entry={entry} />
                 </motion.div>

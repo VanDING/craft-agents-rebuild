@@ -49,6 +49,7 @@ interface CredentialsStepProps {
     apiKey?: string
     baseUrl?: string
     connectionDefaultModel?: string
+    utilityModel?: string
     activePreset?: string
     models?: string[]
     customApi?: CustomEndpointApi

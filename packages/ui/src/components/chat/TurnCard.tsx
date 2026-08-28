@@ -26,6 +26,7 @@ import {
   CircleAlert,
 } from 'lucide-react'
 import { cn } from '../../lib/utils'
+import { MOTION_DURATION, MOTION_EASE } from '../../lib/motion'
 import { Markdown } from '../markdown'
 import { Spinner } from '../ui/LoadingIndicator'
 import { type IslandTransitionConfig } from '../ui'
@@ -873,7 +874,7 @@ export function ActivityStatusIcon({
         initial={{ opacity: 0, scale: 0.8 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.8 }}
-        transition={{ duration: 0.2, ease: "easeOut" }}
+        transition={{ duration: MOTION_DURATION.emphasis, ease: MOTION_EASE.enter }}
         className="shrink-0"
       >
         {renderIcon()}
@@ -1302,7 +1303,7 @@ function ActivityGroupRow({ group, expandedGroups: externalExpandedGroups, onExp
         <motion.div
           initial={false}
           animate={{ rotate: isExpanded ? 90 : 0 }}
-          transition={{ duration: 0.15, ease: 'easeOut' }}
+          transition={{ duration: MOTION_DURATION.standard, ease: MOTION_EASE.enter }}
           className={cn(SIZE_CONFIG.iconSize, "flex items-center justify-center shrink-0")}
         >
           <ChevronRight className={SIZE_CONFIG.iconSize} />
@@ -1378,8 +1379,8 @@ function ActivityGroupRow({ group, expandedGroups: externalExpandedGroups, onExp
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={{
-              height: { duration: 0.2, ease: [0.4, 0, 0.2, 1] },
-              opacity: { duration: 0.15 }
+              height: { duration: MOTION_DURATION.emphasis, ease: MOTION_EASE.move },
+              opacity: { duration: MOTION_DURATION.standard, ease: MOTION_EASE.enter }
             }}
             className="overflow-hidden"
           >
@@ -2488,7 +2489,7 @@ export function ResponseCard({
           <button
             onClick={() => setIsFullscreen(true)}
             className={cn(
-              "absolute top-2 right-2 p-1 rounded-[6px] transition-all z-10 select-none",
+              "motion-interactive absolute top-2 right-2 p-1 rounded-[6px] transition-[color,background-color,box-shadow,opacity,transform] z-10 select-none",
               "opacity-0 group-hover:opacity-100",
               "bg-background shadow-minimal",
               "text-muted-foreground/50 hover:text-foreground",
@@ -2591,7 +2592,7 @@ export function ResponseCard({
                 {isPlan && showAcceptPlan && onAccept && onAcceptWithCompact && (
                   <div
                     className={cn(
-                      "flex items-center gap-3 transition-all duration-200",
+                      "motion-content flex items-center gap-3 transition-[color,background-color,box-shadow,opacity,transform]",
                       isLastResponse
                         ? "opacity-100 translate-x-0"
                         : "opacity-0 translate-x-2 pointer-events-none"
@@ -3013,7 +3014,7 @@ export const TurnCard = React.memo(function TurnCard({
             <motion.div
               initial={false}
               animate={{ rotate: isExpanded ? 90 : 0 }}
-              transition={{ duration: 0.15, ease: 'easeOut' }}
+              transition={{ duration: MOTION_DURATION.standard, ease: MOTION_EASE.enter }}
               className={cn(SIZE_CONFIG.iconSize, "flex items-center justify-center shrink-0")}
             >
               <ChevronRight className={SIZE_CONFIG.iconSize} />
@@ -3032,7 +3033,7 @@ export const TurnCard = React.memo(function TurnCard({
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  transition={{ duration: 0.2 }}
+                  transition={{ duration: MOTION_DURATION.emphasis, ease: MOTION_EASE.enter }}
                   className="absolute inset-0 truncate"
                 >
                   {previewText}
@@ -3084,8 +3085,8 @@ export const TurnCard = React.memo(function TurnCard({
                 animate={{ height: 'auto', opacity: 1 }}
                 exit={{ height: 0, opacity: 0 }}
                 transition={{
-                  height: { duration: 0.25, ease: [0.4, 0, 0.2, 1] },
-                  opacity: { duration: 0.15 }
+                  height: { duration: MOTION_DURATION.emphasis, ease: MOTION_EASE.move },
+                  opacity: { duration: MOTION_DURATION.standard, ease: MOTION_EASE.enter }
                 }}
                 className="overflow-hidden"
               >
@@ -3170,7 +3171,7 @@ export const TurnCard = React.memo(function TurnCard({
                       animate={{ opacity: 1, x: 0 }}
                       transition={{
                         delay: Math.min(sortedActivities.length, SIZE_CONFIG.staggeredAnimationLimit) * 0.03,
-                        duration: 0.3,
+                        duration: MOTION_DURATION.spatial,
                         ease: "easeOut"
                       }}
                       className={cn("flex items-center gap-2 py-[var(--theme-activity-row-padding-y)] text-muted-foreground/70", SIZE_CONFIG.fontSize)}
@@ -3237,7 +3238,7 @@ export const TurnCard = React.memo(function TurnCard({
             <motion.div
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3, ease: "easeOut" }}
+              transition={{ duration: MOTION_DURATION.spatial, ease: MOTION_EASE.enter }}
               className={cn("select-text", hasActivities && "mt-2")}
             >
               <ResponseCard

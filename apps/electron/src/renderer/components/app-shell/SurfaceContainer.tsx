@@ -12,7 +12,8 @@
 
 import { useCallback } from 'react'
 import { useAtomValue, useSetAtom } from 'jotai'
-import { motion } from 'motion/react'
+import { motion, useReducedMotion } from 'motion/react'
+import { motionSpring } from '@craft-agent/ui/motion'
 import { cn } from '@/lib/utils'
 import {
   collapseWorkbenchAtom,
@@ -36,7 +37,6 @@ import {
   RADIUS_INNER,
 } from './panel-constants'
 
-const PANEL_SPRING = { type: 'spring' as const, stiffness: 600, damping: 49 }
 const COMPACT_PANEL_TOP_GAP = 8
 
 interface SurfaceContainerProps {
@@ -63,6 +63,7 @@ export function SurfaceContainer({
   const primarySurface = useAtomValue(primarySurfaceAtom)
   const workbench = useAtomValue(workbenchStateAtom)
   const collapseWorkbench = useSetAtom(collapseWorkbenchAtom)
+  const reduceMotion = useReducedMotion()
 
   const primaryEntry = surfaceEntries.find((entry) => entry.surfaceRole === 'primary')
   const workbenchEntry = surfaceEntries.find((entry) => entry.surfaceRole === 'workbench')
@@ -74,7 +75,7 @@ export function SurfaceContainer({
   const hasSidebar = sidebarWidth > 0
   const hasNavigator = navigatorWidth > 0
   const isLeftEdge = !hasSidebar && !hasNavigator
-  const transition = (isResizing || isCompact) ? { duration: 0 } : PANEL_SPRING
+  const transition = (isResizing || isCompact) ? { duration: 0 } : motionSpring(reduceMotion, 'responsive')
 
   const handleCompactPrimaryBack = useCallback(() => {
     if (!primaryNavState) return

@@ -3,6 +3,7 @@ import { useTranslation, Trans } from "react-i18next"
 import { useRef, useState, useEffect, useCallback, useMemo } from "react"
 import { useAtomValue, useStore } from "jotai"
 import { motion, AnimatePresence } from "motion/react"
+import { MOTION_SPRING } from '@craft-agent/ui/motion'
 import {
   Archive,
   Settings,
@@ -1370,11 +1371,7 @@ function AppShellContent({
 
   // Spring transition config - shared between sidebar and header
   // Critical damping (no bounce): damping = 2 * sqrt(stiffness * mass)
-  const springTransition = {
-    type: "spring" as const,
-    stiffness: 600,
-    damping: 49,
-  }
+  const springTransition = MOTION_SPRING.responsive
 
   // Use session metadata from Jotai atom (lightweight, no messages)
   // This prevents closures from retaining full message arrays

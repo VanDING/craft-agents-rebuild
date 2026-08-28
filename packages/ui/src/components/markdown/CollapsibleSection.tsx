@@ -2,6 +2,7 @@ import * as React from 'react'
 import { ChevronRight } from 'lucide-react'
 import { motion, AnimatePresence } from 'motion/react'
 import { cn } from '../../lib/utils'
+import { MOTION_DURATION, MOTION_EASE, MOTION_SPRING } from '../../lib/motion'
 
 /**
  * Simple animated collapsible content wrapper.
@@ -14,7 +15,7 @@ function AnimatedCollapsibleContent({ isOpen, children }: { isOpen: boolean; chi
           initial={{ height: 0, opacity: 0 }}
           animate={{ height: 'auto', opacity: 1 }}
           exit={{ height: 0, opacity: 0 }}
-          transition={{ duration: 0.2, ease: 'easeInOut' }}
+          transition={{ duration: MOTION_DURATION.emphasis, ease: MOTION_EASE.move }}
           className="overflow-hidden"
         >
           {children}
@@ -75,7 +76,7 @@ export function CollapsibleSection({
         <motion.div
           initial={false}
           animate={{ rotate: isExpanded ? 90 : 0 }}
-          transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+          transition={MOTION_SPRING.responsive}
           className={cn(
             'absolute -left-4 top-[5px] select-none transition-opacity',
             !hasContent && 'opacity-0',

@@ -637,6 +637,7 @@ export default function AiSettingsPage() {
     apiKey?: string
     baseUrl?: string
     connectionDefaultModel?: string
+    utilityModel?: string
     activePreset?: string
     models?: string[]
     customApi?: CustomEndpointApi
@@ -848,7 +849,8 @@ export default function AiSettingsPage() {
     setEditInitialValues({
       apiKey,
       baseUrl: connection.baseUrl,
-      connectionDefaultModel: modelStr,
+      connectionDefaultModel: isCustomEndpointConnection ? modelStr : connection.defaultModel,
+      utilityModel: connection.utilityModel,
       activePreset: isCustomEndpointConnection ? 'custom' : (connection.piAuthProvider || undefined),
       models: modelIds,
       customApi: connection.customEndpoint?.api,
@@ -1192,7 +1194,7 @@ export default function AiSettingsPage() {
                           </div>
                           <div className="mt-2 h-1.5 rounded-full bg-foreground/10 overflow-hidden">
                             <div
-                              className="h-full bg-foreground/60 transition-all"
+                              className="motion-content h-full bg-foreground/60 transition-[width]"
                               style={{ width: `${Math.min(100, Math.max(0, rtkGain.avgSavingsPct))}%` }}
                             />
                           </div>
@@ -1253,7 +1255,7 @@ export default function AiSettingsPage() {
                 >
                   <button
                     onClick={handleCloseApiSetup}
-                    className="p-1.5 rounded-[6px] transition-all bg-background shadow-minimal text-muted-foreground/50 hover:text-foreground focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    className="motion-interactive p-1.5 rounded-[6px] transition-[color,background-color,box-shadow,opacity,transform] bg-background shadow-minimal text-muted-foreground/50 hover:text-foreground focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                     title={t("common.closeEsc")}
                   >
                     <X className="w-3.5 h-3.5" />

@@ -17,6 +17,7 @@ import noDirectFileOpen from './eslint-rules/no-direct-file-open.cjs'
 import noInlineSourceAuthCheck from './eslint-rules/no-inline-source-auth-check.cjs'
 import noHardcodedZIndex from './eslint-rules/no-hardcoded-z-index.cjs'
 import noNonstandardShadows from './eslint-rules/no-nonstandard-shadows.cjs'
+import noTransitionAll from '../../scripts/eslint-rules/no-transition-all.cjs'
 
 export default [
   // Ignore patterns
@@ -84,6 +85,7 @@ export default [
         rules: {
           'no-hardcoded-z-index': noHardcodedZIndex,
           'no-nonstandard-shadows': noNonstandardShadows,
+          'no-transition-all': noTransitionAll,
         },
       },
     },
@@ -134,6 +136,9 @@ export default [
         allowInlineNone: true,
       }],
 
+      // Broad transitions are fragile and may accidentally animate layout/paint.
+      'craft-styles/no-transition-all': 'error',
+
       // Enforce centralized action registry for keyboard shortcuts
       'no-restricted-imports': ['error', {
         paths: [
@@ -157,6 +162,14 @@ export default [
     ],
     rules: {
       'craft-styles/no-nonstandard-shadows': 'off',
+    },
+  },
+
+  // Playground examples may intentionally demonstrate arbitrary transitions.
+  {
+    files: ['src/renderer/playground/**/*.{ts,tsx}'],
+    rules: {
+      'craft-styles/no-transition-all': 'off',
     },
   },
 
