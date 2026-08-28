@@ -16,7 +16,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from 'motion/react'
 import { useTranslation } from 'react-i18next'
 import { useAtomValue, useSetAtom } from 'jotai'
-import { ChevronRight, ChevronDown, FilePlus, PencilLine, GitCompareArrows, ChevronsUp } from 'lucide-react'
+import { ChevronRight, ChevronDown, FilePlus, Files, PencilLine, GitCompareArrows, ChevronsUp } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { usePlatform, UnifiedDiffViewer, Spinner } from '@craft-agent/ui'
 import { ShikiDiffViewer } from '@/components/shiki/ShikiDiffViewer'
@@ -107,6 +107,17 @@ export function ReviewPanel() {
   const activities = useSessionActivities(session)
   const changes = useMemo(() => collectFileChangesFromActivities(activities), [activities])
   const sections = useMemo(() => createFileSections(changes, true), [changes])
+  const totalStats = useMemo(() => {
+    let additions = 0
+    let deletions = 0
+    for (const change of changes) {
+      if (change.error) continue
+      const stats = computeChangeStats(change)
+      additions += stats.additions
+      deletions += stats.deletions
+    }
+    return { additions, deletions }
+  }, [changes])
 
   const setChangeRef = useCallback((changeId: string, el: HTMLDivElement | null) => {
     if (el) changeRefs.current.set(changeId, el)
@@ -137,8 +148,9 @@ export function ReviewPanel() {
   const headerSubtitle = activeSessionId ? (
     <BoundSessionBadge name={sessionName} sessionId={activeSessionId} />
   ) : undefined
-  // In-panel diff style toggle (mirrors the global preference) + collapse all.
-  const headerActions = useMemo(() => {
+  // Review-specific controls live below the shared panel header so its centered
+  // title and bound-session subtitle keep the same geometry as every other panel.
+  const toolbarActions = useMemo(() => {
     const styleButtons = (['unified', 'split'] as const).map((style) => (
       <button
         key={style}
@@ -146,7 +158,7 @@ export function ReviewPanel() {
         aria-pressed={viewerSettings.diffStyle === style}
         onClick={() => setViewerSettings({ diffStyle: style, disableBackground: viewerSettings.disableBackground })}
         className={cn(
-          'relative isolate rounded-md px-1.5 py-0.5 text-[11px] font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring',
+          'relative isolate h-7 rounded-md px-2 text-[12px] font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring',
           viewerSettings.diffStyle === style
             ? 'text-foreground'
             : 'text-muted-foreground hover:text-foreground',
@@ -155,28 +167,33 @@ export function ReviewPanel() {
         {viewerSettings.diffStyle === style && (
           <motion.span
             layoutId="review-diff-style"
-            className="absolute inset-0 -z-10 rounded-md border border-border/55 bg-background shadow-minimal"
+            className="pointer-events-none absolute inset-0 z-0 rounded-md border border-border/55 bg-background shadow-minimal"
             transition={motionSpring(reduceMotion, 'responsive')}
           />
         )}
-        <span className="relative">{t(`contentPanel.diff.style${style === 'unified' ? 'Unified' : 'Split'}`)}</span>
+        <span className="relative z-[1]">{t(`contentPanel.diff.style${style === 'unified' ? 'Unified' : 'Split'}`)}</span>
       </button>
     ))
     return (
       <div className="flex items-center gap-1.5">
-        <LayoutGroup id="review-diff-style"><div className="flex items-center rounded-lg border border-border/60 bg-foreground/[0.025] p-0.5">{styleButtons}</div></LayoutGroup>
-        <button
-          type="button"
-          aria-label={t('contentPanel.diff.collapseAll')}
-          title={t('contentPanel.diff.collapseAll')}
-          onClick={() => setSelectedKey(null)}
-          className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-foreground/[0.05] hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <ChevronsUp className="h-3.5 w-3.5" />
-        </button>
+        <LayoutGroup id="review-diff-style">
+          <div className="flex items-center rounded-lg border border-border/60 bg-foreground/[0.025] p-0.5">{styleButtons}</div>
+        </LayoutGroup>
+        <div className="border-l border-border/55 pl-1.5">
+          <button
+            type="button"
+            aria-label={t('contentPanel.diff.collapseAll')}
+            title={t('contentPanel.diff.collapseAll')}
+            onClick={() => setSelectedKey(null)}
+            disabled={!selectedKey}
+            className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-foreground/[0.05] hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-35"
+          >
+            <ChevronsUp className="h-3.5 w-3.5" />
+          </button>
+        </div>
       </div>
     )
-  }, [viewerSettings, setViewerSettings, setSelectedKey, t, reduceMotion])
+  }, [viewerSettings, setViewerSettings, selectedKey, setSelectedKey, t, reduceMotion])
 
   if (!activeSessionId) {
     return (
@@ -195,9 +212,29 @@ export function ReviewPanel() {
       <PanelHeader
         title={t('contentPanel.title.review')}
         subtitle={headerSubtitle}
-        actions={headerActions}
         centerTitleInPanel
       />
+
+      {!messagesLoading && changes.length > 0 && (
+        <div className="flex h-10 shrink-0 items-center gap-2 border-b border-border/50 bg-background/55 px-2.5 backdrop-blur-sm">
+          <div
+            className="flex min-w-0 items-center gap-2 text-[11px] font-medium tabular-nums text-muted-foreground @max-[420px]/panel:hidden"
+            aria-label={`${t('contentPanel.title.review')}: ${sections.length}`}
+          >
+            <span className="inline-flex items-center gap-1">
+              <Files className="h-3.5 w-3.5" />
+              {sections.length}
+            </span>
+            {(totalStats.additions > 0 || totalStats.deletions > 0) && (
+              <span className="inline-flex items-center gap-1.5">
+                <span className="text-emerald-600 dark:text-emerald-400">+{totalStats.additions}</span>
+                <span className="text-rose-600 dark:text-rose-400">-{totalStats.deletions}</span>
+              </span>
+            )}
+          </div>
+          <div className="ml-auto shrink-0">{toolbarActions}</div>
+        </div>
+      )}
 
       {messagesLoading ? (
         <div className="flex flex-1 items-center justify-center">
