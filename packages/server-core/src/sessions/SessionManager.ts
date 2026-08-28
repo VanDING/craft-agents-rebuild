@@ -1809,7 +1809,7 @@ export class SessionManager implements ISessionManager {
   }
 
   private ensurePrimaryWorkItem(managed: ManagedSession): void {
-    if (managed.parentSessionId || managed.taskDraft) return
+    if (managed.parentSessionId || managed.taskDraft || managed.hidden || managed.isArchived) return
     try {
       const result = ensureWorkItemForSession(managed.workspace.rootPath, {
         id: managed.id,
@@ -3450,6 +3450,10 @@ export class SessionManager implements ISessionManager {
         })
       }
     }
+
+    // Keep Kanban connected to ordinary top-level conversations as well as
+    // explicit Task flows. Idempotency lives in ensureWorkItemForSession.
+    this.ensurePrimaryWorkItem(managed)
 
     // Announce by default so the renderer hydrates full metadata (name, parentSessionId, …)
     // instead of fabricating a titleless "New Chat" from the first streamed event. Emitted at

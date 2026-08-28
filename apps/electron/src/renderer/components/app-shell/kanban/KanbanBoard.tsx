@@ -112,7 +112,7 @@ export function KanbanBoard({
       buckets.get(target)!.push(task)
     }
     // Newest tiles first within each column (a freshly created task lands on top).
-    const recency = (t: KanbanTask) => t.createdAt ?? t.lastMessageAt ?? 0
+    const recency = (t: KanbanTask) => t.lastMessageAt ?? t.createdAt ?? 0
     for (const list of buckets.values()) list.sort((a, b) => recency(b) - recency(a))
     return buckets
   }, [tasks, columns, firstColumnId])

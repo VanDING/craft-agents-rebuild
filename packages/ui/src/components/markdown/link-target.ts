@@ -23,6 +23,35 @@ function decodeFilePath(path: string): string {
   }
 }
 
+/** Remove editor-style source locations without confusing a Windows drive colon. */
+function stripSourceLocation(target: string): string {
+  return target
+    .replace(/#L\d+(?:C\d+)?$/i, '')
+    .replace(/:(\d+)(?::\d+)?$/, '')
+}
+
+/**
+ * `isFilePathTarget` intentionally uses a conservative markdown-link regex.
+ * Normalize platform syntax only for classification, while returning the
+ * original path to Electron. This covers Windows drive/UNC paths, encoded or
+ * literal spaces, and clickable `:line[:column]` source references.
+ */
+function resolveBareFilePath(target: string): string | null {
+  const withoutLocation = stripSourceLocation(target)
+  const windowsDrivePath = /^[A-Za-z]:[\\/]/.test(withoutLocation)
+
+  let classificationTarget = withoutLocation
+    .replace(/\\/g, '/')
+    .replace(/ /g, '%20')
+
+  // The shared classifier does not include `:` in its generic relative-path
+  // branch. Treat the drive root as a POSIX root for classification only.
+  if (windowsDrivePath) classificationTarget = classificationTarget.slice(2)
+
+  if (!isFilePathTarget(classificationTarget)) return null
+  return decodeFilePath(withoutLocation)
+}
+
 function resolveFileUrlPath(target: string): string | null {
   if (!/^file:/i.test(target)) return null
 
@@ -59,8 +88,9 @@ export function resolveMarkdownLinkTarget(target: string): ResolvedMarkdownLinkT
     return { kind: 'file', path: fileUrlPath }
   }
 
-  if (isFilePathTarget(trimmed)) {
-    return { kind: 'file', path: decodeFilePath(trimmed) }
+  const bareFilePath = resolveBareFilePath(trimmed)
+  if (bareFilePath) {
+    return { kind: 'file', path: bareFilePath }
   }
 
   return { kind: 'url', url: trimmed }

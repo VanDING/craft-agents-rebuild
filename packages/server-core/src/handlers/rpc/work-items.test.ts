@@ -112,7 +112,7 @@ describe('work item RPC handlers', () => {
     rmSync(workspaceRoot, { recursive: true, force: true })
   })
 
-  it('migrates only the eligible sessions present on the first list', async () => {
+  it('continuously reconciles eligible top-level sessions after migration', async () => {
     const harness = createHarness({
       sessions: [
         { id: 'legacy', name: 'Legacy task', projectId: 'project-a', sessionStatus: 'todo', createdAt: 10, lastMessageAt: 20 },
@@ -134,8 +134,9 @@ describe('work item RPC handlers', () => {
 
     harness.sessions.push({ id: 'later', name: 'Later plain conversation' })
     const second = await list(context, workspaceFixture.id)
-    expect(second).toHaveLength(1)
-    expect(harness.pushes.filter(({ channel }) => channel === RPC_CHANNELS.workItems.CHANGED)).toHaveLength(1)
+    expect(second).toHaveLength(2)
+    expect(second.some((item: { primarySessionId?: string }) => item.primarySessionId === 'later')).toBe(true)
+    expect(harness.pushes.filter(({ channel }) => channel === RPC_CHANNELS.workItems.CHANGED)).toHaveLength(2)
   })
 
   it('keeps the WorkItem durable when the compatibility Session mirror fails', async () => {

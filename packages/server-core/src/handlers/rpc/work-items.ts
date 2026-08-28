@@ -2,7 +2,9 @@ import { RPC_CHANNELS } from '@craft-agent/shared/protocol'
 import {
   createWorkItem,
   deleteWorkItem,
+  ensureWorkItemForSession,
   listWorkItemEvents,
+  listWorkItems,
   migrateLegacySessionWorkItems,
   updateWorkItem,
   type CreateWorkItemInput,
@@ -87,8 +89,19 @@ export function registerWorkItemHandlers(server: RpcServer, deps: HandlerDeps): 
         updatedAt: session.lastMessageAt,
       }))
     const migration = migrateLegacySessionWorkItems(rootPath, legacySources)
-    if (!migration.alreadyCompleted) broadcastChanged(server, workspaceId)
-    return migration.items
+    let createdAfterMigration = false
+    // Reconcile on every list, not just during the one-time v1 migration.
+    // This keeps Kanban a live projection of eligible top-level conversations
+    // while still allowing standalone WorkItems with no execution session.
+    for (const source of legacySources) {
+      const result = ensureWorkItemForSession(rootPath, source, {
+        actor: { type: 'system' },
+        context: { sessionId: source.id },
+      })
+      createdAfterMigration ||= result.created
+    }
+    if (!migration.alreadyCompleted || createdAfterMigration) broadcastChanged(server, workspaceId)
+    return listWorkItems(rootPath)
   })
 
   server.handle(

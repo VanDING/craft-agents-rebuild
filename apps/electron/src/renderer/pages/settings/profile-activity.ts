@@ -11,6 +11,7 @@ export interface ProfileActivityDay {
   key: string
   count: number
   level: 0 | 1 | 2 | 3 | 4
+  isFuture: boolean
 }
 
 export interface ProfileActivityStats {
@@ -44,9 +45,15 @@ function sessionTimestamp(session: ProfileActivitySession): number | null {
   return session.lastMessageAt ?? session.lastUsedAt ?? session.createdAt ?? null
 }
 
-function activityLevel(count: number, maxCount: number): 0 | 1 | 2 | 3 | 4 {
-  if (count === 0 || maxCount === 0) return 0
-  return Math.min(4, Math.max(1, Math.ceil((count / maxCount) * 4))) as 1 | 2 | 3 | 4
+function activityThresholds(counts: number[]): number[] {
+  const nonZero = counts.filter(count => count > 0).sort((a, b) => a - b)
+  if (nonZero.length === 0) return []
+  return [0.25, 0.5, 0.75].map(quantile => nonZero[Math.floor((nonZero.length - 1) * quantile)])
+}
+
+function activityLevel(count: number, thresholds: number[]): 0 | 1 | 2 | 3 | 4 {
+  if (count === 0) return 0
+  return (1 + thresholds.filter(threshold => count > threshold).length) as 1 | 2 | 3 | 4
 }
 
 export function computeProfileActivity(
@@ -86,10 +93,11 @@ export function computeProfileActivity(
   const maxWeekdayCount = Math.max(...weekdayCounts)
   const busiestWeekday = maxWeekdayCount > 0 ? weekdayCounts.indexOf(maxWeekdayCount) : null
 
-  const end = startOfLocalDay(now)
-  const start = new Date(end)
-  start.setDate(start.getDate() - 363)
-  start.setDate(start.getDate() - start.getDay())
+  const today = startOfLocalDay(now)
+  const start = new Date(today)
+  start.setDate(start.getDate() - start.getDay() - (52 * 7))
+  const end = new Date(start)
+  end.setDate(end.getDate() + (53 * 7) - 1)
 
   const calendarCounts: number[] = []
   const calendarDates: Date[] = []
@@ -98,12 +106,13 @@ export function computeProfileActivity(
     calendarDates.push(date)
     calendarCounts.push(activityCounts.get(dateKey(date)) ?? 0)
   }
-  const maxCalendarCount = Math.max(0, ...calendarCounts)
+  const thresholds = activityThresholds(calendarCounts)
   const calendar = calendarDates.map((date, index) => ({
     date,
     key: dateKey(date),
     count: calendarCounts[index],
-    level: activityLevel(calendarCounts[index], maxCalendarCount),
+    level: activityLevel(calendarCounts[index], thresholds),
+    isFuture: date > today,
   }))
 
   return {

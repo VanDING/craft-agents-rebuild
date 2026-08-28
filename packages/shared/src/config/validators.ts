@@ -120,6 +120,10 @@ const LocationSchema = z.object({
 
 export const UserPreferencesSchema = z.object({
   name: z.string().optional(),
+  avatar: z.object({
+    kind: z.literal('image'),
+    dataUrl: z.string().startsWith('data:image/png;base64,').max(1_500_000),
+  }).optional(),
   timezone: z.string().optional(),  // TODO: Could validate against IANA timezone list
   location: LocationSchema.optional(),
   notes: z.string().optional(),

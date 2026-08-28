@@ -327,6 +327,15 @@ export class PiEventAdapter extends BaseEventAdapter {
           this.pendingLengthError = null;
         }
 
+        // Make the current provider response authoritative before constructing
+        // `text_complete`. Previously that event captured `lastFullUsage` from
+        // the preceding response, so per-message/durable cost lagged by one
+        // model call and a single-call session commonly persisted $0.
+        if (msg.usage && typeof msg.usage.input === 'number') {
+          this.lastUsage = msg.usage;
+          this.lastFullUsage = msg.usage as PiUsage;
+        }
+
         // Extract text content from the final assistant message
         const textContent = this.extractTextFromMessage(event.message);
         // Pi SDK stopReason: 'toolUse' means the model will call tools next (intermediate commentary),
@@ -383,8 +392,6 @@ export class PiEventAdapter extends BaseEventAdapter {
 
         // Emit usage_update if the assistant message includes token usage
         if (msg.usage && typeof msg.usage.input === 'number') {
-          this.lastUsage = msg.usage;
-          this.lastFullUsage = msg.usage as PiUsage;
           const inputTokens = msg.usage.input + (msg.usage.cacheRead || 0);
           yield {
             type: 'usage_update',

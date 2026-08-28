@@ -29,8 +29,10 @@ describe('computeProfileActivity', () => {
 
     expect(result.activeDays).toBe(1)
     expect(result.calendar[0].date.getDay()).toBe(0)
-    expect(result.calendar.at(-1)?.key).toBe('2026-08-25')
-    expect(result.calendar.at(-1)?.count).toBe(1)
+    expect(result.calendar).toHaveLength(371)
+    expect(result.calendar.find(day => day.key === '2026-08-25')?.count).toBe(1)
+    expect(result.calendar.at(-1)?.date.getDay()).toBe(6)
+    expect(result.calendar.at(-1)?.isFuture).toBe(true)
   })
 
   it('returns zero-value insights for an empty profile', () => {

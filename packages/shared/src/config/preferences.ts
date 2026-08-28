@@ -25,6 +25,8 @@ export interface DiffViewerPreferences {
 
 export interface UserPreferences {
   name?: string;
+  /** Local UI-only profile image. Never included in the agent prompt. */
+  avatar?: { kind: 'image'; dataUrl: string };
   timezone?: string;
   location?: UserLocation;
   // Free-form notes the agent learns about the user

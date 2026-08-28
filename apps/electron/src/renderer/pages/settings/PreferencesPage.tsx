@@ -9,8 +9,11 @@
 import * as React from 'react'
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { LockKeyhole } from 'lucide-react'
+import { Camera, LockKeyhole, X } from 'lucide-react'
 import { Spinner } from '@craft-agent/ui'
+import { useAtomValue } from 'jotai'
+import { CrossfadeAvatar } from '@/components/ui/avatar'
+import { sessionMetaMapAtom } from '@/atoms/sessions'
 import { PanelHeader } from '@/components/app-shell/PanelHeader'
 import { HeaderMenu } from '@/components/ui/HeaderMenu'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -25,7 +28,6 @@ import {
 } from '@/components/settings'
 import { EditPopover, EditButton, getEditConfig } from '@/components/ui/EditPopover'
 import type { DetailsPageMeta } from '@/lib/navigation-registry'
-import type { Session } from '../../../shared/types'
 import { computeProfileActivity } from './profile-activity'
 
 export const meta: DetailsPageMeta = {
@@ -35,6 +37,7 @@ export const meta: DetailsPageMeta = {
 
 interface PreferencesFormState {
   name: string
+  avatarDataUrl: string
   timezone: string
   city: string
   country: string
@@ -43,6 +46,7 @@ interface PreferencesFormState {
 
 const emptyFormState: PreferencesFormState = {
   name: '',
+  avatarDataUrl: '',
   timezone: '',
   city: '',
   country: '',
@@ -73,6 +77,11 @@ function parsePreferences(json: string): {
     return {
       form: {
         name: typeof prefs.name === 'string' ? prefs.name : '',
+        avatarDataUrl: prefs.avatar && typeof prefs.avatar === 'object' && !Array.isArray(prefs.avatar)
+          && (prefs.avatar as Record<string, unknown>).kind === 'image'
+          && typeof (prefs.avatar as Record<string, unknown>).dataUrl === 'string'
+          ? (prefs.avatar as Record<string, unknown>).dataUrl as string
+          : '',
         timezone: typeof prefs.timezone === 'string' ? prefs.timezone : '',
         city: typeof location.city === 'string' ? location.city : '',
         country: typeof location.country === 'string' ? location.country : '',
@@ -96,6 +105,8 @@ function buildPreferencesDocument(
 
   if (state.name) prefs.name = state.name
   else delete prefs.name
+  if (state.avatarDataUrl) prefs.avatar = { kind: 'image', dataUrl: state.avatarDataUrl }
+  else delete prefs.avatar
   if (state.timezone) prefs.timezone = state.timezone
   else delete prefs.timezone
   if (state.notes) prefs.notes = state.notes
@@ -136,7 +147,7 @@ export default function PreferencesPage() {
   const { t, i18n } = useTranslation()
   const locale = i18n.resolvedLanguage ?? i18n.language
   const [formState, setFormState] = useState<PreferencesFormState>(emptyFormState)
-  const [sessions, setSessions] = useState<Session[]>([])
+  const sessionMetaMap = useAtomValue(sessionMetaMapAtom)
   const [isLoading, setIsLoading] = useState(true)
   const [preferencesPath, setPreferencesPath] = useState<string | null>(null)
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -151,10 +162,9 @@ export default function PreferencesPage() {
 
   useEffect(() => {
     const load = async () => {
-      const [preferencesResult, sessionsResult] = await Promise.allSettled([
-        window.electronAPI.readPreferences(),
-        window.electronAPI.getSessions(),
-      ])
+      const preferencesResult = await Promise.resolve(window.electronAPI.readPreferences())
+        .then(value => ({ status: 'fulfilled' as const, value }))
+        .catch(reason => ({ status: 'rejected' as const, reason }))
 
       if (preferencesResult.status === 'fulfilled') {
         const parsed = parsePreferences(preferencesResult.value.content)
@@ -164,12 +174,6 @@ export default function PreferencesPage() {
         lastSavedRef.current = stablePreferencesJson(parsed.form, parsed.document)
       } else {
         console.error('Failed to load stored user preferences:', preferencesResult.reason)
-      }
-
-      if (sessionsResult.status === 'fulfilled') {
-        setSessions(sessionsResult.value)
-      } else {
-        console.error('Failed to load profile activity:', sessionsResult.reason)
       }
 
       setIsLoading(false)
@@ -229,7 +233,28 @@ export default function PreferencesPage() {
     setFormState(previous => ({ ...previous, [field]: value }))
   }, [])
 
+  const chooseAvatar = useCallback(async () => {
+    try {
+      const [path] = await window.electronAPI.openFileDialog()
+      if (!path) return
+      const dataUrl = await window.electronAPI.readFilePreviewDataUrl(path, 512)
+      if (!dataUrl.startsWith('data:image/png;base64,')) throw new Error('Unsupported image')
+      updateField('avatarDataUrl', dataUrl)
+    } catch (error) {
+      console.error('Failed to select profile image:', error)
+    }
+  }, [updateField])
+
+  const sessions = useMemo(() => [...sessionMetaMap.values()], [sessionMetaMap])
   const profile = useMemo(() => computeProfileActivity(sessions), [sessions])
+  const calendarWeeks = useMemo(
+    () => Array.from({ length: 53 }, (_, index) => profile.calendar.slice(index * 7, index * 7 + 7)),
+    [profile.calendar],
+  )
+  const weekdayLabels = useMemo(() => [1, 3, 5].map(day => ({
+    day,
+    label: new Intl.DateTimeFormat(locale, { weekday: 'narrow' }).format(new Date(2026, 7, 23 + day)),
+  })), [locale])
   const displayName = formState.name.trim() || t('settings.preferences.defaultName')
   const locationParts = [formState.city, formState.country].filter(Boolean)
   const profileMeta = [locationParts.join(', '), formState.timezone].filter(Boolean).join(' · ')
@@ -264,8 +289,33 @@ export default function PreferencesPage() {
           <div className="px-5 py-8 max-w-3xl mx-auto">
             <div className="space-y-8">
               <section className="flex flex-col items-center text-center pt-2 pb-1">
-                <div className="w-20 h-20 rounded-full bg-accent text-background flex items-center justify-center text-2xl font-medium shadow-minimal select-none">
-                  {getInitials(displayName)}
+                <div className="group relative h-20 w-20">
+                  <CrossfadeAvatar
+                    src={formState.avatarDataUrl || undefined}
+                    alt={displayName}
+                    fallback={getInitials(displayName)}
+                    className="h-20 w-20 rounded-full bg-accent text-2xl font-medium text-background shadow-minimal select-none"
+                    fallbackClassName="bg-accent text-background"
+                    imageClassName="object-cover"
+                  />
+                  <button
+                    type="button"
+                    onClick={chooseAvatar}
+                    title={t('common.change')}
+                    className="absolute inset-0 flex items-center justify-center rounded-full bg-black/45 text-white opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+                  >
+                    <Camera className="h-5 w-5" />
+                  </button>
+                  {formState.avatarDataUrl && (
+                    <button
+                      type="button"
+                      onClick={() => updateField('avatarDataUrl', '')}
+                      title={t('common.remove')}
+                      className="absolute -right-1 -top-1 flex h-6 w-6 items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-minimal hover:text-foreground"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
                 </div>
                 <h2 className="mt-4 text-2xl font-semibold tracking-tight">{displayName}</h2>
                 {profileMeta && <p className="mt-1 text-sm text-muted-foreground">{profileMeta}</p>}
@@ -308,18 +358,42 @@ export default function PreferencesPage() {
                         <span>{t('settings.preferences.more')}</span>
                       </div>
                     </div>
-                    <div className="overflow-x-auto pb-1" role="img" aria-label={t('settings.preferences.activityAriaLabel')}>
-                      <div className="grid grid-flow-col grid-rows-7 auto-cols-[10px] gap-1 w-max min-w-full justify-between">
-                        {profile.calendar.map(day => (
-                          <span
-                            key={day.key}
-                            className={`w-2.5 h-2.5 rounded-[3px] ${ACTIVITY_LEVEL_CLASSES[day.level]}`}
-                            title={t('settings.preferences.activityDay', {
-                              date: new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(day.date),
-                              count: day.count,
-                            })}
-                          />
-                        ))}
+                    <div className="overflow-x-auto pb-1" role="group" aria-label={t('settings.preferences.activityAriaLabel')}>
+                      <div className="w-max">
+                        <div className="mb-1 ml-7 flex gap-1 text-[9px] text-muted-foreground/70" aria-hidden="true">
+                          {calendarWeeks.map((week, index) => {
+                            const month = week.find(day => day.date.getDate() <= 7)?.date
+                            return (
+                              <span key={week[0]?.key ?? index} className="w-2.5 shrink-0 overflow-visible whitespace-nowrap">
+                                {month ? new Intl.DateTimeFormat(locale, { month: 'short' }).format(month) : ''}
+                              </span>
+                            )
+                          })}
+                        </div>
+                        <div className="flex gap-2">
+                          <div className="relative w-5 shrink-0 text-[9px] text-muted-foreground/70" aria-hidden="true">
+                            {weekdayLabels.map(({ day, label }) => (
+                              <span key={day} className="absolute right-0" style={{ top: day * 14 - 1 }}>{label}</span>
+                            ))}
+                          </div>
+                          <div className="grid grid-flow-col grid-rows-7 auto-cols-[10px] gap-1">
+                            {profile.calendar.map(day => (
+                              <span
+                                key={day.key}
+                                role={day.isFuture ? undefined : 'img'}
+                                aria-label={day.isFuture ? undefined : t('settings.preferences.activityDay', {
+                                  date: new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(day.date),
+                                  count: day.count,
+                                })}
+                                className={`h-2.5 w-2.5 rounded-[3px] ${day.isFuture ? 'bg-transparent' : ACTIVITY_LEVEL_CLASSES[day.level]} ${day.key === new Date().toLocaleDateString('en-CA') ? 'ring-1 ring-accent ring-offset-1 ring-offset-background' : ''}`}
+                                title={day.isFuture ? undefined : t('settings.preferences.activityDay', {
+                                  date: new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(day.date),
+                                  count: day.count,
+                                })}
+                              />
+                            ))}
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </SettingsCardContent>

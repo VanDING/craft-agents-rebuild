@@ -419,6 +419,31 @@ describe('PiEventAdapter', () => {
       });
     });
 
+    it('attaches the current response usage and cost to text_complete', () => {
+      const usage = {
+        input: 1_200,
+        output: 80,
+        cacheRead: 300,
+        cacheWrite: 20,
+        totalTokens: 1_600,
+        cost: { input: 0.01, output: 0.02, cacheRead: 0.001, cacheWrite: 0.001, total: 0.032 },
+      };
+      const events = collect(adapter.adaptEvent({
+        type: 'message_end',
+        message: {
+          role: 'assistant',
+          stopReason: 'stop',
+          content: 'Priced response',
+          usage,
+        },
+      } as any));
+
+      expect(events[0]).toMatchObject({
+        type: 'text_complete',
+        usage: { cost: { total: 0.032 } },
+      });
+    });
+
     it('should allow multiple intermediate messages in a turn', () => {
       collect(adapter.adaptEvent({ type: 'turn_start' } as any));
 

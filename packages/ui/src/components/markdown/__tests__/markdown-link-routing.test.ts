@@ -62,6 +62,31 @@ describe('resolveMarkdownLinkTarget', () => {
     })
   })
 
+  it('resolves Windows drive paths with backslashes', () => {
+    expect(resolveMarkdownLinkTarget('E:\\craft-agents\\apps\\main.tsx')).toEqual({
+      kind: 'file',
+      path: 'E:\\craft-agents\\apps\\main.tsx',
+    })
+  })
+
+  it('strips line and column suffixes from clickable source paths', () => {
+    expect(resolveMarkdownLinkTarget('E:/craft-agents/apps/main.tsx:120:7')).toEqual({
+      kind: 'file',
+      path: 'E:/craft-agents/apps/main.tsx',
+    })
+    expect(resolveMarkdownLinkTarget('/repo/src/main.ts#L42C3')).toEqual({
+      kind: 'file',
+      path: '/repo/src/main.ts',
+    })
+  })
+
+  it('resolves UNC and literal-space paths', () => {
+    expect(resolveMarkdownLinkTarget('\\\\server\\share\\My Report.pdf:8')).toEqual({
+      kind: 'file',
+      path: '\\\\server\\share\\My Report.pdf',
+    })
+  })
+
   it('resolves https links as url targets', () => {
     expect(resolveMarkdownLinkTarget('https://example.com/image.jpg')).toEqual({
       kind: 'url',
