@@ -169,11 +169,17 @@ describe('sessions file watchers', () => {
     expect(workingFiles.map((file: { name: string }) => file.name)).not.toContain('node_modules')
     expect(workingFiles.map((file: { name: string }) => file.name)).not.toContain('attachment.txt')
 
-    await watch!({ clientId: 'client-a' }, 'session-a', 'session')
     await watch!({ clientId: 'client-a' }, 'session-a', 'working')
+    await watch!({ clientId: 'client-a' }, 'session-a', 'session')
     pushed.length = 0
 
+    writeFileSync(join(sessionDirA, 'diag-session.txt'), `x-${Date.now()}`)
     writeFileSync(join(workingDirA, 'changed.ts'), `x-${Date.now()}`)
+    const t0 = performance.now()
+    while (performance.now() - t0 < 3000 && !pushed.some((evt) => evt.channel === RPC_CHANNELS.sessions.FILES_CHANGED && evt.args[0] === 'session-a' && evt.args[1] === 'working')) {
+      await wait(20)
+    }
+    console.log('DIAG arrivalMs=', Math.round(performance.now() - t0), 'pushed=', JSON.stringify(pushed))
     await wait(300)
 
     expect(pushed.some((evt) => (

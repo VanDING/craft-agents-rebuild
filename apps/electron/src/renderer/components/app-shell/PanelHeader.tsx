@@ -66,6 +66,8 @@ export interface PanelHeaderProps {
   title?: string
   /** Optional badge element (e.g., agent badge) */
   badge?: React.ReactNode
+  /** Optional secondary line rendered below the title (e.g., a bound session). */
+  subtitle?: React.ReactNode
   /** Optional dropdown menu content for interactive title (renders chevron when provided) */
   titleMenu?: React.ReactNode
   /**
@@ -104,6 +106,7 @@ export interface PanelHeaderProps {
 export function PanelHeader({
   title,
   badge,
+  subtitle,
   titleMenu,
   compactTitleMenu,
   leadingAction: explicitLeadingAction,
@@ -156,13 +159,23 @@ export function PanelHeader({
       initial={false}
       animate={{ opacity: title ? 1 : 0 }}
       transition={motionTween(reduceMotion, 'standard', 'enter')}
-      className="flex items-center gap-1"
+      className={cn(
+        'flex min-w-0 items-center gap-1',
+        subtitle && 'flex-col justify-center gap-0.5',
+      )}
     >
-      <h1 className={cn(
-        "text-sm font-semibold truncate font-sans leading-tight",
-        isRegeneratingTitle && "animate-shimmer-text"
-      )}>{title}</h1>
-      {badge}
+      <div className="flex min-w-0 max-w-full items-center justify-center gap-1">
+        <h1 className={cn(
+          "truncate font-sans text-sm font-semibold leading-tight",
+          isRegeneratingTitle && "animate-shimmer-text"
+        )}>{title}</h1>
+        {badge}
+      </div>
+      {subtitle && (
+        <div className="flex min-w-0 max-w-full items-center justify-center text-[11px] leading-tight text-muted-foreground">
+          {subtitle}
+        </div>
+      )}
     </motion.div>
   )
 
@@ -299,7 +312,8 @@ export function PanelHeader({
   const basePadding = leadingAction ? 8 : 16
 
   const baseClassName = cn(
-    'flex shrink-0 items-center pr-2 min-w-0 gap-1.5 relative z-panel h-[42px]',
+    'flex shrink-0 items-center pr-2 min-w-0 gap-1.5 relative z-panel',
+    subtitle ? 'h-[58px]' : 'h-[42px]',
     // Only use static paddingLeft class when not animating
     !shouldCompensate && (paddingLeft || (leadingAction ? 'pl-2' : 'pl-4')),
     className

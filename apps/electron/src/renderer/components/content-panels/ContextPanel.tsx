@@ -122,9 +122,10 @@ export function ContextPanel() {
     <div className="flex h-full min-h-0 flex-col">
       <PanelHeader
         title={t('contentPanel.title.context')}
-        badge={activeSessionId ? (
+        subtitle={activeSessionId ? (
           <BoundSessionBadge name={meta?.name} sessionId={activeSessionId} />
         ) : undefined}
+        centerTitleInPanel
       />
 
       {!activeSessionId || !meta ? (

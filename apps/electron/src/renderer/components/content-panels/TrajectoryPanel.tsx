@@ -63,7 +63,7 @@ export function TrajectoryPanel() {
   if (!activeSessionId) {
     return (
       <div className="flex h-full flex-col">
-        <PanelHeader title={t('contentPanel.title.trajectory')} />
+        <PanelHeader title={t('contentPanel.title.trajectory')} centerTitleInPanel />
         <PanelEmptyState
           icon={<Activity className="h-8 w-8" />}
           title={t('contentPanel.trajectory.noSession')}
@@ -76,7 +76,7 @@ export function TrajectoryPanel() {
   if (messagesLoading) {
     return (
       <div className="flex h-full flex-col">
-        <PanelHeader title={t('contentPanel.title.trajectory')} actions={<BoundSessionBadge sessionId={activeSessionId} />} />
+        <PanelHeader title={t('contentPanel.title.trajectory')} subtitle={<BoundSessionBadge sessionId={activeSessionId} />} centerTitleInPanel />
         <div className="flex flex-1 items-center justify-center">
           <Spinner />
         </div>
@@ -87,7 +87,7 @@ export function TrajectoryPanel() {
   if (loadError) {
     return (
       <div className="flex h-full flex-col">
-        <PanelHeader title={t('contentPanel.title.trajectory')} actions={<BoundSessionBadge sessionId={activeSessionId} />} />
+        <PanelHeader title={t('contentPanel.title.trajectory')} subtitle={<BoundSessionBadge sessionId={activeSessionId} />} centerTitleInPanel />
         <PanelEmptyState
           icon={<Activity className="h-8 w-8" />}
           title={t('errors.failedToLoadSession')}
@@ -100,7 +100,7 @@ export function TrajectoryPanel() {
   if (!snapshot || snapshot.contributions.length === 0) {
     return (
       <div className="flex h-full flex-col">
-        <PanelHeader title={t('contentPanel.title.trajectory')} actions={<BoundSessionBadge sessionId={activeSessionId} />} />
+        <PanelHeader title={t('contentPanel.title.trajectory')} subtitle={<BoundSessionBadge sessionId={activeSessionId} />} centerTitleInPanel />
         <PanelEmptyState
           icon={<Activity className="h-8 w-8" />}
           title={t('contentPanel.trajectory.noRecords')}
@@ -112,7 +112,7 @@ export function TrajectoryPanel() {
 
   return (
     <div className="flex h-full flex-col">
-      <PanelHeader title={t('contentPanel.title.trajectory')} actions={<BoundSessionBadge sessionId={activeSessionId} />} />
+      <PanelHeader title={t('contentPanel.title.trajectory')} subtitle={<BoundSessionBadge sessionId={activeSessionId} />} centerTitleInPanel />
       <div className="min-h-0 flex-1 bg-foreground/[0.012] p-2.5">
         <div className="h-full min-h-0 overflow-hidden rounded-xl border border-border/60 bg-background/60 shadow-minimal">
           <TrajectoryView

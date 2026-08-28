@@ -28,4 +28,20 @@ describe('custom endpoint provider icons', () => {
       'private-model',
     )).toBeNull()
   })
+
+  it('uses the bundled xAI icon for xAI endpoints and Grok models', () => {
+    expect(getProviderIcon(
+      'pi_compat',
+      'https://api.x.ai/v1',
+      'openai',
+      'grok-4',
+    )).toBe(providerIcons.xai)
+
+    expect(getProviderIcon(
+      'pi_compat',
+      'https://llm.example.com/v1',
+      'openai',
+      'grok-4',
+    )).toBe(providerIcons.xai)
+  })
 })

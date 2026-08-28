@@ -134,7 +134,7 @@ export function ReviewPanel() {
       ?? (session ? getSessionTitle(session) : undefined)
     : undefined
 
-  const headerBadge = activeSessionId ? (
+  const headerSubtitle = activeSessionId ? (
     <BoundSessionBadge name={sessionName} sessionId={activeSessionId} />
   ) : undefined
   // In-panel diff style toggle (mirrors the global preference) + collapse all.
@@ -181,7 +181,7 @@ export function ReviewPanel() {
   if (!activeSessionId) {
     return (
       <>
-        <PanelHeader title={t('contentPanel.title.review')} />
+        <PanelHeader title={t('contentPanel.title.review')} centerTitleInPanel />
         <PanelEmptyState
           title={t('contentPanel.noActiveSession')}
           icon={<GitCompareArrows className="h-6 w-6" />}
@@ -192,7 +192,12 @@ export function ReviewPanel() {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <PanelHeader title={t('contentPanel.title.review')} badge={headerBadge} actions={headerActions} />
+      <PanelHeader
+        title={t('contentPanel.title.review')}
+        subtitle={headerSubtitle}
+        actions={headerActions}
+        centerTitleInPanel
+      />
 
       {messagesLoading ? (
         <div className="flex flex-1 items-center justify-center">

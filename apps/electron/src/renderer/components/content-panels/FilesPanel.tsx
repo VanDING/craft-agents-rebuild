@@ -33,7 +33,7 @@ export function FilesPanel() {
   if (!activeSessionId) {
     return (
       <>
-        <PanelHeader title={t('contentPanel.title.files')} />
+        <PanelHeader title={t('contentPanel.title.files')} centerTitleInPanel />
         <PanelEmptyState
           title={t('contentPanel.noActiveSession')}
           icon={<FolderTree className="h-6 w-6" />}
@@ -47,7 +47,8 @@ export function FilesPanel() {
       <>
         <PanelHeader
           title={t('contentPanel.title.files')}
-          badge={<BoundSessionBadge name={sessionName} sessionId={activeSessionId} />}
+          subtitle={<BoundSessionBadge name={sessionName} sessionId={activeSessionId} />}
+          centerTitleInPanel
         />
         <PanelEmptyState
           title={t('workspace.noFolderSelected')}
@@ -62,7 +63,8 @@ export function FilesPanel() {
     <div className="flex h-full min-h-0 flex-col">
       <PanelHeader
         title={t('contentPanel.title.files')}
-        badge={<BoundSessionBadge name={sessionName} sessionId={activeSessionId} />}
+        subtitle={<BoundSessionBadge name={sessionName} sessionId={activeSessionId} />}
+        centerTitleInPanel
       />
 
       <div className="shrink-0 border-b border-border/50 bg-background/60 px-2.5 pb-2.5 pt-1.5">

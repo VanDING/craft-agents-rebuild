@@ -53,7 +53,7 @@ export function PreviewPanel() {
   if (!activeSessionId) {
     return (
       <>
-        <PanelHeader title={t('contentPanel.title.preview')} />
+        <PanelHeader title={t('contentPanel.title.preview')} centerTitleInPanel />
         <PanelEmptyState
           title={t('contentPanel.noActiveSession')}
           icon={<Eye className="h-6 w-6" />}
@@ -68,7 +68,8 @@ export function PreviewPanel() {
     <div className="flex h-full min-h-0 flex-col">
       <PanelHeader
         title={t('contentPanel.title.preview')}
-        badge={<BoundSessionBadge name={meta?.name} sessionId={activeSessionId} />}
+        subtitle={<BoundSessionBadge name={meta?.name} sessionId={activeSessionId} />}
+        centerTitleInPanel
       />
 
       {entries.length === 0 ? (

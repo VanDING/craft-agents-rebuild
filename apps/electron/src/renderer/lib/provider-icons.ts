@@ -19,6 +19,7 @@ import openaiIcon from '@/assets/provider-icons/openai.svg'
 import openrouterIcon from '@/assets/provider-icons/openrouter.svg'
 import piIcon from '@/assets/provider-icons/pi.svg'
 import vercelIcon from '@/assets/provider-icons/vercel.svg'
+import xaiIcon from '@/assets/provider-icons/xai.svg'
 
 import type { LlmProviderType } from '@craft-agent/shared/config/llm-connections'
 
@@ -40,6 +41,7 @@ export const providerIcons = {
   openrouter: openrouterIcon,
   pi: piIcon,
   vercel: vercelIcon,
+  xai: xaiIcon,
   deepseek: 'https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&size=128&url=https://deepseek.com',
 } as const
 
@@ -59,6 +61,7 @@ const providerDisplayNames: Record<string, string> = {
   pi: 'Craft Agents Backend',
   pi_compat: 'Craft Agents Backend',
   vercel: 'Vercel',
+  xai: 'xAI',
 }
 
 /** Get a human-readable provider name from provider type and optional base URL */
@@ -74,6 +77,7 @@ export function getProviderDisplayName(providerType: string, baseUrl?: string | 
     if (url.includes('v0.dev') || url.includes('vercel')) return 'Vercel'
     if (url.includes('manifest.build')) return 'Manifest'
     if (url.includes('deepseek.com')) return 'DeepSeek'
+    if (url.includes('x.ai')) return 'xAI'
   }
   return providerDisplayNames[providerType] || providerType
 }
@@ -89,6 +93,7 @@ function detectProviderFromUrl(baseUrl: string): ProviderIconKey | null {
   if (url.includes('api.anthropic.com')) return 'anthropic'
   if (url.includes('api.openai.com')) return 'openai'
   if (url.includes('deepseek.com')) return 'deepseek'
+  if (url.includes('x.ai')) return 'xai'
   if (url.includes('v0.dev') || url.includes('vercel')) return 'vercel'
   if (url.includes('generativelanguage.googleapis.com') || url.includes('ai.google')) return 'google'
   if (url.includes('kimi.com')) return 'kimi'
@@ -106,6 +111,7 @@ function detectProviderFromModel(modelId?: string | null): ProviderIconKey | nul
   if (!modelId) return null
   const model = modelId.toLowerCase()
   if (model.includes('deepseek')) return 'deepseek'
+  if (model.includes('grok')) return 'xai'
   if (model.includes('claude')) return 'anthropic'
   if (model.includes('gemini')) return 'google'
   if (model.includes('gpt-') || model.includes('o1') || model.includes('o3') || model.includes('o4')) return 'openai'
@@ -151,6 +157,8 @@ function piAuthProviderToIcon(piAuthProvider: string): ProviderIconKey | null {
       return 'huggingface'
     case 'vercel-ai-gateway':
       return 'vercel'
+    case 'xai':
+      return 'xai'
     default:
       return null
   }
@@ -162,7 +170,6 @@ function piAuthProviderToIcon(piAuthProvider: string): ProviderIconKey | null {
  */
 const PI_AUTH_PROVIDER_DOMAINS: Record<string, string> = {
   groq: 'groq.com',
-  xai: 'x.ai',
   cerebras: 'cerebras.ai',
   deepseek: 'deepseek.com',
   zai: 'z.ai',
