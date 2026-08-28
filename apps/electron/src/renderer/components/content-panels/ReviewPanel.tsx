@@ -13,6 +13,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from 'motion/react'
 import { useTranslation } from 'react-i18next'
 import { useAtomValue, useSetAtom } from 'jotai'
 import { ChevronRight, ChevronDown, FilePlus, PencilLine, GitCompareArrows, ChevronsUp } from 'lucide-react'
@@ -32,6 +33,7 @@ import { useDiffViewerSettings } from '@/lib/use-diff-viewer-settings'
 import { reviewPanelSelectedKeyAtom, reviewPanelFocusRequestAtom } from '@/atoms/content-panel-ui'
 import { getSessionTitle } from '@/utils/session'
 import { BoundSessionBadge } from './BoundSessionBadge'
+import { motionSpring, motionTween } from '@craft-agent/ui/motion'
 
 const KIND_DOTS: Record<DiffKind, string> = {
   add: 'bg-emerald-500',
@@ -79,6 +81,7 @@ export function ReviewPanel() {
   const { onOpenFileExternal } = usePlatform()
   const { isDark } = useTheme()
   const [viewerSettings, setViewerSettings] = useDiffViewerSettings()
+  const reduceMotion = useReducedMotion()
 
   const selectedKey = useAtomValue(reviewPanelSelectedKeyAtom)
   const setSelectedKey = useSetAtom(reviewPanelSelectedKeyAtom)
@@ -143,32 +146,37 @@ export function ReviewPanel() {
         aria-pressed={viewerSettings.diffStyle === style}
         onClick={() => setViewerSettings({ diffStyle: style, disableBackground: viewerSettings.disableBackground })}
         className={cn(
-          'rounded px-1.5 py-0.5 text-[11px] font-medium transition-colors',
+          'relative isolate rounded-md px-1.5 py-0.5 text-[11px] font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring',
           viewerSettings.diffStyle === style
-            ? 'bg-foreground/10 text-foreground'
+            ? 'text-foreground'
             : 'text-muted-foreground hover:text-foreground',
         )}
       >
-        {t(`contentPanel.diff.style${style === 'unified' ? 'Unified' : 'Split'}`)}
+        {viewerSettings.diffStyle === style && (
+          <motion.span
+            layoutId="review-diff-style"
+            className="absolute inset-0 -z-10 rounded-md border border-border/55 bg-background shadow-minimal"
+            transition={motionSpring(reduceMotion, 'responsive')}
+          />
+        )}
+        <span className="relative">{t(`contentPanel.diff.style${style === 'unified' ? 'Unified' : 'Split'}`)}</span>
       </button>
     ))
     return (
       <div className="flex items-center gap-1.5">
-        <div className="flex items-center rounded-md border border-border/60 p-0.5">
-          {styleButtons}
-        </div>
+        <LayoutGroup id="review-diff-style"><div className="flex items-center rounded-lg border border-border/60 bg-foreground/[0.025] p-0.5">{styleButtons}</div></LayoutGroup>
         <button
           type="button"
           aria-label={t('contentPanel.diff.collapseAll')}
           title={t('contentPanel.diff.collapseAll')}
           onClick={() => setSelectedKey(null)}
-          className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-foreground/[0.05] hover:text-foreground"
+          className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-foreground/[0.05] hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
         >
           <ChevronsUp className="h-3.5 w-3.5" />
         </button>
       </div>
     )
-  }, [viewerSettings, setViewerSettings, setSelectedKey, t])
+  }, [viewerSettings, setViewerSettings, setSelectedKey, t, reduceMotion])
 
   if (!activeSessionId) {
     return (
@@ -197,20 +205,20 @@ export function ReviewPanel() {
           icon={<GitCompareArrows className="h-6 w-6" />}
         />
       ) : (
-        <nav className="flex-1 min-h-0 overflow-y-auto px-2 py-2" aria-label={t('contentPanel.title.review')}>
-          <ul className="flex flex-col gap-1">
+        <nav className="min-h-0 flex-1 overflow-y-auto bg-foreground/[0.012] p-2.5" aria-label={t('contentPanel.title.review')}>
+          <ul className="flex flex-col gap-2">
             {sections.map((section) => {
               const key = section.key
               const isOpen = selectedKey === key
               const kind = diffKindForSection(section)
               return (
-                <li key={key} className="break-inside-avoid">
+                <li key={key} className={cn('break-inside-avoid overflow-hidden rounded-xl border border-border/60 bg-background/60 shadow-minimal', isOpen && 'border-border/80 bg-background/80')}>
                   <button
                     type="button"
                     onClick={() => setSelectedKey(isOpen ? null : key)}
                     className={cn(
-                      'flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[13px] transition-colors hover:bg-foreground/[0.03]',
-                      isOpen && 'bg-foreground/[0.03]',
+                      'flex w-full items-center gap-2 px-3 py-2.5 text-left text-[13px] outline-none transition-colors hover:bg-foreground/[0.03] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
+                      isOpen && 'bg-foreground/[0.025]',
                     )}
                   >
                     {isOpen ? (
@@ -230,13 +238,21 @@ export function ReviewPanel() {
                     <SectionStats changes={section.changes} />
                   </button>
 
+                  <AnimatePresence initial={false}>
                   {isOpen && (
-                    <div className="mt-1 flex flex-col gap-3 rounded-xl overflow-hidden bg-background shadow-minimal pl-6">
+                    <motion.div
+                      initial={reduceMotion ? false : { height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={reduceMotion ? { opacity: 0 } : { height: 0, opacity: 0 }}
+                      transition={motionTween(reduceMotion, 'standard', 'move')}
+                      className="overflow-hidden border-t border-border/50"
+                    >
+                    <div className="flex flex-col gap-3 p-2">
                       {section.changes.map((change) => (
                         <div
                           key={change.id}
                           ref={(el) => setChangeRef(change.id, el)}
-                          className="overflow-hidden rounded-xl border border-border/60"
+                          className="overflow-hidden rounded-lg border border-border/60 bg-background"
                           style={{
                             // Skip layout/highlight work for off-screen diffs;
                             // 600px intrinsic estimate keeps scrollbar stable.
@@ -275,7 +291,9 @@ export function ReviewPanel() {
                         </div>
                       ))}
                     </div>
+                    </motion.div>
                   )}
+                  </AnimatePresence>
                 </li>
               )
             })}

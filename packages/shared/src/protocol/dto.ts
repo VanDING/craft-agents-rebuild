@@ -557,6 +557,9 @@ export interface SessionFile {
   children?: SessionFile[]
 }
 
+/** Files surfaced for a session: durable task assets or the active work folder. */
+export type SessionFileScope = 'session' | 'working'
+
 export interface FileSearchResult {
   name: string
   path: string

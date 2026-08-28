@@ -1,9 +1,11 @@
 import { useTranslation } from 'react-i18next'
 import { useSetAtom } from 'jotai'
 import type { KeyboardEvent } from 'react'
+import { LayoutGroup, motion, useReducedMotion } from 'motion/react'
 import { ChevronRight, PackageOpen, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@craft-agent/ui'
+import { motionSpring } from '@craft-agent/ui/motion'
 import {
   activateWorkbenchItemAtom,
   closeWorkbenchItemAtom,
@@ -29,6 +31,7 @@ export function ContextWorkbenchTabs({ state }: ContextWorkbenchTabsProps) {
   const activate = useSetAtom(activateWorkbenchItemAtom)
   const close = useSetAtom(closeWorkbenchItemAtom)
   const collapse = useSetAtom(collapseWorkbenchAtom)
+  const reduceMotion = useReducedMotion()
 
   const focusTab = (itemId: string) => {
     requestAnimationFrame(() => {
@@ -64,8 +67,9 @@ export function ContextWorkbenchTabs({ state }: ContextWorkbenchTabsProps) {
       data-workbench-tabs
       role="tablist"
       aria-label={t('contentPanel.workbench')}
-      className="flex h-9 shrink-0 items-center gap-0.5 border-b border-border/60 bg-background/65 px-1.5"
+      className="flex h-10 shrink-0 items-center gap-1 border-b border-border/50 bg-background/75 px-1.5 backdrop-blur-sm"
     >
+      <LayoutGroup id="context-workbench-tabs">
       <div className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {state.items.map((item, index) => {
           const Icon = item.kind === 'artifact' ? PackageOpen : SURFACE_LAUNCHER_ICONS[item.kind]
@@ -77,13 +81,20 @@ export function ContextWorkbenchTabs({ state }: ContextWorkbenchTabsProps) {
             <div
               key={item.id}
               className={cn(
-                'group flex h-7 max-w-40 shrink-0 items-center rounded-md text-xs transition-colors',
+                'group relative isolate flex h-7 max-w-40 shrink-0 items-center rounded-lg text-xs transition-colors',
                 active
-                  ? 'bg-secondary text-foreground'
-                  : 'text-muted-foreground hover:bg-secondary/60 hover:text-foreground',
+                  ? 'text-foreground'
+                  : 'text-muted-foreground hover:bg-secondary/45 hover:text-foreground',
               )}
               role="presentation"
             >
+              {active && (
+                <motion.div
+                  layoutId="workbench-active-tab"
+                  className="absolute inset-0 -z-10 rounded-lg border border-border/55 bg-background shadow-minimal"
+                  transition={motionSpring(reduceMotion, 'responsive')}
+                />
+              )}
               <button
                 id={`workbench-tab-${item.id}`}
                 type="button"
@@ -112,13 +123,14 @@ export function ContextWorkbenchTabs({ state }: ContextWorkbenchTabsProps) {
           )
         })}
       </div>
+      </LayoutGroup>
 
       <Tooltip>
         <TooltipTrigger asChild>
           <button
             type="button"
             onClick={() => collapse()}
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground outline-none transition-colors hover:bg-secondary hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
             aria-label={t('contentPanel.collapse')}
           >
             <ChevronRight className="h-4 w-4" />

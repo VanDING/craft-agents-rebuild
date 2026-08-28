@@ -1,9 +1,12 @@
+import type { SessionFileScope } from '../../../shared/types'
+
 export async function restoreSessionFileWatch(
   sessionId: string,
-  reloadFiles: () => Promise<void>
+  reloadFiles: () => Promise<void>,
+  scope: SessionFileScope = 'session',
 ): Promise<void> {
   try {
-    await window.electronAPI.watchSessionFiles(sessionId)
+    await window.electronAPI.watchSessionFiles(sessionId, scope)
   } catch (error) {
     console.error(`[SessionFiles] Failed to restore file watch for ${sessionId}:`, error)
   }

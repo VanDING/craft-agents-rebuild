@@ -13,8 +13,8 @@
 
 .plot {
   display: grid;
-  grid-template-columns: 72px minmax(0, 1fr);
-  height: 50px;
+  grid-template-columns: 80px minmax(0, 1fr);
+  height: 60px;
   overflow: hidden;
   background: var(--dsw-alias-bg-layer-2);
 }
@@ -30,7 +30,7 @@
 
 .labels span {
   position: absolute;
-  right: 4px;
+  right: 8px;
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -40,15 +40,15 @@
 }
 
 .labels span:nth-child(1) {
-  top: 6px;
+  top: 9px;
 }
 
 .labels span:nth-child(2) {
-  top: 20px;
+  top: 25px;
 }
 
 .labels span:nth-child(3) {
-  top: 34px;
+  top: 41px;
 }
 
 .track {
@@ -119,8 +119,8 @@
 .lanes {
   position: absolute;
   z-index: 2;
-  top: 6px;
-  bottom: 6px;
+  top: 9px;
+  bottom: 9px;
   left: var(--trajectory-domain-left);
   width: var(--trajectory-domain-width);
 }
@@ -165,9 +165,10 @@
   );
   height: 8px;
   min-width: 2px;
-  border-radius: 1px;
+  border-radius: 3px;
   background: var(--dsw-alias-label-secondary);
-  opacity: 0.78;
+  opacity: 0.82;
+  transition: opacity 120ms var(--ds-ease-in-out), box-shadow 120ms var(--ds-ease-in-out), transform 120ms var(--ds-ease-in-out);
 }
 
 .span[data-timeline-span='user'] {
@@ -237,6 +238,7 @@
       var(--dsw-alias-state-business-primary) 80%,
       transparent
     );
+  transform: scaleY(1.22);
 }
 
 .span[data-current='true'] {

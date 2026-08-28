@@ -20,6 +20,7 @@ describe('sessions file watchers', () => {
   let tempRoot = ''
   let sessionDirA = ''
   let sessionDirB = ''
+  let workingDirA = ''
 
   beforeEach(() => {
     handlers.clear()
@@ -28,8 +29,10 @@ describe('sessions file watchers', () => {
     tempRoot = mkdtempSync(join(tmpdir(), 'craft-session-watchers-'))
     sessionDirA = join(tempRoot, 'session-a')
     sessionDirB = join(tempRoot, 'session-b')
+    workingDirA = join(tempRoot, 'working-a')
     mkdirSync(sessionDirA, { recursive: true })
     mkdirSync(sessionDirB, { recursive: true })
+    mkdirSync(workingDirA, { recursive: true })
 
     const server: RpcServer = {
       handle(channel, handler) {
@@ -51,6 +54,10 @@ describe('sessions file watchers', () => {
           if (sessionId === 'session-a') return sessionDirA
           if (sessionId === 'session-b') return sessionDirB
           return null
+        },
+        getSessionWorkingDirectory: (sessionId: string) => {
+          if (sessionId === 'session-a') return workingDirA
+          return undefined
         },
       } as unknown as HandlerDeps['sessionManager'],
       platform: {
@@ -139,5 +146,41 @@ describe('sessions file watchers', () => {
     await wait(300)
 
     expect(pushed.length).toBe(0)
+  })
+
+  it('loads and watches the working directory independently from session assets', async () => {
+    const getFiles = handlers.get(RPC_CHANNELS.sessions.GET_FILES)
+    const watch = handlers.get(RPC_CHANNELS.sessions.WATCH_FILES)
+    expect(getFiles).toBeTruthy()
+    expect(watch).toBeTruthy()
+
+    writeFileSync(join(sessionDirA, 'attachment.txt'), 'session asset')
+    writeFileSync(join(workingDirA, 'project.ts'), 'export {}')
+    writeFileSync(join(workingDirA, '.gitignore'), 'node_modules')
+    mkdirSync(join(workingDirA, 'node_modules'), { recursive: true })
+    writeFileSync(join(workingDirA, 'node_modules', 'dependency.js'), 'ignored')
+
+    const sessionFiles = await getFiles!({ clientId: 'client-a' }, 'session-a', 'session')
+    const workingFiles = await getFiles!({ clientId: 'client-a' }, 'session-a', 'working')
+    expect(sessionFiles.map((file: { name: string }) => file.name)).toContain('attachment.txt')
+    expect(sessionFiles.map((file: { name: string }) => file.name)).not.toContain('project.ts')
+    expect(workingFiles.map((file: { name: string }) => file.name)).toContain('project.ts')
+    expect(workingFiles.map((file: { name: string }) => file.name)).toContain('.gitignore')
+    expect(workingFiles.map((file: { name: string }) => file.name)).not.toContain('node_modules')
+    expect(workingFiles.map((file: { name: string }) => file.name)).not.toContain('attachment.txt')
+
+    await watch!({ clientId: 'client-a' }, 'session-a', 'session')
+    await watch!({ clientId: 'client-a' }, 'session-a', 'working')
+    pushed.length = 0
+
+    writeFileSync(join(workingDirA, 'changed.ts'), `x-${Date.now()}`)
+    await wait(300)
+
+    expect(pushed.some((evt) => (
+      evt.channel === RPC_CHANNELS.sessions.FILES_CHANGED
+      && evt.args[0] === 'session-a'
+      && evt.args[1] === 'working'
+    ))).toBe(true)
+    expect(pushed.some((evt) => evt.args[1] === 'session')).toBe(false)
   })
 })

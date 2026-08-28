@@ -8,12 +8,14 @@
  * Assistant records additionally get Usage and TTFT timing.
  */
 
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { LayoutGroup, motion, useReducedMotion } from 'motion/react'
 import { X } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { Markdown } from '../markdown'
 import type { AssistantMetricDetail, TrajectoryCellProps, TrajectorySourceBlock } from './trajectory-layout'
 import { formatDurationMillis } from './trajectory-layout'
+import { motionSpring } from '../../lib/motion'
 
 export interface RecordInspectorProps {
   cell: TrajectoryCellProps
@@ -202,11 +204,16 @@ export function RecordInspector({ cell, previousPrompt, sessionTotal, onClose }:
   const [detailsWidth, setDetailsWidth] = useState<number | null>(null)
   const resizeDrag = useRef<{ pointerId: number; startX: number; startWidth: number } | null>(null)
   const tabs = useMemo(() => detailTabs(cell), [cell])
+  const reduceMotion = useReducedMotion()
   const markdownSource = cell.kind === 'message' ? cell.outputDetail ?? cell.thinkingDetail : undefined
+
+  useEffect(() => {
+    if (!tabs.some(({ id }) => id === tab)) setTab(tabs[0]?.id ?? 'overview')
+  }, [cell.index, tab, tabs])
 
   return (
     <aside
-      className="relative flex h-full shrink-0 flex-col border-l border-border/60"
+      className="relative flex h-full min-w-[300px] shrink-0 flex-col border-l border-border/60 bg-background/95 shadow-strong"
       aria-label="Event details"
       style={detailsWidth === null ? undefined : { width: detailsWidth }}
     >
@@ -246,7 +253,7 @@ export function RecordInspector({ cell, previousPrompt, sessionTotal, onClose }:
           event.preventDefault()
         }}
       />
-      <div className="flex items-center justify-between border-b border-border/60 px-3 py-2">
+      <div className="flex min-h-12 items-center justify-between border-b border-border/50 bg-foreground/[0.018] px-3 py-2">
         <div className="min-w-0">
           <div className="truncate text-[12px] font-semibold">#{cell.index} {cell.kind}</div>
           <div className="truncate text-[11px] text-muted-foreground/60">{cell.text}</div>
@@ -254,14 +261,15 @@ export function RecordInspector({ cell, previousPrompt, sessionTotal, onClose }:
         <button
           type="button"
           aria-label="Close details"
-          className="ml-2 shrink-0 rounded p-1 text-muted-foreground/60 hover:bg-accent/50"
+          className="ml-2 shrink-0 rounded-md p-1 text-muted-foreground/60 outline-none transition-colors hover:bg-accent/50 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
           onClick={onClose}
         >
           <X className="h-3.5 w-3.5" />
         </button>
       </div>
 
-      <div className="flex gap-1 overflow-x-auto border-b border-border/60 px-2 py-1" role="tablist" aria-label="Event details">
+      <LayoutGroup id="trajectory-inspector-tabs">
+      <div className="flex gap-1 overflow-x-auto border-b border-border/50 bg-background/80 px-2 py-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="tablist" aria-label="Event details">
         {tabs.map(({ id, label }) => (
           <button
             key={id}
@@ -269,15 +277,23 @@ export function RecordInspector({ cell, previousPrompt, sessionTotal, onClose }:
             role="tab"
             aria-selected={tab === id}
             className={cn(
-              'shrink-0 rounded px-2 py-0.5 text-[11px]',
-              tab === id ? 'bg-accent text-accent-foreground' : 'text-muted-foreground/70 hover:bg-accent/40',
+              'relative isolate shrink-0 rounded-md px-2 py-1 text-[11px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring',
+              tab === id ? 'text-foreground' : 'text-muted-foreground/70 hover:bg-accent/40',
             )}
             onClick={() => setTab(id)}
           >
-            {label}
+            {tab === id && (
+              <motion.span
+                layoutId="trajectory-inspector-active-tab"
+                className="absolute inset-0 -z-10 rounded-md border border-border/55 bg-background shadow-minimal"
+                transition={motionSpring(reduceMotion, 'responsive')}
+              />
+            )}
+            <span className="relative">{label}</span>
           </button>
         ))}
       </div>
+      </LayoutGroup>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         {tab === 'overview' && (

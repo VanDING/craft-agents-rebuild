@@ -101,25 +101,27 @@ function CrossfadeAvatar({
       // Image is already cached/loaded
       setIsLoaded(true)
     }
-  }, [src])
+  }, [])
 
   return (
     <div
       className={cn(
-        "relative flex shrink-0 overflow-hidden",
+        "relative flex shrink-0 overflow-hidden rounded-full",
         className
       )}
     >
-      {/* Fallback - always rendered, fades out when image loads */}
-      <div
-        className={cn(
-          "absolute inset-0 flex items-center justify-center transition-opacity duration-200",
-          isLoaded ? "opacity-0" : "opacity-100",
-          fallbackClassName
-        )}
-      >
-        {fallback}
-      </div>
+      {/* A single fallback layer avoids the no-image state rendering twice. */}
+      {src && (
+        <div
+          className={cn(
+            "absolute inset-0 flex items-center justify-center rounded-[inherit] transition-opacity duration-200",
+            isLoaded ? "opacity-0" : "opacity-100",
+            fallbackClassName
+          )}
+        >
+          {fallback}
+        </div>
+      )}
 
       {/* Image - fades in when loaded */}
       {src && (
@@ -127,7 +129,7 @@ function CrossfadeAvatar({
           // SVG as background image for better control
           <div
             className={cn(
-              "w-full h-full transition-opacity duration-200",
+              "h-full w-full rounded-[inherit] transition-opacity duration-200",
               isLoaded ? "opacity-100" : "opacity-0",
               imageClassName
             )}
@@ -157,7 +159,7 @@ function CrossfadeAvatar({
             alt={alt}
             onLoad={() => setIsLoaded(true)}
             className={cn(
-              "h-full w-full object-cover transition-opacity duration-200",
+              "h-full w-full rounded-[inherit] object-cover transition-opacity duration-200",
               isLoaded ? "opacity-100" : "opacity-0",
               imageClassName
             )}
@@ -169,7 +171,7 @@ function CrossfadeAvatar({
       {!src && (
         <div
           className={cn(
-            "flex h-full w-full items-center justify-center",
+            "flex h-full w-full items-center justify-center rounded-[inherit]",
             fallbackClassName
           )}
         >

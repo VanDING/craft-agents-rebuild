@@ -24,8 +24,8 @@ describe('restoreSessionFileWatch', () => {
 
     globalThis.window = {
       electronAPI: {
-        watchSessionFiles: async (sessionId: string) => {
-          calls.push(`watch:${sessionId}`)
+        watchSessionFiles: async (sessionId: string, scope?: string) => {
+          calls.push(`watch:${sessionId}:${scope}`)
         },
       },
     } as unknown as typeof window
@@ -34,7 +34,25 @@ describe('restoreSessionFileWatch', () => {
       calls.push('reload')
     })
 
-    expect(calls).toEqual(['watch:session-1', 'reload'])
+    expect(calls).toEqual(['watch:session-1:session', 'reload'])
+  })
+
+  it('restores the requested working-directory watch', async () => {
+    const calls: string[] = []
+
+    globalThis.window = {
+      electronAPI: {
+        watchSessionFiles: async (sessionId: string, scope?: string) => {
+          calls.push(`watch:${sessionId}:${scope}`)
+        },
+      },
+    } as unknown as typeof window
+
+    await restoreSessionFileWatch('session-3', async () => {
+      calls.push('reload')
+    }, 'working')
+
+    expect(calls).toEqual(['watch:session-3:working', 'reload'])
   })
 
   it('still reloads files when re-subscribing the watch fails', async () => {

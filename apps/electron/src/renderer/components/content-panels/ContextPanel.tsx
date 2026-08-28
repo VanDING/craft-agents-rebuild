@@ -11,11 +11,12 @@
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAtomValue } from 'jotai'
-import { FolderKanban, Layers, ListFilter, Paperclip, History, ChevronDown, ChevronRight, FileText } from 'lucide-react'
+import { FolderKanban, Layers, ListFilter, Paperclip, History, FileText } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { PanelHeader } from '../app-shell/PanelHeader'
 import { PanelEmptyState } from './PanelEmptyState'
 import { BoundSessionBadge } from './BoundSessionBadge'
+import { PanelRow, PanelSection } from './PanelSection'
 import { useNavigation } from '@/contexts/NavigationContext'
 import { activeSessionIdAtom } from '@/atoms/active-session'
 import { sessionMetaMapAtom, sessionAtomFamily, loadedSessionsAtom } from '@/atoms/sessions'
@@ -47,42 +48,17 @@ function fileBasename(path: string): string {
 function Stat({ label, value, span }: { label: string; value?: React.ReactNode; span?: boolean }) {
   return (
     <div className={cn(
-      'flex min-w-0 flex-col gap-0.5 rounded-lg border border-border/60 bg-foreground/[0.02] px-2 py-1.5',
+      'flex min-w-0 flex-col gap-1 rounded-lg bg-foreground/[0.025] px-2.5 py-2 ring-1 ring-inset ring-border/35',
       span && 'col-span-2',
     )}>
-      <span className="text-[11px] text-muted-foreground/70">{label}</span>
+      <span className="text-[10px] font-medium uppercase tracking-[0.06em] text-muted-foreground/60">{label}</span>
       <span
-        className="min-w-0 truncate text-[13px] font-medium text-foreground/90"
+        className="min-w-0 truncate text-[13px] font-semibold text-foreground/85"
         title={typeof value === 'string' ? value : undefined}
       >
         {value ?? '—'}
       </span>
     </div>
-  )
-}
-
-function SectionTitle({ icon, label, collapsed, onToggle }: {
-  icon: React.ReactNode
-  label: string
-  collapsed?: boolean
-  onToggle?: () => void
-}) {
-  const content = (
-    <h3 className="flex items-center gap-1.5 px-1 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">
-      {collapsed !== undefined && onToggle && (
-        <span className="-ml-1 text-muted-foreground/60">
-          {collapsed ? <ChevronRight className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-        </span>
-      )}
-      {icon}
-      <span className="truncate">{label}</span>
-    </h3>
-  )
-  if (collapsed === undefined || !onToggle) return content
-  return (
-    <button type="button" onClick={onToggle} className="w-full text-left" aria-expanded={!collapsed}>
-      {content}
-    </button>
   )
 }
 
@@ -158,9 +134,9 @@ export function ContextPanel() {
           icon={<ListFilter className="h-6 w-6" />}
         />
       ) : (
-        <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2 pb-6">
+        <div className="min-h-0 flex-1 overflow-y-auto bg-foreground/[0.012] px-2.5 py-2.5 pb-6">
           {/* Session + token stats (opencode-style grid, em dash for missing) */}
-          <div className="grid grid-cols-2 gap-1.5">
+          <div className="grid grid-cols-2 gap-1.5 rounded-xl border border-border/60 bg-background/55 p-2 shadow-minimal">
             <Stat label={t('contentPanel.context.name')} value={meta.name} />
             <Stat
               label={t('contentPanel.context.status')}
@@ -173,11 +149,11 @@ export function ContextPanel() {
             />
             <Stat label={t('contentPanel.context.workingDirectory')} value={meta.workingDirectory} span />
             {labelNames.length > 0 && (
-              <div className="col-span-2 flex min-w-0 flex-col gap-1 rounded-lg border border-border/60 bg-foreground/[0.02] px-2 py-1.5">
-                <span className="text-[11px] text-muted-foreground/70">{t('contentPanel.context.labels')}</span>
+              <div className="col-span-2 flex min-w-0 flex-col gap-1.5 rounded-lg bg-foreground/[0.025] px-2.5 py-2 ring-1 ring-inset ring-border/35">
+                <span className="text-[10px] font-medium uppercase tracking-[0.06em] text-muted-foreground/60">{t('contentPanel.context.labels')}</span>
                 <span className="flex min-w-0 flex-1 flex-wrap gap-1">
                   {labelNames.map((name) => (
-                    <span key={name} className="rounded-full border border-border/60 bg-foreground/[0.03] px-2 py-0.5 text-[11px] text-muted-foreground">
+                    <span key={name} className="rounded-full border border-border/55 bg-background/70 px-2 py-0.5 text-[11px] text-muted-foreground">
                       {name}
                     </span>
                   ))}
@@ -220,57 +196,61 @@ export function ContextPanel() {
 
           {/* Attachments — aggregated from loaded messages (no forced load) */}
           {activeSessionId && sessionLoaded && (
-            <section>
-              <SectionTitle icon={<Paperclip className="h-3.5 w-3.5" />} label={t('contentPanel.context.attachmentsHeader')} />
+            <PanelSection
+              className="mt-2"
+              icon={<Paperclip className="h-3.5 w-3.5" />}
+              title={t('contentPanel.context.attachmentsHeader')}
+              meta={attachmentNames.length}
+            >
               {attachmentNames.length === 0 ? (
-                <p className="px-1 py-1 text-[13px] text-muted-foreground/70">{t('contentPanel.context.attachmentsEmpty')}</p>
+                <p className="px-2 py-1 text-xs text-muted-foreground/65">{t('contentPanel.context.attachmentsEmpty')}</p>
               ) : (
                 <ul className="flex flex-col gap-0.5">
                   {attachmentNames.map((name) => (
-                    <li key={name} className="truncate rounded-lg px-2 py-1 text-[13px] text-foreground/90">
-                      {name}
-                    </li>
+                    <li key={name}><PanelRow icon={<Paperclip className="h-3.5 w-3.5" />} title={name} titleAttribute={name} /></li>
                   ))}
                 </ul>
               )}
-            </section>
+            </PanelSection>
           )}
 
           {/* Recently opened files — clickable, routes through the interceptor */}
           {activeSessionId && (
-            <section>
-              <SectionTitle icon={<History className="h-3.5 w-3.5" />} label={t('contentPanel.context.recentFilesHeader')} />
+            <PanelSection
+              className="mt-2"
+              icon={<History className="h-3.5 w-3.5" />}
+              title={t('contentPanel.context.recentFilesHeader')}
+              meta={recentFiles.length}
+            >
               {recentFiles.length === 0 ? (
-                <p className="px-1 py-1 text-[13px] text-muted-foreground/70">{t('contentPanel.context.recentFilesEmpty')}</p>
+                <p className="px-2 py-1 text-xs text-muted-foreground/65">{t('contentPanel.context.recentFilesEmpty')}</p>
               ) : (
                 <ul className="flex flex-col gap-0.5">
                   {recentFiles.map((entry) => (
                     <li key={entry.path}>
-                      <button
-                        type="button"
+                      <PanelRow
+                        icon={<FileText className="h-3.5 w-3.5" />}
+                        title={fileBasename(entry.path)}
+                        titleAttribute={entry.path}
                         onClick={() => onOpenFile?.(entry.path)}
-                        className="flex w-full items-center gap-2 rounded-lg px-2 py-1 text-left text-[13px] text-foreground/90 transition-colors hover:bg-foreground/[0.03]"
-                        title={entry.path}
-                      >
-                        <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                        <span className="min-w-0 flex-1 truncate">{fileBasename(entry.path)}</span>
-                      </button>
+                      />
                     </li>
                   ))}
                 </ul>
               )}
-            </section>
+            </PanelSection>
           )}
 
           {/* Workspace resources — duplicated by the left sidebar, collapsed */}
-          <section>
-            <SectionTitle
+          <PanelSection
+              className="mt-2"
               icon={<FolderKanban className="h-3.5 w-3.5" />}
-              label={t('contentPanel.context.workspaceHeader')}
-              collapsed={!workspaceExpanded}
-              onToggle={() => setWorkspaceExpanded((prev) => !prev)}
-            />
-            {workspaceExpanded && (
+              title={t('contentPanel.context.workspaceHeader')}
+              meta={visibleSources.length + skills.length}
+              collapsible
+              expanded={workspaceExpanded}
+              onExpandedChange={setWorkspaceExpanded}
+            >
               <div className="flex flex-col gap-3">
                 <div>
                   <p className="px-1 pb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/50">
@@ -282,20 +262,17 @@ export function ContextPanel() {
                     <ul className="flex flex-col gap-0.5">
                       {visibleSources.map((source) => (
                         <li key={source.config.slug}>
-                          <button
-                            type="button"
+                          <PanelRow
+                            icon={<FolderKanban className="h-3.5 w-3.5" />}
+                            title={source.config.name}
                             onClick={() => navigateFromPanel(routes.view.sources({ sourceSlug: source.config.slug }))}
-                            className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[13px] transition-colors hover:bg-foreground/[0.03]"
-                          >
-                            <FolderKanban className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                            {source.config.connectionStatus && (
+                            trailing={source.config.connectionStatus && (
                               <span
                                 title={t(`contentPanel.context.status.${source.config.connectionStatus}`)}
                                 className={cn('h-2 w-2 shrink-0 rounded-full', CONNECTION_STATUS_DOT[source.config.connectionStatus])}
                               />
                             )}
-                            <span className="min-w-0 flex-1 truncate">{source.config.name}</span>
-                          </button>
+                          />
                         </li>
                       ))}
                     </ul>
@@ -311,22 +288,18 @@ export function ContextPanel() {
                     <ul className="flex flex-col gap-0.5">
                       {skills.map((skill) => (
                         <li key={skill.slug}>
-                          <button
-                            type="button"
+                          <PanelRow
+                            icon={<Layers className="h-3.5 w-3.5" />}
+                            title={skill.metadata.name ?? skill.slug}
                             onClick={() => navigateFromPanel(routes.view.skills(skill.slug))}
-                            className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[13px] transition-colors hover:bg-foreground/[0.03]"
-                          >
-                            <Layers className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                            <span className="min-w-0 flex-1 truncate">{skill.metadata.name ?? skill.slug}</span>
-                          </button>
+                          />
                         </li>
                       ))}
                     </ul>
                   )}
                 </div>
               </div>
-            )}
-          </section>
+          </PanelSection>
         </div>
       )}
     </div>

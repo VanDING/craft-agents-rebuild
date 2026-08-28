@@ -1712,6 +1712,7 @@ export default function App() {
   const linkInterceptor = useLinkInterceptor({
     openFileExternal: async (path) => {
       try {
+        // eslint-disable-next-line craft-links/no-direct-file-open -- this callback is the explicit external-open path selected by the interceptor
         await window.electronAPI.openFile(path)
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error'

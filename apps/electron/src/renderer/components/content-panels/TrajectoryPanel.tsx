@@ -113,14 +113,15 @@ export function TrajectoryPanel() {
   return (
     <div className="flex h-full flex-col">
       <PanelHeader title={t('contentPanel.title.trajectory')} actions={<BoundSessionBadge sessionId={activeSessionId} />} />
-      <div className="min-h-0 flex-1">
-        <TrajectoryView
-          snapshot={snapshot}
-          sessionTotal={snapshot.totalUsage}
-          isProcessing={session?.isProcessing}
-        />
+      <div className="min-h-0 flex-1 bg-foreground/[0.012] p-2.5">
+        <div className="h-full min-h-0 overflow-hidden rounded-xl border border-border/60 bg-background/60 shadow-minimal">
+          <TrajectoryView
+            snapshot={snapshot}
+            sessionTotal={snapshot.totalUsage}
+            isProcessing={session?.isProcessing}
+          />
+        </div>
       </div>
     </div>
   )
 }
-

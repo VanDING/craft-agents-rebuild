@@ -1,6 +1,6 @@
 import { readFile, writeFile, stat } from 'fs/promises'
 import { join } from 'path'
-import { RPC_CHANNELS, type FileAttachment, type SendMessageOptions, type SessionEvent } from '@craft-agent/shared/protocol'
+import { RPC_CHANNELS, type FileAttachment, type SendMessageOptions, type SessionEvent, type SessionFileScope } from '@craft-agent/shared/protocol'
 import { validateSessionId } from '@craft-agent/shared/sessions'
 import type { StoredAttachment } from '@craft-agent/core/types'
 import { getWorkspaceByNameOrId } from '@craft-agent/shared/config'
@@ -16,11 +16,18 @@ import { setTransferableHandler } from './transfer'
 interface ClientSessionWatchState {
   watcher: import('fs').FSWatcher
   sessionId: string
+  scope: SessionFileScope
   debounceTimer: ReturnType<typeof setTimeout> | null
 }
 
-// Per-client session file watcher state (supports concurrent windows/clients safely)
+// Per-client and per-scope watcher state. The Info popover watches durable
+// session assets while the Files workbench can simultaneously watch the work
+// folder without either subscription replacing the other.
 const clientSessionWatches = new Map<string, ClientSessionWatchState>()
+
+function sessionFileWatchKey(clientId: string, scope: SessionFileScope): string {
+  return `${clientId}:${scope}`
+}
 
 const SESSION_GET_LOG_ID_LIMIT = 25
 
@@ -47,35 +54,45 @@ function sessionWorkspaceDistribution(sessions: Array<{ workspaceId?: string }>)
  * Called from main process disconnect hooks to prevent watcher leaks.
  */
 export function cleanupSessionFileWatchForClient(clientId: string): void {
-  const state = clientSessionWatches.get(clientId)
-  if (!state) return
-
-  if (state.debounceTimer) {
-    clearTimeout(state.debounceTimer)
-    state.debounceTimer = null
+  for (const [key, state] of clientSessionWatches) {
+    if (!key.startsWith(`${clientId}:`)) continue
+    if (state.debounceTimer) {
+      clearTimeout(state.debounceTimer)
+      state.debounceTimer = null
+    }
+    state.watcher.close()
+    clientSessionWatches.delete(key)
   }
-
-  state.watcher.close()
-  clientSessionWatches.delete(clientId)
 }
 
 // Recursive directory scanner for session files
 // Filters out internal files (session.jsonl) and hidden files (. prefix)
 // Returns only non-empty directories
-async function scanSessionDirectory(dirPath: string): Promise<import('@craft-agent/shared/protocol').SessionFile[]> {
+const WORKING_DIRECTORY_SKIP_NAMES = new Set([
+  'node_modules', '.git', '.svn', '.hg', 'dist', 'build', '.next', '.nuxt',
+  '.cache', '__pycache__', 'vendor', '.idea', '.vscode', 'coverage',
+  '.nyc_output', '.turbo', 'out',
+])
+
+async function scanSessionDirectory(
+  dirPath: string,
+  scope: SessionFileScope = 'session',
+): Promise<import('@craft-agent/shared/protocol').SessionFile[]> {
   const { readdir, stat } = await import('fs/promises')
   const entries = await readdir(dirPath, { withFileTypes: true })
   const files: import('@craft-agent/shared/protocol').SessionFile[] = []
 
   for (const entry of entries) {
     // Skip internal and hidden files
-    if (entry.name === 'session.jsonl' || entry.name.startsWith('.')) continue
+    if (entry.name === 'session.jsonl') continue
+    if (scope === 'session' && entry.name.startsWith('.')) continue
+    if (scope === 'working' && WORKING_DIRECTORY_SKIP_NAMES.has(entry.name)) continue
 
     const fullPath = join(dirPath, entry.name)
 
     if (entry.isDirectory()) {
       // Recursively scan subdirectory
-      const children = await scanSessionDirectory(fullPath)
+      const children = await scanSessionDirectory(fullPath, scope)
       // Only include non-empty directories
       if (children.length > 0) {
         files.push({
@@ -552,28 +569,57 @@ export function registerSessionsHandlers(server: RpcServer, deps: HandlerDeps): 
   // Session Info Panel (files, notes, file watching)
   // ============================================================
 
-  // Get files in session directory (recursive tree structure)
-  server.handle(RPC_CHANNELS.sessions.GET_FILES, async (ctx, sessionId: string) => {
+  const resolveFileRoot = (sessionId: string, scope: SessionFileScope): string | null => {
+    if (scope === 'working') {
+      const workingDirectory = sessionManager.getSessionWorkingDirectory(sessionId)
+      const sessionPath = sessionManager.getSessionPath(sessionId)
+      return workingDirectory && workingDirectory !== sessionPath ? workingDirectory : null
+    }
+    return sessionManager.getSessionPath(sessionId)
+  }
+
+  const stopFileWatch = (clientId: string, scope: SessionFileScope) => {
+    const key = sessionFileWatchKey(clientId, scope)
+    const state = clientSessionWatches.get(key)
+    if (!state) return
+    if (state.debounceTimer) clearTimeout(state.debounceTimer)
+    state.watcher.close()
+    clientSessionWatches.delete(key)
+  }
+
+  // Get files from either the durable session folder (Info) or the active
+  // working directory (Files workbench). Session scope remains the default for
+  // compatibility with existing callers.
+  server.handle(RPC_CHANNELS.sessions.GET_FILES, async (
+    ctx,
+    sessionId: string,
+    scope: SessionFileScope = 'session',
+  ) => {
     assertSessionWorkspaceOwnership(sessionManager, ctx, sessionId)
-    const sessionPath = sessionManager.getSessionPath(sessionId)
-    if (!sessionPath) return []
+    const rootPath = resolveFileRoot(sessionId, scope)
+    if (!rootPath) return []
 
     try {
-      return await scanSessionDirectory(sessionPath)
+      return await scanSessionDirectory(rootPath, scope)
     } catch (error) {
-      log.error('Failed to get session files:', error)
+      log.error(`Failed to get ${scope} files:`, error)
       return []
     }
   })
 
-  // Start watching a session directory for file changes (per client)
-  server.handle(RPC_CHANNELS.sessions.WATCH_FILES, async (ctx, sessionId: string) => {
+  // Start watching one file scope. Session and working scopes are independent
+  // so the Info popover and Files workbench can stay open together.
+  server.handle(RPC_CHANNELS.sessions.WATCH_FILES, async (
+    ctx,
+    sessionId: string,
+    scope: SessionFileScope = 'session',
+  ) => {
     assertSessionWorkspaceOwnership(sessionManager, ctx, sessionId)
     const clientId = ctx.clientId
-    cleanupSessionFileWatchForClient(clientId)
+    stopFileWatch(clientId, scope)
 
-    const sessionPath = sessionManager.getSessionPath(sessionId)
-    if (!sessionPath) return
+    const rootPath = resolveFileRoot(sessionId, scope)
+    if (!rootPath) return
 
     try {
       const { watch } = await import('fs')
@@ -581,12 +627,18 @@ export function registerSessionsHandlers(server: RpcServer, deps: HandlerDeps): 
       const state: ClientSessionWatchState = {
         watcher: null as unknown as import('fs').FSWatcher,
         sessionId,
+        scope,
         debounceTimer: null,
       }
 
-      state.watcher = watch(sessionPath, { recursive: true }, (_eventType, filename) => {
-        // Ignore internal files and hidden files
-        if (filename && (filename.includes('session.jsonl') || filename.startsWith('.'))) {
+      state.watcher = watch(rootPath, { recursive: true }, (_eventType, filename) => {
+        // Ignore internal/hidden files and high-churn dependency/build trees.
+        const pathParts = filename?.split(/[\\/]/) ?? []
+        if (filename && (
+          filename.includes('session.jsonl')
+          || (scope === 'session' && pathParts.some(part => part.startsWith('.')))
+          || (scope === 'working' && pathParts.some(part => WORKING_DIRECTORY_SKIP_NAMES.has(part)))
+        )) {
           return
         }
 
@@ -596,19 +648,22 @@ export function registerSessionsHandlers(server: RpcServer, deps: HandlerDeps): 
         }
 
         state.debounceTimer = setTimeout(() => {
-          pushTyped(server, RPC_CHANNELS.sessions.FILES_CHANGED, { to: 'client', clientId }, state.sessionId)
+          pushTyped(server, RPC_CHANNELS.sessions.FILES_CHANGED, { to: 'client', clientId }, state.sessionId, state.scope)
         }, 100)
       })
 
-      clientSessionWatches.set(clientId, state)
+      clientSessionWatches.set(sessionFileWatchKey(clientId, scope), state)
     } catch (error) {
-      log.error('Failed to start session file watcher:', error)
+      log.error(`Failed to start ${scope} file watcher:`, error)
     }
   })
 
-  // Stop watching session files for the calling client
-  server.handle(RPC_CHANNELS.sessions.UNWATCH_FILES, async (ctx) => {
-    cleanupSessionFileWatchForClient(ctx.clientId)
+  // Stop one scope without disrupting another open file surface.
+  server.handle(RPC_CHANNELS.sessions.UNWATCH_FILES, async (
+    ctx,
+    scope: SessionFileScope = 'session',
+  ) => {
+    stopFileWatch(ctx.clientId, scope)
   })
 
   // Get session notes (reads notes.md from session directory)

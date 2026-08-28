@@ -198,8 +198,8 @@ export function SurfaceSlot({
               ) : (
                 <motion.div
                   className="h-full min-h-0"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
+                  initial={{ opacity: 0, x: 8, scale: 0.997 }}
+                  animate={{ opacity: 1, x: 0, scale: 1 }}
                   transition={motionTween(reduceMotion, 'standard', 'enter')}
                 >
                   <BoundPanelContent entry={entry} />

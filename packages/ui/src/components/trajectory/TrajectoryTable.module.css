@@ -19,6 +19,7 @@
   overflow-x: hidden;
   overflow-y: auto;
   padding-bottom: var(--dsh-trajectory-bottom-clearance, 0px);
+  scrollbar-gutter: stable;
   container: trajectory-table / inline-size;
 }
 
@@ -133,7 +134,7 @@
 }
 
 .eventColumn {
-  width: 122px;
+  width: 132px;
 }
 
 .contentColumn {
@@ -145,12 +146,12 @@
   top: 0;
   z-index: 3;
   box-sizing: border-box;
-  height: 30px;
-  padding: 0 8px;
+  height: 34px;
+  padding: 0 10px;
   overflow: hidden;
   border-bottom: 1px solid var(--dsw-alias-border-l2);
   color: var(--dsw-alias-label-tertiary);
-  background: var(--dsw-specific-sidebar-fill);
+  background: color-mix(in srgb, var(--dsw-specific-sidebar-fill) 88%, var(--dsw-alias-bg-layer-1));
   font: var(--dsw-font-xxs-12);
   font-weight: 500;
   text-align: left;
@@ -166,8 +167,8 @@
 
 .table td {
   box-sizing: border-box;
-  height: 30px;
-  padding: 0 8px;
+  height: 34px;
+  padding: 0 10px;
   overflow: hidden;
   border-bottom: 1px solid var(--dsw-alias-border-l1);
   text-overflow: ellipsis;
@@ -216,7 +217,7 @@
 }
 
 .table tbody tr[data-selected='true'] {
-  background: var(--dsw-alias-interactive-bg-active);
+  background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 10%, var(--dsw-alias-bg-layer-1));
 }
 
 .requestBoundaryControl {

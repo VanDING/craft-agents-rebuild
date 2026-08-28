@@ -11,6 +11,7 @@
  */
 
 import { useMemo } from 'react'
+import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from 'motion/react'
 import { useTranslation } from 'react-i18next'
 import { useAtomValue, useSetAtom } from 'jotai'
 import { FileText, Eye, MessageSquare, X } from 'lucide-react'
@@ -25,6 +26,7 @@ import { sessionMetaMapAtom } from '@/atoms/sessions'
 import { previewEntriesForSessionAtom, removePreviewEntryAtom, type PreviewEntry } from '@/atoms/preview'
 import { previewPanelSelectedKeyAtom } from '@/atoms/content-panel-ui'
 import { useAppShellContext } from '@/context/AppShellContext'
+import { motionSpring, motionTween } from '@craft-agent/ui/motion'
 
 const entryKey = (entry: PreviewEntry): string =>
   entry.type === 'file' ? `file:${entry.path}` : `md:${entry.id}`
@@ -38,6 +40,7 @@ export function PreviewPanel() {
   const setSelectedKey = useSetAtom(previewPanelSelectedKeyAtom)
   const removeEntry = useSetAtom(removePreviewEntryAtom)
   const { onOpenFile, onOpenUrl } = useAppShellContext()
+  const reduceMotion = useReducedMotion()
 
   // Keep the selection valid: default to the most recent entry.
   const effectiveKey = useMemo(() => {
@@ -77,7 +80,8 @@ export function PreviewPanel() {
       ) : (
         <>
           {/* Entry tabs */}
-          <div className="flex shrink-0 items-center gap-1 overflow-x-auto px-2 pb-2 pt-1" role="tablist">
+          <LayoutGroup id="preview-entry-tabs">
+          <div className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-border/50 bg-background/65 px-2 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="tablist">
             {entries.map((entry) => {
               const key = entryKey(entry)
               const isActive = key === effectiveKey
@@ -90,19 +94,26 @@ export function PreviewPanel() {
                   key={key}
                   ref={isActive ? (el) => el?.scrollIntoView({ block: 'nearest', inline: 'nearest' }) : undefined}
                   className={cn(
-                    'group flex h-7 max-w-[16rem] shrink-0 items-center gap-0.5 rounded-md border px-1.5 text-[12px] transition-colors',
+                    'group relative isolate flex h-7 max-w-[16rem] shrink-0 items-center gap-0.5 rounded-lg px-1.5 text-[12px] transition-colors',
                     isActive
-                      ? 'border-border bg-foreground/[0.05] text-foreground'
-                      : 'border-transparent text-muted-foreground hover:bg-foreground/[0.03]',
+                      ? 'text-foreground'
+                      : 'text-muted-foreground hover:bg-foreground/[0.035]',
                   )}
                 >
+                  {isActive && (
+                    <motion.span
+                      layoutId="preview-active-entry"
+                      className="absolute inset-0 -z-10 rounded-lg border border-border/60 bg-background shadow-minimal"
+                      transition={motionSpring(reduceMotion, 'responsive')}
+                    />
+                  )}
                   <button
                     type="button"
                     role="tab"
                     aria-selected={isActive}
                     title={entry.type === 'file' ? entry.path : entry.title}
                     onClick={() => { if (!isActive) setSelectedKey(key) }}
-                    className="flex h-full min-w-0 flex-1 items-center gap-1.5"
+                    className="flex h-full min-w-0 flex-1 items-center gap-1.5 outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     <Icon className="h-3 w-3 shrink-0" />
                     <span className="truncate">{label}</span>
@@ -122,11 +133,22 @@ export function PreviewPanel() {
               )
             })}
           </div>
+          </LayoutGroup>
 
           {/* Content area */}
-          <div className="min-h-0 flex-1 overflow-hidden border-t border-border/50">
+          <div className="min-h-0 flex-1 bg-foreground/[0.012] p-2.5">
+            <div className="h-full min-h-0 overflow-hidden rounded-xl border border-border/60 bg-background/65 shadow-minimal">
+            <AnimatePresence mode="wait" initial={false}>
             {selected ? (
-              selected.type === 'file' ? (
+              <motion.div
+                key={entryKey(selected)}
+                className="h-full min-h-0"
+                initial={reduceMotion ? false : { opacity: 0, y: 3 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -2 }}
+                transition={motionTween(reduceMotion, 'standard', 'enter')}
+              >
+              {selected.type === 'file' ? (
                 <FilePreviewContent
                   filePath={selected.path}
                   onOpenUrl={onOpenUrl}
@@ -140,10 +162,13 @@ export function PreviewPanel() {
                     onFileClick={onOpenFile}
                   />
                 </div>
-              )
+              )}
+              </motion.div>
             ) : (
               <PanelEmptyState title={t('contentPanel.preview.empty')} />
             )}
+            </AnimatePresence>
+            </div>
           </div>
         </>
       )}

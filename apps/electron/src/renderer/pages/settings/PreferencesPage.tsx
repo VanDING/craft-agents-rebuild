@@ -251,6 +251,10 @@ export default function PreferencesPage() {
     () => Array.from({ length: 53 }, (_, index) => profile.calendar.slice(index * 7, index * 7 + 7)),
     [profile.calendar],
   )
+  const calendarMonthLabels = useMemo(
+    () => calendarWeeks.map(week => week.find(day => day.date.getDate() === 1)?.date),
+    [calendarWeeks],
+  )
   const weekdayLabels = useMemo(() => [1, 3, 5].map(day => ({
     day,
     label: new Intl.DateTimeFormat(locale, { weekday: 'narrow' }).format(new Date(2026, 7, 23 + day)),
@@ -311,7 +315,7 @@ export default function PreferencesPage() {
                       type="button"
                       onClick={() => updateField('avatarDataUrl', '')}
                       title={t('common.remove')}
-                      className="absolute -right-1 -top-1 flex h-6 w-6 items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-minimal hover:text-foreground"
+                      className="absolute -right-1 -top-1 z-10 flex h-6 w-6 items-center justify-center rounded-full border border-border bg-background text-muted-foreground opacity-0 shadow-minimal transition-[opacity,color] hover:text-foreground group-hover:opacity-100 focus-visible:opacity-100"
                     >
                       <X className="h-3.5 w-3.5" />
                     </button>
@@ -359,40 +363,50 @@ export default function PreferencesPage() {
                       </div>
                     </div>
                     <div className="overflow-x-auto pb-1" role="group" aria-label={t('settings.preferences.activityAriaLabel')}>
-                      <div className="w-max">
-                        <div className="mb-1 ml-7 flex gap-1 text-[9px] text-muted-foreground/70" aria-hidden="true">
-                          {calendarWeeks.map((week, index) => {
-                            const month = week.find(day => day.date.getDate() <= 7)?.date
-                            return (
-                              <span key={week[0]?.key ?? index} className="w-2.5 shrink-0 overflow-visible whitespace-nowrap">
-                                {month ? new Intl.DateTimeFormat(locale, { month: 'short' }).format(month) : ''}
-                              </span>
-                            )
-                          })}
+                      <div className="grid min-w-[480px] grid-cols-[20px_minmax(0,1fr)] gap-x-2 gap-y-1">
+                        <span aria-hidden="true" />
+                        <div
+                          className="grid grid-cols-[repeat(53,minmax(0,1fr))] gap-[3px] text-[9px] text-muted-foreground/70"
+                          aria-hidden="true"
+                        >
+                          {calendarMonthLabels.map((month, index) => (
+                            <span
+                              key={calendarWeeks[index]?.[0]?.key ?? index}
+                              className="min-w-0 overflow-visible whitespace-nowrap"
+                            >
+                              {month ? new Intl.DateTimeFormat(locale, { month: 'short' }).format(month) : ''}
+                            </span>
+                          ))}
                         </div>
-                        <div className="flex gap-2">
-                          <div className="relative w-5 shrink-0 text-[9px] text-muted-foreground/70" aria-hidden="true">
-                            {weekdayLabels.map(({ day, label }) => (
-                              <span key={day} className="absolute right-0" style={{ top: day * 14 - 1 }}>{label}</span>
-                            ))}
-                          </div>
-                          <div className="grid grid-flow-col grid-rows-7 auto-cols-[10px] gap-1">
-                            {profile.calendar.map(day => (
-                              <span
-                                key={day.key}
-                                role={day.isFuture ? undefined : 'img'}
-                                aria-label={day.isFuture ? undefined : t('settings.preferences.activityDay', {
-                                  date: new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(day.date),
-                                  count: day.count,
-                                })}
-                                className={`h-2.5 w-2.5 rounded-[3px] ${day.isFuture ? 'bg-transparent' : ACTIVITY_LEVEL_CLASSES[day.level]} ${day.key === new Date().toLocaleDateString('en-CA') ? 'ring-1 ring-accent ring-offset-1 ring-offset-background' : ''}`}
-                                title={day.isFuture ? undefined : t('settings.preferences.activityDay', {
-                                  date: new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(day.date),
-                                  count: day.count,
-                                })}
-                              />
-                            ))}
-                          </div>
+                        <div className="relative text-[9px] text-muted-foreground/70" aria-hidden="true">
+                          {weekdayLabels.map(({ day, label }) => (
+                            <span
+                              key={day}
+                              className="absolute right-0 -translate-y-1/2"
+                              style={{ top: `${((day + 0.5) / 7) * 100}%` }}
+                            >
+                              {label}
+                            </span>
+                          ))}
+                        </div>
+                        <div
+                          className="grid grid-flow-col grid-rows-7 grid-cols-[repeat(53,minmax(0,1fr))] gap-[3px]"
+                        >
+                          {profile.calendar.map(day => (
+                            <span
+                              key={day.key}
+                              role={day.isFuture ? undefined : 'img'}
+                              aria-label={day.isFuture ? undefined : t('settings.preferences.activityDay', {
+                                date: new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(day.date),
+                                count: day.count,
+                              })}
+                              className={`aspect-square w-full rounded-[3px] ${day.isFuture ? 'bg-transparent' : ACTIVITY_LEVEL_CLASSES[day.level]} ${day.key === new Date().toLocaleDateString('en-CA') ? 'ring-1 ring-accent ring-offset-1 ring-offset-background' : ''}`}
+                              title={day.isFuture ? undefined : t('settings.preferences.activityDay', {
+                                date: new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(day.date),
+                                count: day.count,
+                              })}
+                            />
+                          ))}
                         </div>
                       </div>
                     </div>

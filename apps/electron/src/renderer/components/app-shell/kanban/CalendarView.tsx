@@ -12,6 +12,7 @@
  */
 
 import * as React from 'react'
+import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from 'motion/react'
 import { Plus, Search } from 'lucide-react'
 import { useAtomValue } from 'jotai'
 import { toast } from 'sonner'
@@ -40,6 +41,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import type { CalendarEntry } from '@craft-agent/shared/protocol'
 import { queryWorkItems, workItemDateKey, type WorkItem } from '@craft-agent/shared/work-items/browser'
 import { KanbanProjectFilter, type KanbanProjectFilterOption } from './KanbanProjectFilter'
+import { motionSpring, motionTween } from '@craft-agent/ui/motion'
 
 type ViewMode = 'day' | 'week' | 'month'
 
@@ -109,6 +111,7 @@ export function CalendarView() {
   const { activeWorkspaceId, onCreateSession, trailingAction, expandButton } = useAppShellContext()
   const compensateForStoplight = useCompensateForStoplight()
   const { t } = useTranslation()
+  const reduceMotion = useReducedMotion()
   const { navigate, navigateToSession } = useNavigation()
   const { entries, update, remove } = useCalendarEntries(activeWorkspaceId ?? null)
   const { items: workItems, update: updateWorkItem } = useWorkItems(activeWorkspaceId ?? null)
@@ -433,7 +436,7 @@ export function CalendarView() {
           {allDay.map((entry) => (
             <div
               key={entry.id}
-              className="flex items-center gap-2.5 rounded-lg px-2.5 py-2"
+              className="group flex items-center gap-2.5 rounded-lg border border-accent/10 px-2.5 py-2 shadow-minimal transition-[border-color,transform] hover:border-accent/25 active:scale-[0.998]"
               style={entryBlockStyle(0.16)}
               onClick={() => openEdit(entry)}
               {...draggableEntryProps(entry)}
@@ -495,7 +498,7 @@ export function CalendarView() {
                 return (
                   <div
                     key={entry.id}
-                    className="absolute flex items-center gap-2.5 overflow-hidden rounded-lg px-2.5 py-1.5"
+                    className="group absolute flex items-center gap-2.5 overflow-hidden rounded-lg border border-accent/10 px-2.5 py-1.5 shadow-minimal transition-[border-color,transform] hover:border-accent/25 active:scale-[0.998]"
                     style={{ top, left: `calc(${(overlap.index / overlap.count) * 100}% + 6px)`, width: `calc(${100 / overlap.count}% - 12px)`, height: `${(duration / 60 / (HOUR_END - HOUR_START)) * 100}%`, minHeight: 30, ...entryBlockStyle(0.22) }}
                     onClick={() => openEdit(entry)}
                     {...draggableEntryProps(entry)}
@@ -577,7 +580,7 @@ export function CalendarView() {
                 {allDay.map((entry) => (
                   <div
                     key={entry.id}
-                    className="mb-1 flex items-center gap-1 overflow-hidden rounded-md px-1.5 py-1 text-[11.5px] font-medium"
+                    className="mb-1 flex items-center gap-1 overflow-hidden rounded-md border border-accent/10 px-1.5 py-1 text-[11.5px] font-medium transition-colors hover:border-accent/25"
                     style={entryBlockStyle(0.2)}
                     title={entry.title}
                     onClick={() => openEdit(entry)}
@@ -639,7 +642,7 @@ export function CalendarView() {
                       return (
                         <div
                           key={entry.id}
-                          className="absolute overflow-hidden rounded-md px-1.5 py-0.5"
+                          className="absolute overflow-hidden rounded-md border border-accent/10 px-1.5 py-0.5 shadow-minimal transition-colors hover:border-accent/25"
                           style={{
                             top: hourTop(hh + mm / 60 - HOUR_START),
                             left: `calc(${(overlap.index / overlap.count) * 100}% + 3px)`,
@@ -693,7 +696,7 @@ export function CalendarView() {
             <div
               key={dayKey(day)}
               className={cn(
-                'flex min-h-0 flex-col gap-1 overflow-hidden bg-card p-1.5',
+                'group flex min-h-0 flex-col gap-1 overflow-hidden bg-card p-1.5 transition-colors hover:bg-foreground/[0.018]',
                 !inMonth && 'bg-card/60',
                 isToday && 'bg-accent/10',
               )}
@@ -767,7 +770,7 @@ export function CalendarView() {
               {visible.map((entry) => (
                 <div
                   key={entry.id}
-                  className="flex items-center gap-1 overflow-hidden rounded-md px-1.5 py-0.5 text-[12.5px] leading-[1.4]"
+                  className="flex items-center gap-1 overflow-hidden rounded-md border border-accent/10 px-1.5 py-0.5 text-[12.5px] leading-[1.4] shadow-minimal transition-[border-color,transform] hover:border-accent/25 active:scale-[0.99]"
                   style={entryBlockStyle(0.16)}
                   title={entry.title}
                   onClick={() => openEdit(entry)}
@@ -799,13 +802,13 @@ export function CalendarView() {
           overlay): left reserves macOS traffic lights, right reserves the
           floating restore button of the expanded overlay. */}
       <div
-        className="grid h-[42px] flex-none grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 border-b border-border/60"
+        className="grid h-12 flex-none grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 border-b border-border/50 bg-background/80 backdrop-blur-sm @max-[760px]/panel:grid-cols-[auto_minmax(0,1fr)]"
         style={{
           paddingLeft: compensateForStoplight ? 84 : 16,
           paddingRight: compensateForStoplight ? 48 : 16,
         }}
       >
-        <div className="flex min-w-0 items-center gap-2 overflow-hidden">
+        <div className="flex min-w-0 items-center gap-2 overflow-hidden @max-[760px]/panel:hidden">
           {projectOptions.length > 0 && (
             <KanbanProjectFilter projects={projectOptions} value={projectIds} onChange={setProjectIds} />
           )}
@@ -841,13 +844,14 @@ export function CalendarView() {
           <button
             type="button"
             onClick={goToday}
-            className="rounded-md border border-border/80 px-2.5 py-1 text-xs font-medium text-foreground/70 transition-colors hover:text-foreground"
+            className="rounded-md border border-border/80 px-2.5 py-1 text-xs font-medium text-foreground/70 transition-colors hover:text-foreground @max-[560px]/panel:hidden"
           >
             {t('common.today')}
           </button>
         </div>
-        <div className="flex min-w-0 items-center justify-end gap-2">
-          <div className="inline-flex items-center gap-0.5 rounded-lg border border-border/80 bg-foreground/[0.02] p-0.5">
+        <div className="flex min-w-0 items-center justify-end gap-2 @max-[760px]/panel:col-start-2">
+          <LayoutGroup id="calendar-view-mode">
+          <div className="inline-flex items-center gap-0.5 rounded-xl border border-border/65 bg-foreground/[0.025] p-0.5 shadow-minimal">
             {(['day', 'week', 'month'] as const).map((mode) => (
               <button
                 key={mode}
@@ -855,21 +859,29 @@ export function CalendarView() {
                 onClick={() => switchView(mode)}
                 aria-pressed={view === mode}
                 className={cn(
-                  'rounded-md px-2.5 py-1 text-xs font-medium transition-colors',
-                  view === mode ? 'bg-card text-foreground shadow-minimal' : 'text-foreground/50 hover:text-foreground/80',
+                  'relative isolate rounded-lg px-2.5 py-1 text-xs font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring',
+                  view === mode ? 'text-foreground' : 'text-foreground/50 hover:text-foreground/80',
                 )}
               >
-                {t(`schedule.view.${mode}`)}
+                {view === mode && (
+                  <motion.span
+                    layoutId="calendar-active-mode"
+                    className="absolute inset-0 -z-10 rounded-lg border border-border/55 bg-card shadow-minimal"
+                    transition={motionSpring(reduceMotion, 'responsive')}
+                  />
+                )}
+                <span className="relative">{t(`schedule.view.${mode}`)}</span>
               </button>
             ))}
           </div>
+          </LayoutGroup>
           <Button
             variant="outline"
             className="h-8 gap-1.5 border-border/80 bg-card px-2.5 text-[12.5px] font-semibold"
             onClick={() => openCreate(cursor)}
           >
             <Plus className="h-3.5 w-3.5" strokeWidth={2.5} />
-            {t('schedule.newEntry')}
+            <span className="@max-[940px]/panel:hidden">{t('schedule.newEntry')}</span>
           </Button>
           {/* Surface-injected close + fullscreen controls. */}
           {trailingAction}
@@ -877,10 +889,21 @@ export function CalendarView() {
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 p-4">
-        {view === 'day' && renderDay()}
-        {view === 'week' && renderWeek()}
-        {view === 'month' && renderMonth()}
+      <div className="min-h-0 flex-1 bg-foreground/[0.012] p-2 @min-[800px]/panel:p-4">
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.div
+            key={view}
+            className="h-full min-h-0"
+            initial={reduceMotion ? false : { opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -3 }}
+            transition={motionTween(reduceMotion, 'standard', 'enter')}
+          >
+            {view === 'day' && renderDay()}
+            {view === 'week' && renderWeek()}
+            {view === 'month' && renderMonth()}
+          </motion.div>
+        </AnimatePresence>
       </div>
     </div>
   )

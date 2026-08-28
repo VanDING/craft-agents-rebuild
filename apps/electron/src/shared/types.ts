@@ -206,6 +206,7 @@ import type {
   TestLlmConnectionResult,
   SkillFile,
   SessionFile,
+  SessionFileScope,
   OAuthResult,
   McpToolsResult,
   GitBashStatus,
@@ -497,12 +498,12 @@ export interface ElectronAPI {
   getAllDrafts(): Promise<Record<string, import('@craft-agent/shared/config').SessionDraft>>
 
   // Session Info Panel
-  getSessionFiles(sessionId: string): Promise<SessionFile[]>
+  getSessionFiles(sessionId: string, scope?: SessionFileScope): Promise<SessionFile[]>
   getSessionNotes(sessionId: string): Promise<string>
   setSessionNotes(sessionId: string, content: string): Promise<void>
-  watchSessionFiles(sessionId: string): Promise<void>
-  unwatchSessionFiles(): Promise<void>
-  onSessionFilesChanged(callback: (sessionId: string) => void): () => void
+  watchSessionFiles(sessionId: string, scope?: SessionFileScope): Promise<void>
+  unwatchSessionFiles(scope?: SessionFileScope): Promise<void>
+  onSessionFilesChanged(callback: (sessionId: string, scope?: SessionFileScope) => void): () => void
 
   // Sources
   getSources(workspaceId: string): Promise<LoadedSource[]>
