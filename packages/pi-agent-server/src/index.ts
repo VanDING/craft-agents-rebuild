@@ -88,17 +88,67 @@ function canonicalModelRequestHash(model: Model<any>, context: Context): string 
   })).digest('hex');
 }
 
-function durableStreamSimple(model: Model<any>, context: Context, options?: SimpleStreamOptions) {
-  if (!initConfig || !currentDurableModelRun()) {
-    return streamSimple(model, context, options);
+function serializedContextValue(value: unknown): string {
+  try {
+    return JSON.stringify(value) ?? '';
+  } catch {
+    return String(value);
   }
+}
+
+function contextValueHash(value: unknown): { hash: string; chars: number } {
+  const serialized = serializedContextValue(value);
+  return {
+    hash: createHash('sha256').update(serialized).digest('hex'),
+    chars: serialized.length,
+  };
+}
+
+function buildRequestContextSnapshot(model: Model<any>, context: Context) {
+  const system = contextValueHash(context.systemPrompt ?? '');
+  return {
+    version: 1 as const,
+    capturedAt: Date.now(),
+    provider: model.provider,
+    model: model.id,
+    system,
+    messages: context.messages.map(message => ({
+      role: typeof (message as { role?: unknown }).role === 'string' ? String((message as { role: string }).role) : 'unknown',
+      ...contextValueHash(message),
+    })),
+    tools: (context.tools ?? []).map(tool => {
+      const schema = contextValueHash(tool.parameters);
+      return {
+        name: tool.name,
+        ...(tool.description ? { description: tool.description } : {}),
+        hash: schema.hash,
+        schemaChars: schema.chars,
+      };
+    }),
+  };
+}
+
+function durableStreamSimple(model: Model<any>, context: Context, options?: SimpleStreamOptions) {
   const target = createAssistantMessageEventStream();
   void (async () => {
     try {
       const requestSeq = ++promptSnapshotSeq;
-      rememberPromptSnapshot(requestSeq, context.systemPrompt ?? '');
+      rememberPromptSnapshot(requestSeq, context.systemPrompt ?? '', buildRequestContextSnapshot(model, context));
       const providerRequestId = String(requestSeq);
       const canonicalRequestHash = canonicalModelRequestHash(model, context);
+      const durableRun = currentDurableModelRun();
+      if (!initConfig || !durableRun) {
+        const source = streamSimple(model, context, options);
+        for await (const event of source) {
+          if (event.type === 'done' || event.type === 'error') {
+            Object.assign((event.type === 'done' ? event.message : event.error) as object, {
+              durableRequestSeq: requestSeq,
+            });
+          }
+          target.push(event);
+        }
+        return;
+      }
       const prepared = await requestDurableModelPrepare(
         providerRequestId,
         model.provider,
@@ -286,6 +336,8 @@ interface TrajectoryEventAttachments {
   requestSeq?: number;
   /** Effective system prompt captured for this request. */
   promptSnapshot?: string;
+  /** Content-addressed manifest of the actual request-time context. */
+  contextSnapshot?: PromptSnapshot['contextSnapshot'];
 }
 
 interface SettledUsageAttachments {
@@ -517,6 +569,15 @@ const prefetchCache = new Map<string, Promise<{ content: string; isError: boolea
 export interface PromptSnapshot {
   seq: number;
   prompt: string;
+  contextSnapshot?: {
+    version: 1;
+    capturedAt: number;
+    provider: string;
+    model: string;
+    system: { hash: string; chars: number };
+    messages: Array<{ role: string; hash: string; chars: number }>;
+    tools: Array<{ name: string; description?: string; hash: string; schemaChars: number }>;
+  };
 }
 
 const PROMPT_SNAPSHOT_LIMIT = 50;
@@ -535,8 +596,8 @@ let promptSnapshotSeq = 0;
  * request ordinal. Returns the seq so the caller can attach it to the
  * forwarded message_end event.
  */
-function rememberPromptSnapshot(seq: number, prompt: string): void {
-  promptSnapshots.set(seq, { seq, prompt });
+function rememberPromptSnapshot(seq: number, prompt: string, contextSnapshot?: PromptSnapshot['contextSnapshot']): void {
+  promptSnapshots.set(seq, { seq, prompt, contextSnapshot });
 
   // Bounded ring: drop oldest once over the cap.
   if (promptSnapshots.size > PROMPT_SNAPSHOT_LIMIT) {
@@ -1745,6 +1806,7 @@ function handleSessionEvent(event: AgentSessionEvent): void {
         ...(msg.durableOperationId ? { durableOperationId: msg.durableOperationId } : {}),
         ...(typeof msg.durableSeq === 'number' ? { durableSeq: msg.durableSeq } : {}),
         ...(snapshot ? { promptSnapshot: snapshot.prompt } : {}),
+        ...(snapshot?.contextSnapshot ? { contextSnapshot: snapshot.contextSnapshot } : {}),
       } as unknown as OutboundAgentEvent;
 
       if (sdkMessageId) {

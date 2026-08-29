@@ -8365,6 +8365,7 @@ export class SessionManager implements ISessionManager {
           usage: event.usage,
           requestSeq: event.requestSeq,
           promptSnapshot: event.promptSnapshot,
+          contextSnapshot: event.contextSnapshot,
           assistantMetrics: event.assistantMetrics,
           outputBlocks: event.outputBlocks,
         }
@@ -8433,7 +8434,7 @@ export class SessionManager implements ISessionManager {
           }
         }
 
-        this.sendEvent({ type: 'text_complete', sessionId, text: event.text, isIntermediate: event.isIntermediate, turnId: event.turnId, parentToolUseId: event.parentToolUseId, timestamp: assistantMessage.timestamp, messageId: assistantMessage.id, usage: event.usage, requestSeq: event.requestSeq, promptSnapshot: event.promptSnapshot, assistantMetrics: event.assistantMetrics, outputBlocks: event.outputBlocks, durableOperationId: assistantMessage.durableOperationId, durableSeq: assistantMessage.durableSeq }, workspaceId)
+        this.sendEvent({ type: 'text_complete', sessionId, text: event.text, isIntermediate: event.isIntermediate, turnId: event.turnId, parentToolUseId: event.parentToolUseId, timestamp: assistantMessage.timestamp, messageId: assistantMessage.id, usage: event.usage, requestSeq: event.requestSeq, promptSnapshot: event.promptSnapshot, contextSnapshot: event.contextSnapshot, assistantMetrics: event.assistantMetrics, outputBlocks: event.outputBlocks, durableOperationId: assistantMessage.durableOperationId, durableSeq: assistantMessage.durableSeq }, workspaceId)
 
         // Persist session after complete message to prevent data loss on quit
         this.persistSession(managed)

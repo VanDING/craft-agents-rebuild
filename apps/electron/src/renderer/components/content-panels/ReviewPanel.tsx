@@ -29,7 +29,7 @@ import { collectFileChangesFromActivities } from '@/lib/file-changes'
 import { computeChangeStats, createFileSections } from '@craft-agent/ui'
 import { diffKindForSection, type DiffKind } from '@/lib/diff-kinds'
 import { useDiffViewerSettings } from '@/lib/use-diff-viewer-settings'
-import { reviewPanelSelectedKeyAtom, reviewPanelFocusRequestAtom } from '@/atoms/content-panel-ui'
+import { reviewPanelSelectedKeyBySessionAtom, reviewPanelFocusRequestAtom, updateWorkbenchFocusAtom } from '@/atoms/content-panel-ui'
 import { motionSpring, motionTween } from '@craft-agent/ui/motion'
 
 const KIND_DOTS: Record<DiffKind, string> = {
@@ -80,8 +80,14 @@ export function ReviewPanel({ sessionId }: { sessionId?: string }) {
   const [viewerSettings, setViewerSettings] = useDiffViewerSettings()
   const reduceMotion = useReducedMotion()
 
-  const selectedKey = useAtomValue(reviewPanelSelectedKeyAtom)
-  const setSelectedKey = useSetAtom(reviewPanelSelectedKeyAtom)
+  const selectedKeyBySession = useAtomValue(reviewPanelSelectedKeyBySessionAtom)
+  const setSelectedKeyBySession = useSetAtom(reviewPanelSelectedKeyBySessionAtom)
+  const selectedKey = activeSessionId ? selectedKeyBySession[activeSessionId] ?? null : null
+  const setSelectedKey = useCallback((key: string | null) => {
+    if (!activeSessionId) return
+    setSelectedKeyBySession(current => ({ ...current, [activeSessionId]: key }))
+  }, [activeSessionId, setSelectedKeyBySession])
+  const updateWorkbenchFocus = useSetAtom(updateWorkbenchFocusAtom)
   const focusRequest = useAtomValue(reviewPanelFocusRequestAtom)
   const setFocusRequest = useSetAtom(reviewPanelFocusRequestAtom)
 
@@ -124,7 +130,7 @@ export function ReviewPanel({ sessionId }: { sessionId?: string }) {
   // Consume a scroll-to-change request from ChatDisplay: open the containing
   // section, then scroll the change into view once rendered.
   useEffect(() => {
-    if (!focusRequest) return
+    if (!focusRequest || focusRequest.sessionId !== activeSessionId) return
     const { changeId } = focusRequest
     const matchingChange = sections
       .flatMap((section) => section.changes)
@@ -138,12 +144,13 @@ export function ReviewPanel({ sessionId }: { sessionId?: string }) {
     if (containing && selectedKey !== containing.key) {
       setSelectedKey(containing.key)
     }
+    if (activeSessionId) updateWorkbenchFocus({ sessionId: activeSessionId, source: 'review', changeId: resolvedChangeId, filePath: containing?.filePath })
     const timer = setTimeout(() => {
       changeRefs.current.get(resolvedChangeId)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }, 120)
     setFocusRequest(null)
     return () => clearTimeout(timer)
-  }, [focusRequest, sections, selectedKey, setSelectedKey, setFocusRequest])
+  }, [activeSessionId, focusRequest, sections, selectedKey, setSelectedKey, setFocusRequest, updateWorkbenchFocus])
 
   // Review-specific controls live below the shared panel header so its centered
   // title and bound-session subtitle keep the same geometry as every other panel.

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAtom, useAtomValue, useSetAtom } from 'jotai'
-import { FileDiff, FileText, FolderOpen, FolderTree, Paperclip, Search } from 'lucide-react'
+import { Eye, FileDiff, FilePenLine, FileText, FolderOpen, FolderTree, Paperclip, Search } from 'lucide-react'
 import { Spinner } from '@craft-agent/ui'
 import { Input } from '@/components/ui/input'
 import { PanelEmptyState } from './PanelEmptyState'
@@ -12,16 +12,18 @@ import { PreviewPanel } from './PreviewPanel'
 import { SessionFilesSection } from '../right-sidebar/SessionFilesSection'
 import { activeSessionIdAtom } from '@/atoms/active-session'
 import { ensureSessionMessagesLoadedAtom, loadedSessionsAtom, sessionAtomFamily, sessionMetaMapAtom } from '@/atoms/sessions'
-import { filesPanelViewAtom, type FilesPanelView } from '@/atoms/content-panel-ui'
+import { filesPanelViewAtom, reviewPanelFocusRequestAtom, updateWorkbenchFocusAtom, type FilesPanelView } from '@/atoms/content-panel-ui'
 import { getPathBasename } from '@/lib/platform'
 import { useSessionActivities } from '@/lib/use-session-activities'
-import { collectFileChangesFromActivities } from '@/lib/file-changes'
+import { collectFileChangesFromActivities, getFirstFileChangeIdForActivity } from '@/lib/file-changes'
+import { collectFileActivity, type FileActivityOperation } from '@/lib/file-activity'
 import { useAppShellContext } from '@/context/AppShellContext'
+import { openWorkbenchItemAtom, setWorkbenchItemBindingAtom } from '@/atoms/workbench'
 
 const FILE_VIEWS: ReadonlyArray<{ id: FilesPanelView; key: string }> = [
   { id: 'explorer', key: 'contentPanel.files.view.explorer' },
   { id: 'opened', key: 'contentPanel.files.view.opened' },
-  { id: 'changed', key: 'contentPanel.files.view.changed' },
+  { id: 'activity', key: 'contentPanel.files.view.activity' },
   { id: 'attachments', key: 'contentPanel.files.view.attachments' },
 ]
 
@@ -35,16 +37,22 @@ export function FilesPanel({ sessionId }: { sessionId?: string }) {
   const ensureMessagesLoaded = useSetAtom(ensureSessionMessagesLoadedAtom)
   const [view, setView] = useAtom(filesPanelViewAtom)
   const [query, setQuery] = useState('')
+  const [activityFilter, setActivityFilter] = useState<'all' | FileActivityOperation>('all')
   const [loadError, setLoadError] = useState(false)
   const { onOpenFile } = useAppShellContext()
+  const updateWorkbenchFocus = useSetAtom(updateWorkbenchFocusAtom)
+  const setReviewFocusRequest = useSetAtom(reviewPanelFocusRequestAtom)
+  const openWorkbenchItem = useSetAtom(openWorkbenchItemAtom)
+  const setWorkbenchItemBinding = useSetAtom(setWorkbenchItemBindingAtom)
 
   const meta = activeSessionId ? sessionMetaMap.get(activeSessionId) : undefined
   const workingDirectory = meta?.workingDirectory
   const messagesLoaded = activeSessionId ? loadedSessions.has(activeSessionId) : false
-  const needsMessages = view === 'changed' || view === 'attachments'
+  const needsMessages = view === 'activity' || view === 'attachments'
   const activities = useSessionActivities(session)
   const changes = useMemo(() => collectFileChangesFromActivities(activities), [activities])
-  const changedPaths = useMemo(() => [...new Set(changes.map(change => change.filePath))], [changes])
+  const fileActivity = useMemo(() => collectFileActivity(activities), [activities])
+  const filteredActivity = useMemo(() => activityFilter === 'all' ? fileActivity : fileActivity.filter(record => record.operation === activityFilter), [activityFilter, fileActivity])
   const attachments = useMemo(() => {
     const seen = new Set<string>()
     return (session?.messages ?? []).flatMap(message => message.attachments ?? []).filter(attachment => {
@@ -122,17 +130,48 @@ export function FilesPanel({ sessionId }: { sessionId?: string }) {
 
         {view === 'opened' && <PreviewPanel sessionId={activeSessionId} />}
 
-        {view === 'changed' && messagesLoaded && (
-          changedPaths.length > 0 ? (
-            <div className="h-full overflow-y-auto bg-foreground/[0.012] p-2.5">
-              <div className="mx-auto max-w-3xl overflow-hidden rounded-xl border border-border/55 bg-background/70 p-1">
-                {changedPaths.map(path => (
-                  <PanelRow key={path} icon={<FileDiff className="h-3.5 w-3.5" />} title={getPathBasename(path) || path} titleAttribute={path} onClick={() => onOpenFile?.(path, activeSessionId)} />
+        {view === 'activity' && messagesLoaded && (
+          fileActivity.length > 0 ? (
+            <div className="flex h-full min-h-0 flex-col bg-foreground/[0.012]">
+              <div className="flex h-10 shrink-0 items-center gap-1 border-b border-border/50 bg-background/60 px-2.5">
+                {(['all', 'read', 'search', 'edit', 'write'] as const).map(filter => (
+                  <button key={filter} type="button" aria-pressed={activityFilter === filter} onClick={() => setActivityFilter(filter)} className={`h-6 rounded-md px-2 text-[10px] font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring ${activityFilter === filter ? 'bg-accent/10 text-accent' : 'text-muted-foreground hover:bg-foreground/[0.035]'}`}>
+                    {t(`contentPanel.files.activity.${filter}`)}
+                  </button>
                 ))}
+              </div>
+              <div className="min-h-0 flex-1 overflow-y-auto p-2.5">
+                <div className="mx-auto max-w-3xl overflow-hidden rounded-xl border border-border/55 bg-background/70">
+                  {filteredActivity.map(record => {
+                    const changeId = getFirstFileChangeIdForActivity(record.activityId, changes)
+                    const Icon = record.operation === 'read' ? Eye : record.operation === 'search' ? Search : FilePenLine
+                    return (
+                      <div key={record.id} className="grid min-h-11 grid-cols-[20px_minmax(0,1fr)_auto] items-center gap-2 border-b border-border/45 px-3 last:border-b-0 hover:bg-foreground/[0.025]" style={{ paddingLeft: `${12 + Math.min(record.depth, 3) * 10}px` }}>
+                        <Icon className="h-3.5 w-3.5 text-muted-foreground" />
+                        <button type="button" className="min-w-0 text-left outline-none focus-visible:underline" onClick={() => {
+                          updateWorkbenchFocus({ sessionId: activeSessionId, source: 'files', filePath: record.path, callId: record.activityId })
+                          onOpenFile?.(record.path, activeSessionId)
+                        }}>
+                          <span className="block truncate text-[12px] font-medium" title={record.path}>{getPathBasename(record.path) || record.path}</span>
+                          <span className="block truncate text-[9px] text-muted-foreground">{t(`contentPanel.files.activity.${record.operation}`)} · {record.toolName} · {new Date(record.timestamp).toLocaleTimeString()}</span>
+                        </button>
+                        {changeId && (
+                          <button type="button" className="rounded px-1.5 py-1 text-[10px] font-medium text-accent hover:bg-accent/10" onClick={() => {
+                            updateWorkbenchFocus({ sessionId: activeSessionId, source: 'files', filePath: record.path, callId: record.activityId, changeId })
+                            setReviewFocusRequest({ sessionId: activeSessionId, changeId, nonce: Date.now() })
+                            const reviewItemId = openWorkbenchItem('diff')
+                            if (reviewItemId) setWorkbenchItemBinding({ id: reviewItemId, binding: { type: 'session', sessionId: activeSessionId } })
+                          }}>{t('contentPanel.files.activity.review')}</button>
+                        )}
+                      </div>
+                    )
+                  })}
+                  {filteredActivity.length === 0 && <div className="px-3 py-8 text-center text-[12px] text-muted-foreground">{t('contentPanel.files.activity.noMatches')}</div>}
+                </div>
               </div>
             </div>
           ) : (
-            <PanelEmptyState title={t('contentPanel.diff.noChanges')} hint={t('contentPanel.diff.noChangesHint')} icon={<FileDiff className="h-6 w-6" />} />
+            <PanelEmptyState title={t('contentPanel.files.activity.empty')} hint={t('contentPanel.files.activity.emptyHint')} icon={<FileDiff className="h-6 w-6" />} />
           )
         )}
 

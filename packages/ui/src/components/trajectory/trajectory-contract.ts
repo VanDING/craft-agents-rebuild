@@ -58,6 +58,8 @@ export type TrajectoryContribution =
 
 /** Fully assembled trajectory snapshot for one session. */
 export interface TrajectorySnapshot {
+  /** Original session messages used by request-context and file projections. */
+  messages: readonly Message[]
   /** Chronological contributions (all kinds). */
   contributions: readonly TrajectoryContribution[]
   /** Request ordinal → captured system prompt (prompt-diff source). */
@@ -74,10 +76,27 @@ export interface TrajectorySnapshot {
 
 /** Empty snapshot before any session data is available. */
 export const EMPTY_TRAJECTORY_SNAPSHOT: TrajectorySnapshot = {
+  messages: [],
   contributions: [],
   prompts: new Map(),
   callSchemas: new Map(),
   requestUsage: new Map(),
   totalUsage: undefined,
   timeRange: undefined,
+}
+
+/** Shared evidence identity used to keep Run, Files, Review, and Chat aligned. */
+export interface WorkbenchFocus {
+  sessionId: string
+  requestSeq?: number
+  turn?: number | null
+  recordIndex?: number
+  messageId?: string
+  callId?: string
+  filePath?: string
+  changeId?: string
+  /** Range focus is expressed in the active timeline coordinate system. */
+  timelineRange?: { start: number; end: number; mode: 'sequence' | 'duration' | 'time' | 'actual' }
+  source: 'run' | 'files' | 'review' | 'chat'
+  updatedAt: number
 }

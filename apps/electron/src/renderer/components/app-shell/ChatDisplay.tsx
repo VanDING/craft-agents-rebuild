@@ -996,10 +996,10 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
   // Open the Review/Diff panel, optionally scrolling to a specific change.
   const openDiffPanel = useCallback((focusedChangeId?: string) => {
     if (focusedChangeId) {
-      setReviewPanelFocusRequest({ changeId: focusedChangeId, nonce: Date.now() })
+      if (session?.id) setReviewPanelFocusRequest({ sessionId: session.id, changeId: focusedChangeId, nonce: Date.now() })
     }
     openTriggeredPanel('diff')
-  }, [openTriggeredPanel, setReviewPanelFocusRequest])
+  }, [openTriggeredPanel, session?.id, setReviewPanelFocusRequest])
 
   // Ref to track total turn count for scroll handler
   const totalTurnCountRef = React.useRef(0)

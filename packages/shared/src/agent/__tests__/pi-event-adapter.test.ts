@@ -246,6 +246,26 @@ describe('PiEventAdapter', () => {
       });
     });
 
+    it('should preserve the request context manifest on text_complete', () => {
+      collect(adapter.adaptEvent({ type: 'turn_start' } as any));
+      const contextSnapshot = {
+        version: 1,
+        capturedAt: 10,
+        provider: 'anthropic',
+        model: 'test',
+        system: { hash: 'sys', chars: 10 },
+        messages: [{ role: 'user', hash: 'msg', chars: 20 }],
+        tools: [{ name: 'Read', hash: 'tool', schemaChars: 30 }],
+      };
+      const events = collect(adapter.adaptEvent({
+        type: 'message_end',
+        requestSeq: 4,
+        contextSnapshot,
+        message: { role: 'assistant', stopReason: 'stop', content: 'Captured output' },
+      } as any));
+      expect(events[0]).toMatchObject({ type: 'text_complete', requestSeq: 4, contextSnapshot });
+    });
+
     it('should fall back to responseId when message_end carries no id (SDK 0.84 shape)', () => {
       collect(adapter.adaptEvent({ type: 'turn_start' } as any));
       // SDK 0.84 assistant messages at message_end have no `id` — only the

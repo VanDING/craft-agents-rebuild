@@ -7,7 +7,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { PiUsage } from '@craft-agent/core/types'
-import type { TrajectorySnapshot } from './trajectory-contract'
+import type { TrajectorySnapshot, WorkbenchFocus } from './trajectory-contract'
 import { deriveTrajectoryLayout, flattenTurnRecords, type TrajectoryCellProps, type TrajectoryTurnModel } from './trajectory-layout'
 import { searchTrajectory } from './trajectory-search-index'
 import { trajectoryTimelineFocusIndexes, type TrajectoryTimelineMode, type TrajectoryTimeRange } from './trajectory-timeline'
@@ -16,13 +16,13 @@ import { TrajectoryTimeline } from './TrajectoryTimeline'
 import { TrajectoryTable } from './TrajectoryTable'
 import { RecordInspector } from './RecordInspector'
 import { TrajectoryOverview } from './TrajectoryOverview'
-import { TrajectoryPromptView } from './TrajectoryPromptView'
+import { TrajectoryContextView } from './TrajectoryContextView'
 import './trajectory-theme.css'
 
 const DURATION_PREFERENCE_KEY = 'craft.trajectory.duration'
 const VIEW_PREFERENCE_KEY = 'craft.trajectory.view'
 
-export type TrajectoryRunView = 'overview' | 'timeline' | 'events' | 'prompt'
+export type TrajectoryRunView = 'overview' | 'timeline' | 'events' | 'context'
 
 function readDurationPreference(): boolean {
   try {
@@ -35,7 +35,8 @@ function readDurationPreference(): boolean {
 function readViewPreference(): TrajectoryRunView {
   try {
     const value = localStorage.getItem(VIEW_PREFERENCE_KEY)
-    if (value === 'overview' || value === 'timeline' || value === 'events' || value === 'prompt') return value
+    if (value === 'prompt') return 'context'
+    if (value === 'overview' || value === 'timeline' || value === 'events' || value === 'context') return value
   } catch {
     // Best-effort preference only.
   }
@@ -53,6 +54,8 @@ export interface TrajectoryViewProps {
   onOpenChat?: (messageId: string) => void
   onOpenReview?: (changeId: string) => void
   onOpenFile?: (path: string) => void
+  focus?: WorkbenchFocus
+  onFocusChange?: (focus: Omit<WorkbenchFocus, 'sessionId' | 'updatedAt'>) => void
 }
 
 export interface TrajectoryContextSummary {
@@ -77,10 +80,11 @@ function assistantRecordId(cell: TrajectoryCellProps): string {
   return cell.sourceSeq ?? cell.callId ?? `index-${cell.index}`
 }
 
-export function TrajectoryView({ snapshot, sessionTotal, isProcessing, contextSummary, onOpenChat, onOpenReview, onOpenFile }: TrajectoryViewProps) {
+export function TrajectoryView({ snapshot, sessionTotal, isProcessing, contextSummary, onOpenChat, onOpenReview, onOpenFile, focus, onFocusChange }: TrajectoryViewProps) {
   const { t } = useTranslation()
   const [runView, setRunView] = useState<TrajectoryRunView>(readViewPreference)
   const [searchQuery, setSearchQuery] = useState('')
+  const [eventFilter, setEventFilter] = useState<'all' | 'conversation' | 'tools' | 'errors'>('all')
   const [collapsedTurns, setCollapsedTurns] = useState<ReadonlySet<number>>(new Set())
   const [collapsedAssistants, setCollapsedAssistants] = useState<ReadonlySet<string>>(new Set())
   const [selectedCell, setSelectedCell] = useState<TrajectoryCellProps | null>(null)
@@ -101,6 +105,12 @@ export function TrajectoryView({ snapshot, sessionTotal, isProcessing, contextSu
   }, [snapshot])
 
   const flatRecords = useMemo(() => flattenTurnRecords(turns), [turns])
+  const eventRecords = useMemo(() => flatRecords.filter(record => {
+    if (eventFilter === 'all') return true
+    if (eventFilter === 'errors') return record.cell.isError
+    if (eventFilter === 'tools') return record.cell.kind === 'tool' || record.cell.kind === 'subtool'
+    return record.cell.kind === 'system' || record.cell.kind === 'user' || record.cell.kind === 'message' || record.cell.kind === 'context'
+  }), [eventFilter, flatRecords])
 
   const searchMatchIndexes = useMemo(
     () => searchQuery.trim() === '' ? null : searchTrajectory(flatRecords, searchQuery),
@@ -195,6 +205,14 @@ export function TrajectoryView({ snapshot, sessionTotal, isProcessing, contextSu
         for (const cell of group.cells) {
           if (cell.index === index) {
             setSelectedCell(cell)
+            onFocusChange?.({
+              source: 'run',
+              recordIndex: index,
+              requestSeq: cell.requestSeq ?? cell.sourceMessage?.requestSeq,
+              turn: turn.turn,
+              messageId: cell.sourceSeq,
+              callId: cell.callId,
+            })
             return
           }
         }
@@ -285,7 +303,7 @@ export function TrajectoryView({ snapshot, sessionTotal, isProcessing, contextSu
   const ledger = (
     <div className="relative flex min-h-0 min-w-0 flex-1">
       <TrajectoryTable
-        flatRecords={flatRecords}
+        flatRecords={eventRecords}
         collapsedTurns={collapsedTurns}
         onToggleTurn={toggleTurn}
         collapsedAssistants={collapsedAssistants}
@@ -303,7 +321,7 @@ export function TrajectoryView({ snapshot, sessionTotal, isProcessing, contextSu
   return (
     <div className="trajectory-root flex h-full min-h-0 flex-col @container/trajectory">
       <div className="flex h-10 shrink-0 items-end gap-5 overflow-x-auto border-b border-border/50 bg-background/80 px-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="tablist" aria-label={t('trajectory.views.label')}>
-        {(['overview', 'timeline', 'events', 'prompt'] as const).map(view => (
+        {(['overview', 'timeline', 'events', 'context'] as const).map(view => (
           <button
             key={view}
             type="button"
@@ -327,7 +345,10 @@ export function TrajectoryView({ snapshot, sessionTotal, isProcessing, contextSu
             contextSummary={contextSummary}
             onOpenEvents={openEvents}
             onOpenTimeline={() => selectRunView('timeline')}
-            onOpenPrompt={() => selectRunView('prompt')}
+            onOpenContext={(requestSeq) => {
+              if (requestSeq !== undefined) onFocusChange?.({ source: 'run', requestSeq })
+              selectRunView('context')
+            }}
           />
         )}
         {runView === 'timeline' && (
@@ -338,7 +359,10 @@ export function TrajectoryView({ snapshot, sessionTotal, isProcessing, contextSu
               range={timelineRange}
               selectedIndex={selectedIndex}
               searchMatchIndexes={null}
-              onRangeChange={setTimelineRange}
+              onRangeChange={(range) => {
+                setTimelineRange(range)
+                if (range) onFocusChange?.({ source: 'run', timelineRange: { ...range, mode: timelineMode } })
+              }}
               onModeChange={handleTimelineModeChange}
               onOpenEventsForRange={() => selectRunView('events', true)}
               onRecordSelect={onSelectIndex}
@@ -350,6 +374,14 @@ export function TrajectoryView({ snapshot, sessionTotal, isProcessing, contextSu
         {runView === 'events' && (
           <div className="flex h-full min-h-0 flex-col">
             {toolbar(false)}
+            <div className="flex h-8 shrink-0 items-center gap-1 border-b border-border/50 bg-background/60 px-2.5" aria-label={t('trajectory.events.filters')}>
+              {(['all', 'conversation', 'tools', 'errors'] as const).map(filter => (
+                <button key={filter} type="button" aria-pressed={eventFilter === filter} onClick={() => setEventFilter(filter)} className={`h-6 rounded-md px-2 text-[10px] font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring ${eventFilter === filter ? 'bg-accent/10 text-accent' : 'text-muted-foreground hover:bg-foreground/[0.035]'}`}>
+                  {t(`trajectory.events.${filter}`)}
+                </button>
+              ))}
+              <span className="ml-auto text-[10px] tabular-nums text-muted-foreground">{eventRecords.length}</span>
+            </div>
             {timelineRange !== null && (
               <div className="flex min-h-8 shrink-0 items-center justify-between gap-3 border-b border-border/50 bg-accent/5 px-3 text-[11px] text-muted-foreground">
                 <span>{t('trajectory.timeline.filteredEvents', { count: timelineFocusIndexes?.size ?? 0 })}</span>
@@ -365,7 +397,15 @@ export function TrajectoryView({ snapshot, sessionTotal, isProcessing, contextSu
             {ledger}
           </div>
         )}
-        {runView === 'prompt' && <TrajectoryPromptView prompts={snapshot.prompts} />}
+        {runView === 'context' && (
+          <TrajectoryContextView
+            snapshot={snapshot}
+            focusedRequestSeq={focus?.requestSeq}
+            onRequestFocus={(requestSeq) => onFocusChange?.({ source: 'run', requestSeq })}
+            onOpenChat={onOpenChat}
+            onOpenFile={onOpenFile}
+          />
+        )}
       </div>
     </div>
   )

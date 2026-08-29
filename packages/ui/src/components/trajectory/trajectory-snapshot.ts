@@ -70,7 +70,7 @@ function addUsage(a: PiUsage, b: PiUsage): PiUsage {
 export function buildTrajectorySnapshot(input: TrajectorySessionInput): TrajectorySnapshot {
   const { messages, lastFullUsage } = input
   if (!messages || messages.length === 0) {
-    return { ...EMPTY_TRAJECTORY_SNAPSHOT, totalUsage: lastFullUsage }
+    return { ...EMPTY_TRAJECTORY_SNAPSHOT, messages, totalUsage: lastFullUsage }
   }
 
   const contributions: TrajectoryContribution[] = []
@@ -167,6 +167,7 @@ export function buildTrajectorySnapshot(input: TrajectorySessionInput): Trajecto
     : undefined
 
   return {
+    messages,
     contributions,
     prompts,
     callSchemas,

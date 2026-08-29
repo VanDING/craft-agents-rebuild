@@ -21,7 +21,7 @@ import { PanelEmptyState } from './PanelEmptyState'
 import { FilePreviewContent } from './FilePreviewContent'
 import { activeSessionIdAtom } from '@/atoms/active-session'
 import { previewEntriesForSessionAtom, removePreviewEntryAtom, type PreviewEntry } from '@/atoms/preview'
-import { previewPanelSelectedKeyAtom } from '@/atoms/content-panel-ui'
+import { previewPanelSelectedKeyBySessionAtom } from '@/atoms/content-panel-ui'
 import { useAppShellContext } from '@/context/AppShellContext'
 import { motionSpring, motionTween } from '@craft-agent/ui/motion'
 
@@ -33,8 +33,13 @@ export function PreviewPanel({ sessionId }: { sessionId?: string }) {
   const currentActiveSessionId = useAtomValue(activeSessionIdAtom)
   const activeSessionId = sessionId ?? currentActiveSessionId
   const entries = useAtomValue(previewEntriesForSessionAtom)(activeSessionId ?? '')
-  const selectedKey = useAtomValue(previewPanelSelectedKeyAtom)
-  const setSelectedKey = useSetAtom(previewPanelSelectedKeyAtom)
+  const selectedKeyBySession = useAtomValue(previewPanelSelectedKeyBySessionAtom)
+  const setSelectedKeyBySession = useSetAtom(previewPanelSelectedKeyBySessionAtom)
+  const selectedKey = activeSessionId ? selectedKeyBySession[activeSessionId] ?? null : null
+  const setSelectedKey = (key: string | null) => {
+    if (!activeSessionId) return
+    setSelectedKeyBySession(current => ({ ...current, [activeSessionId]: key }))
+  }
   const removeEntry = useSetAtom(removePreviewEntryAtom)
   const { onOpenFile, onOpenUrl } = useAppShellContext()
   const reduceMotion = useReducedMotion()

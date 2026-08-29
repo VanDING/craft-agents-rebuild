@@ -383,6 +383,7 @@ export class PiEventAdapter extends BaseEventAdapter {
             usage,
             requestSeq: this.requestSeq,
             promptSnapshot: (event as { promptSnapshot?: unknown }).promptSnapshot as string | undefined,
+            contextSnapshot: (event as { contextSnapshot?: unknown }).contextSnapshot as import('@craft-agent/core/types').RequestContextSnapshot | undefined,
             assistantMetrics,
             outputBlocks: this.extractSourceBlocks(event.message),
             ...this.durableAttachments(event),

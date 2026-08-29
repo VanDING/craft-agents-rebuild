@@ -17,7 +17,7 @@ import { TrajectoryView, buildTrajectorySnapshot, Spinner } from '@craft-agent/u
 import { PanelEmptyState } from './PanelEmptyState'
 import { activeSessionIdAtom } from '@/atoms/active-session'
 import { sessionAtomFamily, sessionMetaMapAtom, ensureSessionMessagesLoadedAtom } from '@/atoms/sessions'
-import { chatFocusRequestAtom, reviewPanelFocusRequestAtom } from '@/atoms/content-panel-ui'
+import { chatFocusRequestAtom, reviewPanelFocusRequestAtom, updateWorkbenchFocusAtom, workbenchFocusBySessionAtom } from '@/atoms/content-panel-ui'
 import { collapseWorkbenchAtom, openWorkbenchItemAtom, setWorkbenchItemBindingAtom } from '@/atoms/workbench'
 import { useAppShellContext } from '@/context/AppShellContext'
 import { useNavigation } from '@/contexts/NavigationContext'
@@ -33,6 +33,8 @@ export function TrajectoryPanel({ sessionId }: { sessionId?: string }) {
   const ensureMessagesLoaded = useSetAtom(ensureSessionMessagesLoadedAtom)
   const setChatFocusRequest = useSetAtom(chatFocusRequestAtom)
   const setReviewFocusRequest = useSetAtom(reviewPanelFocusRequestAtom)
+  const focusBySession = useAtomValue(workbenchFocusBySessionAtom)
+  const updateWorkbenchFocus = useSetAtom(updateWorkbenchFocusAtom)
   const openWorkbenchItem = useSetAtom(openWorkbenchItemAtom)
   const setWorkbenchItemBinding = useSetAtom(setWorkbenchItemBindingAtom)
   const collapseWorkbench = useSetAtom(collapseWorkbenchAtom)
@@ -149,13 +151,18 @@ export function TrajectoryPanel({ sessionId }: { sessionId?: string }) {
               contextTokens: meta?.tokenUsage?.contextTokens,
               costUsd: meta?.tokenUsage?.costUsd,
             }}
+            focus={focusBySession[activeSessionId]}
+            onFocusChange={(focus) => updateWorkbenchFocus({
+              ...focus,
+              sessionId: activeSessionId,
+            })}
             onOpenChat={(messageId) => {
               navigateToSession(activeSessionId)
               setChatFocusRequest({ sessionId: activeSessionId, messageId, nonce: Date.now() })
               collapseWorkbench()
             }}
             onOpenReview={(changeId) => {
-              setReviewFocusRequest({ changeId, nonce: Date.now() })
+              setReviewFocusRequest({ sessionId: activeSessionId, changeId, nonce: Date.now() })
               const reviewItemId = openWorkbenchItem('diff')
               if (reviewItemId) {
                 setWorkbenchItemBinding({

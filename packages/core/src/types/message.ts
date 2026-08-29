@@ -77,6 +77,22 @@ export interface MessageAttachment {
   base64?: string;  // For images - enables thumbnail rendering
 }
 
+/** Compact, request-time manifest of the actual model context composition. */
+export interface RequestContextSnapshot {
+  version: 1;
+  capturedAt: number;
+  provider: string;
+  model: string;
+  system: { hash: string; chars: number };
+  messages: Array<{ role: string; hash: string; chars: number }>;
+  tools: Array<{
+    name: string;
+    description?: string;
+    hash: string;
+    schemaChars: number;
+  }>;
+}
+
 /**
  * Content badge for inline display in user messages
  * Badges are self-contained with all display data (label, icon)
@@ -270,6 +286,8 @@ export interface Message {
   requestSeq?: number;
   /** Effective system prompt at this request (trajectory prompt diff). */
   promptSnapshot?: string;
+  /** Request-time model context manifest (content-addressed to avoid O(n²) persistence). */
+  contextSnapshot?: RequestContextSnapshot;
   /** Wall-clock step metrics (TTFT / decoding) for trajectory timing. */
   assistantMetrics?: AssistantMetrics;
   /** Structured content blocks in model order (trajectory details panel). */
@@ -382,6 +400,8 @@ export interface StoredMessage {
   requestSeq?: number;
   /** Effective system prompt at this request (trajectory prompt diff). */
   promptSnapshot?: string;
+  /** Request-time model context manifest (content-addressed to avoid O(n²) persistence). */
+  contextSnapshot?: RequestContextSnapshot;
   /** Wall-clock step metrics (TTFT / decoding) for trajectory timing. */
   assistantMetrics?: AssistantMetrics;
   /** Structured content blocks in model order (trajectory details panel). */
@@ -646,7 +666,7 @@ export type AgentEvent =
   | { type: 'status'; message: string }
   | { type: 'info'; message: string }
   | { type: 'text_delta'; text: string; turnId?: string; parentToolUseId?: string; timestamp?: number }
-  | { type: 'text_complete'; text: string; isIntermediate?: boolean; turnId?: string; parentToolUseId?: string; sdkMessageId?: string; timestamp?: number; usage?: PiUsage; requestSeq?: number; promptSnapshot?: string; assistantMetrics?: AssistantMetrics; outputBlocks?: TrajectorySourceBlock[]; durableOperationId?: string; durableSeq?: number }
+  | { type: 'text_complete'; text: string; isIntermediate?: boolean; turnId?: string; parentToolUseId?: string; sdkMessageId?: string; timestamp?: number; usage?: PiUsage; requestSeq?: number; promptSnapshot?: string; contextSnapshot?: RequestContextSnapshot; assistantMetrics?: AssistantMetrics; outputBlocks?: TrajectorySourceBlock[]; durableOperationId?: string; durableSeq?: number }
   | { type: 'pi_turn_anchor'; sdkMessageId: string; sdkTurnAnchor: string }
   | { type: 'tool_start'; toolName: string; toolUseId: string; input: Record<string, unknown>; intent?: string; displayName?: string; turnId?: string; parentToolUseId?: string; toolDisplayMeta?: ToolDisplayMeta; timestamp?: number; durableOperationId?: string; durableSeq?: number }
   | { type: 'tool_result'; toolUseId: string; toolName?: string; result: string; isError: boolean; input?: Record<string, unknown>; turnId?: string; parentToolUseId?: string; timestamp?: number; durationMs?: number; durableOperationId?: string; durableSeq?: number }

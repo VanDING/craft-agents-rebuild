@@ -4,6 +4,7 @@ import type { TrajectorySnapshot } from './trajectory-contract'
 import type { TrajectoryContextSummary } from './TrajectoryView'
 import { formatDurationMillis, type TrajectoryRenderRecord, type TrajectoryTurnModel } from './trajectory-layout'
 import { recordDisplayText } from './trajectory-search-index'
+import { deriveRequestContexts } from './trajectory-context'
 
 interface TrajectoryOverviewProps {
   snapshot: TrajectorySnapshot
@@ -13,7 +14,7 @@ interface TrajectoryOverviewProps {
   contextSummary?: TrajectoryContextSummary
   onOpenEvents: (index?: number) => void
   onOpenTimeline: () => void
-  onOpenPrompt: () => void
+  onOpenContext: (requestSeq?: number) => void
 }
 
 function formatTokens(value: number | undefined): string {
@@ -34,7 +35,7 @@ export function TrajectoryOverview({
   contextSummary,
   onOpenEvents,
   onOpenTimeline,
-  onOpenPrompt,
+  onOpenContext,
 }: TrajectoryOverviewProps) {
   const { t } = useTranslation()
   const contentRecords = records.filter(record => record.collapsedSummary === undefined)
@@ -58,6 +59,10 @@ export function TrajectoryOverview({
   const durationMs = snapshot.timeRange
     ? Math.max(0, snapshot.timeRange.end - snapshot.timeRange.start)
     : null
+  const requestContexts = deriveRequestContexts(snapshot)
+  const maxContextTokens = Math.max(1, ...requestContexts.map(context => context.inputTokens ?? context.estimatedTokens))
+  const latestUserGoal = [...snapshot.messages].reverse().find(message => message.role === 'user' && message.content.trim())?.content.replace(/\s+/g, ' ').trim()
+  const toolNames = [...new Set(toolRecords.map(record => record.cell.sourceMessage?.toolDisplayName ?? record.cell.sourceMessage?.toolName).filter(Boolean))] as string[]
 
   const findings = [
     ...errorRecords.slice(0, 3).map(record => ({
@@ -163,6 +168,52 @@ export function TrajectoryOverview({
           </button>
         </section>
 
+        {requestContexts.length > 0 && (
+          <section>
+            <div className="mb-2 flex items-center gap-2">
+              <h3 className="text-[12px] font-semibold">{t('trajectory.overview.contextGrowth')}</h3>
+              <span className="text-[10px] text-muted-foreground">{t('trajectory.overview.contextGrowthHint')}</span>
+              <button type="button" className="ml-auto text-[11px] font-medium text-accent hover:underline" onClick={() => onOpenContext()}>
+                {t('trajectory.overview.openContext')}
+              </button>
+            </div>
+            <div className="flex h-28 items-end gap-1.5 rounded-xl border border-border/55 bg-background/70 px-3 pb-3 pt-5 shadow-minimal">
+              {requestContexts.map(context => {
+                const value = context.inputTokens ?? context.estimatedTokens
+                return (
+                  <button
+                    key={context.requestSeq}
+                    type="button"
+                    onClick={() => onOpenContext(context.requestSeq)}
+                    className="group flex h-full min-w-3 flex-1 flex-col items-center justify-end gap-1 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    title={t('trajectory.overview.contextRequestTitle', { seq: context.requestSeq, tokens: value })}
+                  >
+                    <span className="text-[8px] tabular-nums text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100">{formatTokens(value)}</span>
+                    <span className="w-full max-w-8 rounded-t-sm bg-accent/65 transition-colors group-hover:bg-accent" style={{ height: `${Math.max(4, (value / maxContextTokens) * 70)}%` }} />
+                    <span className="text-[8px] tabular-nums text-muted-foreground">{context.requestSeq}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </section>
+        )}
+
+        <section>
+          <h3 className="mb-2 text-[12px] font-semibold">{t('trajectory.overview.runBrief')}</h3>
+          <div className="grid gap-2 @min-[620px]/trajectory:grid-cols-3">
+            {[
+              [t('trajectory.overview.goal'), latestUserGoal || t('trajectory.overview.notRecorded')],
+              [t('trajectory.overview.workPerformed'), toolNames.length ? toolNames.slice(0, 5).join(', ') : t('trajectory.overview.noTools')],
+              [t('trajectory.overview.outcome'), errorRecords.length ? t('trajectory.overview.issueSummary', { count: errorRecords.length }) : t('trajectory.overview.noIssues')],
+            ].map(([label, value]) => (
+              <div key={label} className="min-w-0 rounded-xl border border-border/55 bg-background/70 px-3 py-2.5">
+                <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/70">{label}</div>
+                <div className="mt-1 line-clamp-3 text-[11px] leading-4">{value}</div>
+              </div>
+            ))}
+          </div>
+        </section>
+
         <section>
           <div className="mb-2 flex items-center gap-2">
             <h3 className="text-[12px] font-semibold">{t('trajectory.overview.needsAttention')}</h3>
@@ -189,7 +240,7 @@ export function TrajectoryOverview({
         </section>
 
         <div className="grid gap-2 @min-[620px]/trajectory:grid-cols-2">
-          <button type="button" onClick={onOpenPrompt} className="flex items-center gap-3 rounded-xl border border-border/55 bg-background/70 px-3 py-3 text-left outline-none hover:bg-foreground/[0.025] focus-visible:ring-2 focus-visible:ring-ring">
+          <button type="button" onClick={() => onOpenContext()} className="flex items-center gap-3 rounded-xl border border-border/55 bg-background/70 px-3 py-3 text-left outline-none hover:bg-foreground/[0.025] focus-visible:ring-2 focus-visible:ring-ring">
             <Braces className="h-4 w-4 text-muted-foreground" />
             <span className="min-w-0 flex-1">
               <span className="block text-[12px] font-semibold">{t('trajectory.overview.promptChanges')}</span>

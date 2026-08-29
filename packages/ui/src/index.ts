@@ -82,7 +82,16 @@ export {
   EMPTY_TRAJECTORY_SNAPSHOT,
   type TrajectorySnapshot,
   type TrajectoryContribution,
+  type WorkbenchFocus,
 } from './components/trajectory/trajectory-contract'
+export {
+  deriveRequestContexts,
+  requestContextDelta,
+  type TrajectoryRequestContext,
+  type TrajectoryContextGroup,
+  type TrajectoryContextItem,
+  type TrajectoryContextCategory,
+} from './components/trajectory/trajectory-context'
 export {
   deriveTrajectoryLayout,
   flattenTurnRecords,

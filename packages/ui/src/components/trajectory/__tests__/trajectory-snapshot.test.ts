@@ -26,6 +26,7 @@ describe('buildTrajectorySnapshot', () => {
   it('returns the empty snapshot for no messages', () => {
     const snapshot = buildTrajectorySnapshot({ messages: [] })
     expect(snapshot.contributions).toEqual([])
+    expect(snapshot.messages).toEqual([])
     expect(snapshot.timeRange).toBeUndefined()
   })
 
@@ -51,6 +52,7 @@ describe('buildTrajectorySnapshot', () => {
     expect(snapshot.requestUsage.get(1)).toEqual(usage)
     expect(snapshot.totalUsage).toEqual(usage)
     expect(snapshot.timeRange).toEqual({ start: 1000, end: 2000 })
+    expect(snapshot.messages).toBe(input.messages)
   })
 
   it('tracks turn boundaries with turn-end markers', () => {

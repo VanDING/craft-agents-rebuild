@@ -57,6 +57,8 @@ export interface TextCompleteEvent {
   requestSeq?: number
   /** Effective system prompt at this request (trajectory prompt diff). */
   promptSnapshot?: string
+  /** Compact request-time manifest of actual model context composition. */
+  contextSnapshot?: import('@craft-agent/core/types').RequestContextSnapshot
   /** Wall-clock step metrics (TTFT / decoding) for trajectory timing. */
   assistantMetrics?: AssistantMetrics
   /** Structured content blocks in model order (trajectory details panel). */
