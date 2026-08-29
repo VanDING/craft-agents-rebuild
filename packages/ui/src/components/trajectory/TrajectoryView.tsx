@@ -4,7 +4,8 @@
  * record inspector. Ported from the VanDSH view over the Craft snapshot.
  */
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { PiUsage } from '@craft-agent/core/types'
 import type { TrajectorySnapshot } from './trajectory-contract'
 import { deriveTrajectoryLayout, flattenTurnRecords, type TrajectoryCellProps, type TrajectoryTurnModel } from './trajectory-layout'
@@ -14,9 +15,14 @@ import { TrajectoryToolbar } from './TrajectoryToolbar'
 import { TrajectoryTimeline } from './TrajectoryTimeline'
 import { TrajectoryTable } from './TrajectoryTable'
 import { RecordInspector } from './RecordInspector'
+import { TrajectoryOverview } from './TrajectoryOverview'
+import { TrajectoryPromptView } from './TrajectoryPromptView'
 import './trajectory-theme.css'
 
 const DURATION_PREFERENCE_KEY = 'craft.trajectory.duration'
+const VIEW_PREFERENCE_KEY = 'craft.trajectory.view'
+
+export type TrajectoryRunView = 'overview' | 'timeline' | 'events' | 'prompt'
 
 function readDurationPreference(): boolean {
   try {
@@ -26,12 +32,44 @@ function readDurationPreference(): boolean {
   }
 }
 
+function readViewPreference(): TrajectoryRunView {
+  try {
+    const value = localStorage.getItem(VIEW_PREFERENCE_KEY)
+    if (value === 'overview' || value === 'timeline' || value === 'events' || value === 'prompt') return value
+  } catch {
+    // Best-effort preference only.
+  }
+  return 'overview'
+}
+
 export interface TrajectoryViewProps {
   snapshot: TrajectorySnapshot
   /** Session cumulative usage for the inspector's usage tab. */
   sessionTotal?: PiUsage
   /** Whether the session is currently processing (reserved for streaming). */
   isProcessing?: boolean
+  /** Session/environment facts formerly shown in the standalone Context panel. */
+  contextSummary?: TrajectoryContextSummary
+  onOpenChat?: (messageId: string) => void
+  onOpenReview?: (changeId: string) => void
+  onOpenFile?: (path: string) => void
+}
+
+export interface TrajectoryContextSummary {
+  name?: string
+  status?: string
+  model?: string
+  permissionMode?: string
+  workingDirectory?: string
+  labels?: readonly string[]
+  messageCount?: number
+  createdAt?: number
+  lastActivityAt?: number
+  inputTokens?: number
+  outputTokens?: number
+  totalTokens?: number
+  contextTokens?: number
+  costUsd?: number
 }
 
 /** Stable record identity used for assistant folding. */
@@ -39,7 +77,9 @@ function assistantRecordId(cell: TrajectoryCellProps): string {
   return cell.sourceSeq ?? cell.callId ?? `index-${cell.index}`
 }
 
-export function TrajectoryView({ snapshot, sessionTotal, isProcessing }: TrajectoryViewProps) {
+export function TrajectoryView({ snapshot, sessionTotal, isProcessing, contextSummary, onOpenChat, onOpenReview, onOpenFile }: TrajectoryViewProps) {
+  const { t } = useTranslation()
+  const [runView, setRunView] = useState<TrajectoryRunView>(readViewPreference)
   const [searchQuery, setSearchQuery] = useState('')
   const [collapsedTurns, setCollapsedTurns] = useState<ReadonlySet<number>>(new Set())
   const [collapsedAssistants, setCollapsedAssistants] = useState<ReadonlySet<string>>(new Set())
@@ -49,6 +89,7 @@ export function TrajectoryView({ snapshot, sessionTotal, isProcessing }: Traject
   const [timelineRange, setTimelineRange] = useState<TrajectoryTimeRange | null>(null)
   const [actualDuration, setActualDuration] = useState<boolean>(readDurationPreference)
   const [actualTime, setActualTime] = useState(false)
+  const seenAssistantIdsRef = useRef(new Set<string>())
 
   const turns = useMemo<readonly TrajectoryTurnModel[]>(() => {
     return deriveTrajectoryLayout({
@@ -91,6 +132,22 @@ export function TrajectoryView({ snapshot, sessionTotal, isProcessing }: Traject
     }
     return hasAssistant
   }, [turns, collapsedAssistants])
+
+  useEffect(() => {
+    const newAssistantIds: string[] = []
+    for (const turn of turns) {
+      for (const group of turn.groups) {
+        for (const cell of group.cells) {
+          if (cell.kind !== 'message') continue
+          const id = assistantRecordId(cell)
+          if (!seenAssistantIdsRef.current.has(id)) newAssistantIds.push(id)
+        }
+      }
+    }
+    if (newAssistantIds.length === 0) return
+    for (const id of newAssistantIds) seenAssistantIdsRef.current.add(id)
+    setCollapsedAssistants((current) => new Set([...current, ...newAssistantIds]))
+  }, [turns])
 
   const toggleAllTurns = () => {
     const all = new Set<number>()
@@ -145,6 +202,20 @@ export function TrajectoryView({ snapshot, sessionTotal, isProcessing }: Traject
     }
   }
 
+  const selectRunView = (view: TrajectoryRunView) => {
+    setRunView(view)
+    try {
+      localStorage.setItem(VIEW_PREFERENCE_KEY, view)
+    } catch {
+      // Best-effort preference only.
+    }
+  }
+
+  const openEvents = (index?: number) => {
+    selectRunView('events')
+    if (index !== undefined) onSelectIndex(index)
+  }
+
   const handleActualDurationChange = (next: boolean) => {
     setActualDuration(next)
     try {
@@ -168,54 +239,109 @@ export function TrajectoryView({ snapshot, sessionTotal, isProcessing }: Traject
     return snapshot.prompts.get(seq - 1)
   }, [selectedCell, snapshot.prompts])
 
-  return (
-    <div className="trajectory-root flex h-full min-h-0 flex-col">
-      <TrajectoryToolbar
-        actualDuration={actualDuration}
-        onActualDurationChange={handleActualDurationChange}
-        actualTime={actualTime}
-        onActualTimeChange={handleActualTimeChange}
-        allTurnsCollapsed={allTurnsCollapsed}
-        onToggleAllTurns={toggleAllTurns}
-        allAssistantsCollapsed={allAssistantsCollapsed}
-        onToggleAllAssistants={toggleAllAssistants}
-        searchQuery={searchQuery}
-        onSearchQueryChange={setSearchQuery}
-        isProcessing={isProcessing}
-      />
+  useEffect(() => {
+    if (runView !== 'timeline') setTimelineRange(null)
+  }, [runView])
 
-      <TrajectoryTimeline
-        turns={turns}
-        mode={timelineMode}
-        range={timelineRange}
-        selectedIndex={selectedIndex}
+  const toolbar = (showTimelineControls: boolean) => (
+    <TrajectoryToolbar
+      actualDuration={actualDuration}
+      onActualDurationChange={handleActualDurationChange}
+      actualTime={actualTime}
+      onActualTimeChange={handleActualTimeChange}
+      allTurnsCollapsed={allTurnsCollapsed}
+      onToggleAllTurns={toggleAllTurns}
+      allAssistantsCollapsed={allAssistantsCollapsed}
+      onToggleAllAssistants={toggleAllAssistants}
+      searchQuery={searchQuery}
+      onSearchQueryChange={setSearchQuery}
+      searchMatchCount={searchMatchIndexes?.size}
+      showTimelineControls={showTimelineControls}
+      isProcessing={isProcessing}
+    />
+  )
+
+  const ledger = (
+    <div className="relative flex min-h-0 min-w-0 flex-1">
+      <TrajectoryTable
+        flatRecords={flatRecords}
+        collapsedTurns={collapsedTurns}
+        onToggleTurn={toggleTurn}
+        collapsedAssistants={collapsedAssistants}
+        onToggleAssistant={toggleAssistant}
         searchMatchIndexes={searchMatchIndexes}
-        onRangeChange={setTimelineRange}
-        onRecordSelect={onSelectIndex}
-        onRecordFocus={onSelectIndex}
+        timelineFocusIndexes={timelineFocusIndexes}
+        selectedIndex={selectedIndex}
+        onSelectIndex={onSelectIndex}
       />
 
-      <div className="flex min-h-0 min-w-0 flex-1">
-        <TrajectoryTable
-          flatRecords={flatRecords}
-          collapsedTurns={collapsedTurns}
-          onToggleTurn={toggleTurn}
-          collapsedAssistants={collapsedAssistants}
-          onToggleAssistant={toggleAssistant}
-          searchMatchIndexes={searchMatchIndexes}
-          timelineFocusIndexes={timelineFocusIndexes}
-          selectedIndex={selectedIndex}
-          onSelectIndex={onSelectIndex}
+      {selectedCell && (
+        <RecordInspector
+          cell={selectedCell}
+          previousPrompt={previousPrompt}
+          sessionTotal={sessionTotal}
+          onOpenChat={onOpenChat}
+          onOpenReview={onOpenReview}
+          onOpenFile={onOpenFile}
+          onClose={() => setSelectedCell(null)}
         />
+      )}
+    </div>
+  )
 
-        {selectedCell && (
-          <RecordInspector
-            cell={selectedCell}
-            previousPrompt={previousPrompt}
-            sessionTotal={sessionTotal}
-            onClose={() => setSelectedCell(null)}
+  return (
+    <div className="trajectory-root flex h-full min-h-0 flex-col @container/trajectory">
+      <div className="flex h-10 shrink-0 items-end gap-5 overflow-x-auto border-b border-border/50 bg-background/80 px-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="tablist" aria-label={t('trajectory.views.label')}>
+        {(['overview', 'timeline', 'events', 'prompt'] as const).map(view => (
+          <button
+            key={view}
+            type="button"
+            role="tab"
+            aria-selected={runView === view}
+            onClick={() => selectRunView(view)}
+            className={`relative h-10 shrink-0 px-0.5 text-[12px] font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring ${runView === view ? 'text-foreground after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:rounded-t after:bg-accent' : 'text-muted-foreground hover:text-foreground'}`}
+          >
+            {t(`trajectory.views.${view}`)}
+          </button>
+        ))}
+      </div>
+
+      <div className="min-h-0 flex-1">
+        {runView === 'overview' && (
+          <TrajectoryOverview
+            snapshot={snapshot}
+            turns={turns}
+            records={flatRecords}
+            isProcessing={isProcessing}
+            contextSummary={contextSummary}
+            onOpenEvents={openEvents}
+            onOpenTimeline={() => selectRunView('timeline')}
+            onOpenPrompt={() => selectRunView('prompt')}
           />
         )}
+        {runView === 'timeline' && (
+          <div className="flex h-full min-h-0 flex-col">
+            {toolbar(true)}
+            <TrajectoryTimeline
+              turns={turns}
+              mode={timelineMode}
+              range={timelineRange}
+              selectedIndex={selectedIndex}
+              searchMatchIndexes={searchMatchIndexes}
+              onRangeChange={setTimelineRange}
+              onRecordSelect={onSelectIndex}
+              onRecordFocus={onSelectIndex}
+            />
+            {ledger}
+          </div>
+        )}
+        {runView === 'events' && (
+          <div className="flex h-full min-h-0 flex-col">
+            {toolbar(false)}
+            {ledger}
+          </div>
+        )}
+        {runView === 'prompt' && <TrajectoryPromptView prompts={snapshot.prompts} />}
       </div>
     </div>
   )

@@ -14,11 +14,10 @@ import { useAtomValue, useSetAtom } from 'jotai'
 import { motion, useReducedMotion } from 'motion/react'
 import { motionTween } from '@craft-agent/ui/motion'
 import { cn } from '@/lib/utils'
-import { X, ChevronLeft, Maximize2, Minimize2 } from 'lucide-react'
+import { X, ChevronLeft } from 'lucide-react'
 import { parseRouteToNavigationState } from '../../../shared/route-parser'
 import {
   activateForegroundSessionAtom,
-  closeWorkbenchItemAtom,
   focusedSurfaceEntryIdAtom,
   removeForegroundSessionAtom,
   type SurfaceRenderEntry,
@@ -72,39 +71,28 @@ export function SurfaceSlot({
   onCompactBack,
 }: SurfaceSlotProps) {
   const { t } = useTranslation()
-  const closeWorkbenchItem = useSetAtom(closeWorkbenchItemAtom)
   const activateForegroundSession = useSetAtom(activateForegroundSessionAtom)
   const removeForegroundSession = useSetAtom(removeForegroundSessionAtom)
   const setFocusedSurface = useSetAtom(focusedSurfaceEntryIdAtom)
   const parentContext = useAppShellContext()
   const expandedWorkbenchItemId = useAtomValue(expandedWorkbenchItemIdAtom)
-  const setExpandedWorkbenchItemId = useSetAtom(expandedWorkbenchItemIdAtom)
   const reduceMotion = useReducedMotion()
   const navState = parseRouteToNavigationState(entry.route)
   const isExpanded = expandedWorkbenchItemId === entry.id
   const isWorkbench = entry.surfaceRole === 'workbench'
 
-  const handleClose = useCallback(() => {
-    if (!isWorkbench) return
-    // Closing an expanded panel must also clear the overlay (stale id).
-    if (expandedWorkbenchItemId === entry.id) {
-      setExpandedWorkbenchItemId(null)
-    }
-    closeWorkbenchItem(entry.id)
-  }, [closeWorkbenchItem, entry.id, expandedWorkbenchItemId, isWorkbench, setExpandedWorkbenchItemId])
-
   // Build close button for PanelHeader (via context override)
   const closeButton = useMemo(() => {
-    if (!isWorkbench && !(isConversationGroup && entry.sessionId)) return undefined
+    if (!(isConversationGroup && entry.sessionId)) return undefined
     return (
       <PanelHeaderCenterButton
         icon={<X className="h-4 w-4" />}
-        onClick={isWorkbench ? handleClose : () => removeForegroundSession(entry.sessionId!)}
-        onPointerDown={isWorkbench ? undefined : (event) => event.stopPropagation()}
+        onClick={() => removeForegroundSession(entry.sessionId!)}
+        onPointerDown={(event) => event.stopPropagation()}
         tooltip={t("common.close")}
       />
     )
-  }, [entry.sessionId, handleClose, isConversationGroup, isWorkbench, removeForegroundSession, t])
+  }, [entry.sessionId, isConversationGroup, removeForegroundSession, t])
 
   // Build back button for compact mode — closes the panel to reveal the session list.
   // Same PanelHeaderCenterButton style as X and share, just on the left side.
@@ -119,26 +107,15 @@ export function SurfaceSlot({
     )
   }, [isCompact, onCompactBack, t])
 
-  // Fullscreen-expand button (decision #6). Rendered in every panel header via
-  // the context slot; the overlay renders the same panel content. When the
-  // panel is already expanded (header shown inside the overlay), it restores.
-  const expandButton = useMemo(() => isWorkbench ? (
-    <PanelHeaderCenterButton
-      icon={isExpanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
-      onClick={() => setExpandedWorkbenchItemId(isExpanded ? null : entry.id)}
-      tooltip={isExpanded ? t("contentPanel.restore") : t("contentPanel.expand")}
-    />
-  ) : undefined, [entry.id, isExpanded, isWorkbench, setExpandedWorkbenchItemId, t])
-
   // Override AppShellContext so page headers receive surface controls and
   // session input behavior follows the currently focused surface.
   const contextOverride = useMemo(() => ({
     ...parentContext,
     trailingAction: closeButton,
-    expandButton,
+    expandButton: undefined,
     leadingAction: backButton,
     isFocusedPanel,
-  }), [parentContext, closeButton, expandButton, backButton, isFocusedPanel])
+  }), [parentContext, closeButton, backButton, isFocusedPanel])
 
   const handlePointerDown = useCallback(() => {
     if (entry.sessionId) activateForegroundSession(entry.sessionId)

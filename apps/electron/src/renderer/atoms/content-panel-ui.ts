@@ -8,6 +8,20 @@
 
 import { atom } from 'jotai'
 
+export type FilesPanelView = 'explorer' | 'opened' | 'changed' | 'attachments'
+
+/** Active Files subview; lifted so triggered previews and fullscreen restoration agree. */
+export const filesPanelViewAtom = atom<FilesPanelView>('explorer')
+
+export interface ChatFocusRequest {
+  sessionId: string
+  messageId: string
+  nonce: number
+}
+
+/** Run inspector → Chat one-shot scroll request. */
+export const chatFocusRequestAtom = atom<ChatFocusRequest | null>(null)
+
 /** ReviewPanel: currently expanded file section key. */
 export const reviewPanelSelectedKeyAtom = atom<string | null>(null)
 

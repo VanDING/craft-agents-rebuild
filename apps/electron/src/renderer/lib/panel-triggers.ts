@@ -16,7 +16,9 @@ export function usePanelTriggerOpener() {
   const store = useStore()
 
   return useCallback((kind: 'diff' | 'preview'): void => {
-    const route: ViewRoute = SURFACE_LAUNCHER_ROUTES[kind]
+    const route: ViewRoute = kind === 'preview'
+      ? SURFACE_LAUNCHER_ROUTES.preview
+      : SURFACE_LAUNCHER_ROUTES[kind]
     store.set(openWorkbenchItemAtom, route)
   }, [store])
 }

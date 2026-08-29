@@ -1,4 +1,6 @@
-export { TrajectoryView, type TrajectoryViewProps } from './TrajectoryView'
+export { TrajectoryView, type TrajectoryViewProps, type TrajectoryRunView, type TrajectoryContextSummary } from './TrajectoryView'
+export { TrajectoryOverview } from './TrajectoryOverview'
+export { TrajectoryPromptView } from './TrajectoryPromptView'
 export { TrajectoryTable, type TrajectoryTableProps } from './TrajectoryTable'
 export { TrajectoryToolbar, type TrajectoryToolbarProps } from './TrajectoryToolbar'
 export { TrajectoryTimeline, type TrajectoryTimelineProps } from './TrajectoryTimeline'

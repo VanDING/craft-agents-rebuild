@@ -1770,13 +1770,14 @@ export default function App() {
   // panel; ordinary files no longer accumulate an unbounded sibling tab stack.
   const activeSessionId = useAtomValue(activeSessionIdAtom)
 
-  const handleOpenFile = useCallback((path: string) => {
+  const handleOpenFile = useCallback((path: string, sessionId?: string) => {
+    const targetSessionId = sessionId ?? activeSessionId
     const classification = classifyFile(path)
     const hasArtifactPreview = (classification.canPreview && classification.type)
       || getFileType(path) === 'office'
-    if (hasArtifactPreview && activeSessionId && windowWorkspaceId) {
+    if (hasArtifactPreview && targetSessionId && windowWorkspaceId) {
       void window.electronAPI.registerCurrentArtifact(windowWorkspaceId, {
-        sessionId: activeSessionId,
+        sessionId: targetSessionId,
         sourcePath: path,
       }).then((artifact) => {
         navigate(routes.view.artifact(artifact.artifact.id))

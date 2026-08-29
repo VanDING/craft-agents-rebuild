@@ -21,18 +21,15 @@ import { cn } from '@/lib/utils'
 import { usePlatform, UnifiedDiffViewer, Spinner } from '@craft-agent/ui'
 import { ShikiDiffViewer } from '@/components/shiki/ShikiDiffViewer'
 import { useTheme } from '@/hooks/useTheme'
-import { PanelHeader } from '../app-shell/PanelHeader'
 import { PanelEmptyState } from './PanelEmptyState'
 import { activeSessionIdAtom } from '@/atoms/active-session'
-import { sessionAtomFamily, sessionMetaMapAtom, ensureSessionMessagesLoadedAtom } from '@/atoms/sessions'
+import { sessionAtomFamily, ensureSessionMessagesLoadedAtom } from '@/atoms/sessions'
 import { useSessionActivities } from '@/lib/use-session-activities'
 import { collectFileChangesFromActivities } from '@/lib/file-changes'
 import { computeChangeStats, createFileSections } from '@craft-agent/ui'
 import { diffKindForSection, type DiffKind } from '@/lib/diff-kinds'
 import { useDiffViewerSettings } from '@/lib/use-diff-viewer-settings'
 import { reviewPanelSelectedKeyAtom, reviewPanelFocusRequestAtom } from '@/atoms/content-panel-ui'
-import { getSessionTitle } from '@/utils/session'
-import { BoundSessionBadge } from './BoundSessionBadge'
 import { motionSpring, motionTween } from '@craft-agent/ui/motion'
 
 const KIND_DOTS: Record<DiffKind, string> = {
@@ -72,10 +69,10 @@ const fileBaseName = (path: string): string => {
   return normalized.slice(normalized.lastIndexOf('/') + 1) || path
 }
 
-export function ReviewPanel() {
+export function ReviewPanel({ sessionId }: { sessionId?: string }) {
   const { t } = useTranslation()
-  const activeSessionId = useAtomValue(activeSessionIdAtom)
-  const sessionMetaMap = useAtomValue(sessionMetaMapAtom)
+  const currentActiveSessionId = useAtomValue(activeSessionIdAtom)
+  const activeSessionId = sessionId ?? currentActiveSessionId
   const session = useAtomValue(sessionAtomFamily(activeSessionId ?? 'missing'))
   const ensureMessagesLoaded = useSetAtom(ensureSessionMessagesLoadedAtom)
   const { onOpenFileExternal } = usePlatform()
@@ -129,25 +126,25 @@ export function ReviewPanel() {
   useEffect(() => {
     if (!focusRequest) return
     const { changeId } = focusRequest
-    const containing = sections.find((section) => section.changes.some((c) => c.id === changeId))
+    const matchingChange = sections
+      .flatMap((section) => section.changes)
+      .find((change) => (
+        change.id === changeId
+        || change.id.startsWith(`${changeId}:`)
+        || change.id.startsWith(`${changeId}-`)
+      ))
+    const resolvedChangeId = matchingChange?.id ?? changeId
+    const containing = sections.find((section) => section.changes.some((c) => c.id === resolvedChangeId))
     if (containing && selectedKey !== containing.key) {
       setSelectedKey(containing.key)
     }
     const timer = setTimeout(() => {
-      changeRefs.current.get(changeId)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      changeRefs.current.get(resolvedChangeId)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }, 120)
     setFocusRequest(null)
     return () => clearTimeout(timer)
   }, [focusRequest, sections, selectedKey, setSelectedKey, setFocusRequest])
 
-  const sessionName = activeSessionId
-    ? sessionMetaMap.get(activeSessionId)?.name
-      ?? (session ? getSessionTitle(session) : undefined)
-    : undefined
-
-  const headerSubtitle = activeSessionId ? (
-    <BoundSessionBadge name={sessionName} sessionId={activeSessionId} />
-  ) : undefined
   // Review-specific controls live below the shared panel header so its centered
   // title and bound-session subtitle keep the same geometry as every other panel.
   const toolbarActions = useMemo(() => {
@@ -198,7 +195,6 @@ export function ReviewPanel() {
   if (!activeSessionId) {
     return (
       <>
-        <PanelHeader title={t('contentPanel.title.review')} centerTitleInPanel />
         <PanelEmptyState
           title={t('contentPanel.noActiveSession')}
           icon={<GitCompareArrows className="h-6 w-6" />}
@@ -209,12 +205,6 @@ export function ReviewPanel() {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <PanelHeader
-        title={t('contentPanel.title.review')}
-        subtitle={headerSubtitle}
-        centerTitleInPanel
-      />
-
       {!messagesLoading && changes.length > 0 && (
         <div className="flex h-10 shrink-0 items-center gap-2 border-b border-border/50 bg-background/55 px-2.5 backdrop-blur-sm">
           <div

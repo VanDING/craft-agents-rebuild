@@ -265,7 +265,15 @@ export function NavigationProvider({
     const focusedIdx = workbench.open && activeIndex >= 0 ? activeIndex + 1 : 0
     return buildSemanticHistoryKey({
       workspaceSlug,
-      panelRoutes: [primary.route, ...foregroundIds.map((id) => `foreground/${id}`), ...workbench.items.map((item) => item.route)],
+      panelRoutes: [
+        primary.route,
+        ...foregroundIds.map((id) => `foreground/${id}`),
+        ...workbench.items.map((item) => (
+          item.binding.type === 'session'
+            ? `${item.route}@session/${item.binding.sessionId}`
+            : `${item.route}@${item.binding.type}`
+        )),
+      ],
       focusedPanelIndex: focusedIdx,
       sidebarParam: '',
     })
@@ -362,7 +370,11 @@ export function NavigationProvider({
   // Workbench tab/open changes are semantic; pixel width is layout-only.
   useEffect(() => {
     const semanticKey = (state: WorkbenchState) => [
-      state.items.map((item) => item.route).join('|'),
+      state.items.map((item) => (
+        item.binding.type === 'session'
+          ? `${item.route}@session/${item.binding.sessionId}`
+          : `${item.route}@${item.binding.type}`
+      )).join('|'),
       state.activeItemId ?? '',
       state.open ? '1' : '0',
     ].join('::')

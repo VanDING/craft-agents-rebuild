@@ -213,6 +213,14 @@
   cursor: pointer;
 }
 
+.searchCount {
+  flex: none;
+  min-width: 14px;
+  color: var(--dsw-alias-label-tertiary);
+  font: 10px/14px var(--ds-font-family-code);
+  text-align: right;
+}
+
 .live {
   flex: none;
   width: 10px;
@@ -222,6 +230,28 @@
   border-top-color: var(--dsw-alias-state-business-primary);
   border-radius: 50%;
   animation: live-spin 700ms linear infinite;
+}
+
+@container trajectory (max-width: 520px) {
+  .inner {
+    gap: 3px;
+    padding: 0 5px;
+  }
+
+  .toggle,
+  .action {
+    width: 26px;
+    justify-content: center;
+    padding: 0;
+  }
+
+  .buttonLabel {
+    display: none;
+  }
+
+  .search {
+    min-width: 92px;
+  }
 }
 
 @keyframes live-spin {

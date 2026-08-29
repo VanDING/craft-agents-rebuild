@@ -13,9 +13,7 @@ import { useTranslation } from 'react-i18next'
 import { useAtomValue } from 'jotai'
 import { FolderKanban, Layers, ListFilter, Paperclip, History, FileText } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { PanelHeader } from '../app-shell/PanelHeader'
 import { PanelEmptyState } from './PanelEmptyState'
-import { BoundSessionBadge } from './BoundSessionBadge'
 import { PanelRow, PanelSection } from './PanelSection'
 import { useNavigation } from '@/contexts/NavigationContext'
 import { activeSessionIdAtom } from '@/atoms/active-session'
@@ -62,10 +60,11 @@ function Stat({ label, value, span }: { label: string; value?: React.ReactNode; 
   )
 }
 
-export function ContextPanel() {
+export function ContextPanel({ sessionId }: { sessionId?: string }) {
   const { t } = useTranslation()
   const { navigate } = useNavigation()
-  const activeSessionId = useAtomValue(activeSessionIdAtom)
+  const currentActiveSessionId = useAtomValue(activeSessionIdAtom)
+  const activeSessionId = sessionId ?? currentActiveSessionId
   const sessionMetaMap = useAtomValue(sessionMetaMapAtom)
   const sources = useAtomValue(sourcesAtom)
   const skills = useAtomValue(skillsAtom)
@@ -120,14 +119,6 @@ export function ContextPanel() {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <PanelHeader
-        title={t('contentPanel.title.context')}
-        subtitle={activeSessionId ? (
-          <BoundSessionBadge name={meta?.name} sessionId={activeSessionId} />
-        ) : undefined}
-        centerTitleInPanel
-      />
-
       {!activeSessionId || !meta ? (
         <PanelEmptyState
           title={t('contentPanel.context.noSessionContext')}
@@ -233,7 +224,7 @@ export function ContextPanel() {
                         icon={<FileText className="h-3.5 w-3.5" />}
                         title={fileBasename(entry.path)}
                         titleAttribute={entry.path}
-                        onClick={() => onOpenFile?.(entry.path)}
+                        onClick={() => onOpenFile?.(entry.path, activeSessionId)}
                       />
                     </li>
                   ))}

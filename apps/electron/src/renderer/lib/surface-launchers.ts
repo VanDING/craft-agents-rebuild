@@ -11,10 +11,9 @@ import type { ViewRoute } from '../../shared/routes'
 
 /**
  * Flat top-bar launcher kinds (browser is not a DOM surface — handled separately).
- * `preview` is deliberately NOT in the button list (decision #4): the preview
- * panel is opened trigger-style from chat file clicks and via the panel.preview
- * shortcut, so it has no top-bar button. The type and SURFACE_LAUNCHER_ROUTES
- * keep it so trigger-based preview opens stay typed.
+ * Legacy `context` and `preview` stay in the type/route registry so old URLs
+ * and trigger APIs remain typed. They canonicalize into Run and Files, so only
+ * the consolidated homes appear as top-bar entries.
  */
 export type SurfaceLauncherKind =
   | 'sessions'
@@ -32,18 +31,16 @@ export const SURFACE_LAUNCHER_KINDS: readonly SurfaceLauncherKind[] = [
   'calendar',
   'diff',
   'files',
-  'context',
   'trajectory',
 ] as const
 
 export const PRIMARY_SURFACE_LAUNCHER_KINDS = ['sessions', 'kanban', 'calendar'] as const
 export type PrimarySurfaceLauncherKind = (typeof PRIMARY_SURFACE_LAUNCHER_KINDS)[number]
 
-/** Preview remains trigger-only, so it is a valid item but not a tiled launcher. */
+/** Only consolidated Workbench homes appear as direct top-bar launchers. */
 export const CONTEXT_WORKBENCH_LAUNCHER_KINDS = [
   'diff',
   'files',
-  'context',
   'trajectory',
 ] as const
 export type ContextWorkbenchLauncherKind = (typeof CONTEXT_WORKBENCH_LAUNCHER_KINDS)[number]

@@ -20,8 +20,10 @@ import {
   renderedSurfaceEntriesAtom,
   setCompanionPrimaryWidthAtom,
   setPrimarySurfaceRouteAtom,
+  setWorkbenchItemBindingAtom,
   workbenchStateAtom,
 } from '../workbench'
+import { filesPanelViewAtom } from '../content-panel-ui'
 
 describe('Primary Surface classification', () => {
   it('separates Primary navigation from Context Workbench tools', () => {
@@ -105,6 +107,14 @@ describe('Context Workbench state', () => {
     expect(store.get(workbenchStateAtom).items).toHaveLength(1)
   })
 
+  it('routes the legacy Preview entry to Files opened view', () => {
+    const store = createStore()
+    store.set(openWorkbenchItemAtom, 'preview')
+
+    expect(store.get(workbenchStateAtom).items[0]?.route).toBe('files')
+    expect(store.get(filesPanelViewAtom)).toBe('opened')
+  })
+
   it('closes the active tab and selects its nearest sibling', () => {
     const store = createStore()
     store.set(openWorkbenchItemAtom, 'diff')
@@ -116,8 +126,8 @@ describe('Context Workbench state', () => {
     store.set(closeWorkbenchItemAtom, files.id)
 
     const state = store.get(workbenchStateAtom)
-    expect(state.items.map((item) => item.kind)).toEqual(['diff', 'context'])
-    expect(state.items.find((item) => item.id === state.activeItemId)?.kind).toBe('context')
+    expect(state.items.map((item) => item.kind)).toEqual(['diff', 'trajectory'])
+    expect(state.items.find((item) => item.id === state.activeItemId)?.kind).toBe('trajectory')
   })
 
   it('clamps the reading-width Primary beside Workbench', () => {
@@ -126,6 +136,24 @@ describe('Context Workbench state', () => {
     expect(store.get(workbenchStateAtom).primaryWidth).toBe(MIN_COMPANION_PRIMARY_WIDTH)
     store.set(setCompanionPrimaryWidthAtom, 5000)
     expect(store.get(workbenchStateAtom).primaryWidth).toBe(MAX_COMPANION_PRIMARY_WIDTH)
+  })
+
+  it('follows the Primary session by default and can pin a Workbench tab', () => {
+    const store = createStore()
+    store.set(setPrimarySurfaceRouteAtom, 'allSessions/session/s1')
+    store.set(openWorkbenchItemAtom, 'trajectory')
+    const itemId = store.get(workbenchStateAtom).activeItemId!
+
+    expect(store.get(renderedSurfaceEntriesAtom).at(-1)?.sessionId).toBe('s1')
+    store.set(setWorkbenchItemBindingAtom, {
+      id: itemId,
+      binding: { type: 'session', sessionId: 's1' },
+    })
+    store.set(setPrimarySurfaceRouteAtom, 'allSessions/session/s2')
+
+    expect(store.get(renderedSurfaceEntriesAtom).at(-1)?.sessionId).toBe('s1')
+    store.set(setWorkbenchItemBindingAtom, { id: itemId, binding: { type: 'follow-primary' } })
+    expect(store.get(renderedSurfaceEntriesAtom).at(-1)?.sessionId).toBe('s2')
   })
 
   it('keeps separate tabs for distinct artifacts and dedupes the same artifact route', () => {
@@ -176,8 +204,8 @@ describe('foreground conversation layout', () => {
     expect(store.get(primarySurfaceAtom).route).toBe('allSessions/session/s3')
 
     store.set(openWorkbenchItemAtom, 'diff')
-    expect(store.get(renderedSurfaceEntriesAtom).map((entry) => entry.sessionId ?? entry.panelType))
-      .toEqual(['s3', 'diff'])
+    expect(store.get(renderedSurfaceEntriesAtom).map((entry) => [entry.panelType, entry.sessionId]))
+      .toEqual([['session', 's3'], ['diff', 's3']])
     expect(store.get(foregroundSessionIdsAtom)).toEqual(['s1', 's2', 's3'])
 
     store.set(collapseWorkbenchAtom)
@@ -211,7 +239,7 @@ describe('legacy peer-panel migration', () => {
     ], 1)
 
     expect(restore.primaryRoute).toBe('allSessions/session/s1')
-    expect(restore.activeWorkbenchRoute).toBe('preview')
+    expect(restore.activeWorkbenchRoute).toBe('files')
   })
 
   it('hydrates while preserving stable ids for matching kinds', () => {
@@ -229,6 +257,22 @@ describe('legacy peer-panel migration', () => {
     const state = store.get(workbenchStateAtom)
     expect(store.get(primarySurfaceAtom)).toEqual({ route: 'projects/calendar', kind: 'project-management' })
     expect(state.items.find((item) => item.kind === 'diff')?.id).toBe(id)
-    expect(state.items.find((item) => item.id === state.activeItemId)?.kind).toBe('context')
+    expect(state.items.find((item) => item.id === state.activeItemId)?.kind).toBe('trajectory')
+  })
+
+  it('hydrates persisted session bindings after a window restore', () => {
+    const store = createStore()
+    store.set(hydrateSurfaceStateAtom, {
+      primaryRoute: 'allSessions/session/s2',
+      workbenchRoutes: ['trajectory'],
+      activeWorkbenchRoute: 'trajectory',
+      workbenchOpen: true,
+      workbenchBindings: {
+        trajectory: { type: 'session', sessionId: 's1' },
+      },
+    })
+
+    expect(store.get(workbenchStateAtom).items[0]?.binding).toEqual({ type: 'session', sessionId: 's1' })
+    expect(store.get(renderedSurfaceEntriesAtom).at(-1)?.sessionId).toBe('s1')
   })
 })

@@ -4,6 +4,7 @@ import {
   deriveSurfaceRestoreState,
   type PrimarySurfaceState,
   type SurfaceRestoreState,
+  type WorkbenchBinding,
   type WorkbenchState,
 } from '@/atoms/workbench'
 
@@ -31,6 +32,32 @@ export function legacySidebarToWorkbenchRoute(value?: string | null): ViewRoute 
 interface ParseSurfaceUrlOptions {
   fallbackPrimaryRoute: ViewRoute
   normalizeRoute: (route: string) => ViewRoute
+}
+
+function parseWorkbenchBindings(value: string | null): Record<string, WorkbenchBinding> | undefined {
+  if (!value) return undefined
+  try {
+    const entries: unknown = JSON.parse(value)
+    if (!Array.isArray(entries)) return undefined
+    const bindings: Record<string, WorkbenchBinding> = {}
+    for (const entry of entries) {
+      if (!Array.isArray(entry) || entry.length !== 2 || typeof entry[0] !== 'string') continue
+      const binding = entry[1]
+      if (!binding || typeof binding !== 'object') continue
+      const type = (binding as { type?: unknown }).type
+      if (type === 'workspace') bindings[entry[0]] = { type: 'workspace' }
+      if (type === 'follow-primary') bindings[entry[0]] = { type: 'follow-primary' }
+      if (type === 'session') {
+        const sessionId = (binding as { sessionId?: unknown }).sessionId
+        if (typeof sessionId === 'string' && sessionId.length > 0) {
+          bindings[entry[0]] = { type: 'session', sessionId }
+        }
+      }
+    }
+    return Object.keys(bindings).length > 0 ? bindings : undefined
+  } catch {
+    return undefined
+  }
 }
 
 /** Extract legacy `route:proportion` entries without trusting layout values. */
@@ -65,6 +92,7 @@ export function parseSurfaceUrlParams(
       .filter(Boolean)
       .map(normalizeRoute)
     const foregroundSessionIds = (params.get('fg') ?? '').split('|').filter(Boolean)
+    const workbenchBindings = parseWorkbenchBindings(params.get('wb'))
     return {
       source: 'v2',
       restore: {
@@ -76,6 +104,7 @@ export function parseSurfaceUrlParams(
           : workbenchRoutes.at(-1) ?? null,
         workbenchOpen: params.get('wo') !== '0' && workbenchRoutes.length > 0,
         companionPrimaryWidth: params.get('pw') ? Number(params.get('pw')) : undefined,
+        ...(workbenchBindings ? { workbenchBindings } : {}),
       },
     }
   }
@@ -124,10 +153,16 @@ export function writeSurfaceUrlParams(
     else params.delete('wa')
     if (workbench.open) params.delete('wo')
     else params.set('wo', '0')
+    const bindings = workbench.items
+      .filter((item) => item.binding.type !== 'follow-primary')
+      .map((item) => [item.route, item.binding] as const)
+    if (bindings.length > 0) params.set('wb', JSON.stringify(bindings))
+    else params.delete('wb')
   } else {
     params.delete('workbench')
     params.delete('wa')
     params.delete('wo')
+    params.delete('wb')
   }
 
   params.delete('panels')

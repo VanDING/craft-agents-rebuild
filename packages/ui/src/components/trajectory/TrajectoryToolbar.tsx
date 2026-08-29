@@ -5,6 +5,7 @@
  */
 
 import { Search } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import css from './TrajectoryToolbar.module.css'
 
 export interface TrajectoryToolbarProps {
@@ -23,6 +24,8 @@ export interface TrajectoryToolbarProps {
   /** Current live ledger search query. */
   searchQuery: string
   onSearchQueryChange: (query: string) => void
+  searchMatchCount?: number
+  showTimelineControls?: boolean
   /** Whether the session is currently processing (live indicator only). */
   isProcessing?: boolean
 }
@@ -38,18 +41,21 @@ export function TrajectoryToolbar({
   onToggleAllAssistants,
   searchQuery,
   onSearchQueryChange,
+  searchMatchCount,
+  showTimelineControls = true,
   isProcessing,
 }: TrajectoryToolbarProps) {
+  const { t } = useTranslation()
   return (
-    <div className={css.root} role="toolbar" aria-label="Trajectory controls">
+    <div className={css.root} role="toolbar" aria-label={t('trajectory.toolbar.label')}>
       <div className={css.inner}>
         <div className={css.actions}>
-          <button
+          {showTimelineControls && <button
             type="button"
             className={css.toggle}
-            aria-label={actualDuration ? 'Use equal-width blocks' : 'Use recorded durations'}
+            aria-label={t(actualDuration ? 'trajectory.toolbar.equalWidth' : 'trajectory.toolbar.duration')}
             aria-pressed={actualDuration}
-            title={actualDuration ? 'Use equal-width blocks' : 'Use recorded durations'}
+            title={t(actualDuration ? 'trajectory.toolbar.equalWidth' : 'trajectory.toolbar.duration')}
             onClick={() => { onActualDurationChange(!actualDuration) }}
           >
             <svg
@@ -61,8 +67,8 @@ export function TrajectoryToolbar({
               <circle cx="8" cy="8" r="5.25" />
               <path d="M8 4.75V8l2.25 1.5" />
             </svg>
-            Duration
-          </button>
+            <span className={css.buttonLabel}>{t('trajectory.toolbar.durationLabel')}</span>
+          </button>}
           <button
             type="button"
             className={css.control}
@@ -71,7 +77,7 @@ export function TrajectoryToolbar({
             hidden
             onClick={() => { onActualTimeChange(!actualTime) }}
           >
-            <span>Compress idle time</span>
+            <span>{t('trajectory.toolbar.compressIdle')}</span>
             <span className={css.controlTrack} data-on={actualTime || undefined} aria-hidden="true">
               <span className={css.controlThumb} />
             </span>
@@ -79,28 +85,28 @@ export function TrajectoryToolbar({
           <button
             type="button"
             className={css.action}
-            aria-label={allTurnsCollapsed ? 'Expand turns' : 'Collapse turns'}
+            aria-label={t(allTurnsCollapsed ? 'trajectory.toolbar.expandTurns' : 'trajectory.toolbar.collapseTurns')}
             aria-pressed={allTurnsCollapsed}
-            title={allTurnsCollapsed ? 'Expand turns' : 'Collapse turns'}
+            title={t(allTurnsCollapsed ? 'trajectory.toolbar.expandTurns' : 'trajectory.toolbar.collapseTurns')}
             onClick={onToggleAllTurns}
           >
             <span className={css.actionIcon} aria-hidden="true">
               {allTurnsCollapsed ? '⊞' : '⊟'}
             </span>
-            Turns
+            <span className={css.buttonLabel}>{t('trajectory.toolbar.turns')}</span>
           </button>
           <button
             type="button"
             className={css.action}
-            aria-label={allAssistantsCollapsed ? 'Expand calls' : 'Collapse calls'}
+            aria-label={t(allAssistantsCollapsed ? 'trajectory.toolbar.expandCalls' : 'trajectory.toolbar.collapseCalls')}
             aria-pressed={allAssistantsCollapsed}
-            title={allAssistantsCollapsed ? 'Expand calls' : 'Collapse calls'}
+            title={t(allAssistantsCollapsed ? 'trajectory.toolbar.expandCalls' : 'trajectory.toolbar.collapseCalls')}
             onClick={onToggleAllAssistants}
           >
             <span className={css.actionIcon} aria-hidden="true">
               {allAssistantsCollapsed ? '⊞' : '⊟'}
             </span>
-            Calls
+            <span className={css.buttonLabel}>{t('trajectory.toolbar.calls')}</span>
           </button>
         </div>
         <div className={css.search}>
@@ -108,11 +114,14 @@ export function TrajectoryToolbar({
           <input
             type="search"
             className={css.searchInput}
-            aria-label="Search trajectory"
-            placeholder="Search…"
+            aria-label={t('trajectory.toolbar.search')}
+            placeholder={t('trajectory.toolbar.searchPlaceholder')}
             value={searchQuery}
             onChange={(event) => { onSearchQueryChange(event.currentTarget.value) }}
           />
+          {searchQuery.trim() !== '' && (
+            <span className={css.searchCount} aria-live="polite">{searchMatchCount ?? 0}</span>
+          )}
         </div>
         {isProcessing && (
           <span className={css.live} role="status" aria-label="Processing" />

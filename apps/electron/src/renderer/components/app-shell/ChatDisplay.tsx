@@ -15,7 +15,7 @@ import {
 import { motion, AnimatePresence } from "motion/react"
 import { MOTION_DURATION, MOTION_EASE } from '@craft-agent/ui/motion'
 import { toast } from "sonner"
-import { useSetAtom } from "jotai"
+import { useAtom, useSetAtom } from "jotai"
 
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
@@ -65,7 +65,7 @@ import { CHAT_LAYOUT } from "@/config/layout"
 import { collectFileChangesFromActivities, getFirstFileChangeIdForActivity } from "@/lib/file-changes"
 import { handleErrorMessageAction } from "./error-message-actions"
 import { addPreviewEntryAtom, type PreviewEntry } from "@/atoms/preview"
-import { reviewPanelFocusRequestAtom } from "@/atoms/content-panel-ui"
+import { chatFocusRequestAtom, reviewPanelFocusRequestAtom } from "@/atoms/content-panel-ui"
 import { usePanelTriggerOpener } from "@/lib/panel-triggers"
 import { useArtifacts } from "@/hooks/useArtifacts"
 import { ArtifactTurnCards } from "@/components/artifacts/ArtifactTurnCards"
@@ -464,6 +464,8 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
   connectionUnavailable = false,
 }, ref) {
   const { t } = useTranslation()
+  const [chatFocusRequest, setChatFocusRequest] = useAtom(chatFocusRequestAtom)
+  const [focusedTrajectoryTurnKey, setFocusedTrajectoryTurnKey] = useState<string | null>(null)
 
   // Surface focus state gates auto-scroll and input focus while Workbench is active.
   const appShellContext = useAppShellContext()
@@ -1364,6 +1366,36 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
     return map
   }, [allTurns])
 
+  useEffect(() => {
+    if (!chatFocusRequest || chatFocusRequest.sessionId !== session?.id) return
+    const targetIndex = allTurns.findIndex((turn) => {
+      if (turn.type === 'assistant') return turn.response?.messageId === chatFocusRequest.messageId
+      return 'message' in turn && turn.message.id === chatFocusRequest.messageId
+    })
+    if (targetIndex < 0) {
+      setChatFocusRequest(null)
+      return
+    }
+
+    const targetTurn = allTurns[targetIndex]
+    const turnKey = getTurnKey(targetTurn)
+    const reveal = () => {
+      const element = turnRefs.current.get(turnKey)
+      if (!element) return false
+      element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      setFocusedTrajectoryTurnKey(turnKey)
+      window.setTimeout(() => setFocusedTrajectoryTurnKey(current => current === turnKey ? null : current), 1800)
+      return true
+    }
+
+    const requiredVisibleCount = allTurns.length - targetIndex
+    if (requiredVisibleCount > visibleTurnCount) setVisibleTurnCount(requiredVisibleCount)
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      if (!reveal()) window.setTimeout(() => { void reveal() }, 80)
+    }))
+    setChatFocusRequest(null)
+  }, [allTurns, chatFocusRequest, session?.id, setChatFocusRequest, visibleTurnCount])
+
   const scrollToFollowUpTurn = useCallback((item: {
     messageId: string
     annotationId: string
@@ -1578,7 +1610,8 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
                             compactMode ? "pt-2 pb-1" : CHAT_LAYOUT.userMessagePadding,
                             "motion-content rounded-lg transition-[box-shadow,background-color]",
                             isCurrentMatch && "ring-2 ring-info ring-offset-2 ring-offset-background",
-                            isAnyMatch && !isCurrentMatch && "ring-1 ring-info/30"
+                            isAnyMatch && !isCurrentMatch && "ring-1 ring-info/30",
+                            focusedTrajectoryTurnKey === turnKey && "ring-2 ring-accent ring-offset-2 ring-offset-background"
                           )}
                         >
                           <MemoizedMessageBubble
@@ -1601,7 +1634,8 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
                           className={cn(
                             "motion-content rounded-lg transition-[box-shadow,background-color]",
                             isCurrentMatch && "ring-2 ring-info ring-offset-2 ring-offset-background",
-                            isAnyMatch && !isCurrentMatch && "ring-1 ring-info/30"
+                            isAnyMatch && !isCurrentMatch && "ring-1 ring-info/30",
+                            focusedTrajectoryTurnKey === turnKey && "ring-2 ring-accent ring-offset-2 ring-offset-background"
                           )}
                         >
                           <MemoizedMessageBubble
@@ -1640,7 +1674,8 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
                           className={cn(
                             "motion-content mt-2 rounded-lg transition-[box-shadow,background-color]",
                             isCurrentMatch && "ring-2 ring-info ring-offset-2 ring-offset-background",
-                            isAnyMatch && !isCurrentMatch && "ring-1 ring-info/30"
+                            isAnyMatch && !isCurrentMatch && "ring-1 ring-info/30",
+                            focusedTrajectoryTurnKey === turnKey && "ring-2 ring-accent ring-offset-2 ring-offset-background"
                           )}
                         >
                           <MemoizedAuthRequestCard
@@ -1666,7 +1701,8 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
                           "pt-2",
                           "motion-content rounded-lg transition-[box-shadow,background-color]",
                           isCurrentMatch && "ring-2 ring-info ring-offset-2 ring-offset-background",
-                          isAnyMatch && !isCurrentMatch && "ring-1 ring-info/30"
+                          isAnyMatch && !isCurrentMatch && "ring-1 ring-info/30",
+                          focusedTrajectoryTurnKey === turnKey && "ring-2 ring-accent ring-offset-2 ring-offset-background"
                         )}
                       >
                       <TurnCard

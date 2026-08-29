@@ -12,6 +12,7 @@ const normalizeRoute = (route: string) => route as ViewRoute
 describe('v2 Surface URL', () => {
   it('round-trips Primary and collapsed Workbench tabs independently', () => {
     const diff = createWorkbenchItem('diff')!
+    diff.binding = { type: 'session', sessionId: 's1' }
     const files = createWorkbenchItem('files')!
     const state: WorkbenchState = {
       open: false,
@@ -40,6 +41,9 @@ describe('v2 Surface URL', () => {
         activeWorkbenchRoute: 'diff',
         workbenchOpen: false,
         companionPrimaryWidth: 432,
+        workbenchBindings: {
+          diff: { type: 'session', sessionId: 's1' },
+        },
       },
     })
   })
@@ -56,6 +60,7 @@ describe('v2 Surface URL', () => {
 
     expect(params.toString()).toContain('sv=2')
     expect(params.has('ww')).toBe(false)
+    expect(params.has('wb')).toBe(false)
     expect(params.get('pw')).toBe('420')
     const parsed = parseSurfaceUrlParams(params, {
       fallbackPrimaryRoute: 'allSessions',
@@ -63,6 +68,17 @@ describe('v2 Surface URL', () => {
     })
     expect(parsed?.source).toBe('v2')
     expect(parsed?.restore.companionPrimaryWidth).toBe(420)
+  })
+
+  it('ignores malformed Workbench bindings without rejecting the surface URL', () => {
+    const params = new URLSearchParams('sv=2&route=allSessions&workbench=diff&wb=not-json')
+    const parsed = parseSurfaceUrlParams(params, {
+      fallbackPrimaryRoute: 'allSessions',
+      normalizeRoute,
+    })
+
+    expect(parsed?.restore.workbenchRoutes).toEqual(['diff'])
+    expect(parsed?.restore.workbenchBindings).toBeUndefined()
   })
 
   it('round-trips foreground conversation presentation independently of Session data', () => {
@@ -113,8 +129,8 @@ describe('legacy panel URL migration', () => {
     })
 
     expect(parsed?.restore.primaryRoute).toBe('allSessions/session/s1')
-    expect(parsed?.restore.workbenchRoutes).toEqual(['preview'])
-    expect(parsed?.restore.activeWorkbenchRoute).toBe('preview')
+    expect(parsed?.restore.workbenchRoutes).toEqual(['files'])
+    expect(parsed?.restore.activeWorkbenchRoute).toBe('files')
   })
 })
 

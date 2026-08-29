@@ -14,17 +14,31 @@ import { useTranslation } from 'react-i18next'
 import { useAtomValue, useSetAtom } from 'jotai'
 import { Activity } from 'lucide-react'
 import { TrajectoryView, buildTrajectorySnapshot, Spinner } from '@craft-agent/ui'
-import { PanelHeader } from '../app-shell/PanelHeader'
 import { PanelEmptyState } from './PanelEmptyState'
-import { BoundSessionBadge } from './BoundSessionBadge'
 import { activeSessionIdAtom } from '@/atoms/active-session'
-import { sessionAtomFamily, ensureSessionMessagesLoadedAtom } from '@/atoms/sessions'
+import { sessionAtomFamily, sessionMetaMapAtom, ensureSessionMessagesLoadedAtom } from '@/atoms/sessions'
+import { chatFocusRequestAtom, reviewPanelFocusRequestAtom } from '@/atoms/content-panel-ui'
+import { collapseWorkbenchAtom, openWorkbenchItemAtom, setWorkbenchItemBindingAtom } from '@/atoms/workbench'
+import { useAppShellContext } from '@/context/AppShellContext'
+import { useNavigation } from '@/contexts/NavigationContext'
+import { useLabels } from '@/hooks/useLabels'
+import { findLabelById } from '@craft-agent/shared/labels'
 
-export function TrajectoryPanel() {
+export function TrajectoryPanel({ sessionId }: { sessionId?: string }) {
   const { t } = useTranslation()
-  const activeSessionId = useAtomValue(activeSessionIdAtom)
+  const currentActiveSessionId = useAtomValue(activeSessionIdAtom)
+  const activeSessionId = sessionId ?? currentActiveSessionId
   const session = useAtomValue(sessionAtomFamily(activeSessionId ?? 'missing'))
+  const sessionMetaMap = useAtomValue(sessionMetaMapAtom)
   const ensureMessagesLoaded = useSetAtom(ensureSessionMessagesLoadedAtom)
+  const setChatFocusRequest = useSetAtom(chatFocusRequestAtom)
+  const setReviewFocusRequest = useSetAtom(reviewPanelFocusRequestAtom)
+  const openWorkbenchItem = useSetAtom(openWorkbenchItemAtom)
+  const setWorkbenchItemBinding = useSetAtom(setWorkbenchItemBindingAtom)
+  const collapseWorkbench = useSetAtom(collapseWorkbenchAtom)
+  const { activeWorkspaceId, onOpenFile } = useAppShellContext()
+  const { navigateToSession } = useNavigation()
+  const { labels: labelConfigs } = useLabels(activeWorkspaceId)
 
   const [messagesLoading, setMessagesLoading] = useState(true)
   const [loadError, setLoadError] = useState(false)
@@ -59,11 +73,14 @@ export function TrajectoryPanel() {
       lastFullUsage: session.lastFullUsage,
     })
   }, [session])
+  const meta = activeSessionId ? sessionMetaMap.get(activeSessionId) : undefined
+  const labelNames = useMemo(() => (
+    meta?.labels?.map((id) => findLabelById(labelConfigs, id)?.name ?? id) ?? []
+  ), [labelConfigs, meta?.labels])
 
   if (!activeSessionId) {
     return (
       <div className="flex h-full flex-col">
-        <PanelHeader title={t('contentPanel.title.trajectory')} centerTitleInPanel />
         <PanelEmptyState
           icon={<Activity className="h-8 w-8" />}
           title={t('contentPanel.trajectory.noSession')}
@@ -76,7 +93,6 @@ export function TrajectoryPanel() {
   if (messagesLoading) {
     return (
       <div className="flex h-full flex-col">
-        <PanelHeader title={t('contentPanel.title.trajectory')} subtitle={<BoundSessionBadge sessionId={activeSessionId} />} centerTitleInPanel />
         <div className="flex flex-1 items-center justify-center">
           <Spinner />
         </div>
@@ -87,7 +103,6 @@ export function TrajectoryPanel() {
   if (loadError) {
     return (
       <div className="flex h-full flex-col">
-        <PanelHeader title={t('contentPanel.title.trajectory')} subtitle={<BoundSessionBadge sessionId={activeSessionId} />} centerTitleInPanel />
         <PanelEmptyState
           icon={<Activity className="h-8 w-8" />}
           title={t('errors.failedToLoadSession')}
@@ -100,7 +115,6 @@ export function TrajectoryPanel() {
   if (!snapshot || snapshot.contributions.length === 0) {
     return (
       <div className="flex h-full flex-col">
-        <PanelHeader title={t('contentPanel.title.trajectory')} subtitle={<BoundSessionBadge sessionId={activeSessionId} />} centerTitleInPanel />
         <PanelEmptyState
           icon={<Activity className="h-8 w-8" />}
           title={t('contentPanel.trajectory.noRecords')}
@@ -112,13 +126,45 @@ export function TrajectoryPanel() {
 
   return (
     <div className="flex h-full flex-col">
-      <PanelHeader title={t('contentPanel.title.trajectory')} subtitle={<BoundSessionBadge sessionId={activeSessionId} />} centerTitleInPanel />
-      <div className="min-h-0 flex-1 bg-foreground/[0.012] p-2.5">
-        <div className="h-full min-h-0 overflow-hidden rounded-xl border border-border/60 bg-background/60 shadow-minimal">
+      <div className="min-h-0 flex-1 bg-background">
+        <div className="h-full min-h-0 overflow-hidden bg-background">
           <TrajectoryView
+            key={activeSessionId}
             snapshot={snapshot}
             sessionTotal={snapshot.totalUsage}
             isProcessing={session?.isProcessing}
+            contextSummary={{
+              name: meta?.name,
+              status: meta?.isProcessing ? t('contentPanel.context.status.processing') : meta?.sessionStatus,
+              model: meta?.model,
+              permissionMode: meta?.permissionMode,
+              workingDirectory: meta?.workingDirectory,
+              labels: labelNames,
+              messageCount: meta?.messageCount,
+              createdAt: meta?.createdAt,
+              lastActivityAt: meta?.lastMessageAt,
+              inputTokens: meta?.tokenUsage?.inputTokens,
+              outputTokens: meta?.tokenUsage?.outputTokens,
+              totalTokens: meta?.tokenUsage?.totalTokens,
+              contextTokens: meta?.tokenUsage?.contextTokens,
+              costUsd: meta?.tokenUsage?.costUsd,
+            }}
+            onOpenChat={(messageId) => {
+              navigateToSession(activeSessionId)
+              setChatFocusRequest({ sessionId: activeSessionId, messageId, nonce: Date.now() })
+              collapseWorkbench()
+            }}
+            onOpenReview={(changeId) => {
+              setReviewFocusRequest({ changeId, nonce: Date.now() })
+              const reviewItemId = openWorkbenchItem('diff')
+              if (reviewItemId) {
+                setWorkbenchItemBinding({
+                  id: reviewItemId,
+                  binding: { type: 'session', sessionId: activeSessionId },
+                })
+              }
+            }}
+            onOpenFile={(path) => onOpenFile?.(path, activeSessionId)}
           />
         </div>
       </div>

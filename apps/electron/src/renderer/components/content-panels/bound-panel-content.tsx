@@ -7,7 +7,7 @@
  *
  * This is the single landing point for the per-panel branches (each bound
  * panel's render is added here). The active session binding is resolved inside
- * each panel via `activeSessionIdAtom`, so the route carries no session id.
+ * each panel from the Workbench binding; the route itself carries no session id.
  *
  * Defensive fallback (required for refresh safety): if the bound route fails to
  * parse — e.g. a hand-edited/obsolete URL whose first segment no longer maps to
@@ -44,15 +44,15 @@ export function BoundPanelContent({ entry }: { entry: SurfaceRenderEntry }) {
 
   switch (entry.panelType) {
     case 'diff':
-      return <ReviewPanel />
+      return <ReviewPanel sessionId={entry.sessionId} />
     case 'files':
-      return <FilesPanel />
+      return <FilesPanel sessionId={entry.sessionId} />
     case 'context':
-      return <ContextPanel />
+      return <ContextPanel sessionId={entry.sessionId} />
     case 'preview':
-      return <PreviewPanel />
+      return <PreviewPanel sessionId={entry.sessionId} />
     case 'trajectory':
-      return <TrajectoryPanel />
+      return <TrajectoryPanel sessionId={entry.sessionId} />
     case 'artifact':
       return navState.artifactId
         ? <ArtifactWorkbench artifactId={navState.artifactId} />

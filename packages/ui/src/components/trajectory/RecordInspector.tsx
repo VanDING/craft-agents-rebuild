@@ -10,7 +10,8 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { LayoutGroup, motion, useReducedMotion } from 'motion/react'
-import { X } from 'lucide-react'
+import { FolderOpen, GitCompareArrows, MessageSquare, X } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { cn } from '../../lib/utils'
 import { Markdown } from '../markdown'
 import type { AssistantMetricDetail, TrajectoryCellProps, TrajectorySourceBlock } from './trajectory-layout'
@@ -23,6 +24,9 @@ export interface RecordInspectorProps {
   previousPrompt?: string
   /** Session total usage (for the usage tab's cumulative section). */
   sessionTotal?: { input: number; output: number; totalTokens: number }
+  onOpenChat?: (messageId: string) => void
+  onOpenReview?: (changeId: string) => void
+  onOpenFile?: (path: string) => void
   onClose: () => void
 }
 
@@ -199,13 +203,30 @@ function clampDetailsWidth(width: number): number {
   return Math.min(DETAILS_MAX_WIDTH, Math.max(DETAILS_MIN_WIDTH, width))
 }
 
-export function RecordInspector({ cell, previousPrompt, sessionTotal, onClose }: RecordInspectorProps) {
+function recordFilePath(cell: TrajectoryCellProps): string | undefined {
+  const input = cell.sourceMessage?.toolInput
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return undefined
+  const record = input as Record<string, unknown>
+  const path = record.path ?? record.file_path
+  if (typeof path === 'string') return path
+  const firstChange = Array.isArray(record.changes) ? record.changes[0] : undefined
+  if (firstChange && typeof firstChange === 'object') {
+    const changedPath = (firstChange as { path?: unknown }).path
+    if (typeof changedPath === 'string') return changedPath
+  }
+  return undefined
+}
+
+export function RecordInspector({ cell, previousPrompt, sessionTotal, onOpenChat, onOpenReview, onOpenFile, onClose }: RecordInspectorProps) {
+  const { t } = useTranslation()
   const [tab, setTab] = useState<DetailTab>('overview')
   const [detailsWidth, setDetailsWidth] = useState<number | null>(null)
   const resizeDrag = useRef<{ pointerId: number; startX: number; startWidth: number } | null>(null)
   const tabs = useMemo(() => detailTabs(cell), [cell])
   const reduceMotion = useReducedMotion()
   const markdownSource = cell.kind === 'message' ? cell.outputDetail ?? cell.thinkingDetail : undefined
+  const sourceMessageId = cell.sourceMessage?.id ?? cell.sourceSeq
+  const filePath = recordFilePath(cell)
 
   useEffect(() => {
     if (!tabs.some(({ id }) => id === tab)) setTab(tabs[0]?.id ?? 'overview')
@@ -213,7 +234,7 @@ export function RecordInspector({ cell, previousPrompt, sessionTotal, onClose }:
 
   return (
     <aside
-      className="relative flex h-full min-w-[300px] shrink-0 flex-col border-l border-border/60 bg-background/95 shadow-strong"
+      className="relative flex h-full w-80 min-w-[300px] max-w-[70%] shrink-0 flex-col border-l border-border/60 bg-background/95 shadow-strong @max-[760px]/trajectory:absolute @max-[760px]/trajectory:inset-0 @max-[760px]/trajectory:z-20 @max-[760px]/trajectory:!w-full @max-[760px]/trajectory:min-w-0 @max-[760px]/trajectory:max-w-none @max-[760px]/trajectory:border-l-0"
       aria-label="Event details"
       style={detailsWidth === null ? undefined : { width: detailsWidth }}
     >
@@ -258,14 +279,26 @@ export function RecordInspector({ cell, previousPrompt, sessionTotal, onClose }:
           <div className="truncate text-[12px] font-semibold">#{cell.index} {cell.kind}</div>
           <div className="truncate text-[11px] text-muted-foreground/60">{cell.text}</div>
         </div>
-        <button
-          type="button"
-          aria-label="Close details"
-          className="ml-2 shrink-0 rounded-md p-1 text-muted-foreground/60 outline-none transition-colors hover:bg-accent/50 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
-          onClick={onClose}
-        >
-          <X className="h-3.5 w-3.5" />
-        </button>
+        <div className="ml-2 flex shrink-0 items-center gap-0.5">
+          {onOpenChat && sourceMessageId && (
+            <button type="button" aria-label={t('trajectory.inspector.openChat')} title={t('trajectory.inspector.openChat')} className="rounded-md p-1 text-muted-foreground/60 outline-none transition-colors hover:bg-accent/50 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring" onClick={() => onOpenChat(sourceMessageId)}>
+              <MessageSquare className="h-3.5 w-3.5" />
+            </button>
+          )}
+          {onOpenReview && cell.callId && (
+            <button type="button" aria-label={t('trajectory.inspector.openReview')} title={t('trajectory.inspector.openReview')} className="rounded-md p-1 text-muted-foreground/60 outline-none transition-colors hover:bg-accent/50 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring" onClick={() => onOpenReview(cell.callId!)}>
+              <GitCompareArrows className="h-3.5 w-3.5" />
+            </button>
+          )}
+          {onOpenFile && filePath && (
+            <button type="button" aria-label={t('trajectory.inspector.openFile')} title={t('trajectory.inspector.openFile')} className="rounded-md p-1 text-muted-foreground/60 outline-none transition-colors hover:bg-accent/50 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring" onClick={() => onOpenFile(filePath)}>
+              <FolderOpen className="h-3.5 w-3.5" />
+            </button>
+          )}
+          <button type="button" aria-label={t('trajectory.inspector.close')} className="rounded-md p-1 text-muted-foreground/60 outline-none transition-colors hover:bg-accent/50 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring" onClick={onClose}>
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
       </div>
 
       <LayoutGroup id="trajectory-inspector-tabs">

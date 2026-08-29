@@ -17,12 +17,9 @@ import { useAtomValue, useSetAtom } from 'jotai'
 import { FileText, Eye, MessageSquare, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Markdown } from '@craft-agent/ui'
-import { PanelHeader } from '../app-shell/PanelHeader'
 import { PanelEmptyState } from './PanelEmptyState'
-import { BoundSessionBadge } from './BoundSessionBadge'
 import { FilePreviewContent } from './FilePreviewContent'
 import { activeSessionIdAtom } from '@/atoms/active-session'
-import { sessionMetaMapAtom } from '@/atoms/sessions'
 import { previewEntriesForSessionAtom, removePreviewEntryAtom, type PreviewEntry } from '@/atoms/preview'
 import { previewPanelSelectedKeyAtom } from '@/atoms/content-panel-ui'
 import { useAppShellContext } from '@/context/AppShellContext'
@@ -31,10 +28,10 @@ import { motionSpring, motionTween } from '@craft-agent/ui/motion'
 const entryKey = (entry: PreviewEntry): string =>
   entry.type === 'file' ? `file:${entry.path}` : `md:${entry.id}`
 
-export function PreviewPanel() {
+export function PreviewPanel({ sessionId }: { sessionId?: string }) {
   const { t } = useTranslation()
-  const activeSessionId = useAtomValue(activeSessionIdAtom)
-  const sessionMetaMap = useAtomValue(sessionMetaMapAtom)
+  const currentActiveSessionId = useAtomValue(activeSessionIdAtom)
+  const activeSessionId = sessionId ?? currentActiveSessionId
   const entries = useAtomValue(previewEntriesForSessionAtom)(activeSessionId ?? '')
   const selectedKey = useAtomValue(previewPanelSelectedKeyAtom)
   const setSelectedKey = useSetAtom(previewPanelSelectedKeyAtom)
@@ -53,7 +50,6 @@ export function PreviewPanel() {
   if (!activeSessionId) {
     return (
       <>
-        <PanelHeader title={t('contentPanel.title.preview')} centerTitleInPanel />
         <PanelEmptyState
           title={t('contentPanel.noActiveSession')}
           icon={<Eye className="h-6 w-6" />}
@@ -62,16 +58,8 @@ export function PreviewPanel() {
     )
   }
 
-  const meta = sessionMetaMap.get(activeSessionId)
-
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <PanelHeader
-        title={t('contentPanel.title.preview')}
-        subtitle={<BoundSessionBadge name={meta?.name} sessionId={activeSessionId} />}
-        centerTitleInPanel
-      />
-
       {entries.length === 0 ? (
         <PanelEmptyState
           title={t('contentPanel.preview.empty')}
@@ -153,14 +141,14 @@ export function PreviewPanel() {
                 <FilePreviewContent
                   filePath={selected.path}
                   onOpenUrl={onOpenUrl}
-                  onFileClick={onOpenFile}
+                  onFileClick={(path) => onOpenFile(path, activeSessionId)}
                 />
               ) : (
                 <div className="h-full overflow-auto px-4 py-3">
                   <Markdown
                     children={selected.content}
                     onUrlClick={onOpenUrl}
-                    onFileClick={onOpenFile}
+                    onFileClick={(path) => onOpenFile(path, activeSessionId)}
                   />
                 </div>
               )}

@@ -14,6 +14,7 @@ import { atom } from 'jotai'
 import { parseRouteToNavigationState } from '../../shared/route-parser'
 import type { ViewRoute } from '../../shared/routes'
 import type { BoundPanelType } from '../../shared/types'
+import { filesPanelViewAtom } from './content-panel-ui'
 
 export const PRIMARY_SURFACE_ID = 'primary-surface'
 
@@ -78,6 +79,7 @@ export interface SurfaceRestoreState {
   activeWorkbenchRoute: ViewRoute | null
   workbenchOpen: boolean
   companionPrimaryWidth?: number
+  workbenchBindings?: Record<string, WorkbenchBinding>
 }
 
 let nextWorkbenchItemId = 0
@@ -142,14 +144,22 @@ export function createPrimarySurfaceState(route: ViewRoute): PrimarySurfaceState
 }
 
 export function createWorkbenchItem(route: ViewRoute, id?: string): WorkbenchItem | null {
-  const classification = classifySurfaceRoute(route)
+  const canonicalRoute = canonicalWorkbenchRoute(route)
+  const classification = classifySurfaceRoute(canonicalRoute)
   if (classification?.role !== 'workbench') return null
   return {
     id: id ?? generateWorkbenchItemId(),
-    route,
+    route: canonicalRoute,
     kind: classification.kind,
     binding: { type: 'follow-primary' },
   }
+}
+
+/** Legacy singleton tools now land in their consolidated Workbench homes. */
+function canonicalWorkbenchRoute(route: ViewRoute): ViewRoute {
+  if (route === 'context') return 'trajectory'
+  if (route === 'preview') return 'files'
+  return route
 }
 
 /** Singleton utility panels dedupe by kind; each Artifact keeps its own route/tab. */
@@ -182,16 +192,17 @@ export function deriveSurfaceRestoreState(
   const workbenchRoutes: ViewRoute[] = []
   const seenItems = new Set<string>()
   for (const route of routes) {
-    const classification = classifySurfaceRoute(route)
+    const canonicalRoute = canonicalWorkbenchRoute(route)
+    const classification = classifySurfaceRoute(canonicalRoute)
     if (classification?.role !== 'workbench') continue
-    const identity = workbenchIdentity(route, classification.kind)
+    const identity = workbenchIdentity(canonicalRoute, classification.kind)
     if (seenItems.has(identity)) continue
     seenItems.add(identity)
-    workbenchRoutes.push(route)
+    workbenchRoutes.push(canonicalRoute)
   }
 
-  const focusedWorkbenchRoute = focusedClassification?.role === 'workbench'
-    ? focusedRoute
+  const focusedWorkbenchRoute = focusedClassification?.role === 'workbench' && focusedRoute
+    ? canonicalWorkbenchRoute(focusedRoute)
     : null
 
   return {
@@ -256,6 +267,11 @@ export const renderedSurfaceEntriesAtom = atom<SurfaceRenderEntry[]>((get) => {
       }]
 
   if (!workbench) return primaryEntries
+  const workbenchSessionId = workbench.binding.type === 'session'
+    ? workbench.binding.sessionId
+    : workbench.binding.type === 'follow-primary'
+      ? activeSessionId ?? undefined
+      : undefined
   return [
     ...primaryEntries,
     {
@@ -263,6 +279,7 @@ export const renderedSurfaceEntriesAtom = atom<SurfaceRenderEntry[]>((get) => {
       route: workbench.route,
       panelType: workbench.kind,
       surfaceRole: 'workbench',
+      sessionId: workbenchSessionId,
     },
   ]
 })
@@ -433,6 +450,7 @@ export const setPrimarySurfaceRouteAtom = atom(
 export const openWorkbenchItemAtom = atom(
   null,
   (get, set, route: ViewRoute) => {
+    if (route === 'preview') set(filesPanelViewAtom, 'opened')
     const candidate = createWorkbenchItem(route)
     if (!candidate) {
       console.warn('[workbench] Ignored non-workbench route:', route)
@@ -461,6 +479,21 @@ export const activateWorkbenchItemAtom = atom(
     if (!current.items.some((item) => item.id === id)) return false
     set(workbenchStateAtom, { ...current, open: true, activeItemId: id })
     set(focusedSurfaceAtom, 'workbench')
+    return true
+  },
+)
+
+export const setWorkbenchItemBindingAtom = atom(
+  null,
+  (get, set, update: { id: string; binding: WorkbenchBinding }) => {
+    const current = get(workbenchStateAtom)
+    if (!current.items.some((item) => item.id === update.id)) return false
+    set(workbenchStateAtom, {
+      ...current,
+      items: current.items.map((item) => (
+        item.id === update.id ? { ...item, binding: update.binding } : item
+      )),
+    })
     return true
   },
 )
@@ -553,22 +586,33 @@ export const hydrateSurfaceStateAtom = atom(
     const seenItems = new Set<string>()
 
     for (const route of restore.workbenchRoutes) {
-      const classification = classifySurfaceRoute(route)
+      const canonicalRoute = canonicalWorkbenchRoute(route)
+      const classification = classifySurfaceRoute(canonicalRoute)
       if (classification?.role !== 'workbench') continue
-      const identity = workbenchIdentity(route, classification.kind)
+      const identity = workbenchIdentity(canonicalRoute, classification.kind)
       if (seenItems.has(identity)) continue
       seenItems.add(identity)
       const existing = current.items.find((item) => workbenchIdentity(item.route, item.kind) === identity)
-      const item = createWorkbenchItem(route, existing?.id)
-      if (item) items.push(existing ? { ...item, binding: existing.binding } : item)
+      const item = createWorkbenchItem(canonicalRoute, existing?.id)
+      const restoredBinding = restore.workbenchBindings?.[route]
+        ?? restore.workbenchBindings?.[canonicalRoute]
+      if (item) items.push({
+        ...item,
+        binding: restoredBinding ?? existing?.binding ?? item.binding,
+      })
     }
 
-    const activeClassification = restore.activeWorkbenchRoute
-      ? classifySurfaceRoute(restore.activeWorkbenchRoute)
+    if (restore.workbenchRoutes.includes('preview')) set(filesPanelViewAtom, 'opened')
+
+    const canonicalActiveRoute = restore.activeWorkbenchRoute
+      ? canonicalWorkbenchRoute(restore.activeWorkbenchRoute)
       : null
-    const activeItem = activeClassification?.role === 'workbench' && restore.activeWorkbenchRoute
+    const activeClassification = canonicalActiveRoute
+      ? classifySurfaceRoute(canonicalActiveRoute)
+      : null
+    const activeItem = activeClassification?.role === 'workbench' && canonicalActiveRoute
       ? items.find((item) => workbenchIdentity(item.route, item.kind)
-        === workbenchIdentity(restore.activeWorkbenchRoute!, activeClassification.kind))
+        === workbenchIdentity(canonicalActiveRoute, activeClassification.kind))
       : null
     const activeItemId = activeItem?.id ?? items.at(-1)?.id ?? null
     const open = restore.workbenchOpen && activeItemId !== null
