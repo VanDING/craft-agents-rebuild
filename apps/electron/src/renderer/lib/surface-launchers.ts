@@ -36,14 +36,11 @@ export const SURFACE_LAUNCHER_KINDS: readonly SurfaceLauncherKind[] = [
   'trajectory',
 ] as const
 
-/** Top-bar launch behavior: Sessions owns Primary; workspace tools dock when a chat is active. */
-export const PRIMARY_SURFACE_LAUNCHER_KINDS = ['sessions'] as const
+export const PRIMARY_SURFACE_LAUNCHER_KINDS = ['sessions', 'kanban', 'calendar'] as const
 export type PrimarySurfaceLauncherKind = (typeof PRIMARY_SURFACE_LAUNCHER_KINDS)[number]
 
 /** Preview remains trigger-only, so it is a valid item but not a tiled launcher. */
 export const CONTEXT_WORKBENCH_LAUNCHER_KINDS = [
-  'kanban',
-  'calendar',
   'diff',
   'files',
   'context',
@@ -53,8 +50,8 @@ export type ContextWorkbenchLauncherKind = (typeof CONTEXT_WORKBENCH_LAUNCHER_KI
 
 export function isContextWorkbenchKind(
   kind: SurfaceLauncherKind,
-): kind is Exclude<SurfaceLauncherKind, 'sessions'> {
-  return kind !== 'sessions'
+): kind is Exclude<SurfaceLauncherKind, PrimarySurfaceLauncherKind> {
+  return kind !== 'sessions' && kind !== 'kanban' && kind !== 'calendar'
 }
 
 export const SURFACE_LAUNCHER_ROUTES: Record<SurfaceLauncherKind, ViewRoute> = {

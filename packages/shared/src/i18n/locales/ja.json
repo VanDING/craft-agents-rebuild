@@ -1073,7 +1073,6 @@
   "sessionMenu.noProject": "プロジェクトなし",
   "sessionMenu.openInBrowser": "ブラウザで開く",
   "sessionMenu.openInNewWindow": "新しいウィンドウで開く",
-  "sessionMenu.openSideBySide": "横に並べて開く",
   "sessionMenu.projects": "プロジェクト",
   "sessionMenu.regenerateTitle": "タイトルを再生成",
   "sessionMenu.sendToWorkspace": "Workspaceに送信...",

@@ -1,12 +1,11 @@
 /**
  * SurfaceSlot
  *
- * Renders a foreground conversation/Primary Surface or active Context
- * Workbench item.
+ * Renders the Primary Surface or active Context Workbench item.
  *
- * Foreground conversations share remaining width equally and may be removed
- * from the presentation without deleting their Session. The active Workbench
- * item has a fixed pixel width and owns close/fullscreen controls.
+ * Primary and Workbench entries have different contracts: Primary fills the
+ * remaining area and cannot be closed; the active Workbench item has a fixed
+ * pixel width and owns close/fullscreen controls.
  */
 
 import { useCallback, useMemo } from 'react'
@@ -18,10 +17,8 @@ import { cn } from '@/lib/utils'
 import { X, ChevronLeft, Maximize2, Minimize2 } from 'lucide-react'
 import { parseRouteToNavigationState } from '../../../shared/route-parser'
 import {
-  activateForegroundSessionAtom,
   closeWorkbenchItemAtom,
   focusedSurfaceEntryIdAtom,
-  removeForegroundSessionAtom,
   type SurfaceRenderEntry,
 } from '@/atoms/workbench'
 import { expandedWorkbenchItemIdAtom } from '@/atoms/overlay'
@@ -37,8 +34,6 @@ interface SurfaceSlotProps {
   isOnly: boolean
   /** Whether this surface currently owns keyboard focus. */
   isFocusedPanel: boolean
-  /** True when two or more ordinary conversations are presented side by side. */
-  isConversationGroup?: boolean
   isSidebarAndNavigatorHidden: boolean
   /** Whether this panel's left corners touch the window edge (no sidebar/navigator before it) */
   isAtLeftEdge: boolean
@@ -60,7 +55,6 @@ export function SurfaceSlot({
   entry,
   isOnly,
   isFocusedPanel,
-  isConversationGroup = false,
   isSidebarAndNavigatorHidden,
   isAtLeftEdge,
   isAtRightEdge,
@@ -72,8 +66,6 @@ export function SurfaceSlot({
 }: SurfaceSlotProps) {
   const { t } = useTranslation()
   const closeWorkbenchItem = useSetAtom(closeWorkbenchItemAtom)
-  const activateForegroundSession = useSetAtom(activateForegroundSessionAtom)
-  const removeForegroundSession = useSetAtom(removeForegroundSessionAtom)
   const setFocusedSurface = useSetAtom(focusedSurfaceEntryIdAtom)
   const parentContext = useAppShellContext()
   const expandedWorkbenchItemId = useAtomValue(expandedWorkbenchItemIdAtom)
@@ -94,16 +86,15 @@ export function SurfaceSlot({
 
   // Build close button for PanelHeader (via context override)
   const closeButton = useMemo(() => {
-    if (!isWorkbench && !(isConversationGroup && entry.sessionId)) return undefined
+    if (!isWorkbench) return undefined
     return (
       <PanelHeaderCenterButton
         icon={<X className="h-4 w-4" />}
-        onClick={isWorkbench ? handleClose : () => removeForegroundSession(entry.sessionId!)}
-        onPointerDown={isWorkbench ? undefined : (event) => event.stopPropagation()}
+        onClick={handleClose}
         tooltip={t("common.close")}
       />
     )
-  }, [entry.sessionId, handleClose, isConversationGroup, isWorkbench, removeForegroundSession, t])
+  }, [handleClose, isWorkbench, t])
 
   // Build back button for compact mode — closes the panel to reveal the session list.
   // Same PanelHeaderCenterButton style as X and share, just on the left side.
@@ -140,11 +131,10 @@ export function SurfaceSlot({
   }), [parentContext, closeButton, expandButton, backButton, isFocusedPanel])
 
   const handlePointerDown = useCallback(() => {
-    if (entry.sessionId) activateForegroundSession(entry.sessionId)
     if (!isFocusedPanel) {
       setFocusedSurface(entry.id)
     }
-  }, [activateForegroundSession, entry.id, entry.sessionId, isFocusedPanel, setFocusedSurface])
+  }, [isFocusedPanel, setFocusedSurface, entry.id])
 
   return (
     <>
@@ -153,12 +143,9 @@ export function SurfaceSlot({
         onPointerDown={handlePointerDown}
         data-panel-role="content"
         data-compact={isCompact || undefined}
-        data-active-conversation={isConversationGroup ? isFocusedPanel : undefined}
         className={cn(
           'h-full overflow-hidden relative @container/panel',
-          !isOnly && isFocusedPanel
-            ? cn('shadow-panel-focused z-[1]', isConversationGroup && 'ring-1 ring-inset ring-accent/30')
-            : 'shadow-middle z-0',
+          !isOnly && isFocusedPanel ? 'shadow-panel-focused z-[1]' : 'shadow-middle z-0',
           'bg-paper',
         )}
         style={{
@@ -197,18 +184,6 @@ export function SurfaceSlot({
           ),
         }}
       >
-        {isConversationGroup && !isFocusedPanel && (
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-0 z-[2] bg-foreground/[0.018]"
-          />
-        )}
-        {isConversationGroup && isFocusedPanel && (
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute left-1/2 top-0 z-[3] h-0.5 w-7 -translate-x-1/2 rounded-b-full bg-accent/65"
-          />
-        )}
         <div className="h-full flex flex-col">
           {topSlot}
           <div className="min-h-0 flex-1">

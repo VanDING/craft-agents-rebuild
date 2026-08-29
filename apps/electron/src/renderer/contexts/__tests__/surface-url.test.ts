@@ -62,24 +62,6 @@ describe('v2 Surface URL', () => {
     expect(parsed?.source).toBe('v2')
     expect(parsed?.restore.workbenchWidth).toBe(480)
   })
-
-  it('round-trips foreground conversation presentation independently of Session data', () => {
-    const params = new URLSearchParams()
-    writeSurfaceUrlParams(params, createPrimarySurfaceState('allSessions/session/s2'), {
-      open: false,
-      activeItemId: null,
-      items: [],
-      width: 720,
-      expandedItemId: null,
-    }, ['s1', 's2', 's3'])
-
-    const parsed = parseSurfaceUrlParams(params, {
-      fallbackPrimaryRoute: 'allSessions',
-      normalizeRoute,
-    })
-    expect(params.get('fg')).toBe('s1|s2|s3')
-    expect(parsed?.restore.foregroundSessionIds).toEqual(['s1', 's2', 's3'])
-  })
 })
 
 describe('legacy panel URL migration', () => {

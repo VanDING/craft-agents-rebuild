@@ -55,8 +55,6 @@ interface SessionListProps {
   onSessionSelect?: (session: SessionMeta) => void
   /** Called when user wants to open a session in a new window */
   onOpenInNewWindow?: (session: SessionMeta) => void
-  /** Called when user wants to add a session to the foreground comparison layout. */
-  onOpenSideBySide?: (session: SessionMeta) => void
   /** Called to navigate to a specific view (e.g., 'allSessions', 'flagged') */
   onNavigateToView?: (view: 'allSessions' | 'flagged') => void
   /** Unified session options per session (real-time state) */
@@ -130,7 +128,6 @@ export function SessionList({
   onRename,
   onFocusChatInput,
   onOpenInNewWindow,
-  onOpenSideBySide,
   sessionOptions,
   searchActive,
   searchQuery = '',
@@ -689,7 +686,6 @@ export function SessionList({
   // --- Context value (shared across all SessionItems) ---
   const handleFocusZone = useCallback(() => focusZone('navigator', { intent: 'click', moveFocus: false }), [focusZone])
   const handleOpenInNewWindow = useCallback((item: SessionMeta) => onOpenInNewWindow?.(item), [onOpenInNewWindow])
-  const handleOpenSideBySide = useCallback((item: SessionMeta) => onOpenSideBySide?.(item), [onOpenSideBySide])
   const resolvedSearchQuery = isSearchMode ? highlightQuery : searchQuery
 
   const listContext = useMemo((): SessionListContextValue => ({
@@ -706,7 +702,6 @@ export function SessionList({
     onSetProjectId,
     onSelectSessionById: handleSelectSessionById,
     onOpenInNewWindow: handleOpenInNewWindow,
-    onOpenSideBySide: onOpenSideBySide ? handleOpenSideBySide : undefined,
     onSendToWorkspace: (ids: string[]) => setSendToWorkspace(ids),
     onFocusZone: handleFocusZone,
     onKeyDown: handleKeyDown,
@@ -726,7 +721,7 @@ export function SessionList({
     onArchive, handleArchiveWithToast, onUnarchive, handleUnarchiveWithToast,
     onMarkUnread, handleDeleteWithToast, onLabelsChange,
     projects, onSetProjectId,
-    handleSelectSessionById, handleOpenInNewWindow, handleOpenSideBySide, onOpenSideBySide, setSendToWorkspace, handleFocusZone, handleKeyDown,
+    handleSelectSessionById, handleOpenInNewWindow, setSendToWorkspace, handleFocusZone, handleKeyDown,
     sessionStatuses, flatLabels, labels, resolvedSearchQuery,
     focusedSessionId, selectionStore.state.selected, isMultiSelectActive,
     sessionOptions, contentSearchResults, activeChatMatchInfo, hasPendingPrompt,

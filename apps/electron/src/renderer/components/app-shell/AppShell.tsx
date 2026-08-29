@@ -96,16 +96,12 @@ import { skillsAtom } from "@/atoms/skills"
 import { activeSessionIdAtom } from "@/atoms/active-session"
 import { expandedWorkbenchItemIdAtom } from "@/atoms/overlay"
 import {
-  addForegroundSessionAtom,
   collapseWorkbenchAtom,
-  DEFAULT_WORKBENCH_WIDTH,
-  MIN_WORKBENCH_WIDTH,
   focusNextSurfaceAtom,
   focusPreviousSurfaceAtom,
   openWorkbenchItemAtom,
   primarySessionIdAtom,
   renderedSurfaceCountAtom,
-  setWorkbenchWidthAtom,
   workbenchStateAtom,
 } from "@/atoms/workbench"
 import { browserInstancesAtom, activeBrowserInstanceIdAtom, filterInstancesForWorkspace } from "@/atoms/browser-pane"
@@ -154,7 +150,6 @@ import SettingsNavigator from "@/pages/settings/SettingsNavigator"
 import {
   PANEL_GAP,
   PANEL_EDGE_INSET,
-  PANEL_MIN_WIDTH,
   PANEL_SASH_HALF_HIT_WIDTH,
   PANEL_SASH_HIT_WIDTH,
   PANEL_SASH_LINE_WIDTH,
@@ -2060,36 +2055,19 @@ function AppShellContent({
     }
   }, [store, workspaces, contextValue.activeWorkspaceId, handleNewBrowserWindow, t])
 
-  /** Sessions navigate Primary; workspace/context tools open as a wide companion. */
+  /** Primary launchers navigate; bound launchers activate a Workbench tab. */
   const lastWorkbenchKindRef = useRef<SurfaceLauncherKind>('diff')
   const openSurfaceLauncher = useCallback((kind: SurfaceLauncherKind) => {
-    if (kind === 'sessions') {
+    if (kind === 'sessions' || kind === 'kanban' || kind === 'calendar') {
       navigate(SURFACE_LAUNCHER_ROUTES[kind])
       return
     }
 
-    // With no active conversation, workspace projections remain useful as
-    // full Primary surfaces instead of opening beside an unrelated page.
-    if ((kind === 'kanban' || kind === 'calendar') && !store.get(primarySessionIdAtom)) {
-      navigate(SURFACE_LAUNCHER_ROUTES[kind])
-      return
-    }
-
-    lastWorkbenchKindRef.current = kind
-    const workbench = store.get(workbenchStateAtom)
-    if (!isAutoCompact && workbench.items.length === 0 && workbench.width === DEFAULT_WORKBENCH_WIDTH && shellWidth > 0) {
-      const leftChromeWidth = effectiveSidebarAndNavigatorHidden
-        ? 0
-        : sidebarWidth + (isNavigatorVisible ? sessionListWidth : 0) + (2 * PANEL_GAP)
-      const availableSurfaceWidth = Math.max(0, shellWidth - leftChromeWidth - PANEL_EDGE_INSET)
-      const preferredWidth = Math.min(
-        Math.round(availableSurfaceWidth * 0.62),
-        availableSurfaceWidth - PANEL_MIN_WIDTH - PANEL_GAP,
-      )
-      store.set(setWorkbenchWidthAtom, Math.max(MIN_WORKBENCH_WIDTH, preferredWidth))
+    if (kind === 'diff' || kind === 'files' || kind === 'context' || kind === 'preview' || kind === 'trajectory') {
+      lastWorkbenchKindRef.current = kind
     }
     store.set(openWorkbenchItemAtom, SURFACE_LAUNCHER_ROUTES[kind])
-  }, [effectiveSidebarAndNavigatorHidden, isAutoCompact, isNavigatorVisible, sessionListWidth, shellWidth, sidebarWidth, store])
+  }, [store])
 
   // Session-list toggle (decision #7): independent of the rail. Revealing the
   // navigator also guarantees Primary is the Sessions surface.
@@ -3603,9 +3581,6 @@ function AppShellContent({
                   }}
                   onSessionSelect={(selectedMeta) => {
                     navigateToSession(selectedMeta.id)
-                  }}
-                  onOpenSideBySide={(selectedMeta) => {
-                    store.set(addForegroundSessionAtom, selectedMeta.id)
                   }}
                   onOpenInNewWindow={(selectedMeta) => {
                     if (activeWorkspaceId) {

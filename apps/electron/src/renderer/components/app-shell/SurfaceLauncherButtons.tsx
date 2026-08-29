@@ -1,9 +1,8 @@
 /**
  * SurfaceLauncherButtons
  *
- * Top-bar launchers for the conversation surface and Companion Workbench.
- * Kanban and Calendar dock beside an active conversation; their project
- * navigation routes can still render them fullscreen as Primary surfaces.
+ * Top-bar launchers for Primary Surfaces and Context Workbench items. Kanban
+ * and Calendar are direct primary launchers; Projects remains in the sidebar.
  *
  * Primary state comes from `primarySurfaceAtom`; bound item state comes from
  * `workbenchStateAtom`. A collapsed workbench retains its tab and shows the
@@ -45,7 +44,7 @@ export type SurfaceLauncherState = 'closed' | 'open' | 'focused' | 'background'
 const TOP_BAR_BUTTON_ORDER = ['newSession', ...SURFACE_LAUNCHER_KINDS, 'browser'] as const
 
 interface SurfaceLauncherButtonsProps {
-  /** Navigate Sessions or activate/create a Companion Workbench item. */
+  /** Navigate a Primary launcher or activate/create a Workbench item. */
   onOpenLauncher: (kind: SurfaceLauncherKind) => void
   /** Focus an existing browser window or create a new one */
   onOpenBrowser: () => void
@@ -86,7 +85,7 @@ export function SurfaceLauncherButtons({
     return filterInstancesForWorkspace(allBrowserInstances, activeWorkspaceId, remoteWorkspaceId).length > 0
   }, [allBrowserInstances, activeWorkspaceId, workspaces])
 
-  // Derive the Sessions Primary selection and companion tab/open state.
+  // Derive Primary selection and Workbench tab/open state from explicit roles.
   const states = useMemo((): Record<SurfaceLauncherKind, SurfaceLauncherState> => {
     const primaryKind = surfaceLauncherKindForRoute(primarySurface.route)
     const activeItem = workbench.items.find((item) => item.id === workbench.activeItemId)
@@ -95,11 +94,6 @@ export function SurfaceLauncherButtons({
     for (const kind of SURFACE_LAUNCHER_KINDS) {
       if (!isContextWorkbenchKind(kind)) {
         result[kind] = primaryKind === kind ? 'focused' : 'closed'
-        continue
-      }
-
-      if (primaryKind === kind) {
-        result[kind] = 'focused'
         continue
       }
 
