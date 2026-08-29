@@ -53,6 +53,15 @@ export function registerMessagingHandlers(server: RpcServer, deps: HandlerDeps):
     return { success: true }
   })
 
+  server.handle(RPC_CHANNELS.messaging.SAVE_WECOM, async (
+    ctx,
+    creds: { botId: string; secret: string; wsUrl?: string },
+  ) => {
+    if (!ctx.workspaceId) throw new Error('Missing workspaceId')
+    await registry.saveWeComCredentials(ctx.workspaceId, creds)
+    return { success: true }
+  })
+
   server.handle(RPC_CHANNELS.messaging.DISCONNECT, async (ctx, platform: string) => {
     if (!ctx.workspaceId) throw new Error('Missing workspaceId')
     await registry.disconnectPlatform(ctx.workspaceId, platform)

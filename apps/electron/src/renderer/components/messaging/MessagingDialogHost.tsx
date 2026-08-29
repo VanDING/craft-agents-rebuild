@@ -57,7 +57,7 @@ export function MessagingDialogHost() {
     return off
   }, [isWaitingForPair, setState, t])
 
-  const openPairing = async (sessionId: string, platform: 'telegram' | 'whatsapp' | 'lark' | 'wechat') => {
+  const openPairing = async (sessionId: string, platform: 'telegram' | 'whatsapp' | 'lark' | 'wechat' | 'wecom') => {
     setState({
       kind: 'pairing',
       platform,

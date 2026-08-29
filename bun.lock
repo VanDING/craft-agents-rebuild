@@ -283,6 +283,7 @@
         "@craft-agent/server-core": "workspace:*",
         "@craft-agent/shared": "workspace:*",
         "@larksuiteoapi/node-sdk": "^1.62.1",
+        "@wecom/aibot-node-sdk": "^1.0.6",
         "grammy": "1.45.1",
       },
       "devDependencies": {
@@ -1751,6 +1752,8 @@
     "@wasm-audio-decoders/ogg-vorbis": ["@wasm-audio-decoders/ogg-vorbis@0.1.20", "https://registry.npmmirror.com/@wasm-audio-decoders/ogg-vorbis/-/ogg-vorbis-0.1.20.tgz", { "dependencies": { "@wasm-audio-decoders/common": "9.0.7", "codec-parser": "2.5.0" } }, "sha512-zaQPasU5usRjUDXtXOHYED5tfkR4QMXd+EH3Nrz1+4+M5pCsdD+s9YxJqb0oqnTyRu/KUujOmu5Z/m/NT47vwg=="],
 
     "@wasm-audio-decoders/opus-ml": ["@wasm-audio-decoders/opus-ml@0.0.2", "https://registry.npmmirror.com/@wasm-audio-decoders/opus-ml/-/opus-ml-0.0.2.tgz", { "dependencies": { "@wasm-audio-decoders/common": "9.0.7" } }, "sha512-58rWEqDGg+CKCyEeKm2KoxxSwTWtHh/NLTW9ObR4K8CGF6VwuuGudEI1CtniS/oSRmL1nJq/eh8MKARiluw4DQ=="],
+
+    "@wecom/aibot-node-sdk": ["@wecom/aibot-node-sdk@1.0.7", "", { "dependencies": { "axios": "^1.6.7", "eventemitter3": "^5.0.1", "ws": "^8.16.0" } }, "sha512-51w+sTqunry6GD3HFvmuh0gArMSJDFE418vyvR1wMJHj1N6DaFuGD3HuaY2fazZs3mb9FWeQFX3+vU5t0Qhwmw=="],
 
     "@wendellhu/redi": ["@wendellhu/redi@1.1.1", "", { "peerDependencies": { "react": ">=16.8.0" }, "optionalPeers": ["react"] }, "sha512-y2fuAgHJ2n8sI8Pe/1QtAuPQ6ZbZ9/Dn3uVQI8cctVqLZzp/0OpLM7DSMOU6vmGYXNsIQwsquR91WcxZ4jrRvA=="],
 

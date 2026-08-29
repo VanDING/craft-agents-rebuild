@@ -191,6 +191,13 @@ export interface IMessagingGatewayRegistry {
     domain: 'lark' | 'feishu'
   }): Promise<void>
 
+  /** Save WeCom intelligent-bot credentials and claim its single long connection. */
+  saveWeComCredentials(workspaceId: string, creds: {
+    botId: string
+    secret: string
+    wsUrl?: string
+  }): Promise<void>
+
   /** Disable a platform for a workspace, preserving WhatsApp auth state unless forgotten separately. */
   disconnectPlatform(workspaceId: string, platform: string): Promise<void>
 

@@ -54,6 +54,7 @@ import { LarkConnectDialog } from '@/components/messaging/LarkConnectDialog'
 import { TelegramSupergroupPairingDialog } from '@/components/messaging/TelegramSupergroupPairingDialog'
 import { WhatsAppConnectDialog } from '@/components/messaging/WhatsAppConnectDialog'
 import { WeChatConnectDialog } from '@/components/messaging/WeChatConnectDialog'
+import { WeComConnectDialog } from '@/components/messaging/WeComConnectDialog'
 import {
   BindingAllowListPopover,
   TelegramAccessSection,
@@ -128,6 +129,9 @@ export default function MessagingSettingsPage() {
             <SettingsCard>
               <PlatformRow platform="wechat" workspaceId={activeWorkspace.id} />
             </SettingsCard>
+            <SettingsCard>
+              <PlatformRow platform="wecom" workspaceId={activeWorkspace.id} />
+            </SettingsCard>
           </SettingsSection>
         </div>
       </ScrollArea>
@@ -139,13 +143,14 @@ export default function MessagingSettingsPage() {
 // Platform row
 // ---------------------------------------------------------------------------
 
-type Platform = 'telegram' | 'whatsapp' | 'lark' | 'wechat'
+type Platform = 'telegram' | 'whatsapp' | 'lark' | 'wechat' | 'wecom'
 
 const PLATFORM_LABEL_KEYS: Record<Platform, string> = {
   telegram: 'settings.messaging.telegram.title',
   whatsapp: 'settings.messaging.whatsapp.title',
   lark: 'settings.messaging.lark.title',
   wechat: 'settings.messaging.wechat.title',
+  wecom: 'settings.messaging.wecom.title',
 }
 
 // Row column geometry shared across the bot header and all child rows.
@@ -209,10 +214,10 @@ function PlatformRow({ platform, workspaceId }: { platform: Platform; workspaceI
   const [supergroup, setSupergroup] = React.useState<{ chatId: string; title: string } | null>(null)
   const [supergroupDialogOpen, setSupergroupDialogOpen] = React.useState(false)
 
-  // Telegram workspace access mode — telegram only. Lifted up so the
-  // dropdown can decide whether to show "Unlock", and TelegramAccessSection
+  // Workspace access mode for platforms with user-level access controls.
+  // Lifted up so the dropdown can decide whether to show "Unlock", and the access section
   // receives it as a controlled prop. Symmetric with `supergroup` state.
-  const [telegramAccessMode, setTelegramAccessMode] =
+  const [platformAccessMode, setPlatformAccessMode] =
     React.useState<PlatformAccessMode>('open')
 
   const refreshSupergroup = React.useCallback(async () => {
@@ -226,10 +231,10 @@ function PlatformRow({ platform, workspaceId }: { platform: Platform; workspaceI
   }, [platform])
 
   const refreshTelegramAccessMode = React.useCallback(async () => {
-    if (platform !== 'telegram') return
+    if (platform !== 'telegram' && platform !== 'wecom') return
     try {
-      const mode = await window.electronAPI.getMessagingPlatformAccessMode('telegram')
-      setTelegramAccessMode(mode as PlatformAccessMode)
+      const mode = await window.electronAPI.getMessagingPlatformAccessMode(platform)
+      setPlatformAccessMode(mode as PlatformAccessMode)
     } catch {
       // silent — default 'open' covers fresh / disconnected state
     }
@@ -240,7 +245,7 @@ function PlatformRow({ platform, workspaceId }: { platform: Platform; workspaceI
   }, [refreshSupergroup, workspaceId])
 
   React.useEffect(() => {
-    if (platform !== 'telegram') return
+    if (platform !== 'telegram' && platform !== 'wecom') return
     void refreshTelegramAccessMode()
     // Lock-down migrates open bindings → inherit, which fires
     // onMessagingBindingChanged. Unlock doesn't migrate, but PlatformRow
@@ -296,9 +301,11 @@ function PlatformRow({ platform, workspaceId }: { platform: Platform; workspaceI
 
   const handleUnlock = async () => {
     try {
-      await window.electronAPI.setMessagingPlatformAccessMode('telegram', 'open')
-      toast.success(t('toast.messagingTelegramUnlocked'))
-      setTelegramAccessMode('open')
+      await window.electronAPI.setMessagingPlatformAccessMode(platform, 'open')
+      toast.success(platform === 'telegram'
+        ? t('toast.messagingTelegramUnlocked')
+        : t('settings.messaging.wecom.accessUnlocked'))
+      setPlatformAccessMode('open')
     } catch (err) {
       toast.error(err instanceof Error ? err.message : t('common.error'))
     }
@@ -371,7 +378,7 @@ function PlatformRow({ platform, workspaceId }: { platform: Platform; workspaceI
                       <Settings2 className="h-3.5 w-3.5" />
                       <span>{t('common.reconfigure')}</span>
                     </StyledDropdownMenuItem>
-                    {telegramAccessMode === 'owner-only' && (
+                    {platformAccessMode === 'owner-only' && (
                       <StyledDropdownMenuItem onClick={() => runAfterMenuClose(handleUnlock)}>
                         <LockOpen className="h-3.5 w-3.5" />
                         <span>{t('settings.messaging.telegram.unlock')}</span>
@@ -385,6 +392,12 @@ function PlatformRow({ platform, workspaceId }: { platform: Platform; workspaceI
                   </>
                 ) : (
                   <>
+                    {platform === 'wecom' && platformAccessMode === 'owner-only' && (
+                      <StyledDropdownMenuItem onClick={() => runAfterMenuClose(handleUnlock)}>
+                        <LockOpen className="h-3.5 w-3.5" />
+                        <span>{t('settings.messaging.telegram.unlock')}</span>
+                      </StyledDropdownMenuItem>
+                    )}
                     <StyledDropdownMenuItem onClick={() => runAfterMenuClose(handleConnect)}>
                       <RefreshCcw className="h-3.5 w-3.5" />
                       <span>{t('common.reconnect')}</span>
@@ -414,8 +427,8 @@ function PlatformRow({ platform, workspaceId }: { platform: Platform; workspaceI
           <>
             <TelegramAccessSection
               workspaceId={workspaceId}
-              accessMode={telegramAccessMode}
-              onAccessModeChange={setTelegramAccessMode}
+              accessMode={platformAccessMode}
+              onAccessModeChange={setPlatformAccessMode}
             />
             <TelegramBindingsBody
               bindings={platformBindings}
@@ -455,6 +468,14 @@ function PlatformRow({ platform, workspaceId }: { platform: Platform; workspaceI
             </div>
           </>
         ) : null}
+        {platform === 'wecom' && runtime.connected && (
+          <TelegramAccessSection
+            workspaceId={workspaceId}
+            platform="wecom"
+            accessMode={platformAccessMode}
+            onAccessModeChange={setPlatformAccessMode}
+          />
+        )}
       </div>
 
       {platform === 'telegram' && (
@@ -480,6 +501,9 @@ function PlatformRow({ platform, workspaceId }: { platform: Platform; workspaceI
       )}
       {platform === 'wechat' && (
         <WeChatConnectDialog open={connectOpen} onOpenChange={setConnectOpen} />
+      )}
+      {platform === 'wecom' && (
+        <WeComConnectDialog open={connectOpen} onOpenChange={setConnectOpen} reconfigure={reconfigure} />
       )}
     </>
   )

@@ -13,6 +13,12 @@ export {
 } from './adapters/whatsapp/index'
 export { WeChatAdapter, type WeChatCredentials, type WeChatLoginEvent } from './adapters/wechat/index'
 export { parseWeChatCredentials } from './adapters/wechat/index'
+export {
+  WeComAdapter,
+  parseWeComCredentials,
+  type WeComCredentials,
+  type WeComConnectionState,
+} from './adapters/wecom/index'
 export { BindingStore } from './binding-store'
 export { ConfigStore } from './config-store'
 export { PairingCodeManager, PAIRING_TTL_MS, PAIRING_RATE_LIMIT_PER_MINUTE } from './pairing'

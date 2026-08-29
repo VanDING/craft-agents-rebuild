@@ -468,6 +468,7 @@ export const RPC_CHANNELS = {
     SAVE_TELEGRAM: 'messaging:saveTelegram',
     TEST_LARK: 'messaging:testLark',
     SAVE_LARK: 'messaging:saveLark',
+    SAVE_WECOM: 'messaging:saveWeCom',
     DISCONNECT: 'messaging:disconnect',
     FORGET: 'messaging:forget',
     GET_BINDINGS: 'messaging:getBindings',

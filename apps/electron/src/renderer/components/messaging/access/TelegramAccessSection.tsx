@@ -48,6 +48,7 @@ function sameRow(a: PendingSender, b: PendingSender): boolean {
 
 interface Props {
   workspaceId: string
+  platform?: 'telegram' | 'wecom'
   /** Workspace-level Telegram access mode. Controlled by the parent so the
    *  same source of truth drives the banner, the collapsible subtitle, and
    *  the platform-row dropdown's Lock-down / Unlock affordances. */
@@ -55,7 +56,7 @@ interface Props {
   onAccessModeChange: (mode: PlatformAccessMode) => void
 }
 
-export function TelegramAccessSection({ workspaceId, accessMode, onAccessModeChange }: Props) {
+export function TelegramAccessSection({ workspaceId, platform = 'telegram', accessMode, onAccessModeChange }: Props) {
   const { t } = useTranslation()
   const allBindings = useAtomValue(messagingBindingsAtom)
   const [owners, setOwners] = React.useState<PlatformOwner[]>([])
@@ -67,19 +68,19 @@ export function TelegramAccessSection({ workspaceId, accessMode, onAccessModeCha
   // operator would see the banner disappear after clicking "Lock down"
   // even though concrete bindings are still letting strangers in.
   const hasOpenBinding = React.useMemo(
-    () => allBindings.some((b) => b.platform === 'telegram' && b.accessMode === 'open'),
-    [allBindings],
+    () => allBindings.some((b) => b.platform === platform && b.accessMode === 'open'),
+    [allBindings, platform],
   )
   const showBanner = accessMode === 'open' || hasOpenBinding
 
   const loadAll = React.useCallback(async () => {
     const [o, p] = await Promise.all([
-      window.electronAPI.getMessagingPlatformOwners('telegram').catch(() => []),
-      window.electronAPI.getMessagingPendingSenders('telegram').catch(() => []),
+      window.electronAPI.getMessagingPlatformOwners(platform).catch(() => []),
+      window.electronAPI.getMessagingPendingSenders(platform).catch(() => []),
     ])
     setOwners(o)
     setPending(p)
-  }, [])
+  }, [platform])
 
   React.useEffect(() => {
     void loadAll()
@@ -97,8 +98,10 @@ export function TelegramAccessSection({ workspaceId, accessMode, onAccessModeCha
 
   const handleLockDown = async () => {
     try {
-      await window.electronAPI.setMessagingPlatformAccessMode('telegram', 'owner-only')
-      toast.success(t('toast.messagingTelegramLockedDown'))
+      await window.electronAPI.setMessagingPlatformAccessMode(platform, 'owner-only')
+      toast.success(platform === 'telegram'
+        ? t('toast.messagingTelegramLockedDown')
+        : t('settings.messaging.wecom.accessLockedDown'))
       onAccessModeChange('owner-only')
       await loadAll()
     } catch (err) {
@@ -109,7 +112,7 @@ export function TelegramAccessSection({ workspaceId, accessMode, onAccessModeCha
   const handleRemoveOwner = async (userId: string) => {
     const next = owners.filter((o) => o.userId !== userId)
     try {
-      await window.electronAPI.setMessagingPlatformOwners('telegram', next)
+      await window.electronAPI.setMessagingPlatformOwners(platform, next)
       setOwners(next)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to remove owner')
@@ -123,7 +126,7 @@ export function TelegramAccessSection({ workspaceId, accessMode, onAccessModeCha
         ...(sender.bindingId ? { bindingId: sender.bindingId } : {}),
       }
       const result = await window.electronAPI.allowMessagingPendingSender(
-        'telegram',
+        platform,
         sender.userId,
         entryKey,
       )
@@ -143,7 +146,7 @@ export function TelegramAccessSection({ workspaceId, accessMode, onAccessModeCha
   const handleIgnore = async (sender: PendingSender) => {
     try {
       await window.electronAPI.dismissMessagingPendingSender(
-        'telegram',
+        platform,
         sender.userId,
         {
           ...(sender.reason ? { reason: sender.reason } : {}),

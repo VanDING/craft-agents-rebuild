@@ -163,6 +163,7 @@ const EXPECTED_CHANNELS: string[] = [
   "messaging:platformStatus",
   "messaging:saveLark",
   "messaging:saveTelegram",
+  "messaging:saveWeCom",
   "messaging:testLark",
   "messaging:testTelegram",
   "messaging:unbind",

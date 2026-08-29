@@ -31,6 +31,12 @@ import { TelegramAdapter } from './adapters/telegram/index'
 import { WhatsAppAdapter, type WhatsAppEvent } from './adapters/whatsapp/index'
 import { LarkAdapter, parseLarkCredentials, type LarkCredentials } from './adapters/lark/index'
 import {
+  WeComAdapter,
+  parseWeComCredentials,
+  type WeComConnectionState,
+  type WeComCredentials,
+} from './adapters/wecom/index'
+import {
   WeChatAdapter,
   parseWeChatCredentials,
   startWeChatQrLogin,
@@ -228,6 +234,22 @@ export class MessagingGatewayRegistry implements IMessagingGatewayRegistry {
         })
       })
     }
+
+    if (isPlatformConfigured(config, 'wecom')) {
+      this.setPlatformRuntime(workspaceId, state, 'wecom', {
+        configured: true,
+        connected: false,
+        state: 'connecting',
+        lastError: undefined,
+      })
+      void this.tryConnectWeCom(workspaceId, state).catch((err) => {
+        this.log.error('background WeCom connect failed', {
+          event: 'wecom_connect_failed',
+          workspaceId,
+          error: err,
+        })
+      })
+    }
   }
 
   async removeWorkspace(workspaceId: string): Promise<void> {
@@ -263,6 +285,7 @@ export class MessagingGatewayRegistry implements IMessagingGatewayRegistry {
         whatsapp: cloneRuntime(state.runtime.whatsapp),
         lark: cloneRuntime(state.runtime.lark),
         wechat: cloneRuntime(state.runtime.wechat),
+        wecom: cloneRuntime(state.runtime.wecom),
       },
     }
   }
@@ -283,6 +306,7 @@ export class MessagingGatewayRegistry implements IMessagingGatewayRegistry {
       await state.gateway.unregisterAdapter('whatsapp').catch(() => {})
       await state.gateway.unregisterAdapter('lark').catch(() => {})
       await state.gateway.unregisterAdapter('wechat').catch(() => {})
+      await state.gateway.unregisterAdapter('wecom').catch(() => {})
       state.whatsappOffEvent?.()
       state.whatsappOffEvent = undefined
       state.whatsapp = null
@@ -314,10 +338,17 @@ export class MessagingGatewayRegistry implements IMessagingGatewayRegistry {
         identity: undefined,
         lastError: undefined,
       })
+      this.setPlatformRuntime(workspaceId, state, 'wecom', {
+        configured: false,
+        connected: false,
+        state: 'disconnected',
+        identity: undefined,
+        lastError: undefined,
+      })
       return
     }
 
-    for (const platform of ['telegram', 'whatsapp', 'lark', 'wechat'] as const) {
+    for (const platform of ['telegram', 'whatsapp', 'lark', 'wechat', 'wecom'] as const) {
       const configured = isPlatformConfigured(cfg, platform)
       if (!configured && state.gateway.getAdapter(platform)) {
         await state.gateway.unregisterAdapter(platform).catch(() => {})
@@ -748,6 +779,44 @@ export class MessagingGatewayRegistry implements IMessagingGatewayRegistry {
     await state.gateway.start()
   }
 
+  async saveWeComCredentials(workspaceId: string, creds: WeComCredentials): Promise<void> {
+    const normalized = parseWeComCredentials(JSON.stringify(creds))
+    await this.opts.credentialManager.set(
+      { type: 'messaging_bearer', workspaceId, name: 'wecom' },
+      { value: JSON.stringify(normalized) },
+    )
+
+    const state = this.workspaces.get(workspaceId) ?? this.bootstrapWorkspace(workspaceId)
+    const current = state.configStore.get()
+    state.configStore.update({
+      enabled: true,
+      platforms: {
+        ...current.platforms,
+        wecom: {
+          ...(current.platforms.wecom ?? {}),
+          enabled: true,
+          ...(normalized.wsUrl ? { wsUrl: normalized.wsUrl } : {}),
+        },
+      },
+    })
+    this.setPlatformRuntime(workspaceId, state, 'wecom', {
+      configured: true,
+      connected: false,
+      state: 'connecting',
+      identity: normalized.botId,
+      lastError: undefined,
+    })
+
+    try {
+      await this.tryConnectWeCom(workspaceId, state)
+      await state.gateway.start()
+    } catch (error) {
+      // Keep credentials/configured state so the user can see the actionable
+      // connection error and retry without losing the values from storage.
+      throw error
+    }
+  }
+
   async disconnectPlatform(workspaceId: string, platform: string): Promise<void> {
     if (!isKnownPlatform(platform)) return
     const state = this.workspaces.get(workspaceId)
@@ -1106,6 +1175,7 @@ export class MessagingGatewayRegistry implements IMessagingGatewayRegistry {
         whatsapp: createRuntime('whatsapp', isPlatformConfigured(cfg, 'whatsapp')),
         lark: createRuntime('lark', isPlatformConfigured(cfg, 'lark')),
         wechat: createRuntime('wechat', isPlatformConfigured(cfg, 'wechat')),
+        wecom: createRuntime('wecom', isPlatformConfigured(cfg, 'wecom')),
       },
     }
     this.workspaces.set(workspaceId, state)
@@ -1187,6 +1257,95 @@ export class MessagingGatewayRegistry implements IMessagingGatewayRegistry {
         lastError: err instanceof Error ? err.message : String(err),
       })
       throw err
+    }
+  }
+
+  private async tryConnectWeCom(workspaceId: string, state: WorkspaceState): Promise<void> {
+    const cred = await this.opts.credentialManager
+      .get({ type: 'messaging_bearer', workspaceId, name: 'wecom' })
+      .catch(() => null)
+
+    if (!cred?.value) {
+      this.setPlatformRuntime(workspaceId, state, 'wecom', {
+        configured: true,
+        connected: false,
+        state: 'error',
+        lastError: 'WeCom Bot ID and Secret are missing.',
+      })
+      return
+    }
+
+    let creds: WeComCredentials
+    try {
+      creds = parseWeComCredentials(cred.value)
+    } catch (error) {
+      this.setPlatformRuntime(workspaceId, state, 'wecom', {
+        configured: true,
+        connected: false,
+        state: 'error',
+        lastError: error instanceof Error ? error.message : 'WeCom credentials are malformed',
+      })
+      return
+    }
+
+    await state.gateway.unregisterAdapter('wecom').catch(() => {})
+
+    try {
+      const adapter = new WeComAdapter()
+      adapter.onConnectionState((connection) => {
+        this.applyWeComConnectionState(workspaceId, state, creds.botId, connection)
+      })
+      await adapter.initialize({
+        token: cred.value,
+        logger: this.log.child({ component: 'wecom-adapter', workspaceId, platform: 'wecom' }),
+      })
+      state.botUsernames.wecom = creds.botId
+      state.gateway.registerAdapter(adapter)
+      this.setPlatformRuntime(workspaceId, state, 'wecom', {
+        configured: true,
+        connected: true,
+        state: 'connected',
+        identity: creds.botId,
+        lastError: undefined,
+      })
+    } catch (error) {
+      this.setPlatformRuntime(workspaceId, state, 'wecom', {
+        configured: true,
+        connected: false,
+        state: 'error',
+        identity: creds.botId,
+        lastError: error instanceof Error ? error.message : String(error),
+      })
+      throw error
+    }
+  }
+
+  private applyWeComConnectionState(
+    workspaceId: string,
+    state: WorkspaceState,
+    botId: string,
+    connection: WeComConnectionState,
+  ): void {
+    if (connection.state === 'connected') {
+      this.setPlatformRuntime(workspaceId, state, 'wecom', {
+        configured: true, connected: true, state: 'connected', identity: botId, lastError: undefined,
+      })
+    } else if (connection.state === 'connecting') {
+      this.setPlatformRuntime(workspaceId, state, 'wecom', {
+        configured: true, connected: false, state: 'connecting', identity: botId,
+      })
+    } else if (connection.state === 'error') {
+      this.setPlatformRuntime(workspaceId, state, 'wecom', {
+        configured: true, connected: false, state: 'error', identity: botId, lastError: connection.error,
+      })
+    } else {
+      this.setPlatformRuntime(workspaceId, state, 'wecom', {
+        configured: true,
+        connected: false,
+        state: connection.replaced ? 'reconnect_required' : 'disconnected',
+        identity: botId,
+        lastError: connection.reason,
+      })
     }
   }
 
@@ -1787,7 +1946,7 @@ function toBindingInfo(b: ChannelBinding): MessagingBindingInfo {
 }
 
 function isKnownPlatform(p: string): p is PlatformType {
-  return p === 'telegram' || p === 'whatsapp' || p === 'lark' || p === 'wechat'
+  return p === 'telegram' || p === 'whatsapp' || p === 'lark' || p === 'wechat' || p === 'wecom'
 }
 
 function capitalize(value: string): string {

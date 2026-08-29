@@ -2,7 +2,7 @@
   "name": "@craft-agent/messaging-gateway",
   "version": "0.12.1",
   "license": "Apache-2.0",
-  "description": "Messaging gateway for Craft Agent — Telegram & WhatsApp",
+  "description": "Messaging gateway for Craft Agent",
   "type": "module",
   "main": "src/index.ts",
   "types": "src/index.ts",
@@ -18,6 +18,7 @@
     "@craft-agent/server-core": "workspace:*",
     "@craft-agent/shared": "workspace:*",
     "@larksuiteoapi/node-sdk": "^1.62.1",
+    "@wecom/aibot-node-sdk": "^1.0.6",
     "grammy": "1.45.1"
   },
   "devDependencies": {

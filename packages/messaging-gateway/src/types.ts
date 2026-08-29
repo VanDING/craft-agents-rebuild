@@ -9,7 +9,7 @@
 // Platform types
 // ---------------------------------------------------------------------------
 
-export type PlatformType = 'telegram' | 'whatsapp' | 'lark' | 'wechat'
+export type PlatformType = 'telegram' | 'whatsapp' | 'lark' | 'wechat' | 'wecom'
 
 // ---------------------------------------------------------------------------
 // Logger
@@ -70,7 +70,7 @@ export interface AdapterCapabilities {
   inlineButtons: boolean
   maxButtons: number
   maxMessageLength: number
-  markdown: 'v2' | 'whatsapp' | 'lark-post' | 'wechat'
+  markdown: 'v2' | 'whatsapp' | 'lark-post' | 'wechat' | 'wecom'
   webhookSupport: boolean
 }
 
@@ -515,6 +515,15 @@ export interface MessagingConfig {
       baseUrl?: string
       /** botAgent identifier (default CraftAgent/0.12.0). */
       botAgent?: string
+    }
+    wecom?: {
+      enabled: boolean
+      /** Optional private-deployment WebSocket endpoint. */
+      wsUrl?: string
+      /** Who may issue commands or use bindings that inherit workspace access. */
+      accessMode?: PlatformAccessMode
+      /** Enterprise WeChat user IDs permitted in owner-only mode. */
+      owners?: PlatformOwner[]
     }
   }
 }
