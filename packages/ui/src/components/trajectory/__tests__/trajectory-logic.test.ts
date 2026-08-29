@@ -10,6 +10,7 @@ import {
   trajectoryRecordId,
   type TrajectoryCellProps,
   type TrajectoryRenderRecord,
+  type TrajectoryTurnModel,
 } from '../trajectory-layout'
 import { filterRecords, searchTrajectory, toolCallTextParts } from '../trajectory-search-index'
 import { computeVirtualRowWindow, projectVirtualRows, CONTENT_ROW_HEIGHT, COLLAPSED_SUMMARY_HEIGHT } from '../trajectory-virtual-rows'
@@ -255,11 +256,12 @@ describe('virtual window', () => {
 })
 
 describe('timeline', () => {
-  it('projects sequence mode with three lanes and turn boundaries', () => {
+  it('projects sequence mode with four lanes and turn boundaries', () => {
     const turns = layoutFor([
       msg({ role: 'user', content: 'a', turnId: 't1', timestamp: 1000 }),
       msg({ role: 'assistant', content: 'b', turnId: 't1', timestamp: 2000, requestSeq: 1, usage }),
-      msg({ role: 'tool', toolName: 'Read', toolUseId: 'c1', toolResult: 'ok', turnId: 't1', timestamp: 3000 }),
+      msg({ role: 'tool', toolName: 'Task', toolUseId: 'c1', toolResult: 'ok', turnId: 't1', timestamp: 3000 }),
+      msg({ role: 'tool', toolName: 'Read', toolUseId: 'c2', parentToolUseId: 'c1', toolResult: 'ok', turnId: 't1', timestamp: 4000 }),
     ])
     const model = deriveTrajectoryTimeline(turns, 'sequence')
     expect(model).not.toBeNull()
@@ -269,6 +271,25 @@ describe('timeline', () => {
     expect(toolSpan?.lane).toBe(2)
     const messageSpan = model!.spans.find(s => s.kind === 'message')
     expect(messageSpan?.lane).toBe(1)
+    const subtoolSpan = model!.spans.find(s => s.kind === 'subtool')
+    expect(subtoolSpan?.lane).toBe(3)
+  })
+
+  it('keeps wall-clock gaps in actual mode and compresses them in duration mode', () => {
+    const turns: readonly TrajectoryTurnModel[] = [{
+      turn: 1,
+      groups: [{
+        title: 'Tools',
+        cells: [
+          { index: 1, kind: 'tool', text: 'first', startedAt: 1000, timeSeconds: 1 },
+          { index: 2, kind: 'tool', text: 'second', startedAt: 5000, timeSeconds: 1 },
+        ],
+      }],
+    }]
+    const actual = deriveTrajectoryTimeline(turns, 'actual')!
+    const duration = deriveTrajectoryTimeline(turns, 'duration')!
+    expect(actual.end - actual.start).toBe(5000)
+    expect(duration.end - duration.start).toBe(2000)
   })
 
   it('drops cells without timestamps in timed modes', () => {

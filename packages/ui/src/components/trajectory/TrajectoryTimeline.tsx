@@ -8,6 +8,8 @@ import {
   memo, useEffect, useMemo, useRef, useState,
   type CSSProperties, type KeyboardEvent, type PointerEvent,
 } from 'react'
+import { Maximize2 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../tooltip'
 import type { TrajectoryCellKind, TrajectoryCellProps, TrajectoryTurnModel } from './trajectory-layout'
 import type { AssistantMetricDetail } from './trajectory-layout'
@@ -138,6 +140,8 @@ export interface TrajectoryTimelineProps {
   selectedIndex?: number | null
   searchMatchIndexes?: ReadonlySet<number> | null
   onRangeChange: (range: TrajectoryTimeRange | null) => void
+  onModeChange?: (mode: TrajectoryTimelineMode) => void
+  onOpenEventsForRange?: () => void
   onRecordSelect?: (index: number) => void
   onRecordFocus?: (index: number) => void
 }
@@ -177,12 +181,11 @@ function rangeFraction(
   }
 }
 
-function LaneLabels() {
+function LaneLabels({ labels }: { labels: readonly string[] }) {
   return (
     <div className={css.labels} aria-hidden="true">
-      <span>System / User</span>
-      <span>Assistant</span>
-      <span>Tools</span>
+      <span className={css.rulerSpacer} />
+      {labels.map(label => <span key={label}>{label}</span>)}
     </div>
   )
 }
@@ -194,9 +197,12 @@ export const TrajectoryTimeline = memo(function TrajectoryTimeline({
   selectedIndex = null,
   searchMatchIndexes = null,
   onRangeChange,
+  onModeChange,
+  onOpenEventsForRange,
   onRecordSelect,
   onRecordFocus,
 }: TrajectoryTimelineProps) {
+  const { t } = useTranslation()
   const model = useMemo(() => deriveTrajectoryTimeline(turns, mode), [mode, turns])
   const detailByIndex = useMemo(
     () => new Map(turns.flatMap(turn =>
@@ -293,6 +299,28 @@ export const TrajectoryTimeline = memo(function TrajectoryTimeline({
     : rangeFraction(draft, domainStart, domainDuration, model.start, model.end)
   const visibleRange = draftFraction ?? committed
   const activeRange = draft ?? range
+  const laneLabels = [
+    t('trajectory.timeline.laneConversation'),
+    t('trajectory.timeline.laneAssistant'),
+    t('trajectory.timeline.laneTools'),
+    t('trajectory.timeline.laneSubtools'),
+  ]
+  const rulerTicks = model === null
+    ? []
+    : Array.from({ length: 6 }, (_, index) => {
+      const fraction = index / 5
+      const value = domainStart + domainDuration * fraction
+      const label = mode === 'sequence'
+        ? String(Math.round(value + 1))
+        : mode === 'actual'
+          ? formatRecordedTime(value)
+          : formatTimelineOffset(value - model.start)
+      return { fraction, label }
+    })
+  const selectedSpans = model === null || activeRange === null
+    ? []
+    : model.spans.filter(span => span.start <= activeRange.end && span.end >= activeRange.start)
+  const selectedErrors = selectedSpans.filter(span => span.isError).length
 
   useEffect(() => {
     const root = rootRef.current
@@ -327,13 +355,50 @@ export const TrajectoryTimeline = memo(function TrajectoryTimeline({
     return () => { root.removeEventListener('wheel', onWheel) }
   }, [domainDuration, domainStart, fullDuration, mode, model])
 
+  const timelineToolbar = (
+    <div className={css.toolbar}>
+      <div
+        className={css.modeGroup}
+        role="radiogroup"
+        aria-label={t('trajectory.timeline.controls')}
+      >
+        {(['sequence', 'duration', 'actual'] as const).map(value => (
+          <button
+            key={value}
+            type="button"
+            role="radio"
+            aria-checked={mode === value}
+            data-active={mode === value || undefined}
+            onClick={() => onModeChange?.(value)}
+          >
+            {t(`trajectory.timeline.mode.${value}`)}
+          </button>
+        ))}
+      </div>
+      <span className={css.hint}>{t('trajectory.timeline.interactionHint')}</span>
+      <button
+        className={css.fitButton}
+        type="button"
+        onClick={() => {
+          setAnimateViewport(true)
+          setViewport(null)
+          onRangeChange(null)
+        }}
+      >
+        <Maximize2 size={13} aria-hidden="true" />
+        {t('trajectory.timeline.fit')}
+      </button>
+    </div>
+  )
+
   if (model === null) {
     return (
-      <section ref={rootRef} className={css.root} aria-label="Trajectory timeline">
+      <section ref={rootRef} className={css.root} aria-label={t('trajectory.timeline.label')}>
+        {timelineToolbar}
         <div className={css.plot}>
-          <LaneLabels />
+          <LaneLabels labels={laneLabels} />
           <div className={css.track}>
-            <span className={css.empty}>No timing data</span>
+            <span className={css.empty}>{t('trajectory.timeline.empty')}</span>
           </div>
         </div>
       </section>
@@ -513,14 +578,15 @@ export const TrajectoryTimeline = memo(function TrajectoryTimeline({
   }
 
   return (
-    <section ref={rootRef} className={css.root} aria-label="Trajectory timeline">
+    <section ref={rootRef} className={css.root} aria-label={t('trajectory.timeline.label')}>
+      {timelineToolbar}
       <div className={css.plot}>
-        <LaneLabels />
+        <LaneLabels labels={laneLabels} />
         <div
           ref={trackRef}
           className={css.track}
           data-panning={panning || undefined}
-          aria-label="Timeline overview; drag horizontally to focus events"
+          aria-label={t('trajectory.timeline.canvasLabel')}
           tabIndex={0}
           onKeyDown={onKeyDown}
           onPointerDown={onPointerDown}
@@ -538,6 +604,20 @@ export const TrajectoryTimeline = memo(function TrajectoryTimeline({
             event.preventDefault()
           }}
         >
+          <div className={css.ruler} aria-hidden="true">
+            {rulerTicks.map(tick => (
+              <span
+                className={css.rulerTick}
+                key={`${tick.fraction}-${tick.label}`}
+                style={{ '--trajectory-ruler-left': `${tick.fraction * 100}%` } as CSSProperties}
+              >
+                {tick.label}
+              </span>
+            ))}
+          </div>
+          <div className={css.laneGrid} aria-hidden="true">
+            {laneLabels.map(label => <span key={label} />)}
+          </div>
           {hover !== null && hover.recordIndex === null && draft === null && (
             <div
               className={css.hoverLine}
@@ -618,13 +698,14 @@ export const TrajectoryTimeline = memo(function TrajectoryTimeline({
                   <Tooltip key={span.index}>
                     <TooltipTrigger asChild>
                       <span
-                        aria-hidden="true"
+                        aria-label={`${timelineKindLabel(span.kind)}: ${span.label}`}
                         className={css.span}
                         data-timeline-span={span.kind}
                         data-timeline-record-index={span.index}
                         data-assistant-timing={ttftFraction === null ? undefined : 'true'}
                         data-error={span.isError || undefined}
                         data-equal-duration={mode === 'time' || undefined}
+                        data-milestone={span.end === span.start || undefined}
                         data-current={span.index === selectedIndex || undefined}
                         data-hovered={hover?.recordIndex === span.index || undefined}
                         data-search-match={searchMatchIndexes === null
@@ -644,7 +725,9 @@ export const TrajectoryTimeline = memo(function TrajectoryTimeline({
                             ? {}
                             : { '--trajectory-assistant-ttft': `${ttftFraction * 100}%` }),
                         } as CSSProperties}
-                      />
+                      >
+                        <span className={css.spanLabel}>{span.label}</span>
+                      </span>
                     </TooltipTrigger>
                     <TooltipContent side="bottom" className="whitespace-pre-line">
                       {timelineTooltipLabel(span.kind, detail)}
@@ -655,6 +738,29 @@ export const TrajectoryTimeline = memo(function TrajectoryTimeline({
           </div>
         </div>
       </div>
+      {activeRange !== null && (
+        <div className={css.selectionSummary} role="status">
+          <span>
+            {t('trajectory.timeline.selectedSummary', {
+              count: selectedSpans.length,
+              errors: selectedErrors,
+              duration: mode === 'sequence'
+                ? t('trajectory.timeline.operations', {
+                  count: Math.max(0, Math.round(activeRange.end - activeRange.start)),
+                })
+                : formatTimelineOffset(Math.max(0, activeRange.end - activeRange.start)),
+            })}
+          </span>
+          <div className={css.summaryActions}>
+            <button type="button" onClick={() => onRangeChange(null)}>
+              {t('trajectory.timeline.clearSelection')}
+            </button>
+            <button type="button" data-primary="true" onClick={onOpenEventsForRange}>
+              {t('trajectory.timeline.openEvents')}
+            </button>
+          </div>
+        </div>
+      )}
     </section>
   )
 })

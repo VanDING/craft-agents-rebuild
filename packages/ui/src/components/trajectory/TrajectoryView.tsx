@@ -85,7 +85,7 @@ export function TrajectoryView({ snapshot, sessionTotal, isProcessing, contextSu
   const [collapsedAssistants, setCollapsedAssistants] = useState<ReadonlySet<string>>(new Set())
   const [selectedCell, setSelectedCell] = useState<TrajectoryCellProps | null>(null)
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null)
-  const [timelineMode, setTimelineMode] = useState<TrajectoryTimelineMode>('sequence')
+  const [timelineMode, setTimelineMode] = useState<TrajectoryTimelineMode>(() => readDurationPreference() ? 'duration' : 'sequence')
   const [timelineRange, setTimelineRange] = useState<TrajectoryTimeRange | null>(null)
   const [actualDuration, setActualDuration] = useState<boolean>(readDurationPreference)
   const [actualTime, setActualTime] = useState(false)
@@ -202,7 +202,8 @@ export function TrajectoryView({ snapshot, sessionTotal, isProcessing, contextSu
     }
   }
 
-  const selectRunView = (view: TrajectoryRunView) => {
+  const selectRunView = (view: TrajectoryRunView, preserveTimelineRange = false) => {
+    if (view !== 'timeline' && !preserveTimelineRange) setTimelineRange(null)
     setRunView(view)
     try {
       localStorage.setItem(VIEW_PREFERENCE_KEY, view)
@@ -231,6 +232,18 @@ export function TrajectoryView({ snapshot, sessionTotal, isProcessing, contextSu
     setTimelineMode(next ? 'actual' : 'duration')
   }
 
+  const handleTimelineModeChange = (next: TrajectoryTimelineMode) => {
+    setTimelineMode(next)
+    const usesDuration = next !== 'sequence'
+    setActualDuration(usesDuration)
+    setActualTime(next === 'actual')
+    try {
+      localStorage.setItem(DURATION_PREFERENCE_KEY, usesDuration ? '1' : '0')
+    } catch {
+      // Best-effort preference only.
+    }
+  }
+
   // Previous request prompt for the inspector diff tab.
   const previousPrompt = useMemo(() => {
     if (!selectedCell?.sourceMessage) return undefined
@@ -238,10 +251,6 @@ export function TrajectoryView({ snapshot, sessionTotal, isProcessing, contextSu
     if (seq === undefined) return undefined
     return snapshot.prompts.get(seq - 1)
   }, [selectedCell, snapshot.prompts])
-
-  useEffect(() => {
-    if (runView !== 'timeline') setTimelineRange(null)
-  }, [runView])
 
   const toolbar = (showTimelineControls: boolean) => (
     <TrajectoryToolbar
@@ -261,6 +270,18 @@ export function TrajectoryView({ snapshot, sessionTotal, isProcessing, contextSu
     />
   )
 
+  const inspector = selectedCell && (
+    <RecordInspector
+      cell={selectedCell}
+      previousPrompt={previousPrompt}
+      sessionTotal={sessionTotal}
+      onOpenChat={onOpenChat}
+      onOpenReview={onOpenReview}
+      onOpenFile={onOpenFile}
+      onClose={() => setSelectedCell(null)}
+    />
+  )
+
   const ledger = (
     <div className="relative flex min-h-0 min-w-0 flex-1">
       <TrajectoryTable
@@ -275,17 +296,7 @@ export function TrajectoryView({ snapshot, sessionTotal, isProcessing, contextSu
         onSelectIndex={onSelectIndex}
       />
 
-      {selectedCell && (
-        <RecordInspector
-          cell={selectedCell}
-          previousPrompt={previousPrompt}
-          sessionTotal={sessionTotal}
-          onOpenChat={onOpenChat}
-          onOpenReview={onOpenReview}
-          onOpenFile={onOpenFile}
-          onClose={() => setSelectedCell(null)}
-        />
-      )}
+      {inspector}
     </div>
   )
 
@@ -320,24 +331,37 @@ export function TrajectoryView({ snapshot, sessionTotal, isProcessing, contextSu
           />
         )}
         {runView === 'timeline' && (
-          <div className="flex h-full min-h-0 flex-col">
-            {toolbar(true)}
+          <div className="relative flex h-full min-h-0 min-w-0">
             <TrajectoryTimeline
               turns={turns}
               mode={timelineMode}
               range={timelineRange}
               selectedIndex={selectedIndex}
-              searchMatchIndexes={searchMatchIndexes}
+              searchMatchIndexes={null}
               onRangeChange={setTimelineRange}
+              onModeChange={handleTimelineModeChange}
+              onOpenEventsForRange={() => selectRunView('events', true)}
               onRecordSelect={onSelectIndex}
               onRecordFocus={onSelectIndex}
             />
-            {ledger}
+            {inspector}
           </div>
         )}
         {runView === 'events' && (
           <div className="flex h-full min-h-0 flex-col">
             {toolbar(false)}
+            {timelineRange !== null && (
+              <div className="flex min-h-8 shrink-0 items-center justify-between gap-3 border-b border-border/50 bg-accent/5 px-3 text-[11px] text-muted-foreground">
+                <span>{t('trajectory.timeline.filteredEvents', { count: timelineFocusIndexes?.size ?? 0 })}</span>
+                <button
+                  type="button"
+                  className="shrink-0 rounded px-1.5 py-1 text-foreground hover:bg-accent/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  onClick={() => setTimelineRange(null)}
+                >
+                  {t('trajectory.timeline.clearSelection')}
+                </button>
+              </div>
+            )}
             {ledger}
           </div>
         )}

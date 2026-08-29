@@ -4,7 +4,7 @@
  * Craft trajectory model.
  *
  * Four modes:
- * - `sequence`: equal-width blocks in ledger order (three lanes by kind)
+ * - `sequence`: equal-width blocks in ledger order (four lanes by kind)
  * - `duration`: recorded durations, idle gaps compressed
  * - `time`: complete wall-clock spans, idle gaps retained
  * - `actual`: recorded durations on the wall-clock axis (idle retained)
@@ -27,7 +27,7 @@ export interface TrajectoryTimelineSpan extends TrajectoryTimeRange {
   isError: boolean
   kind: TrajectoryCellKind
   label: string
-  /** Three-lane projection: 0 = system/user/context, 1 = message, 2 = tool. */
+  /** Four-lane projection: 0 = conversation, 1 = assistant, 2 = tool, 3 = subtool. */
   lane: number
 }
 
@@ -49,7 +49,8 @@ export function formatTimelineOffset(milliseconds: number): string {
 }
 
 function laneFor(kind: TrajectoryCellKind): number {
-  if (kind === 'tool' || kind === 'subtool') return 2
+  if (kind === 'subtool') return 3
+  if (kind === 'tool') return 2
   if (kind === 'message' || kind === 'compacted') return 1
   return 0
 }
@@ -67,7 +68,7 @@ function cellRange(cell: TrajectoryCellProps): TrajectoryTimeRange | null {
 }
 
 /**
- * Project every visible record into a stable three-lane timeline.
+ * Project every visible record into a stable four-lane timeline.
  * @param turns - Unfiltered trajectory layout.
  * @param mode - Independent equal/recorded duration and compressed/complete time projection.
  * @returns Timeline model, or `null` when no record is visible.
