@@ -522,7 +522,7 @@ export interface MessagingConfig {
       wsUrl?: string
       /** Who may issue commands or use bindings that inherit workspace access. */
       accessMode?: PlatformAccessMode
-      /** Enterprise WeChat user IDs permitted in owner-only mode. */
+      /** WeCom user IDs permitted in owner-only mode. */
       owners?: PlatformOwner[]
     }
   }

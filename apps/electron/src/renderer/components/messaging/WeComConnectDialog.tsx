@@ -1,4 +1,4 @@
-/** Configure the Enterprise WeChat (WeCom) intelligent-bot long connection. */
+/** Configure the WeCom intelligent-bot long connection. */
 
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'

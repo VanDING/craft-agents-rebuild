@@ -139,7 +139,7 @@ export function MessagingSessionMenuItem(props: MessagingSessionMenuItemProps) {
           <span>Lark / Feishu</span>
         </MenuItem>
         <MenuItem onClick={() => handleConnectMessaging('wecom')}>
-          <span>企业微信</span>
+          <span>WeCom</span>
         </MenuItem>
         <MenuItem onClick={() => handleConnectMessaging('wechat')}>
           <span>WeChat</span>
