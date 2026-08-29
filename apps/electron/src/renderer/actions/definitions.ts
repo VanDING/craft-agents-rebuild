@@ -11,6 +11,13 @@ export const actions = {
     defaultHotkey: 'mod+n',
     category: 'General',
   },
+  'app.newChatInPanel': {
+    id: 'app.newChatInPanel',
+    label: 'New Chat in Panel',
+    description: 'Create a new chat session beside the active chat',
+    defaultHotkey: 'mod+t',
+    category: 'General',
+  },
   'app.settings': {
     id: 'app.settings',
     label: 'Settings',

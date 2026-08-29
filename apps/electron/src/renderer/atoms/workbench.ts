@@ -17,9 +17,11 @@ import type { BoundPanelType } from '../../shared/types'
 
 export const PRIMARY_SURFACE_ID = 'primary-surface'
 
-export const DEFAULT_WORKBENCH_WIDTH = 480
 export const MIN_WORKBENCH_WIDTH = 360
-export const MAX_WORKBENCH_WIDTH = 960
+export const DEFAULT_COMPANION_PRIMARY_WIDTH = 420
+export const MIN_COMPANION_PRIMARY_WIDTH = 360
+export const MAX_COMPANION_PRIMARY_WIDTH = 600
+export const MAX_FOREGROUND_CONVERSATIONS = 3
 
 export type PrimarySurfaceKind = 'session' | 'project-management' | 'management'
 export type SurfaceFocus = 'primary' | 'workbench'
@@ -53,7 +55,7 @@ export interface WorkbenchState {
   open: boolean
   activeItemId: string | null
   items: WorkbenchItem[]
-  width: number
+  primaryWidth: number
   expandedItemId: string | null
 }
 
@@ -62,6 +64,7 @@ export interface SurfaceRenderEntry {
   route: ViewRoute
   panelType: SurfacePanelType
   surfaceRole: 'primary' | 'workbench'
+  sessionId?: string
 }
 
 export type SurfaceRouteClassification =
@@ -70,10 +73,11 @@ export type SurfaceRouteClassification =
 
 export interface SurfaceRestoreState {
   primaryRoute: ViewRoute
+  foregroundSessionIds?: string[]
   workbenchRoutes: ViewRoute[]
   activeWorkbenchRoute: ViewRoute | null
   workbenchOpen: boolean
-  workbenchWidth?: number
+  companionPrimaryWidth?: number
 }
 
 let nextWorkbenchItemId = 0
@@ -82,9 +86,9 @@ function generateWorkbenchItemId(): string {
   return `workbench-${++nextWorkbenchItemId}-${Date.now()}`
 }
 
-export function clampWorkbenchWidth(width: number): number {
-  if (!Number.isFinite(width)) return DEFAULT_WORKBENCH_WIDTH
-  return Math.min(MAX_WORKBENCH_WIDTH, Math.max(MIN_WORKBENCH_WIDTH, Math.round(width)))
+export function clampCompanionPrimaryWidth(width: number): number {
+  if (!Number.isFinite(width)) return DEFAULT_COMPANION_PRIMARY_WIDTH
+  return Math.min(MAX_COMPANION_PRIMARY_WIDTH, Math.max(MIN_COMPANION_PRIMARY_WIDTH, Math.round(width)))
 }
 
 export function classifySurfaceRoute(route: ViewRoute): SurfaceRouteClassification | null {
@@ -202,11 +206,14 @@ export const primarySurfaceAtom = atom<PrimarySurfaceState>(
   createPrimarySurfaceState('allSessions'),
 )
 
+/** Window-local presentation state. Sessions remain flat workspace entities. */
+export const foregroundSessionIdsAtom = atom<string[]>([])
+
 export const workbenchStateAtom = atom<WorkbenchState>({
   open: false,
   activeItemId: null,
   items: [],
-  width: DEFAULT_WORKBENCH_WIDTH,
+  primaryWidth: DEFAULT_COMPANION_PRIMARY_WIDTH,
   expandedItemId: null,
 })
 
@@ -226,16 +233,31 @@ export const renderedWorkbenchItemAtom = atom<WorkbenchItem | null>((get) => {
 
 export const renderedSurfaceEntriesAtom = atom<SurfaceRenderEntry[]>((get) => {
   const primary = get(primarySurfaceAtom)
-  const primaryEntry: SurfaceRenderEntry = {
-    id: PRIMARY_SURFACE_ID,
-    route: primary.route,
-    panelType: getSurfacePanelTypeFromRoute(primary.route) ?? 'session',
-    surfaceRole: 'primary',
-  }
   const workbench = get(renderedWorkbenchItemAtom)
-  if (!workbench) return [primaryEntry]
+  const activeSessionId = parseSessionIdFromSurfaceRoute(primary.route)
+  const foregroundIds = get(foregroundSessionIdsAtom)
+  const visibleConversationIds = activeSessionId
+    ? (workbench ? [activeSessionId] : normalizeForegroundSessionIds(foregroundIds, activeSessionId))
+    : []
+
+  const primaryEntries: SurfaceRenderEntry[] = visibleConversationIds.length > 0
+    ? visibleConversationIds.map((sessionId) => ({
+        id: conversationSurfaceId(sessionId),
+        route: routeForSession(primary.route, sessionId),
+        panelType: 'session',
+        surfaceRole: 'primary',
+        sessionId,
+      }))
+    : [{
+        id: PRIMARY_SURFACE_ID,
+        route: primary.route,
+        panelType: getSurfacePanelTypeFromRoute(primary.route) ?? 'session',
+        surfaceRole: 'primary',
+      }]
+
+  if (!workbench) return primaryEntries
   return [
-    primaryEntry,
+    ...primaryEntries,
     {
       id: workbench.id,
       route: workbench.route,
@@ -252,7 +274,8 @@ export const focusedSurfaceEntryIdAtom = atom(
     if (get(focusedSurfaceAtom) === 'workbench') {
       return get(activeWorkbenchItemAtom)?.id ?? PRIMARY_SURFACE_ID
     }
-    return PRIMARY_SURFACE_ID
+    const sessionId = get(primarySessionIdAtom)
+    return sessionId ? conversationSurfaceId(sessionId) : PRIMARY_SURFACE_ID
   },
   (get, set, id: string | null) => {
     const active = get(activeWorkbenchItemAtom)
@@ -266,32 +289,140 @@ export function parseSessionIdFromSurfaceRoute(route: ViewRoute): string | null 
   return index >= 0 && index + 1 < segments.length ? segments[index + 1] : null
 }
 
+export function conversationSurfaceId(sessionId: string): string {
+  return `conversation-surface:${sessionId}`
+}
+
+function routeForSession(route: ViewRoute, sessionId: string): ViewRoute {
+  const [pathname, query] = route.split('?')
+  const encodedSessionId = encodeURIComponent(sessionId)
+  const nextPath = pathname.includes('/session/')
+    ? pathname.replace(/\/session\/[^/]+/, `/session/${encodedSessionId}`)
+    : `${pathname}/session/${encodedSessionId}`
+  return `${nextPath}${query ? `?${query}` : ''}` as ViewRoute
+}
+
+function normalizeForegroundSessionIds(ids: readonly string[], activeSessionId: string): string[] {
+  const unique = ids.filter((id, index) => id && ids.indexOf(id) === index)
+  if (!unique.includes(activeSessionId)) unique.push(activeSessionId)
+  return unique.slice(-MAX_FOREGROUND_CONVERSATIONS)
+}
+
 export const primarySessionIdAtom = atom((get) => (
   parseSessionIdFromSurfaceRoute(get(primarySurfaceAtom).route)
 ))
 
 export const visibleSessionIdsAtom = atom((get) => {
-  const id = get(primarySessionIdAtom)
-  return new Set(id ? [id] : [])
+  const activeId = get(primarySessionIdAtom)
+  if (!activeId) return new Set<string>()
+  return new Set(normalizeForegroundSessionIds(get(foregroundSessionIdsAtom), activeId))
 })
+
+export const foregroundSessionCountAtom = atom((get) => {
+  const activeId = get(primarySessionIdAtom)
+  return activeId
+    ? normalizeForegroundSessionIds(get(foregroundSessionIdsAtom), activeId).length
+    : 0
+})
+
+export const addForegroundSessionAtom = atom(
+  null,
+  (get, set, sessionId: string) => {
+    const activeId = get(primarySessionIdAtom)
+    if (!activeId) return false
+    const current = normalizeForegroundSessionIds(get(foregroundSessionIdsAtom), activeId)
+    if (current.includes(sessionId)) {
+      set(activateForegroundSessionAtom, sessionId)
+      return true
+    }
+    if (current.length >= MAX_FOREGROUND_CONVERSATIONS) return false
+    set(foregroundSessionIdsAtom, [...current, sessionId])
+    set(activateForegroundSessionAtom, sessionId)
+    return true
+  },
+)
+
+export const activateForegroundSessionAtom = atom(
+  null,
+  (get, set, sessionId: string) => {
+    const primary = get(primarySurfaceAtom)
+    if (primary.kind !== 'session') return false
+    const ids = normalizeForegroundSessionIds(get(foregroundSessionIdsAtom), sessionId)
+    set(foregroundSessionIdsAtom, ids)
+    set(primarySurfaceAtom, createPrimarySurfaceState(routeForSession(primary.route, sessionId)))
+    set(focusedSurfaceAtom, 'primary')
+    return true
+  },
+)
+
+export const removeForegroundSessionAtom = atom(
+  null,
+  (get, set, sessionId: string) => {
+    const activeId = get(primarySessionIdAtom)
+    const current = get(foregroundSessionIdsAtom)
+    if (!current.includes(sessionId) || current.length <= 1) return false
+    const next = current.filter((id) => id !== sessionId)
+    set(foregroundSessionIdsAtom, next)
+    if (activeId === sessionId && next[0]) set(activateForegroundSessionAtom, next[0])
+    return true
+  },
+)
 
 export const focusNextSurfaceAtom = atom(
   null,
   (get, set) => {
-    if (!get(renderedWorkbenchItemAtom)) return
-    set(focusedSurfaceAtom, get(focusedSurfaceAtom) === 'primary' ? 'workbench' : 'primary')
+    if (get(renderedWorkbenchItemAtom)) {
+      set(focusedSurfaceAtom, get(focusedSurfaceAtom) === 'primary' ? 'workbench' : 'primary')
+      return
+    }
+    const activeId = get(primarySessionIdAtom)
+    if (!activeId) return
+    const ids = normalizeForegroundSessionIds(get(foregroundSessionIdsAtom), activeId)
+    if (ids.length <= 1) return
+    const index = ids.indexOf(activeId)
+    set(activateForegroundSessionAtom, ids[(index + 1) % ids.length])
   },
 )
 
-export const focusPreviousSurfaceAtom = focusNextSurfaceAtom
+export const focusPreviousSurfaceAtom = atom(
+  null,
+  (get, set) => {
+    if (get(renderedWorkbenchItemAtom)) {
+      set(focusedSurfaceAtom, get(focusedSurfaceAtom) === 'primary' ? 'workbench' : 'primary')
+      return
+    }
+    const activeId = get(primarySessionIdAtom)
+    if (!activeId) return
+    const ids = normalizeForegroundSessionIds(get(foregroundSessionIdsAtom), activeId)
+    if (ids.length <= 1) return
+    const index = ids.indexOf(activeId)
+    set(activateForegroundSessionAtom, ids[(index - 1 + ids.length) % ids.length])
+  },
+)
 
 export const setPrimarySurfaceRouteAtom = atom(
   null,
-  (_get, set, route: ViewRoute) => {
+  (get, set, route: ViewRoute) => {
     const next = createPrimarySurfaceState(route)
     if (next.route !== route) {
       console.warn('[surface] Ignored non-primary route passed to Primary Surface:', route)
       return false
+    }
+    const previousSessionId = get(primarySessionIdAtom)
+    const nextSessionId = parseSessionIdFromSurfaceRoute(route)
+    if (nextSessionId) {
+      const current = previousSessionId
+        ? normalizeForegroundSessionIds(get(foregroundSessionIdsAtom), previousSessionId)
+        : []
+      if (current.includes(nextSessionId)) {
+        set(foregroundSessionIdsAtom, current)
+      } else if (previousSessionId && current.includes(previousSessionId)) {
+        set(foregroundSessionIdsAtom, current.map((id) => id === previousSessionId ? nextSessionId : id))
+      } else {
+        set(foregroundSessionIdsAtom, [nextSessionId])
+      }
+    } else {
+      set(foregroundSessionIdsAtom, [])
     }
     set(primarySurfaceAtom, next)
     set(focusedSurfaceAtom, 'primary')
@@ -386,13 +517,13 @@ export const toggleWorkbenchAtom = atom(
   },
 )
 
-export const setWorkbenchWidthAtom = atom(
+export const setCompanionPrimaryWidthAtom = atom(
   null,
   (get, set, width: number) => {
     const current = get(workbenchStateAtom)
-    const nextWidth = clampWorkbenchWidth(width)
-    if (current.width === nextWidth) return false
-    set(workbenchStateAtom, { ...current, width: nextWidth })
+    const nextWidth = clampCompanionPrimaryWidth(width)
+    if (current.primaryWidth === nextWidth) return false
+    set(workbenchStateAtom, { ...current, primaryWidth: nextWidth })
     return true
   },
 )
@@ -443,11 +574,18 @@ export const hydrateSurfaceStateAtom = atom(
     const open = restore.workbenchOpen && activeItemId !== null
 
     set(primarySurfaceAtom, primary)
+    const restoredSessionId = parseSessionIdFromSurfaceRoute(primary.route)
+    set(
+      foregroundSessionIdsAtom,
+      restoredSessionId
+        ? normalizeForegroundSessionIds(restore.foregroundSessionIds ?? [], restoredSessionId)
+        : [],
+    )
     set(workbenchStateAtom, {
       open,
       activeItemId,
       items,
-      width: clampWorkbenchWidth(restore.workbenchWidth ?? current.width),
+      primaryWidth: clampCompanionPrimaryWidth(restore.companionPrimaryWidth ?? current.primaryWidth),
       expandedItemId: null,
     })
     set(focusedSurfaceAtom, 'primary')

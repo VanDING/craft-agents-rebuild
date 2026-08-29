@@ -96,7 +96,10 @@ import { skillsAtom } from "@/atoms/skills"
 import { activeSessionIdAtom } from "@/atoms/active-session"
 import { expandedWorkbenchItemIdAtom } from "@/atoms/overlay"
 import {
+  addForegroundSessionAtom,
   collapseWorkbenchAtom,
+  foregroundSessionCountAtom,
+  MAX_FOREGROUND_CONVERSATIONS,
   focusNextSurfaceAtom,
   focusPreviousSurfaceAtom,
   openWorkbenchItemAtom,
@@ -1225,6 +1228,7 @@ function AppShellContent({
 
   // New chat
   useAction('app.newChat', () => handleNewChat())
+  useAction('app.newChatInPanel', () => handleNewChat(true))
 
   // Settings
   useAction('app.settings', onOpenSettings)
@@ -1998,9 +2002,18 @@ function AppShellContent({
     [listFilter, labelFilter, projectFilter]
   )
 
-  // Create a new chat and select it in Primary.
-  const handleNewChat = useCallback(() => {
+  // Create a new chat in Primary, or explicitly add it beside the active chat.
+  const handleNewChat = useCallback((newPanel = false) => {
     if (!activeWorkspace) return
+
+    if (newPanel && store.get(foregroundSessionCountAtom) >= MAX_FOREGROUND_CONVERSATIONS) {
+      toast.info(t('session.maxForegroundConversations'))
+      return
+    }
+
+    if (newPanel && store.get(workbenchStateAtom).open) {
+      store.set(collapseWorkbenchAtom)
+    }
 
     // Exit search mode and switch to All Sessions
     setSearchActive(false)
@@ -2010,11 +2023,11 @@ function AppShellContent({
     const inherited = resolveInheritedNewSessionParams()
 
     // Delegate to NavigationContext which handles session creation
-    navigate(routes.action.newSession(inherited ?? undefined))
+    navigate(routes.action.newSession(inherited ?? undefined), newPanel ? { newPanel: true } : undefined)
 
     // Focus the chat input after navigation completes
     setTimeout(() => focusZone('chat', { intent: 'programmatic' }), 50)
-  }, [activeWorkspace, focusZone, navigate, resolveInheritedNewSessionParams])
+  }, [activeWorkspace, focusZone, navigate, resolveInheritedNewSessionParams, store, t])
 
   // Create a brand new dedicated browser window and focus it.
   // Intentionally unbound: this action should always create a NEW window.
@@ -2408,7 +2421,7 @@ function AppShellContent({
           canGoForward={canGoForward}
           onToggleSidebar={handleToggleSidebar}
           onToggleFocusMode={() => setIsSidebarAndNavigatorHidden(prev => !prev)}
-          onNewSessionFromToolbar={() => handleNewChat()}
+          onNewSessionFromToolbar={() => handleNewChat(true)}
           onAddBrowserPanel={() => { void handleNewBrowserWindow() }}
           isCompact={isAutoCompact}
           onOpenLauncher={openSurfaceLauncher}
@@ -3581,6 +3594,18 @@ function AppShellContent({
                   }}
                   onSessionSelect={(selectedMeta) => {
                     navigateToSession(selectedMeta.id)
+                  }}
+                  onOpenSideBySide={(selectedMeta) => {
+                    if (!store.get(primarySessionIdAtom)) {
+                      navigateToSession(selectedMeta.id)
+                      return
+                    }
+                    const opened = store.set(addForegroundSessionAtom, selectedMeta.id)
+                    if (!opened) {
+                      toast.info(t('session.maxForegroundConversations'))
+                      return
+                    }
+                    if (store.get(workbenchStateAtom).open) store.set(collapseWorkbenchAtom)
                   }}
                   onOpenInNewWindow={(selectedMeta) => {
                     if (activeWorkspaceId) {

@@ -48,7 +48,7 @@ interface SurfaceLauncherButtonsProps {
   onOpenLauncher: (kind: SurfaceLauncherKind) => void
   /** Focus an existing browser window or create a new one */
   onOpenBrowser: () => void
-  /** Create and select a new session in Primary. */
+  /** Create a new session beside the active conversation. */
   onNewSession: () => void
   /** Open a brand-new browser window (was the [+] menu item) */
   onNewBrowser: () => void
@@ -126,14 +126,14 @@ export function SurfaceLauncherButtons({
             <Tooltip key="newSession">
               <TooltipTrigger asChild>
                 <TopBarButton
-                  aria-label={t('session.newSession')}
+                  aria-label={t('session.newSessionInPanel')}
                   onClick={onNewSession}
                   className="h-[22px] w-[22px] rounded-md text-foreground/35"
                 >
                   <SquarePenRounded className="h-3.5 w-3.5" strokeWidth={2} />
                 </TopBarButton>
               </TooltipTrigger>
-              <TooltipContent side="bottom">{t('session.newSession')}</TooltipContent>
+              <TooltipContent side="bottom">{t('session.newSessionInPanel')}</TooltipContent>
             </Tooltip>
           )
         }

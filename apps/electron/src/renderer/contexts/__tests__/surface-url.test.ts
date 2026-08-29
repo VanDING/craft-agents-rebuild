@@ -17,12 +17,12 @@ describe('v2 Surface URL', () => {
       open: false,
       activeItemId: diff.id,
       items: [diff, files],
-      width: 612,
+      primaryWidth: 432,
       expandedItemId: null,
     }
     const params = new URLSearchParams('ws=demo&panels=stale&fi=2')
 
-    writeSurfaceUrlParams(params, createPrimarySurfaceState('projects/calendar'), state)
+    writeSurfaceUrlParams(params, createPrimarySurfaceState('projects/calendar'), state, ['s1', 's2'])
     const parsed = parseSurfaceUrlParams(params, {
       fallbackPrimaryRoute: 'allSessions',
       normalizeRoute,
@@ -35,10 +35,11 @@ describe('v2 Surface URL', () => {
       source: 'v2',
       restore: {
         primaryRoute: 'projects/calendar',
+        foregroundSessionIds: ['s1', 's2'],
         workbenchRoutes: ['diff', 'files'],
         activeWorkbenchRoute: 'diff',
         workbenchOpen: false,
-        workbenchWidth: 612,
+        companionPrimaryWidth: 432,
       },
     })
   })
@@ -49,18 +50,37 @@ describe('v2 Surface URL', () => {
       open: false,
       activeItemId: null,
       items: [],
-      width: 480,
+      primaryWidth: 420,
       expandedItemId: null,
     })
 
     expect(params.toString()).toContain('sv=2')
-    expect(params.get('ww')).toBe('480')
+    expect(params.has('ww')).toBe(false)
+    expect(params.get('pw')).toBe('420')
     const parsed = parseSurfaceUrlParams(params, {
       fallbackPrimaryRoute: 'allSessions',
       normalizeRoute,
     })
     expect(parsed?.source).toBe('v2')
-    expect(parsed?.restore.workbenchWidth).toBe(480)
+    expect(parsed?.restore.companionPrimaryWidth).toBe(420)
+  })
+
+  it('round-trips foreground conversation presentation independently of Session data', () => {
+    const params = new URLSearchParams()
+    writeSurfaceUrlParams(params, createPrimarySurfaceState('allSessions/session/s2'), {
+      open: false,
+      activeItemId: null,
+      items: [],
+      primaryWidth: 420,
+      expandedItemId: null,
+    }, ['s1', 's2', 's3'])
+
+    const parsed = parseSurfaceUrlParams(params, {
+      fallbackPrimaryRoute: 'allSessions',
+      normalizeRoute,
+    })
+    expect(params.get('fg')).toBe('s1|s2|s3')
+    expect(parsed?.restore.foregroundSessionIds).toEqual(['s1', 's2', 's3'])
   })
 })
 

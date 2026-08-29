@@ -80,7 +80,10 @@ import { sessionMetaMapAtom, updateSessionMetaAtom, type SessionMeta } from '@/a
 import { sourcesAtom } from '@/atoms/sources'
 import { skillsAtom } from '@/atoms/skills'
 import {
+  activateForegroundSessionAtom,
+  addForegroundSessionAtom,
   deriveSurfaceRestoreState,
+  foregroundSessionIdsAtom,
   hydrateSurfaceStateAtom,
   openWorkbenchItemAtom,
   primarySurfaceAtom,
@@ -188,6 +191,7 @@ export function NavigationProvider({
   // =========================================================================
 
   const primarySurface = useAtomValue(primarySurfaceAtom)
+  const foregroundSessionIds = useAtomValue(foregroundSessionIdsAtom)
 
   // NavigationState is structural: workbench focus never changes it.
   const navigationState: NavigationState = useMemo(() => {
@@ -203,6 +207,16 @@ export function NavigationProvider({
   useEffect(() => {
     if (focusedSessionId) setLastActiveSession(focusedSessionId)
   }, [focusedSessionId, setLastActiveSession])
+
+  useEffect(() => {
+    if (!isSessionsReady || foregroundSessionIds.length === 0) return
+    const surviving = foregroundSessionIds.filter((id) => sessionMetaMap.has(id))
+    if (surviving.length === foregroundSessionIds.length) return
+    store.set(foregroundSessionIdsAtom, surviving)
+    if (focusedSessionId && !sessionMetaMap.has(focusedSessionId) && surviving[0]) {
+      store.set(activateForegroundSessionAtom, surviving[0])
+    }
+  }, [focusedSessionId, foregroundSessionIds, isSessionsReady, sessionMetaMap, store])
 
   // =========================================================================
   // BROWSER HISTORY TRACKING
@@ -246,11 +260,12 @@ export function NavigationProvider({
   const getSemanticHistoryKey = useCallback(() => {
     const primary = store.get(primarySurfaceAtom)
     const workbench = store.get(workbenchStateAtom)
+    const foregroundIds = store.get(foregroundSessionIdsAtom)
     const activeIndex = workbench.items.findIndex((item) => item.id === workbench.activeItemId)
     const focusedIdx = workbench.open && activeIndex >= 0 ? activeIndex + 1 : 0
     return buildSemanticHistoryKey({
       workspaceSlug,
-      panelRoutes: [primary.route, ...workbench.items.map((item) => item.route)],
+      panelRoutes: [primary.route, ...foregroundIds.map((id) => `foreground/${id}`), ...workbench.items.map((item) => item.route)],
       focusedPanelIndex: focusedIdx,
       sidebarParam: '',
     })
@@ -271,6 +286,7 @@ export function NavigationProvider({
   const syncUrl = useCallback((push: boolean = false) => {
     const primary = store.get(primarySurfaceAtom)
     const workbench = store.get(workbenchStateAtom)
+    const foregroundIds = store.get(foregroundSessionIdsAtom)
     const url = new URL(window.location.href)
 
     // ?ws= workspace slug
@@ -278,7 +294,7 @@ export function NavigationProvider({
       url.searchParams.set('ws', workspaceSlug)
     }
 
-    writeSurfaceUrlParams(url.searchParams, primary, workbench)
+    writeSurfaceUrlParams(url.searchParams, primary, workbench, foregroundIds)
 
     // v1 right-sidebar state is migrated into Workbench tabs on restore.
     url.searchParams.delete('sidebar')
@@ -312,7 +328,7 @@ export function NavigationProvider({
     lastSemanticHistoryKeyRef.current = currentSemanticKey
   }, [getSemanticHistoryKey])
 
-  // replaceState sync catches workbench width and other layout-only changes.
+  // replaceState sync catches companion width and other layout-only changes.
   const workbenchState = useAtomValue(workbenchStateAtom)
   useEffect(() => {
     if (!initialRouteRestoredRef.current) return
@@ -362,6 +378,24 @@ export function NavigationProvider({
           pendingPushRef.current = true
           queueMicrotask(() => { pendingPushRef.current = false; maybePushHistoryForSemanticChange() })
         }
+      }
+      previousKey = currentKey
+    })
+    return unsub
+  }, [store, maybePushHistoryForSemanticChange])
+
+  // Foreground conversation membership/order is semantic window layout.
+  useEffect(() => {
+    let previousKey = store.get(foregroundSessionIdsAtom).join('|')
+    const unsub = store.sub(foregroundSessionIdsAtom, () => {
+      const currentKey = store.get(foregroundSessionIdsAtom).join('|')
+      if (suppressPushRef.current || !initialRouteRestoredRef.current) {
+        previousKey = currentKey
+        return
+      }
+      if (currentKey !== previousKey && !pendingPushRef.current) {
+        pendingPushRef.current = true
+        queueMicrotask(() => { pendingPushRef.current = false; maybePushHistoryForSemanticChange() })
       }
       previousKey = currentKey
     })
@@ -448,12 +482,11 @@ export function NavigationProvider({
   // EMPTY SESSION CLEANUP (reactive — covers navigate, close tab, etc.)
   // =========================================================================
 
-  // Track the session visible in Primary. Background execution is a session
-  // domain concern; it no longer needs a hidden UI panel to stay alive.
+  // Track every conversation retained by the current foreground layout.
   const prevVisibleSessionIdsRef = useRef<Set<string>>(new Set())
 
   useEffect(() => {
-    const currentIds = new Set<string>()
+    const currentIds = new Set<string>(foregroundSessionIds)
     const primarySessionId = parseSessionIdFromSurfaceRoute(primarySurface.route)
     if (primarySessionId) currentIds.add(primarySessionId)
 
@@ -473,7 +506,7 @@ export function NavigationProvider({
     }
 
     prevVisibleSessionIdsRef.current = currentIds
-  }, [primarySurface.route, onAutoDeleteEmptySession, store, getDraft])
+  }, [foregroundSessionIds, primarySurface.route, onAutoDeleteEmptySession, store, getDraft])
 
   // =========================================================================
   // SESSION SELECTION SYNC
@@ -648,7 +681,7 @@ export function NavigationProvider({
   // =========================================================================
 
   const handleActionNavigation = useCallback(
-    async (parsed: ParsedRoute, _options?: NavigateOptions) => {
+    async (parsed: ParsedRoute, options?: NavigateOptions) => {
       if (!workspaceId) return
 
       switch (parsed.name) {
@@ -704,15 +737,18 @@ export function NavigationProvider({
             parsed.params.label ? { kind: 'label', labelId: parsed.params.label } :
             { kind: 'allSessions' }
 
-          // Primary is singular. Creating a session selects it there; the
-          // session process remains independently alive after navigation.
+          // Ordinary creation replaces the active Primary conversation;
+          // explicit panel creation adds a window-local foreground peer.
           const newState: NavigationState = {
             navigator: 'sessions',
             filter,
             details: { type: 'session', sessionId: session.id },
           }
           const route = buildRouteFromNavigationState(newState) as ViewRoute
-          store.set(setPrimarySurfaceRouteAtom, route)
+          const openedBesideCurrent = options?.newPanel && store.get(primarySessionIdAtom)
+            ? store.set(addForegroundSessionAtom, session.id)
+            : false
+          if (!openedBesideCurrent) store.set(setPrimarySurfaceRouteAtom, route)
 
           // Parse badges from params
           let badges: ContentBadge[] | undefined

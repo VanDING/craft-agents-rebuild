@@ -1,21 +1,25 @@
 import { describe, expect, it } from 'bun:test'
 import { createStore } from 'jotai'
 import {
-  MAX_WORKBENCH_WIDTH,
-  MIN_WORKBENCH_WIDTH,
+  MAX_COMPANION_PRIMARY_WIDTH,
+  MIN_COMPANION_PRIMARY_WIDTH,
+  activateForegroundSessionAtom,
   activateWorkbenchItemAtom,
+  addForegroundSessionAtom,
   classifySurfaceRoute,
   closeWorkbenchItemAtom,
   collapseWorkbenchAtom,
   deriveSurfaceRestoreState,
   focusNextSurfaceAtom,
+  focusPreviousSurfaceAtom,
   focusedSurfaceAtom,
+  foregroundSessionIdsAtom,
   hydrateSurfaceStateAtom,
   openWorkbenchItemAtom,
   primarySurfaceAtom,
   renderedSurfaceEntriesAtom,
+  setCompanionPrimaryWidthAtom,
   setPrimarySurfaceRouteAtom,
-  setWorkbenchWidthAtom,
   workbenchStateAtom,
 } from '../workbench'
 
@@ -51,6 +55,8 @@ describe('Context Workbench state', () => {
     const store = createStore()
 
     expect(store.set(openWorkbenchItemAtom, 'allSessions')).toBeNull()
+    expect(store.set(openWorkbenchItemAtom, 'kanban')).toBeNull()
+    expect(store.set(openWorkbenchItemAtom, 'calendar')).toBeNull()
     expect(store.set(setPrimarySurfaceRouteAtom, 'diff')).toBe(false)
     expect(store.get(primarySurfaceAtom).route).toBe('allSessions')
     expect(store.get(workbenchStateAtom).items).toEqual([])
@@ -114,12 +120,12 @@ describe('Context Workbench state', () => {
     expect(state.items.find((item) => item.id === state.activeItemId)?.kind).toBe('context')
   })
 
-  it('clamps the fixed dock width', () => {
+  it('clamps the reading-width Primary beside Workbench', () => {
     const store = createStore()
-    store.set(setWorkbenchWidthAtom, 10)
-    expect(store.get(workbenchStateAtom).width).toBe(MIN_WORKBENCH_WIDTH)
-    store.set(setWorkbenchWidthAtom, 5000)
-    expect(store.get(workbenchStateAtom).width).toBe(MAX_WORKBENCH_WIDTH)
+    store.set(setCompanionPrimaryWidthAtom, 10)
+    expect(store.get(workbenchStateAtom).primaryWidth).toBe(MIN_COMPANION_PRIMARY_WIDTH)
+    store.set(setCompanionPrimaryWidthAtom, 5000)
+    expect(store.get(workbenchStateAtom).primaryWidth).toBe(MAX_COMPANION_PRIMARY_WIDTH)
   })
 
   it('keeps separate tabs for distinct artifacts and dedupes the same artifact route', () => {
@@ -131,6 +137,51 @@ describe('Context Workbench state', () => {
     const state = store.get(workbenchStateAtom)
     expect(state.items.map((item) => item.route)).toEqual(['artifact/a', 'artifact/b'])
     expect(state.items.find((item) => item.id === state.activeItemId)?.route).toBe('artifact/a')
+  })
+})
+
+describe('foreground conversation layout', () => {
+  it('keeps at most three peer sessions without silently replacing one', () => {
+    const store = createStore()
+    store.set(setPrimarySurfaceRouteAtom, 'allSessions/session/s1')
+    expect(store.set(addForegroundSessionAtom, 's2')).toBe(true)
+    expect(store.set(addForegroundSessionAtom, 's3')).toBe(true)
+    expect(store.set(addForegroundSessionAtom, 's4')).toBe(false)
+
+    expect(store.get(foregroundSessionIdsAtom)).toEqual(['s1', 's2', 's3'])
+    expect(store.get(primarySurfaceAtom).route).toBe('allSessions/session/s3')
+    expect(store.get(renderedSurfaceEntriesAtom).map((entry) => entry.sessionId)).toEqual(['s1', 's2', 's3'])
+  })
+
+  it('replaces only the active presentation slot during ordinary navigation', () => {
+    const store = createStore()
+    store.set(setPrimarySurfaceRouteAtom, 'allSessions/session/s1')
+    store.set(addForegroundSessionAtom, 's2')
+    store.set(addForegroundSessionAtom, 's3')
+    store.set(activateForegroundSessionAtom, 's2')
+    store.set(setPrimarySurfaceRouteAtom, 'allSessions/session/s4')
+
+    expect(store.get(foregroundSessionIdsAtom)).toEqual(['s1', 's4', 's3'])
+  })
+
+  it('cycles focus through conversations and temporarily shows only the active one beside Workbench', () => {
+    const store = createStore()
+    store.set(setPrimarySurfaceRouteAtom, 'allSessions/session/s1')
+    store.set(addForegroundSessionAtom, 's2')
+    store.set(addForegroundSessionAtom, 's3')
+
+    store.set(focusNextSurfaceAtom)
+    expect(store.get(primarySurfaceAtom).route).toBe('allSessions/session/s1')
+    store.set(focusPreviousSurfaceAtom)
+    expect(store.get(primarySurfaceAtom).route).toBe('allSessions/session/s3')
+
+    store.set(openWorkbenchItemAtom, 'diff')
+    expect(store.get(renderedSurfaceEntriesAtom).map((entry) => entry.sessionId ?? entry.panelType))
+      .toEqual(['s3', 'diff'])
+    expect(store.get(foregroundSessionIdsAtom)).toEqual(['s1', 's2', 's3'])
+
+    store.set(collapseWorkbenchAtom)
+    expect(store.get(renderedSurfaceEntriesAtom).map((entry) => entry.sessionId)).toEqual(['s1', 's2', 's3'])
   })
 })
 

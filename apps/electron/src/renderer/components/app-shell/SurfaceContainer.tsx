@@ -1,9 +1,8 @@
 /**
  * Surface layout container.
  *
- * Desktop: Global sidebar → navigator → one flexible Primary Surface → one
- * fixed-width Context Workbench. The workbench keeps many lightweight tabs but
- * only its active item is present in this render tree.
+ * Desktop: Global sidebar → navigator → one to three equal conversations, or
+ * one reading-width conversation → a Context Workbench that fills the rest.
  *
  * Compact: navigator, Primary and Workbench use replacement navigation. An
  * open workbench replaces Primary; its back action collapses the dock without
@@ -65,7 +64,8 @@ export function SurfaceContainer({
   const collapseWorkbench = useSetAtom(collapseWorkbenchAtom)
   const reduceMotion = useReducedMotion()
 
-  const primaryEntry = surfaceEntries.find((entry) => entry.surfaceRole === 'primary')
+  const primaryEntries = surfaceEntries.filter((entry) => entry.surfaceRole === 'primary')
+  const primaryEntry = primaryEntries.find((entry) => entry.id === focusedSurfaceId) ?? primaryEntries[0]
   const workbenchEntry = surfaceEntries.find((entry) => entry.surfaceRole === 'workbench')
   const primaryNavState = parseRouteToNavigationState(primarySurface.route)
   const primaryDetailActive = isDetailNavState(primaryNavState)
@@ -136,7 +136,7 @@ export function SurfaceContainer({
     )
   }
 
-  const isMultiSurface = !!primaryEntry && !!workbenchEntry
+  const isMultiSurface = surfaceEntries.length > 1
 
   return (
     <div
@@ -195,16 +195,21 @@ export function SurfaceContainer({
           <div className="h-full" style={{ width: navigatorWidth }}>{navigatorSlot}</div>
         </motion.div>
 
-        {primaryEntry ? (
-          <SurfaceSlot
-            key={primaryEntry.id}
-            entry={primaryEntry}
-            isOnly={!isMultiSurface}
-            isFocusedPanel={!isMultiSurface || focusedSurfaceId === primaryEntry.id}
-            isSidebarAndNavigatorHidden={isSidebarAndNavigatorHidden}
-            isAtLeftEdge={isLeftEdge}
-            isAtRightEdge={!workbenchEntry}
-          />
+        {primaryEntries.length > 0 ? (
+          primaryEntries.map((entry, index) => (
+            <SurfaceSlot
+              key={entry.id}
+              entry={entry}
+              isOnly={!isMultiSurface}
+              isFocusedPanel={!isMultiSurface || focusedSurfaceId === entry.id}
+              isConversationGroup={primaryEntries.length > 1}
+              isWorkbenchCompanion={!!workbenchEntry}
+              companionPrimaryWidth={workbench.primaryWidth}
+              isSidebarAndNavigatorHidden={isSidebarAndNavigatorHidden}
+              isAtLeftEdge={index === 0 && isLeftEdge}
+              isAtRightEdge={index === primaryEntries.length - 1 && !workbenchEntry}
+            />
+          ))
         ) : (
           <div className="flex-1" />
         )}
@@ -218,8 +223,7 @@ export function SurfaceContainer({
             isSidebarAndNavigatorHidden={isSidebarAndNavigatorHidden}
             isAtLeftEdge={false}
             isAtRightEdge
-            workbenchWidth={workbench.width}
-            sash={<WorkbenchResizeSash width={workbench.width} />}
+            sash={<WorkbenchResizeSash primaryWidth={workbench.primaryWidth} />}
             topSlot={<ContextWorkbenchTabs state={workbench} />}
           />
         )}

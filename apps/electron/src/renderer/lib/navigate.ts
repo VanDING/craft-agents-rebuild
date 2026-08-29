@@ -24,6 +24,8 @@ export const NAVIGATE_EVENT = 'craft-agent-navigate'
 export interface NavigateOptions {
   /** Skip auto-selecting the first item when navigating to a navigator root. */
   skipAutoSelect?: boolean
+  /** Create a new session as an additional foreground conversation. */
+  newPanel?: boolean
 }
 
 /**

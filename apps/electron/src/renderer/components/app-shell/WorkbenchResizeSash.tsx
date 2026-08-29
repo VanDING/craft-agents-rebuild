@@ -2,10 +2,10 @@ import { useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useSetAtom } from 'jotai'
 import {
-  DEFAULT_WORKBENCH_WIDTH,
-  MAX_WORKBENCH_WIDTH,
-  MIN_WORKBENCH_WIDTH,
-  setWorkbenchWidthAtom,
+  DEFAULT_COMPANION_PRIMARY_WIDTH,
+  MAX_COMPANION_PRIMARY_WIDTH,
+  MIN_COMPANION_PRIMARY_WIDTH,
+  setCompanionPrimaryWidthAtom,
 } from '@/atoms/workbench'
 import { useResizeGradient } from '@/hooks/useResizeGradient'
 import {
@@ -16,13 +16,13 @@ import {
 } from './panel-constants'
 
 interface WorkbenchResizeSashProps {
-  width: number
+  primaryWidth: number
 }
 
-/** Pixel-based divider between the flexible Primary Surface and fixed dock. */
-export function WorkbenchResizeSash({ width }: WorkbenchResizeSashProps) {
+/** Divider between the reading-width Primary Surface and flexible Workbench. */
+export function WorkbenchResizeSash({ primaryWidth }: WorkbenchResizeSashProps) {
   const { t } = useTranslation()
-  const setWidth = useSetAtom(setWorkbenchWidthAtom)
+  const setWidth = useSetAtom(setCompanionPrimaryWidthAtom)
   const { ref, handlers, gradientStyle } = useResizeGradient()
   const startXRef = useRef(0)
   const startWidthRef = useRef(0)
@@ -33,7 +33,7 @@ export function WorkbenchResizeSash({ width }: WorkbenchResizeSashProps) {
     event.preventDefault()
     handlers.onMouseDown()
     startXRef.current = event.clientX
-    startWidthRef.current = width
+    startWidthRef.current = primaryWidth
 
     const flush = () => {
       resizeRafRef.current = 0
@@ -43,8 +43,7 @@ export function WorkbenchResizeSash({ width }: WorkbenchResizeSashProps) {
     }
 
     const handleMouseMove = (moveEvent: MouseEvent) => {
-      // Dragging the divider left makes the right-hand workbench wider.
-      pendingWidthRef.current = startWidthRef.current - (moveEvent.clientX - startXRef.current)
+      pendingWidthRef.current = startWidthRef.current + (moveEvent.clientX - startXRef.current)
       if (!resizeRafRef.current) resizeRafRef.current = requestAnimationFrame(flush)
     }
 
@@ -61,7 +60,7 @@ export function WorkbenchResizeSash({ width }: WorkbenchResizeSashProps) {
     document.body.style.cursor = 'col-resize'
     document.addEventListener('mousemove', handleMouseMove)
     document.addEventListener('mouseup', handleMouseUp)
-  }, [handlers, setWidth, width])
+  }, [handlers, primaryWidth, setWidth])
 
   return (
     <div
@@ -71,19 +70,19 @@ export function WorkbenchResizeSash({ width }: WorkbenchResizeSashProps) {
       role="separator"
       aria-orientation="vertical"
       aria-label={t('contentPanel.resize')}
-      aria-valuemin={MIN_WORKBENCH_WIDTH}
-      aria-valuemax={MAX_WORKBENCH_WIDTH}
-      aria-valuenow={width}
+      aria-valuemin={MIN_COMPANION_PRIMARY_WIDTH}
+      aria-valuemax={MAX_COMPANION_PRIMARY_WIDTH}
+      aria-valuenow={primaryWidth}
       tabIndex={0}
       onMouseDown={handleMouseDown}
       onMouseMove={handlers.onMouseMove}
       onMouseLeave={handlers.onMouseLeave}
-      onDoubleClick={() => setWidth(DEFAULT_WORKBENCH_WIDTH)}
+      onDoubleClick={() => setWidth(DEFAULT_COMPANION_PRIMARY_WIDTH)}
       onKeyDown={(event) => {
-        if (event.key === 'ArrowLeft') setWidth(width + 16)
-        else if (event.key === 'ArrowRight') setWidth(width - 16)
-        else if (event.key === 'Home') setWidth(MIN_WORKBENCH_WIDTH)
-        else if (event.key === 'End') setWidth(MAX_WORKBENCH_WIDTH)
+        if (event.key === 'ArrowLeft') setWidth(primaryWidth - 16)
+        else if (event.key === 'ArrowRight') setWidth(primaryWidth + 16)
+        else if (event.key === 'Home') setWidth(MIN_COMPANION_PRIMARY_WIDTH)
+        else if (event.key === 'End') setWidth(MAX_COMPANION_PRIMARY_WIDTH)
         else return
         event.preventDefault()
       }}

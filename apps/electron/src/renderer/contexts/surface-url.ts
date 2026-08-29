@@ -64,16 +64,18 @@ export function parseSurfaceUrlParams(
       .split('|')
       .filter(Boolean)
       .map(normalizeRoute)
+    const foregroundSessionIds = (params.get('fg') ?? '').split('|').filter(Boolean)
     return {
       source: 'v2',
       restore: {
         primaryRoute: primary,
+        ...(foregroundSessionIds.length > 0 ? { foregroundSessionIds } : {}),
         workbenchRoutes,
         activeWorkbenchRoute: params.get('wa')
           ? normalizeRoute(params.get('wa')!)
           : workbenchRoutes.at(-1) ?? null,
         workbenchOpen: params.get('wo') !== '0' && workbenchRoutes.length > 0,
-        workbenchWidth: params.get('ww') ? Number(params.get('ww')) : undefined,
+        companionPrimaryWidth: params.get('pw') ? Number(params.get('pw')) : undefined,
       },
     }
   }
@@ -107,11 +109,13 @@ export function writeSurfaceUrlParams(
   params: URLSearchParams,
   primary: PrimarySurfaceState,
   workbench: WorkbenchState,
+  foregroundSessionIds: readonly string[] = [],
 ): void {
   params.set('sv', SURFACE_URL_VERSION)
   params.set('route', primary.route)
-  // Width is a Workbench preference even when no tabs currently exist.
-  params.set('ww', String(workbench.width))
+  params.set('pw', String(workbench.primaryWidth))
+  if (foregroundSessionIds.length > 1) params.set('fg', foregroundSessionIds.join('|'))
+  else params.delete('fg')
 
   if (workbench.items.length > 0) {
     params.set('workbench', workbench.items.map((item) => item.route).join('|'))
@@ -128,4 +132,5 @@ export function writeSurfaceUrlParams(
 
   params.delete('panels')
   params.delete('fi')
+  params.delete('ww')
 }
