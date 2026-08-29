@@ -8,3 +8,6 @@
 - Use SSH for all GitHub Git operations. Do not default to HTTPS.
 - In environments where the standard SSH port is unavailable, use GitHub SSH over port 443 (`ssh://git@ssh.github.com:443/<owner>/<repository>.git`), which is the verified connection method for this workspace.
 
+## Testing
+
+- Run only the minimum number of tests necessary to validate the change. Prefer focused tests that directly cover the affected behavior; do not run the full test suite unless the change's scope or risk clearly requires it, or the user explicitly requests it.
