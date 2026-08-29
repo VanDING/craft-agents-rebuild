@@ -98,10 +98,10 @@ export function SessionItem({
       return
     }
     if ((e.metaKey || e.ctrlKey) && e.shiftKey) {
-      // Cmd+Shift+Click: preserve the former secondary-open gesture by using
-      // a real window; the main application now has one Primary Surface.
+      // Cmd+Shift+Click: add this ordinary session to the foreground comparison
+      // layout. Session data remains flat; only this window's presentation changes.
       e.preventDefault()
-      ctx.onOpenInNewWindow(item)
+      ctx.onOpenSideBySide?.(item)
       return
     }
     if ((e.metaKey || e.ctrlKey) && onToggleSelect) {
@@ -154,6 +154,7 @@ export function SessionItem({
           onMarkUnread={() => ctx.onMarkUnread(item.id)}
           onSessionStatusChange={(s) => ctx.onSessionStatusChange(item.id, s)}
           onOpenInNewWindow={() => ctx.onOpenInNewWindow(item)}
+          onOpenSideBySide={ctx.onOpenSideBySide ? () => ctx.onOpenSideBySide!(item) : undefined}
           onSendToWorkspace={ctx.onSendToWorkspace ? () => ctx.onSendToWorkspace!([item.id]) : undefined}
           hasTransferTargets={canSendToWorkspace}
           onDelete={() => ctx.onDelete(item.id)}
@@ -182,6 +183,7 @@ export function SessionItem({
           onMarkUnread={() => ctx.onMarkUnread(item.id)}
           onSessionStatusChange={(s) => ctx.onSessionStatusChange(item.id, s)}
           onOpenInNewWindow={() => ctx.onOpenInNewWindow(item)}
+          onOpenSideBySide={ctx.onOpenSideBySide ? () => ctx.onOpenSideBySide!(item) : undefined}
           onSendToWorkspace={ctx.onSendToWorkspace ? () => ctx.onSendToWorkspace!([item.id]) : undefined}
           onDelete={() => ctx.onDelete(item.id)}
         />

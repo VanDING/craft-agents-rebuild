@@ -24,7 +24,7 @@ import {
   MailOpen,
   FolderOpen,
   Copy,
-  AppWindow,
+  AppWindow, Columns2,
   CloudUpload,
   RefreshCw,
   Tag,
@@ -73,6 +73,7 @@ export interface SessionMenuProps {
   onMarkUnread: () => void
   onSessionStatusChange: (state: SessionStatusId) => void
   onOpenInNewWindow: () => void
+  onOpenSideBySide?: () => void
   onSendToWorkspace?: () => void
   onDelete: () => void
 }
@@ -94,6 +95,7 @@ export function SessionMenu({
   onMarkUnread,
   onSessionStatusChange,
   onOpenInNewWindow,
+  onOpenSideBySide,
   onSendToWorkspace,
   onDelete,
   hasTransferTargets,
@@ -280,6 +282,12 @@ export function SessionMenu({
       <Separator />
 
       {/* Open in New Window */}
+      {onOpenSideBySide && (
+        <MenuItem onClick={onOpenSideBySide}>
+          <Columns2 className="h-3.5 w-3.5" />
+          <span className="flex-1">{t("sessionMenu.openSideBySide")}</span>
+        </MenuItem>
+      )}
       <MenuItem onClick={onOpenInNewWindow}>
         <AppWindow className="h-3.5 w-3.5" />
         <span className="flex-1">{t("sessionMenu.openInNewWindow")}</span>

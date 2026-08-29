@@ -1073,6 +1073,7 @@
   "sessionMenu.noProject": "Nincs projekt",
   "sessionMenu.openInBrowser": "Megnyitás böngészőben",
   "sessionMenu.openInNewWindow": "Megnyitás új ablakban",
+  "sessionMenu.openSideBySide": "Megnyitás egymás mellett",
   "sessionMenu.projects": "Projektek",
   "sessionMenu.regenerateTitle": "Cím újragenerálása",
   "sessionMenu.sendToWorkspace": "Küldés munkaterületre...",

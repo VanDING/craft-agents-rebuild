@@ -30,7 +30,7 @@ import { MOTION_DURATION, MOTION_EASE } from '@craft-agent/ui/motion'
 import {
   Archive,
   ArchiveRestore,
-  AppWindow,
+  AppWindow, Columns2,
   Check,
   ChevronDown,
   ChevronLeft,
@@ -104,6 +104,7 @@ export interface CompactSessionMenuProps {
   onMarkUnread: () => void
   onSessionStatusChange: (state: SessionStatusId) => void
   onOpenInNewWindow: () => void
+  onOpenSideBySide?: () => void
   onSendToWorkspace?: () => void
   onDelete: () => void
 
@@ -140,6 +141,7 @@ export function CompactSessionMenu({
   onMarkUnread,
   onSessionStatusChange,
   onOpenInNewWindow,
+  onOpenSideBySide,
   onSendToWorkspace,
   onDelete,
   open: controlledOpen,
@@ -313,6 +315,7 @@ export function CompactSessionMenu({
               onRename={closeAfter(onRename)}
               onRefreshTitle={closeAfter(actions.refreshTitle)}
               onOpenInNewWindow={closeAfter(onOpenInNewWindow)}
+              onOpenSideBySide={onOpenSideBySide ? closeAfter(onOpenSideBySide) : undefined}
               onShowInFinder={closeAfter(actions.showInFinder)}
               onCopyPath={closeAfter(actions.copyPath)}
               onDelete={closeAfter(onDelete)}
@@ -385,6 +388,7 @@ interface RootPaneProps {
   onRename?: () => void
   onRefreshTitle?: () => void
   onOpenInNewWindow?: () => void
+  onOpenSideBySide?: () => void
   onShowInFinder?: () => void
   onCopyPath?: () => void
   onDelete?: () => void
@@ -415,6 +419,7 @@ function RootPane({
   onRename,
   onRefreshTitle,
   onOpenInNewWindow,
+  onOpenSideBySide,
   onShowInFinder,
   onCopyPath,
   onDelete,
@@ -498,6 +503,9 @@ function RootPane({
 
       {onOpenInNewWindow && (
         <Row icon={<AppWindow className="h-4 w-4" />} label={t('sessionMenu.openInNewWindow')} onTap={onOpenInNewWindow} />
+      )}
+      {onOpenSideBySide && (
+        <Row icon={<Columns2 className="h-4 w-4" />} label={t('sessionMenu.openSideBySide')} onTap={onOpenSideBySide} />
       )}
       <Row
         icon={<FolderOpen className="h-4 w-4" />}

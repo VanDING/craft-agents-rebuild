@@ -3,13 +3,17 @@ import { createStore } from 'jotai'
 import {
   MAX_WORKBENCH_WIDTH,
   MIN_WORKBENCH_WIDTH,
+  activateForegroundSessionAtom,
   activateWorkbenchItemAtom,
+  addForegroundSessionAtom,
   classifySurfaceRoute,
   closeWorkbenchItemAtom,
   collapseWorkbenchAtom,
   deriveSurfaceRestoreState,
   focusNextSurfaceAtom,
+  focusPreviousSurfaceAtom,
   focusedSurfaceAtom,
+  foregroundSessionIdsAtom,
   hydrateSurfaceStateAtom,
   openWorkbenchItemAtom,
   primarySurfaceAtom,
@@ -131,6 +135,80 @@ describe('Context Workbench state', () => {
     const state = store.get(workbenchStateAtom)
     expect(state.items.map((item) => item.route)).toEqual(['artifact/a', 'artifact/b'])
     expect(state.items.find((item) => item.id === state.activeItemId)?.route).toBe('artifact/a')
+  })
+
+  it('opens Kanban and Calendar as workspace companions', () => {
+    const store = createStore()
+    store.set(setPrimarySurfaceRouteAtom, 'allSessions/session/s1')
+    store.set(openWorkbenchItemAtom, 'kanban')
+    store.set(openWorkbenchItemAtom, 'calendar')
+
+    expect(store.get(primarySurfaceAtom).route).toBe('allSessions/session/s1')
+    expect(store.get(workbenchStateAtom).items.map((item) => item.kind)).toEqual(['kanban', 'calendar'])
+    expect(store.get(renderedSurfaceEntriesAtom).at(-1)?.panelType).toBe('projects')
+  })
+})
+
+describe('foreground conversation layout', () => {
+  it('keeps at most three peer sessions and makes the latest one active', () => {
+    const store = createStore()
+    store.set(setPrimarySurfaceRouteAtom, 'allSessions/session/s1')
+    store.set(addForegroundSessionAtom, 's2')
+    store.set(addForegroundSessionAtom, 's3')
+    store.set(addForegroundSessionAtom, 's4')
+
+    expect(store.get(foregroundSessionIdsAtom)).toEqual(['s2', 's3', 's4'])
+    expect(store.get(primarySurfaceAtom).route).toBe('allSessions/session/s4')
+    expect(store.get(renderedSurfaceEntriesAtom).map((entry) => entry.sessionId)).toEqual(['s2', 's3', 's4'])
+  })
+
+  it('activates an existing conversation without changing peer session data', () => {
+    const store = createStore()
+    store.set(setPrimarySurfaceRouteAtom, 'allSessions/session/s1')
+    store.set(addForegroundSessionAtom, 's2')
+    store.set(activateForegroundSessionAtom, 's1')
+
+    expect(store.get(foregroundSessionIdsAtom)).toEqual(['s1', 's2'])
+    expect(store.get(primarySurfaceAtom).route).toBe('allSessions/session/s1')
+  })
+
+  it('replaces only the active presentation slot during ordinary navigation', () => {
+    const store = createStore()
+    store.set(setPrimarySurfaceRouteAtom, 'allSessions/session/s1')
+    store.set(addForegroundSessionAtom, 's2')
+    store.set(addForegroundSessionAtom, 's3')
+    store.set(activateForegroundSessionAtom, 's2')
+    store.set(setPrimarySurfaceRouteAtom, 'allSessions/session/s4')
+
+    expect(store.get(foregroundSessionIdsAtom)).toEqual(['s1', 's4', 's3'])
+    expect(store.get(primarySurfaceAtom).route).toBe('allSessions/session/s4')
+  })
+
+  it('cycles keyboard focus through foreground conversations', () => {
+    const store = createStore()
+    store.set(setPrimarySurfaceRouteAtom, 'allSessions/session/s1')
+    store.set(addForegroundSessionAtom, 's2')
+    store.set(addForegroundSessionAtom, 's3')
+
+    store.set(focusNextSurfaceAtom)
+    expect(store.get(primarySurfaceAtom).route).toBe('allSessions/session/s1')
+    store.set(focusPreviousSurfaceAtom)
+    expect(store.get(primarySurfaceAtom).route).toBe('allSessions/session/s3')
+  })
+
+  it('temporarily presents only the active conversation beside Workbench', () => {
+    const store = createStore()
+    store.set(setPrimarySurfaceRouteAtom, 'allSessions/session/s1')
+    store.set(addForegroundSessionAtom, 's2')
+    store.set(addForegroundSessionAtom, 's3')
+    store.set(openWorkbenchItemAtom, 'diff')
+
+    expect(store.get(renderedSurfaceEntriesAtom).map((entry) => entry.sessionId ?? entry.panelType))
+      .toEqual(['s3', 'diff'])
+    expect(store.get(foregroundSessionIdsAtom)).toEqual(['s1', 's2', 's3'])
+
+    store.set(collapseWorkbenchAtom)
+    expect(store.get(renderedSurfaceEntriesAtom).map((entry) => entry.sessionId)).toEqual(['s1', 's2', 's3'])
   })
 })
 

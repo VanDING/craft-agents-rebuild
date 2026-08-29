@@ -80,10 +80,12 @@ import { sessionMetaMapAtom, updateSessionMetaAtom, type SessionMeta } from '@/a
 import { sourcesAtom } from '@/atoms/sources'
 import { skillsAtom } from '@/atoms/skills'
 import {
+  activateForegroundSessionAtom,
   deriveSurfaceRestoreState,
   hydrateSurfaceStateAtom,
   openWorkbenchItemAtom,
   primarySurfaceAtom,
+  foregroundSessionIdsAtom,
   primarySessionIdAtom,
   parseSessionIdFromSurfaceRoute,
   setPrimarySurfaceRouteAtom,
@@ -188,6 +190,7 @@ export function NavigationProvider({
   // =========================================================================
 
   const primarySurface = useAtomValue(primarySurfaceAtom)
+  const foregroundSessionIds = useAtomValue(foregroundSessionIdsAtom)
 
   // NavigationState is structural: workbench focus never changes it.
   const navigationState: NavigationState = useMemo(() => {
@@ -203,6 +206,19 @@ export function NavigationProvider({
   useEffect(() => {
     if (focusedSessionId) setLastActiveSession(focusedSessionId)
   }, [focusedSessionId, setLastActiveSession])
+
+  // Session deletion is a domain event; prune only the window-local layout
+  // references. If the active conversation disappeared, promote the first
+  // surviving peer without changing any Session entity relationships.
+  useEffect(() => {
+    if (!isSessionsReady || foregroundSessionIds.length === 0) return
+    const surviving = foregroundSessionIds.filter((id) => sessionMetaMap.has(id))
+    if (surviving.length === foregroundSessionIds.length) return
+    store.set(foregroundSessionIdsAtom, surviving)
+    if (focusedSessionId && !sessionMetaMap.has(focusedSessionId) && surviving[0]) {
+      store.set(activateForegroundSessionAtom, surviving[0])
+    }
+  }, [focusedSessionId, foregroundSessionIds, isSessionsReady, sessionMetaMap, store])
 
   // =========================================================================
   // BROWSER HISTORY TRACKING
@@ -246,11 +262,12 @@ export function NavigationProvider({
   const getSemanticHistoryKey = useCallback(() => {
     const primary = store.get(primarySurfaceAtom)
     const workbench = store.get(workbenchStateAtom)
+    const foregroundSessionIds = store.get(foregroundSessionIdsAtom)
     const activeIndex = workbench.items.findIndex((item) => item.id === workbench.activeItemId)
     const focusedIdx = workbench.open && activeIndex >= 0 ? activeIndex + 1 : 0
     return buildSemanticHistoryKey({
       workspaceSlug,
-      panelRoutes: [primary.route, ...workbench.items.map((item) => item.route)],
+      panelRoutes: [primary.route, ...foregroundSessionIds.map((id) => `foreground/${id}`), ...workbench.items.map((item) => item.route)],
       focusedPanelIndex: focusedIdx,
       sidebarParam: '',
     })
@@ -271,6 +288,7 @@ export function NavigationProvider({
   const syncUrl = useCallback((push: boolean = false) => {
     const primary = store.get(primarySurfaceAtom)
     const workbench = store.get(workbenchStateAtom)
+    const foregroundSessionIds = store.get(foregroundSessionIdsAtom)
     const url = new URL(window.location.href)
 
     // ?ws= workspace slug
@@ -278,7 +296,7 @@ export function NavigationProvider({
       url.searchParams.set('ws', workspaceSlug)
     }
 
-    writeSurfaceUrlParams(url.searchParams, primary, workbench)
+    writeSurfaceUrlParams(url.searchParams, primary, workbench, foregroundSessionIds)
 
     // v1 right-sidebar state is migrated into Workbench tabs on restore.
     url.searchParams.delete('sidebar')
@@ -368,6 +386,24 @@ export function NavigationProvider({
     return unsub
   }, [store, maybePushHistoryForSemanticChange])
 
+  // Foreground conversation membership/order is semantic window layout.
+  useEffect(() => {
+    let previousKey = store.get(foregroundSessionIdsAtom).join('|')
+    const unsub = store.sub(foregroundSessionIdsAtom, () => {
+      const currentKey = store.get(foregroundSessionIdsAtom).join('|')
+      if (suppressPushRef.current || !initialRouteRestoredRef.current) {
+        previousKey = currentKey
+        return
+      }
+      if (currentKey !== previousKey && !pendingPushRef.current) {
+        pendingPushRef.current = true
+        queueMicrotask(() => { pendingPushRef.current = false; maybePushHistoryForSemanticChange() })
+      }
+      previousKey = currentKey
+    })
+    return unsub
+  }, [store, maybePushHistoryForSemanticChange])
+
   // =========================================================================
   // RECONCILE PRIMARY + WORKBENCH FROM URL PARAMS
   // =========================================================================
@@ -448,12 +484,12 @@ export function NavigationProvider({
   // EMPTY SESSION CLEANUP (reactive — covers navigate, close tab, etc.)
   // =========================================================================
 
-  // Track the session visible in Primary. Background execution is a session
-  // domain concern; it no longer needs a hidden UI panel to stay alive.
+  // Track every conversation retained in the foreground layout, including
+  // comparison conversations temporarily hidden while Workbench is open.
   const prevVisibleSessionIdsRef = useRef<Set<string>>(new Set())
 
   useEffect(() => {
-    const currentIds = new Set<string>()
+    const currentIds = new Set(foregroundSessionIds)
     const primarySessionId = parseSessionIdFromSurfaceRoute(primarySurface.route)
     if (primarySessionId) currentIds.add(primarySessionId)
 
@@ -473,7 +509,7 @@ export function NavigationProvider({
     }
 
     prevVisibleSessionIdsRef.current = currentIds
-  }, [primarySurface.route, onAutoDeleteEmptySession, store, getDraft])
+  }, [foregroundSessionIds, primarySurface.route, onAutoDeleteEmptySession, store, getDraft])
 
   // =========================================================================
   // SESSION SELECTION SYNC

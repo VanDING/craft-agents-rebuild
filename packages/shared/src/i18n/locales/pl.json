@@ -1073,6 +1073,7 @@
   "sessionMenu.noProject": "Bez projektu",
   "sessionMenu.openInBrowser": "Otwórz w przeglądarce",
   "sessionMenu.openInNewWindow": "Otwórz w nowym oknie",
+  "sessionMenu.openSideBySide": "Otwórz obok siebie",
   "sessionMenu.projects": "Projekty",
   "sessionMenu.regenerateTitle": "Wygeneruj tytuł ponownie",
   "sessionMenu.sendToWorkspace": "Wyślij do Workspace...",

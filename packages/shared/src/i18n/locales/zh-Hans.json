@@ -1073,6 +1073,7 @@
   "sessionMenu.noProject": "无项目",
   "sessionMenu.openInBrowser": "在浏览器中打开",
   "sessionMenu.openInNewWindow": "在新窗口中打开",
+  "sessionMenu.openSideBySide": "并排打开",
   "sessionMenu.projects": "项目",
   "sessionMenu.regenerateTitle": "重新生成标题",
   "sessionMenu.sendToWorkspace": "发送到 Workspace...",
