@@ -88,7 +88,7 @@ export class PiEventAdapter extends BaseEventAdapter {
   private pendingStepStart: number | null = null;
   private pendingFirstToken: number | null = null;
 
-  // Pi 0.84.3 emits `agent_settled` only after retry, compaction and queued
+  // Pi 0.84.4 emits `agent_settled` only after retry, compaction and queued
   // continuations are exhausted. Hold an overflow error until that boundary so
   // successful SDK recovery stays invisible while failed recovery remains useful.
   private pendingOverflowError: string | null = null;

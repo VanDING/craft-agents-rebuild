@@ -29,7 +29,7 @@
     "@craft-agent/core": "workspace:*",
     "@craft-agent/artifact-engine-univer": "workspace:*",
     "@craft-agent/shared": "workspace:*",
-    "@earendil-works/pi-ai": "0.84.3",
+    "@earendil-works/pi-ai": "0.84.4",
     "jose": "^6.0.0",
     "markitdown-js": "^0.0.14",
     "sharp": "0.35.3",

@@ -33,6 +33,10 @@ describe('models-pi filtering', () => {
     const ids = models.map(m => m.id);
     expect(ids).toContain('pi/deepseek-v4-flash');
     expect(ids).toContain('pi/deepseek-v4-pro');
+
+    const visionModel = models.find(m => m.id === 'pi/deepseek-v4-flash-vision-exp');
+    expect(visionModel).toBeDefined();
+    expect(visionModel?.supportsImages).toBe(true);
   });
 
   it('includes Moonshot AI in the Pi API key provider list with human-readable labels', () => {

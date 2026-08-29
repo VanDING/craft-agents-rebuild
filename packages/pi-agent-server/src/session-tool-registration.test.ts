@@ -86,7 +86,7 @@ describe('Pi subprocess tool shape contract', () => {
     expect(names).toEqual(['read', 'bash', 'edit', 'write', 'grep', 'find', 'ls']);
   });
 
-  it('Pi 0.84.3 exposes a valid native PowerShell tool for Windows', () => {
+  it('Pi 0.84.4 exposes a valid native PowerShell tool for Windows', () => {
     const tool = createPowerShellToolDefinition('/tmp');
     assertValidToolDefinition(tool);
     expect(tool.name).toBe('powershell');

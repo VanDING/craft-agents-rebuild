@@ -1352,7 +1352,7 @@ describe('PiEventAdapter', () => {
   //
   // The Pi SDK's _checkCompaction fires _runAutoCompaction("overflow", true)
   // on context_length_exceeded, then agent.continue() to retry. The recovered
-  // turn arrives AFTER the original agent_end. Pi 0.84.3 emits agent_settled
+  // turn arrives AFTER the original agent_end. Pi 0.84.4 emits agent_settled
   // only after that recovery/retry/continuation work has finished.
 
   describe('overflow recovery', () => {
@@ -1411,6 +1411,54 @@ describe('PiEventAdapter', () => {
       const allYields = [...errEvents, ...heldAgentEnd, ...startEvents, ...endEvents, ...recoveredText, ...finalAgentEnd, ...settledEvents];
       const errorYields = allYields.filter(e => e.type === 'error' || e.type === 'typed_error');
       expect(errorYields).toHaveLength(0);
+    });
+
+    it('keeps a post-tool threshold compaction inside the active run', () => {
+      const allEvents: any[] = [];
+      const push = (event: any) => allEvents.push(...collect(adapter.adaptEvent(event)));
+
+      push({ type: 'turn_start' });
+      push({
+        type: 'tool_execution_start',
+        toolCallId: 'large-read',
+        toolName: 'read',
+        args: { path: '/tmp/large.txt' },
+      });
+      push({
+        type: 'tool_execution_end',
+        toolCallId: 'large-read',
+        toolName: 'read',
+        result: { content: [{ type: 'text', text: 'large tool result' }], details: {} },
+        isError: false,
+      });
+      push({ type: 'turn_end', message: { role: 'assistant' }, toolResults: [] });
+
+      // Pi 0.84.4 compacts here, before the next provider request in the same run.
+      push({ type: 'compaction_start', reason: 'threshold' });
+      push({ type: 'compaction_end', reason: 'threshold', result: {}, aborted: false });
+      expect(allEvents.some(event => event.type === 'complete')).toBe(false);
+      expect(adapter.shouldCompleteQueue(false)).toBe(false);
+
+      push({ type: 'turn_start' });
+      push({
+        type: 'message_end',
+        message: { role: 'assistant', stopReason: 'stop', content: 'Continued after compaction' },
+      });
+      push({ type: 'turn_end', message: { role: 'assistant' }, toolResults: [] });
+      push({ type: 'agent_end' });
+      expect(allEvents.some(event => event.type === 'complete')).toBe(false);
+
+      push({ type: 'agent_settled' });
+      expect(allEvents.filter(event => event.type === 'complete')).toHaveLength(1);
+      expect(allEvents).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          type: 'text_complete',
+          turnId: expect.any(String),
+          text: 'Continued after compaction',
+          isIntermediate: false,
+        }),
+      ]));
+      expect(adapter.shouldCompleteQueue(true)).toBe(true);
     });
 
     it('failure path reports compaction error and completes only when settled', () => {

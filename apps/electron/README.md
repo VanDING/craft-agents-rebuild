@@ -23,7 +23,7 @@ renderer (React)
 Electron main process
     │ packages/server-core SessionManager
     │ packages/shared PiAgent
-    └─ JSONL stdio → bundled pi-agent-server → Pi SDK 0.84.3
+    └─ JSONL stdio → bundled pi-agent-server → Pi SDK 0.84.4
 ```
 
 The main-process bundle does not contain an AI SDK. `packages/pi-agent-server` is built separately with Bun and staged under `resources/pi-agent-server`; this keeps provider and agent failures isolated from Electron.

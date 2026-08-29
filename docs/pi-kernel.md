@@ -4,7 +4,7 @@
 
 ## 当前基线
 
-- 内核：`@earendil-works/pi-ai`、`pi-agent-core`、`pi-coding-agent` **0.84.3**。
+- 内核：`@earendil-works/pi-ai`、`pi-agent-core`、`pi-coding-agent` **0.84.4**。
 - 包管理器与打包运行时：Bun **1.4.0**；版本由 `package.json`、CI 和打包脚本共同固定。
 - 后台：只有 `PiAgent`。仓库不直接依赖 Claude Agent SDK，也不打包 Claude 原生二进制。
 - Anthropic/Claude 模型、OAuth 连接名以及 `CLAUDE.md` 项目上下文属于提供商或文件格式兼容，不代表存在第二套 agent 后台。
@@ -18,7 +18,7 @@ packages/server-core (SessionManager)
           │ AgentBackend + JSONL
 packages/shared (PiAgent + event adapter + permissions)
           │ stdio
-packages/pi-agent-server (Pi 0.84.3)
+packages/pi-agent-server (Pi 0.84.4)
           │ provider API / local tools / proxied session tools
 ```
 
@@ -26,7 +26,7 @@ Pi SDK 被隔离在子进程中。主进程负责会话持久化、权限、sour
 
 ## 生命周期约束
 
-`agent_end` 只表示一次 agent loop 结束，之后仍可能发生自动重试、上下文压缩或排队续跑，因此不是 Craft 会话的终点。只有 Pi 0.84.3 的 `agent_settled` 会关闭本轮事件队列。
+`agent_end` 只表示一次 agent loop 结束，之后仍可能发生自动重试、上下文压缩或排队续跑，因此不是 Craft 会话的终点。只有 Pi 0.84.4 的 `agent_settled` 会关闭本轮事件队列。
 
 长任务需要向用户报告中间进度时调用本地 `report_progress` 工具。它把进度映射为 `isIntermediate` 文本，同时保持 Pi 原生 agent loop 继续运行。纯文本回复因此保留清晰语义：工作已经完成，或确实需要用户输入/批准。
 
@@ -39,7 +39,7 @@ Pi SDK 被隔离在子进程中。主进程负责会话持久化、权限、sour
 - 相同定义不会重复同步；新增、删除或 schema 变化才会让 Pi 会话在下一轮重建。
 - source runtime 在 `SessionManager` 中缓存，并只对同一个 agent 实例应用一次。
 - 浏览器工具开关会推送给所有存活的 Pi 子进程；忙碌会话在下一轮安全刷新，不中断当前工作。
-- Windows 使用 Pi 0.84.3 的原生 PowerShell 工具，仍经过 Craft 的终端权限与审计管线。
+- Windows 使用 Pi 0.84.4 的原生 PowerShell 工具，仍经过 Craft 的终端权限与审计管线。
 
 ## 模型发现与思考等级
 

@@ -171,15 +171,18 @@ describe('sessions file watchers', () => {
 
     await watch!({ clientId: 'client-a' }, 'session-a', 'working')
     await watch!({ clientId: 'client-a' }, 'session-a', 'session')
+    // Give both real fs.watch subscriptions time to become observable before
+    // writing. macOS can otherwise coalesce a write made in the same tick as
+    // watcher construction, making this integration test intermittently miss
+    // one scope even though the subscriptions are independent.
+    await wait(50)
     pushed.length = 0
 
-    writeFileSync(join(sessionDirA, 'diag-session.txt'), `x-${Date.now()}`)
     writeFileSync(join(workingDirA, 'changed.ts'), `x-${Date.now()}`)
     const t0 = performance.now()
     while (performance.now() - t0 < 3000 && !pushed.some((evt) => evt.channel === RPC_CHANNELS.sessions.FILES_CHANGED && evt.args[0] === 'session-a' && evt.args[1] === 'working')) {
       await wait(20)
     }
-    console.log('DIAG arrivalMs=', Math.round(performance.now() - t0), 'pushed=', JSON.stringify(pushed))
     await wait(300)
 
     expect(pushed.some((evt) => (
