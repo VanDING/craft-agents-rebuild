@@ -28,6 +28,9 @@ export interface TrajectoryToolbarProps {
   showTimelineControls?: boolean
   /** Whether the session is currently processing (live indicator only). */
   isProcessing?: boolean
+  eventFilter?: 'all' | 'conversation' | 'tools' | 'errors'
+  onEventFilterChange?: (filter: 'all' | 'conversation' | 'tools' | 'errors') => void
+  eventCount?: number
 }
 
 export function TrajectoryToolbar({
@@ -44,6 +47,9 @@ export function TrajectoryToolbar({
   searchMatchCount,
   showTimelineControls = true,
   isProcessing,
+  eventFilter,
+  onEventFilterChange,
+  eventCount,
 }: TrajectoryToolbarProps) {
   const { t } = useTranslation()
   return (
@@ -109,6 +115,17 @@ export function TrajectoryToolbar({
             <span className={css.buttonLabel}>{t('trajectory.toolbar.calls')}</span>
           </button>
         </div>
+        {eventFilter && onEventFilterChange && (
+          <div className={css.filters} aria-label={t('trajectory.events.filters')}>
+            <span className={css.divider} aria-hidden="true" />
+            {(['all', 'conversation', 'tools', 'errors'] as const).map(filter => (
+              <button key={filter} type="button" aria-pressed={eventFilter === filter} onClick={() => onEventFilterChange(filter)} className={css.filter}>
+                {t(`trajectory.events.${filter}`)}
+              </button>
+            ))}
+            <span className={css.eventCount}>{eventCount ?? 0}</span>
+          </div>
+        )}
         <div className={css.search}>
           <Search size={11} className={css.searchIcon} aria-hidden="true" />
           <input

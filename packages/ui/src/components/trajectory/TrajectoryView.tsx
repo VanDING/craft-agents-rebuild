@@ -12,7 +12,7 @@ import { deriveTrajectoryLayout, flattenTurnRecords, type TrajectoryCellProps, t
 import { searchTrajectory } from './trajectory-search-index'
 import { trajectoryTimelineFocusIndexes, type TrajectoryTimelineMode, type TrajectoryTimeRange } from './trajectory-timeline'
 import { TrajectoryToolbar } from './TrajectoryToolbar'
-import { TrajectoryTimeline } from './TrajectoryTimeline'
+import { TrajectoryMazeTimeline } from './TrajectoryMazeTimeline'
 import { TrajectoryTable } from './TrajectoryTable'
 import { RecordInspector } from './RecordInspector'
 import { TrajectoryOverview } from './TrajectoryOverview'
@@ -270,7 +270,7 @@ export function TrajectoryView({ snapshot, sessionTotal, isProcessing, contextSu
     return snapshot.prompts.get(seq - 1)
   }, [selectedCell, snapshot.prompts])
 
-  const toolbar = (showTimelineControls: boolean) => (
+  const toolbar = (showTimelineControls: boolean, showEventFilters = false) => (
     <TrajectoryToolbar
       actualDuration={actualDuration}
       onActualDurationChange={handleActualDurationChange}
@@ -285,6 +285,9 @@ export function TrajectoryView({ snapshot, sessionTotal, isProcessing, contextSu
       searchMatchCount={searchMatchIndexes?.size}
       showTimelineControls={showTimelineControls}
       isProcessing={isProcessing}
+      eventFilter={showEventFilters ? eventFilter : undefined}
+      onEventFilterChange={showEventFilters ? setEventFilter : undefined}
+      eventCount={showEventFilters ? eventRecords.length : undefined}
     />
   )
 
@@ -353,12 +356,11 @@ export function TrajectoryView({ snapshot, sessionTotal, isProcessing, contextSu
         )}
         {runView === 'timeline' && (
           <div className="relative flex h-full min-h-0 min-w-0">
-            <TrajectoryTimeline
+            <TrajectoryMazeTimeline
               turns={turns}
               mode={timelineMode}
               range={timelineRange}
               selectedIndex={selectedIndex}
-              searchMatchIndexes={null}
               onRangeChange={(range) => {
                 setTimelineRange(range)
                 if (range) onFocusChange?.({ source: 'run', timelineRange: { ...range, mode: timelineMode } })
@@ -366,22 +368,13 @@ export function TrajectoryView({ snapshot, sessionTotal, isProcessing, contextSu
               onModeChange={handleTimelineModeChange}
               onOpenEventsForRange={() => selectRunView('events', true)}
               onRecordSelect={onSelectIndex}
-              onRecordFocus={onSelectIndex}
             />
             {inspector}
           </div>
         )}
         {runView === 'events' && (
           <div className="flex h-full min-h-0 flex-col">
-            {toolbar(false)}
-            <div className="flex h-8 shrink-0 items-center gap-1 border-b border-border/50 bg-background/60 px-2.5" aria-label={t('trajectory.events.filters')}>
-              {(['all', 'conversation', 'tools', 'errors'] as const).map(filter => (
-                <button key={filter} type="button" aria-pressed={eventFilter === filter} onClick={() => setEventFilter(filter)} className={`h-6 rounded-md px-2 text-[10px] font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring ${eventFilter === filter ? 'bg-accent/10 text-accent' : 'text-muted-foreground hover:bg-foreground/[0.035]'}`}>
-                  {t(`trajectory.events.${filter}`)}
-                </button>
-              ))}
-              <span className="ml-auto text-[10px] tabular-nums text-muted-foreground">{eventRecords.length}</span>
-            </div>
+            {toolbar(false, true)}
             {timelineRange !== null && (
               <div className="flex min-h-8 shrink-0 items-center justify-between gap-3 border-b border-border/50 bg-accent/5 px-3 text-[11px] text-muted-foreground">
                 <span>{t('trajectory.timeline.filteredEvents', { count: timelineFocusIndexes?.size ?? 0 })}</span>

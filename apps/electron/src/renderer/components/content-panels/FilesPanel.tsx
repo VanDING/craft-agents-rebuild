@@ -16,7 +16,7 @@ import { filesPanelViewAtom, reviewPanelFocusRequestAtom, updateWorkbenchFocusAt
 import { getPathBasename } from '@/lib/platform'
 import { useSessionActivities } from '@/lib/use-session-activities'
 import { collectFileChangesFromActivities, getFirstFileChangeIdForActivity } from '@/lib/file-changes'
-import { collectFileActivity, type FileActivityOperation } from '@/lib/file-activity'
+import { collectFileActivity, resolveFileActivityPath, type FileActivityOperation } from '@/lib/file-activity'
 import { useAppShellContext } from '@/context/AppShellContext'
 import { openWorkbenchItemAtom, setWorkbenchItemBindingAtom } from '@/atoms/workbench'
 
@@ -39,7 +39,7 @@ export function FilesPanel({ sessionId }: { sessionId?: string }) {
   const [query, setQuery] = useState('')
   const [activityFilter, setActivityFilter] = useState<'all' | FileActivityOperation>('all')
   const [loadError, setLoadError] = useState(false)
-  const { onOpenFile } = useAppShellContext()
+  const { onOpenFile, workspaces } = useAppShellContext()
   const updateWorkbenchFocus = useSetAtom(updateWorkbenchFocusAtom)
   const setReviewFocusRequest = useSetAtom(reviewPanelFocusRequestAtom)
   const openWorkbenchItem = useSetAtom(openWorkbenchItemAtom)
@@ -47,6 +47,7 @@ export function FilesPanel({ sessionId }: { sessionId?: string }) {
 
   const meta = activeSessionId ? sessionMetaMap.get(activeSessionId) : undefined
   const workingDirectory = meta?.workingDirectory
+  const activityBaseDirectory = workingDirectory ?? workspaces.find(workspace => workspace.id === meta?.workspaceId)?.rootPath
   const messagesLoaded = activeSessionId ? loadedSessions.has(activeSessionId) : false
   const needsMessages = view === 'activity' || view === 'attachments'
   const activities = useSessionActivities(session)
@@ -140,24 +141,28 @@ export function FilesPanel({ sessionId }: { sessionId?: string }) {
                   </button>
                 ))}
               </div>
-              <div className="min-h-0 flex-1 overflow-y-auto p-2.5">
-                <div className="mx-auto max-w-3xl overflow-hidden rounded-xl border border-border/55 bg-background/70">
+              <div className="min-h-0 flex-1 overflow-y-auto">
+                <div className="min-w-0 border-b border-border/50 bg-background/55">
                   {filteredActivity.map(record => {
                     const changeId = getFirstFileChangeIdForActivity(record.activityId, changes)
+                    const resolvedPath = resolveFileActivityPath(record.path, activityBaseDirectory)
                     const Icon = record.operation === 'read' ? Eye : record.operation === 'search' ? Search : FilePenLine
                     return (
-                      <div key={record.id} className="grid min-h-11 grid-cols-[20px_minmax(0,1fr)_auto] items-center gap-2 border-b border-border/45 px-3 last:border-b-0 hover:bg-foreground/[0.025]" style={{ paddingLeft: `${12 + Math.min(record.depth, 3) * 10}px` }}>
+                      <div key={record.id} className="grid min-h-12 grid-cols-[20px_minmax(0,1fr)_auto] items-center gap-2 border-b border-border/45 px-3 last:border-b-0 hover:bg-foreground/[0.025] @min-[720px]/files:grid-cols-[20px_minmax(180px,1.6fr)_minmax(120px,0.8fr)_90px_auto]" style={{ paddingLeft: `${12 + Math.min(record.depth, 3) * 10}px` }}>
                         <Icon className="h-3.5 w-3.5 text-muted-foreground" />
-                        <button type="button" className="min-w-0 text-left outline-none focus-visible:underline" onClick={() => {
-                          updateWorkbenchFocus({ sessionId: activeSessionId, source: 'files', filePath: record.path, callId: record.activityId })
-                          onOpenFile?.(record.path, activeSessionId)
+                        <button type="button" disabled={!resolvedPath} title={resolvedPath ?? t('contentPanel.files.activity.unresolvedPath')} className="min-w-0 text-left outline-none disabled:cursor-not-allowed disabled:opacity-60 focus-visible:underline" onClick={() => {
+                          if (!resolvedPath) return
+                          updateWorkbenchFocus({ sessionId: activeSessionId, source: 'files', filePath: resolvedPath, callId: record.activityId })
+                          onOpenFile?.(resolvedPath, activeSessionId)
                         }}>
-                          <span className="block truncate text-[12px] font-medium" title={record.path}>{getPathBasename(record.path) || record.path}</span>
-                          <span className="block truncate text-[9px] text-muted-foreground">{t(`contentPanel.files.activity.${record.operation}`)} · {record.toolName} · {new Date(record.timestamp).toLocaleTimeString()}</span>
+                          <span className="block truncate text-[13px] font-medium">{getPathBasename(record.path) || record.path}</span>
+                          <span className="block truncate text-[12px] text-muted-foreground @min-[720px]/files:hidden">{record.path}</span>
                         </button>
+                        <span className="hidden min-w-0 truncate text-[12px] text-muted-foreground @min-[720px]/files:block">{t(`contentPanel.files.activity.${record.operation}`)} · {record.toolName}</span>
+                        <span className="hidden text-right text-[12px] tabular-nums text-muted-foreground @min-[720px]/files:block">{new Date(record.timestamp).toLocaleTimeString()}</span>
                         {changeId && (
                           <button type="button" className="rounded px-1.5 py-1 text-[10px] font-medium text-accent hover:bg-accent/10" onClick={() => {
-                            updateWorkbenchFocus({ sessionId: activeSessionId, source: 'files', filePath: record.path, callId: record.activityId, changeId })
+                            updateWorkbenchFocus({ sessionId: activeSessionId, source: 'files', filePath: resolvedPath ?? record.path, callId: record.activityId, changeId })
                             setReviewFocusRequest({ sessionId: activeSessionId, changeId, nonce: Date.now() })
                             const reviewItemId = openWorkbenchItem('diff')
                             if (reviewItemId) setWorkbenchItemBinding({ id: reviewItemId, binding: { type: 'session', sessionId: activeSessionId } })
@@ -178,7 +183,7 @@ export function FilesPanel({ sessionId }: { sessionId?: string }) {
         {view === 'attachments' && messagesLoaded && (
           attachments.length > 0 ? (
             <div className="h-full overflow-y-auto bg-foreground/[0.012] p-2.5">
-              <div className="mx-auto max-w-3xl overflow-hidden rounded-xl border border-border/55 bg-background/70 p-1">
+              <div className="overflow-hidden border-y border-border/55 bg-background/70 p-1">
                 {attachments.map(attachment => (
                   <PanelRow key={attachment.id} icon={attachment.name ? <FileText className="h-3.5 w-3.5" /> : <Paperclip className="h-3.5 w-3.5" />} title={attachment.name} titleAttribute={attachment.name} onClick={() => onOpenFile?.(attachment.storedPath, activeSessionId)} />
                 ))}

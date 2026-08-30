@@ -235,16 +235,16 @@ describe('virtual window', () => {
   it('renders only the rows overlapping the viewport plus overscan', () => {
     const win = computeVirtualRowWindow(rows, 0, 180)
     expect(win.start).toBe(0)
-    expect(win.end).toBe(11)
+    expect(win.end).toBe(10)
     expect(win.top).toBe(0)
     expect(win.bottom).toBe(100 * CONTENT_ROW_HEIGHT - win.end * CONTENT_ROW_HEIGHT)
   })
 
   it('slices with top and bottom spacers when scrolled', () => {
     const win = computeVirtualRowWindow(rows, 300, 180)
-    expect(win.start).toBe(5)
-    expect(win.end).toBe(21)
-    expect(win.top).toBe(150)
+    expect(win.start).toBe(3)
+    expect(win.end).toBe(19)
+    expect(win.top).toBe(108)
     expect(win.bottom).toBe(100 * CONTENT_ROW_HEIGHT - win.end * CONTENT_ROW_HEIGHT)
   })
 

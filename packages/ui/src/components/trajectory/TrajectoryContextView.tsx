@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ChevronDown, FileText, MessagesSquare, Paperclip, Sparkles, TerminalSquare, UserRound } from 'lucide-react'
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronsUpDown, FileText, MessagesSquare, Paperclip, Sparkles, TerminalSquare, UserRound } from 'lucide-react'
 import type { TrajectorySnapshot } from './trajectory-contract'
 import { deriveRequestContexts, requestContextDelta, type TrajectoryContextCategory } from './trajectory-context'
 
@@ -39,12 +39,24 @@ export function TrajectoryContextView({ snapshot, focusedRequestSeq, onRequestFo
   const contexts = useMemo(() => deriveRequestContexts(snapshot), [snapshot])
   const [selectedSeq, setSelectedSeq] = useState<number | null>(() => focusedRequestSeq ?? contexts.at(-1)?.requestSeq ?? null)
   const [expanded, setExpanded] = useState<ReadonlySet<TrajectoryContextCategory>>(() => new Set(['system', 'user', 'tools']))
+  const [requestMenuOpen, setRequestMenuOpen] = useState(false)
+  const [requestFilter, setRequestFilter] = useState('')
+  const requestMenuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (focusedRequestSeq !== undefined && contexts.some(context => context.requestSeq === focusedRequestSeq)) {
       setSelectedSeq(focusedRequestSeq)
     }
   }, [contexts, focusedRequestSeq])
+
+  useEffect(() => {
+    if (!requestMenuOpen) return
+    const close = (event: PointerEvent) => {
+      if (!requestMenuRef.current?.contains(event.target as Node)) setRequestMenuOpen(false)
+    }
+    document.addEventListener('pointerdown', close)
+    return () => document.removeEventListener('pointerdown', close)
+  }, [requestMenuOpen])
 
   const selectedIndex = Math.max(0, contexts.findIndex(context => context.requestSeq === selectedSeq))
   const current = contexts[selectedIndex] ?? contexts.at(-1)
@@ -57,26 +69,62 @@ export function TrajectoryContextView({ snapshot, focusedRequestSeq, onRequestFo
 
   const currentTotal = current.inputTokens ?? current.estimatedTokens
   const exactTotal = current.inputTokens !== undefined
+  const maxRequestTokens = Math.max(1, ...contexts.map(context => context.inputTokens ?? context.estimatedTokens))
+  const normalizedRequestFilter = requestFilter.trim().toLowerCase()
+  const filteredContexts = contexts.filter(context =>
+    String(context.requestSeq).includes(normalizedRequestFilter)
+    || t('trajectory.context.request', { seq: context.requestSeq }).toLowerCase().includes(normalizedRequestFilter),
+  )
 
   const selectRequest = (requestSeq: number) => {
     setSelectedSeq(requestSeq)
     onRequestFocus?.(requestSeq)
+    setRequestMenuOpen(false)
   }
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-foreground/[0.012]">
-      <div className="flex h-10 shrink-0 items-center gap-1 overflow-x-auto border-b border-border/50 bg-background/75 px-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {contexts.map(context => (
-          <button
-            key={context.requestSeq}
-            type="button"
-            aria-pressed={context.requestSeq === current.requestSeq}
-            onClick={() => selectRequest(context.requestSeq)}
-            className={`h-7 shrink-0 rounded-md px-2 text-[11px] outline-none focus-visible:ring-2 focus-visible:ring-ring ${context.requestSeq === current.requestSeq ? 'border border-border/60 bg-background text-foreground shadow-minimal' : 'text-muted-foreground hover:bg-foreground/[0.035]'}`}
-          >
-            {t('trajectory.context.request', { seq: context.requestSeq })}
+      <div className="flex h-11 shrink-0 items-center gap-1.5 border-b border-border/50 bg-background/75 px-2.5">
+        <button type="button" disabled={selectedIndex <= 0} onClick={() => selectRequest(contexts[selectedIndex - 1]!.requestSeq)} aria-label={t('trajectory.context.previousRequest')} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-foreground/[0.04] disabled:opacity-30 focus-visible:ring-2 focus-visible:ring-ring">
+          <ChevronLeft className="h-3.5 w-3.5" />
+        </button>
+        <div ref={requestMenuRef} className="relative">
+          <button type="button" aria-haspopup="listbox" aria-expanded={requestMenuOpen} onClick={() => { setRequestFilter(''); setRequestMenuOpen(open => !open) }} className="flex h-7 min-w-36 items-center justify-between gap-2 rounded-md border border-border/60 bg-background px-2.5 text-[12px] font-medium shadow-minimal outline-none hover:bg-foreground/[0.025] focus-visible:ring-2 focus-visible:ring-ring">
+            <span>{t('trajectory.context.requestPosition', { seq: current.requestSeq, total: contexts.length })}</span>
+            <ChevronsUpDown className="h-3.5 w-3.5 text-muted-foreground" />
           </button>
-        ))}
+          {requestMenuOpen && (
+            <div className="absolute left-0 top-9 z-30 w-72 overflow-hidden rounded-lg border border-border/60 bg-background shadow-modal-small">
+              <div className="border-b border-border/50 p-2">
+                <input autoFocus value={requestFilter} onChange={event => setRequestFilter(event.target.value)} onKeyDown={event => { if (event.key === 'Escape') setRequestMenuOpen(false) }} placeholder={t('trajectory.context.searchRequests')} className="h-7 w-full rounded-md bg-foreground/[0.035] px-2 text-[12px] outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-ring" />
+              </div>
+              <div className="max-h-64 overflow-y-auto p-1" role="listbox">
+                {filteredContexts.map((context) => {
+                  const requestDelta = requestContextDelta(context, contexts.findLast(candidate => candidate.requestSeq < context.requestSeq))
+                  return (
+                    <button key={context.requestSeq} type="button" role="option" aria-selected={context.requestSeq === current.requestSeq} onClick={() => selectRequest(context.requestSeq)} className={`grid w-full grid-cols-[minmax(0,1fr)_auto] gap-x-3 rounded-md px-2.5 py-2 text-left outline-none hover:bg-foreground/[0.04] focus-visible:bg-foreground/[0.04] ${context.requestSeq === current.requestSeq ? 'bg-accent/8' : ''}`}>
+                      <span className="text-[12px] font-medium">{t('trajectory.context.request', { seq: context.requestSeq })}</span>
+                      <span className="text-[11px] tabular-nums text-muted-foreground">{formatNumber(context.inputTokens ?? context.estimatedTokens)}</span>
+                      <span className="text-[11px] text-muted-foreground">{context.captured ? t('trajectory.context.captured') : t('trajectory.context.estimated')}</span>
+                      <span className={`text-[11px] tabular-nums ${requestDelta && requestDelta > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}`}>{requestDelta === undefined ? '—' : `${requestDelta > 0 ? '+' : ''}${formatNumber(requestDelta)}`}</span>
+                    </button>
+                  )
+                })}
+                {filteredContexts.length === 0 && <div className="px-3 py-5 text-center text-[12px] text-muted-foreground">{t('trajectory.context.noMatchingRequests')}</div>}
+              </div>
+            </div>
+          )}
+        </div>
+        <button type="button" disabled={selectedIndex >= contexts.length - 1} onClick={() => selectRequest(contexts[selectedIndex + 1]!.requestSeq)} aria-label={t('trajectory.context.nextRequest')} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-foreground/[0.04] disabled:opacity-30 focus-visible:ring-2 focus-visible:ring-ring">
+          <ChevronRight className="h-3.5 w-3.5" />
+        </button>
+        <button type="button" disabled={selectedIndex === contexts.length - 1} onClick={() => selectRequest(contexts.at(-1)!.requestSeq)} className="h-7 shrink-0 rounded-md px-2 text-[11px] font-medium text-muted-foreground outline-none hover:bg-foreground/[0.04] disabled:opacity-30 focus-visible:ring-2 focus-visible:ring-ring">{t('trajectory.context.latest')}</button>
+        <div className="ml-auto hidden h-7 min-w-28 max-w-72 flex-1 items-end gap-px rounded-md bg-foreground/[0.025] px-1.5 py-1 @min-[620px]/trajectory:flex" aria-label={t('trajectory.context.requestTrend')}>
+          {contexts.map(context => {
+            const tokens = context.inputTokens ?? context.estimatedTokens
+            return <button key={context.requestSeq} type="button" onClick={() => selectRequest(context.requestSeq)} title={`${t('trajectory.context.request', { seq: context.requestSeq })} · ${formatNumber(tokens)}`} className={`min-w-px flex-1 rounded-[1px] outline-none transition-colors focus-visible:ring-1 focus-visible:ring-ring ${context.requestSeq === current.requestSeq ? 'bg-accent' : 'bg-accent/30 hover:bg-accent/55'}`} style={{ height: `${Math.max(14, (tokens / maxRequestTokens) * 100)}%` }} />
+          })}
+        </div>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3 pb-8">

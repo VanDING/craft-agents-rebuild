@@ -8,8 +8,8 @@
 import type { TrajectoryRenderRecord } from './trajectory-layout'
 import { trajectoryRecordId } from './trajectory-layout'
 
-export const CONTENT_ROW_HEIGHT = 30
-export const COLLAPSED_SUMMARY_HEIGHT = 20
+export const CONTENT_ROW_HEIGHT = 36
+export const COLLAPSED_SUMMARY_HEIGHT = 24
 
 /** One virtualizer item. */
 export interface TrajectoryVirtualRow {

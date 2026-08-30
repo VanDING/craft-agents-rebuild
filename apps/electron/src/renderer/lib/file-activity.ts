@@ -18,6 +18,35 @@ function stringValue(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value : undefined
 }
 
+function isAbsoluteFilePath(path: string): boolean {
+  return path.startsWith('/') || /^[a-zA-Z]:[\\/]/.test(path) || path.startsWith('\\\\')
+}
+
+/** Resolve tool-reported relative paths against the session working directory. */
+export function resolveFileActivityPath(path: string, workingDirectory?: string): string | undefined {
+  const trimmed = path.trim()
+  if (!trimmed) return undefined
+  if (isAbsoluteFilePath(trimmed)) return trimmed
+  if (!workingDirectory || !isAbsoluteFilePath(workingDirectory)) return undefined
+
+  const windows = /^[a-zA-Z]:[\\/]/.test(workingDirectory) || workingDirectory.startsWith('\\\\')
+  const slashPath = `${workingDirectory.replace(/\\/g, '/')}/${trimmed.replace(/\\/g, '/')}`
+  const prefix = slashPath.startsWith('//') ? '//' : slashPath.match(/^[a-zA-Z]:/)?.[0] ?? '/'
+  const body = prefix === '/' ? slashPath.slice(1) : slashPath.slice(prefix.length).replace(/^\/+/, '')
+  const segments: string[] = []
+  for (const segment of body.split('/')) {
+    if (!segment || segment === '.') continue
+    if (segment === '..') segments.pop()
+    else segments.push(segment)
+  }
+  const resolved = prefix === '/'
+    ? `/${segments.join('/')}`
+    : prefix === '//'
+      ? `//${segments.join('/')}`
+      : `${prefix}/${segments.join('/')}`
+  return windows ? resolved.replace(/\//g, '\\') : resolved
+}
+
 function operationFor(toolName: string): FileActivityOperation | undefined {
   const name = toolName.toLowerCase()
   if (name === 'edit' || name.includes('apply_patch')) return 'edit'
