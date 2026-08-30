@@ -354,7 +354,6 @@ function copyProductionDeps(config: ServerBuildConfig): void {
   const SERVER_PACKAGES = [
     'server',
     'server-core',
-    'artifact-engine-univer',
     'shared',
     'core',
     'session-tools-core',
@@ -449,7 +448,6 @@ function copyWorkspacePackages(config: ServerBuildConfig): void {
   const packages = [
     'server',
     'server-core',
-    'artifact-engine-univer',
     'shared',
     'core',
     'session-tools-core',
@@ -515,7 +513,6 @@ function createRootConfig(config: ServerBuildConfig): void {
       moduleResolution: 'bundler',
       paths: {
         '@craft-agent/server-core/*': ['./packages/server-core/src/*'],
-        '@craft-agent/artifact-engine-univer/*': ['./packages/artifact-engine-univer/src/*'],
         '@craft-agent/shared/*': ['./packages/shared/src/*'],
         '@craft-agent/core/*': ['./packages/core/src/*'],
         '@craft-agent/session-tools-core/*': ['./packages/session-tools-core/src/*'],

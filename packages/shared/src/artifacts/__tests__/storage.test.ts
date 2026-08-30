@@ -244,6 +244,41 @@ describe('artifact revision storage', () => {
     expect(listArtifacts(scope, { sessionId: 'session-1' })).toHaveLength(1);
   });
 
+  it('manages unknown binary files without enabling text preview or editing', () => {
+    const target = join(contentRoot, 'payload.vendorbin');
+    writeFileSync(target, Buffer.from([0x00, 0xff, 0x10, 0x80]));
+    const current = registerCurrentArtifact(scope, {
+      sessionId: 'session-1',
+      sourcePath: target,
+    });
+    expect(current.artifact.kind).toBe('file');
+    expect(current.artifact.mimeType).toBe('application/octet-stream');
+    expect(current.artifact.capabilities).toMatchObject({ preview: false, edit: false, inspect: true });
+    expect(current.artifact.previews[0]?.kind).toBe('source');
+
+    const draft = createArtifactDraft(scope, {
+      sessionId: 'session-1',
+      kind: 'file',
+      sourcePath: 'copy.vendorbin',
+      initialPath: target,
+      provenance: { origin: 'tool', tool: 'vendor-tool', createdAt: 123 },
+    });
+    const ready = submitArtifact(scope, draft.artifact.id);
+    expect(ready.artifact.status).toBe('ready');
+    expect(ready.artifact.validation).toMatchObject({ valid: true });
+    expect(ready.artifact.validation?.warnings[0]).toContain('No structural validator');
+    expect(getArtifact(scope, draft.artifact.id).artifact.provenance).toEqual({
+      origin: 'tool',
+      tool: 'vendor-tool',
+      createdAt: 123,
+    });
+    expect(parseArtifactEvent(serializeArtifactEvent(ready))?.provenance).toEqual({
+      origin: 'tool',
+      tool: 'vendor-tool',
+      createdAt: 123,
+    });
+  });
+
   it('persists an immutable rendered preview bound to the reviewed revision', () => {
     const created = createArtifactDraft(scope, {
       sessionId: 'session-1',

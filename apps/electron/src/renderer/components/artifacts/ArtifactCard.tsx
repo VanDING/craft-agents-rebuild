@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { AlertTriangle, Check, ChevronDown, ChevronRight, FileArchive, FileImage, FileText, Maximize2, RotateCcw, Trash2 } from 'lucide-react'
+import { AlertTriangle, Archive, Check, ChevronDown, ChevronRight, FileArchive, FileAudio, FileImage, FileText, FileVideo, Maximize2, RotateCcw, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { ArtifactEventSnapshot, ResolvedArtifact } from '@craft-agent/shared/artifacts/browser'
 import { cn } from '@/lib/utils'
@@ -16,6 +16,9 @@ interface ArtifactCardProps {
 function ArtifactIcon({ kind }: { kind: ArtifactEventSnapshot['kind'] }) {
   if (kind === 'image') return <FileImage className="h-5 w-5" />
   if (kind === 'pdf') return <FileArchive className="h-5 w-5" />
+  if (kind === 'audio') return <FileAudio className="h-5 w-5" />
+  if (kind === 'video') return <FileVideo className="h-5 w-5" />
+  if (kind === 'archive') return <Archive className="h-5 w-5" />
   return <FileText className="h-5 w-5" />
 }
 
@@ -58,6 +61,11 @@ export function ArtifactCard({ event, live, onOpen, onAccept, onDiscard, onRevis
           <span className="min-w-0 flex-1">
             <span className="block truncate text-sm font-semibold">{event.title}</span>
             <span className="block truncate text-[11px] text-muted-foreground">{event.sourcePath}</span>
+            {event.provenance?.model && (
+              <span className="block truncate text-[10px] text-muted-foreground" title={event.provenance.prompt}>
+                {[event.provenance.provider, event.provenance.model].filter(Boolean).join(' · ')}
+              </span>
+            )}
           </span>
           <span className={cn(
             'rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide',

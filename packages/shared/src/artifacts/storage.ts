@@ -31,6 +31,7 @@ import type {
   RegisterCurrentArtifactInput,
   ResolvedArtifact,
 } from './types.ts';
+import { resolveFileFormat } from './file-formats.ts';
 
 const STORE_VERSION = 1;
 const STORE_DIR = 'artifacts';
@@ -117,60 +118,41 @@ function optionalText(value: string | undefined): string | undefined {
 function mimeTypeFor(kind: ArtifactKind, path: string, explicit?: string): string {
   const normalized = optionalText(explicit);
   if (normalized) return normalized;
-  const ext = extname(path).toLowerCase();
-  const byExtension: Record<string, string> = {
-    '.txt': 'text/plain',
-    '.md': 'text/markdown',
-    '.json': 'application/json',
-    '.csv': 'text/csv',
-    '.html': 'text/html',
-    '.htm': 'text/html',
-    '.png': 'image/png',
-    '.jpg': 'image/jpeg',
-    '.jpeg': 'image/jpeg',
-    '.gif': 'image/gif',
-    '.webp': 'image/webp',
-    '.svg': 'image/svg+xml',
-    '.pdf': 'application/pdf',
-    '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-  };
-  return byExtension[ext] ?? (kind === 'text' ? 'text/plain' : 'application/octet-stream');
+  const registered = resolveFileFormat(path);
+  return registered !== undefined && registered.id !== 'unknown'
+    ? registered.mimeType
+    : kind === 'text' ? 'text/plain' : 'application/octet-stream';
 }
 
-function capabilitiesFor(kind: ArtifactKind, engineId?: string): ArtifactCapabilities {
-  const isInteractiveUniverSheet = kind === 'spreadsheet' && engineId === 'univer-sheet';
+function capabilitiesFor(kind: ArtifactKind, path: string, mimeType: string): ArtifactCapabilities {
+  const registered = resolveFileFormat(path, mimeType);
   return {
-    preview: isInteractiveUniverSheet || ['text', 'data', 'image', 'pdf', 'html'].includes(kind),
+    preview: registered.preview !== 'external',
     inspect: true,
-    edit: isInteractiveUniverSheet || ['text', 'data', 'html'].includes(kind),
+    edit: registered.safeText && ['text', 'data', 'html', 'document', 'spreadsheet'].includes(kind),
     materialize: false,
   };
 }
 
 function inferArtifactKind(path: string): ArtifactKind {
-  const ext = extname(path).toLowerCase();
-  if (ext === '.xlsx' || ext === '.xls' || ext === '.csv') return 'spreadsheet';
-  if (ext === '.docx' || ext === '.doc' || ext === '.md') return 'document';
-  if (ext === '.pptx' || ext === '.ppt') return 'presentation';
-  if (ext === '.pdf') return 'pdf';
-  if (['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'].includes(ext)) return 'image';
-  if (ext === '.html' || ext === '.htm') return 'html';
-  if (ext === '.json') return 'data';
-  return 'text';
+  return resolveFileFormat(path).artifactKind;
 }
 
-function previewFor(kind: ArtifactKind, mimeType: string, revision: string): StoredPreview {
-  const previewKind: ArtifactPreview['kind'] = kind === 'image'
+function previewFor(sourcePath: string, mimeType: string, revision: string): StoredPreview {
+  const strategy = resolveFileFormat(sourcePath, mimeType).preview;
+  const previewKind: ArtifactPreview['kind'] = strategy === 'image'
     ? 'image'
-    : kind === 'pdf'
+    : strategy === 'pdf'
       ? 'pdf'
-      : mimeType === 'application/json'
+      : strategy === 'json'
         ? 'json'
-        : kind === 'text' || kind === 'data' || kind === 'html'
-          ? 'text'
-          : 'source';
+        : strategy === 'markdown'
+          ? 'markdown'
+          : strategy === 'html'
+            ? 'html'
+            : strategy === 'text'
+              ? 'text'
+              : 'source';
   return {
     id: `source:${revision}`,
     revision,
@@ -192,6 +174,12 @@ function publicDescriptor(
       path: relativePath ? join(scope.workspaceRootPath, relativePath) : undefined,
     })),
     deliverables: descriptor.deliverables.map((deliverable) => ({ ...deliverable })),
+    provenance: descriptor.provenance
+      ? {
+          ...descriptor.provenance,
+          parameters: descriptor.provenance.parameters ? { ...descriptor.provenance.parameters } : undefined,
+        }
+      : undefined,
     lease: descriptor.lease ? { ...descriptor.lease } : undefined,
     validation: descriptor.validation
       ? {
@@ -259,6 +247,24 @@ function assertStoredArtifact(stored: StoredArtifact): void {
   if (stored.currentRevision && !ids.has(stored.currentRevision)) throw new Error(`Missing current revision: ${stored.id}`);
   if (!Number.isFinite(stored.createdAt) || !Number.isFinite(stored.updatedAt)) {
     throw new Error(`Invalid artifact timestamps: ${stored.id}`);
+  }
+  if (stored.provenance) {
+    const provenance = stored.provenance;
+    const validParameters = provenance.parameters === undefined || (
+      provenance.parameters !== null
+      && typeof provenance.parameters === 'object'
+      && !Array.isArray(provenance.parameters)
+      && Object.values(provenance.parameters).every((value) => (
+        value === null || ['string', 'number', 'boolean'].includes(typeof value)
+      ))
+    );
+    if (
+      !['generated', 'imported', 'tool'].includes(provenance.origin)
+      || !Number.isFinite(provenance.createdAt)
+      || !validParameters
+    ) {
+      throw new Error(`Invalid artifact provenance: ${stored.id}`);
+    }
   }
 }
 
@@ -377,35 +383,55 @@ function assertLease(artifact: StoredArtifact, leaseId?: string): void {
   }
 }
 
-function validateContent(kind: ArtifactKind, mimeType: string, revision: string, content: Uint8Array): ArtifactValidation {
+function validateContent(
+  kind: ArtifactKind,
+  sourcePath: string,
+  mimeType: string,
+  revision: string,
+  content: Uint8Array,
+): ArtifactValidation {
   const errors: string[] = [];
   const warnings: string[] = [];
-  const isTextual = kind === 'text' || kind === 'data' || kind === 'html' || mimeType.includes('json') || mimeType.startsWith('text/');
+  const registered = resolveFileFormat(sourcePath, mimeType);
+  const isTextual = registered.safeText;
   let text: string | undefined;
   if (isTextual) {
-    text = Buffer.from(content).toString('utf8');
+    try {
+      text = new TextDecoder('utf-8', { fatal: true }).decode(content);
+    } catch {
+      errors.push('Text content is not valid UTF-8.');
+      text = Buffer.from(content).toString('utf8');
+    }
     if (text.includes('\u0000')) errors.push('Text content contains NUL bytes.');
-    if (mimeType.includes('json')) {
+    if (registered.validation === 'json') {
       try { JSON.parse(text); } catch (error) {
         errors.push(`Invalid JSON: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
   }
-  if (kind === 'pdf' && !Buffer.from(content.subarray(0, 5)).equals(Buffer.from('%PDF-'))) {
+  if (registered.validation === 'pdf' && !Buffer.from(content.subarray(0, 5)).equals(Buffer.from('%PDF-'))) {
     errors.push('PDF content is missing the %PDF- signature.');
   }
-  if (kind === 'image') {
-    const header = Buffer.from(content.subarray(0, 16));
+  if (registered.validation === 'image') {
+    const header = Buffer.from(content.subarray(0, 32));
+    const ascii = header.toString('ascii');
+    const imageText = registered.id === 'svg' ? Buffer.from(content).toString('utf8') : '';
     const imageSignature =
       header.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
       || header.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff]))
-      || header.subarray(0, 6).toString('ascii') === 'GIF87a'
-      || header.subarray(0, 6).toString('ascii') === 'GIF89a'
-      || (header.subarray(0, 4).toString('ascii') === 'RIFF' && header.subarray(8, 12).toString('ascii') === 'WEBP')
-      || (mimeType === 'image/svg+xml' && Buffer.from(content).toString('utf8').includes('<svg'));
-    if (!imageSignature) errors.push('Image content does not match a supported image signature.');
+      || ascii.startsWith('GIF87a')
+      || ascii.startsWith('GIF89a')
+      || (ascii.startsWith('RIFF') && ascii.slice(8, 12) === 'WEBP')
+      || ascii.startsWith('BM')
+      || header.subarray(0, 4).equals(Buffer.from([0x00, 0x00, 0x01, 0x00]))
+      || ascii.slice(4, 12).includes('ftypavif')
+      || ascii.slice(4, 12).includes('ftypavis')
+      || ['II*\u0000', 'MM\u0000*'].includes(ascii.slice(0, 4))
+      || (registered.id === 'heic' && ascii.slice(4, 12).includes('ftyp'))
+      || (registered.id === 'svg' && /<svg(?:\s|>)/i.test(imageText));
+    if (!imageSignature) errors.push('Image content does not match its declared format signature.');
   }
-  if (mimeType.includes('openxmlformats-officedocument')) {
+  if (registered.validation === 'ooxml') {
     const buffer = Buffer.from(content);
     const hasZipSignature = buffer.length >= 4
       && buffer[0] === 0x50
@@ -432,6 +458,34 @@ function validateContent(kind: ArtifactKind, mimeType: string, revision: string,
         errors.push(`Office package is missing ${requiredPart}.`);
       }
     }
+  }
+  if (registered.validation === 'media') {
+    const header = Buffer.from(content.subarray(0, 32));
+    const ascii = header.toString('ascii');
+    const mediaSignature = registered.artifactKind === 'audio'
+      ? ascii.startsWith('ID3')
+        || (header[0] === 0xff && ((header[1] ?? 0) & 0xe0) === 0xe0)
+        || (ascii.startsWith('RIFF') && ascii.slice(8, 12) === 'WAVE')
+        || ascii.startsWith('fLaC')
+        || ascii.startsWith('OggS')
+        || ascii.slice(4, 12).includes('ftyp')
+      : ascii.slice(4, 12).includes('ftyp')
+        || header.subarray(0, 4).equals(Buffer.from([0x1a, 0x45, 0xdf, 0xa3]))
+        || ascii.startsWith('RIFF');
+    if (!mediaSignature) warnings.push('Media signature could not be verified; open it externally to inspect playback.');
+  }
+  if (registered.validation === 'archive') {
+    const header = Buffer.from(content.subarray(0, 16));
+    const ascii = header.toString('ascii');
+    const archiveSignature = ascii.startsWith('PK\u0003\u0004')
+      || (header[0] === 0x1f && header[1] === 0x8b)
+      || ascii.startsWith('Rar!')
+      || header.subarray(0, 6).equals(Buffer.from([0x37, 0x7a, 0xbc, 0xaf, 0x27, 0x1c]))
+      || (registered.id === 'tar' && Buffer.from(content.subarray(257, 262)).toString('ascii') === 'ustar');
+    if (!archiveSignature) warnings.push('Archive signature could not be verified; contents were not extracted.');
+  }
+  if (registered.validation === 'generic' && content.byteLength > 0) {
+    warnings.push('No structural validator is registered for this file format.');
   }
   if (content.byteLength === 0) warnings.push('Artifact content is empty.');
   return {
@@ -461,7 +515,7 @@ function syncCheckoutRevision(
   const revision = storeRevision(scope, artifact, readFileSync(checkoutPath), origin);
   if (artifact.draftRevision !== revision.id) {
     artifact.draftRevision = revision.id;
-    artifact.previews = [previewFor(artifact.kind, artifact.mimeType, revision.id)];
+    artifact.previews = [previewFor(artifact.sourcePath, artifact.mimeType, revision.id)];
     artifact.validation = undefined;
     artifact.updatedAt = Date.now();
   }
@@ -514,11 +568,15 @@ export function registerCurrentArtifact(
       currentRevision: null,
       draftRevision: null,
       status: 'current',
-      capabilities: capabilitiesFor(kind, 'native-preview'),
+      capabilities: capabilitiesFor(kind, sourcePath, mimeType),
       previews: [],
       deliverables: [],
       revisions: [],
       checkoutRelativePath: null,
+      provenance: {
+        origin: 'imported',
+        createdAt: now,
+      },
       createdAt: now,
       updatedAt: now,
     };
@@ -532,7 +590,9 @@ export function registerCurrentArtifact(
   artifact.mimeType = mimeType;
   artifact.baseRevision = revision.id;
   artifact.currentRevision = revision.id;
-  artifact.previews = [previewFor(kind, mimeType, revision.id)];
+  artifact.provenance ??= { origin: 'imported', createdAt: artifact.createdAt };
+  artifact.capabilities = capabilitiesFor(kind, sourcePath, mimeType);
+  artifact.previews = [previewFor(sourcePath, mimeType, revision.id)];
   artifact.deliverables = [{
     id: `source:${revision.id}`,
     revision: revision.id,
@@ -601,6 +661,7 @@ export function createArtifactDraft(scope: ArtifactStorageScope, input: CreateAr
   const now = Date.now();
   const id = randomUUID();
   const engineId = optionalText(input.engineId) ?? 'native-file';
+  const mimeType = mimeTypeFor(input.kind, sourcePath, input.mimeType);
   const checkoutRelativePath = join(CHECKOUT_DIR, id, basename(sourcePath) || 'artifact.bin');
   const artifact: StoredArtifact = {
     id,
@@ -611,16 +672,19 @@ export function createArtifactDraft(scope: ArtifactStorageScope, input: CreateAr
     kind: input.kind,
     engineId,
     sourcePath,
-    mimeType: mimeTypeFor(input.kind, sourcePath, input.mimeType),
+    mimeType,
     baseRevision,
     currentRevision: null,
     draftRevision: null,
     status: 'draft',
-    capabilities: capabilitiesFor(input.kind, engineId),
+    capabilities: capabilitiesFor(input.kind, sourcePath, mimeType),
     previews: [],
     deliverables: [],
     revisions: [],
     checkoutRelativePath,
+    provenance: input.provenance
+      ? { ...input.provenance, parameters: input.provenance.parameters ? { ...input.provenance.parameters } : undefined }
+      : undefined,
     createdAt: now,
     updatedAt: now,
   };
@@ -631,7 +695,7 @@ export function createArtifactDraft(scope: ArtifactStorageScope, input: CreateAr
   }
   const revision = storeRevision(scope, artifact, content, 'create');
   artifact.draftRevision = revision.id;
-  artifact.previews = [previewFor(artifact.kind, artifact.mimeType, revision.id)];
+  artifact.previews = [previewFor(artifact.sourcePath, artifact.mimeType, revision.id)];
   const store = readStore(scope.workspaceRootPath);
   store.artifacts.push(artifact);
   saveStore(scope.workspaceRootPath, store);
@@ -676,7 +740,7 @@ export function applyArtifactDraft(
   atomicWriteBuffer(checkoutPath, Buffer.from(next, 'utf8'));
   const revision = storeRevision(scope, artifact, Buffer.from(next, 'utf8'), 'apply');
   artifact.draftRevision = revision.id;
-  artifact.previews = [previewFor(artifact.kind, artifact.mimeType, revision.id)];
+  artifact.previews = [previewFor(artifact.sourcePath, artifact.mimeType, revision.id)];
   artifact.validation = undefined;
   artifact.updatedAt = Date.now();
   saveStore(scope.workspaceRootPath, store);
@@ -698,7 +762,7 @@ export function inspectArtifact(
   const revision = activeRevision(artifact);
   if (!revision) throw new Error(`Artifact ${artifactId} has no inspectable revision`);
   const content = readFileSync(join(scope.workspaceRootPath, revision.relativePath));
-  artifact.validation = validateContent(artifact.kind, artifact.mimeType, revision.id, content);
+  artifact.validation = validateContent(artifact.kind, artifact.sourcePath, artifact.mimeType, revision.id, content);
   artifact.updatedAt = Date.now();
   saveStore(scope.workspaceRootPath, store);
   return resolvedArtifact(scope, artifact);
@@ -720,6 +784,7 @@ export function submitArtifact(
   }
   artifact.validation = validateContent(
     artifact.kind,
+    artifact.sourcePath,
     artifact.mimeType,
     revision.id,
     readFileSync(join(scope.workspaceRootPath, revision.relativePath)),

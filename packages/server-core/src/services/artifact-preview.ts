@@ -6,7 +6,11 @@ import {
   type ResolvedArtifact,
 } from '@craft-agent/shared/artifacts'
 
-const OFFICE_EXTENSIONS = new Set(['.xlsx', '.xls', '.xlsm', '.docx', '.doc', '.pptx', '.ppt'])
+const OFFICE_EXTENSIONS = new Set([
+  '.xlsx', '.xls', '.xlsm', '.ods',
+  '.docx', '.doc', '.odt',
+  '.pptx', '.ppt', '.odp',
+])
 
 /**
  * Create a distributable, dependency-local human preview for standard Office

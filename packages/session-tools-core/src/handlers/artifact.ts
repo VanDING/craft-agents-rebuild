@@ -19,7 +19,6 @@ export interface ArtifactApplyArgs extends ArtifactApplyInput {
 
 export interface ArtifactInspectArgs {
   artifactId: string;
-  range?: string;
 }
 
 export type ArtifactRenderArgs = ArtifactInspectArgs;
@@ -71,7 +70,7 @@ export function handleArtifactApply(ctx: SessionToolContext, args: ArtifactApply
 
 export function handleArtifactInspect(ctx: SessionToolContext, args: ArtifactInspectArgs): Promise<ToolResult> {
   return invoke('artifact_inspect', ctx.artifactInspect
-    ? () => ctx.artifactInspect!(args.artifactId, args.range)
+    ? () => ctx.artifactInspect!(args.artifactId)
     : undefined);
 }
 

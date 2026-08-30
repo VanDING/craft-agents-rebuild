@@ -15,6 +15,7 @@ export function createArtifactEventSnapshot(resolved: ResolvedArtifact): Artifac
     revision: artifact.draftRevision ?? artifact.currentRevision,
     sourcePath: artifact.sourcePath,
     validation: artifact.validation,
+    provenance: artifact.provenance,
     timestamp: artifact.updatedAt,
   };
 }

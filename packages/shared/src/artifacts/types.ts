@@ -6,6 +6,10 @@ export const ARTIFACT_KINDS = [
   'diagram',
   'pdf',
   'image',
+  'audio',
+  'video',
+  'archive',
+  'file',
   'html',
   'text',
 ] as const;
@@ -61,6 +65,17 @@ export interface ArtifactLease {
   expiresAt: number;
 }
 
+export interface ArtifactProvenance {
+  origin: 'generated' | 'imported' | 'tool';
+  tool?: string;
+  provider?: string;
+  connectionSlug?: string;
+  model?: string;
+  prompt?: string;
+  parameters?: Record<string, string | number | boolean | null>;
+  createdAt: number;
+}
+
 /** Engine-independent artifact projection consumed by cards and workbench UI. */
 export interface ArtifactDescriptor {
   id: string;
@@ -82,6 +97,7 @@ export interface ArtifactDescriptor {
   deliverables: ArtifactDeliverable[];
   revisions: ArtifactRevision[];
   validation?: ArtifactValidation;
+  provenance?: ArtifactProvenance;
   lease?: ArtifactLease;
   createdAt: number;
   updatedAt: number;
@@ -119,6 +135,7 @@ export interface CreateArtifactDraftInput {
   initialPath?: string;
   initialText?: string;
   initialBase64?: string;
+  provenance?: ArtifactProvenance;
 }
 
 /** Register an existing file as a read-only/current Artifact preview. */
@@ -167,5 +184,6 @@ export interface ArtifactEventSnapshot {
   revision: string | null;
   sourcePath: string;
   validation?: ArtifactValidation;
+  provenance?: ArtifactProvenance;
   timestamp: number;
 }

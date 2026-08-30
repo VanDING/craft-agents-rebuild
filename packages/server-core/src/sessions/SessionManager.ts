@@ -4,7 +4,7 @@ import type { ISessionManager, IBrowserPaneManager, ExecutePromptAutomationInput
 import { RemoteBrowserPaneManager } from './RemoteBrowserPaneManager'
 import { validateFilePath, getWorkspaceAllowedDirs } from '@craft-agent/server-core/handlers'
 import { createScopedLogger, CONSOLE_LOGGER, type PlatformServices, type Logger } from '@craft-agent/server-core/runtime'
-import { basename, dirname, join } from 'path'
+import { basename, dirname, extname, join } from 'path'
 import { existsSync } from 'fs'
 import { readFile, writeFile, mkdir } from 'fs/promises'
 import { randomUUID } from 'node:crypto'
@@ -98,12 +98,6 @@ import {
   type ArtifactStorageScope,
   type ResolvedArtifact,
 } from '@craft-agent/shared/artifacts'
-import {
-  createBlankUniverSheetSnapshot,
-  UNIVER_SHEET_ENGINE_ID,
-  UNIVER_SHEET_MIME_TYPE,
-  type UniverSheetMutation,
-} from '@craft-agent/artifact-engine-univer'
 import { createTaskFromSpec, resolveCreateTaskProjectId } from '../tasks'
 import { ConfigWatcher, UserThemeWatcher, type ConfigWatcherCallbacks } from '@craft-agent/shared/config'
 import { toolMetadataStore, getLastApiError } from '@craft-agent/shared/interceptor'
@@ -129,7 +123,11 @@ import { AutomationSystem, createPromptHistoryEntry, appendAutomationHistoryEntr
 import { buildBackendRuntimeSignature, buildRestartRequiredSignature, filterAttachmentsForModelInput } from './runtime-config'
 import { validateArchiveTarget } from './archive-guards'
 import { renderOfficeArtifactPreview } from '../services/artifact-preview'
-import { inspectUniverSheetRange, mutateUniverSheetArtifact } from '../services/univer-artifact'
+import {
+  generateImageWithOpenAI,
+  resolveImageGenerationConnection,
+  type GeneratedImageFormat,
+} from '../services/image-generation'
 
 // Import from server-core domain utilities
 import { sanitizeForTitle, shouldActivateBrowserOverlay, normalizeBrowserToolName, rollbackFailedBranchCreation, releaseBrowserOwnershipOnForcedStop } from '@craft-agent/server-core/domain'
@@ -4785,26 +4783,8 @@ export class SessionManager implements ISessionManager {
           }
         },
         artifactCreateFn: async (input) => {
-          const normalizedInput = { ...input }
-          if (normalizedInput.engineId === UNIVER_SHEET_ENGINE_ID) {
-            if (normalizedInput.kind !== 'spreadsheet') {
-              throw new Error(`${UNIVER_SHEET_ENGINE_ID} can only create spreadsheet artifacts`)
-            }
-            if (normalizedInput.mimeType && normalizedInput.mimeType !== UNIVER_SHEET_MIME_TYPE) {
-              throw new Error(`${UNIVER_SHEET_ENGINE_ID} requires MIME type ${UNIVER_SHEET_MIME_TYPE}`)
-            }
-            normalizedInput.mimeType = UNIVER_SHEET_MIME_TYPE
-            const hasInitialContent = normalizedInput.initialPath !== undefined
-              || normalizedInput.initialText !== undefined
-              || normalizedInput.initialBase64 !== undefined
-            if (!hasInitialContent) {
-              normalizedInput.initialText = `${JSON.stringify(createBlankUniverSheetSnapshot({
-                workbookName: normalizedInput.title ?? basename(normalizedInput.sourcePath),
-              }), null, 2)}\n`
-            }
-          }
           const created = createArtifactDraft(sessionArtifactScope(), {
-            ...normalizedInput,
+            ...input,
             sessionId: managed.id,
           })
           const leased = acquireArtifactLease(
@@ -4819,58 +4799,16 @@ export class SessionManager implements ISessionManager {
         },
         artifactApplyFn: async (artifactId, input) => {
           const leaseId = ensureAgentArtifactLease(artifactId)
-          const operation = input.operation
-          if (
-            operation.type === 'sheet_set_range'
-            || operation.type === 'sheet_set_formula'
-            || operation.type === 'sheet_clear_range'
-          ) {
-            let sheetMutation: UniverSheetMutation
-            switch (operation.type) {
-              case 'sheet_set_range':
-                sheetMutation = {
-                  type: 'set-range-values',
-                  range: operation.range,
-                  values: operation.values,
-                }
-                break
-              case 'sheet_set_formula':
-                sheetMutation = {
-                  type: 'set-formula',
-                  range: operation.range,
-                  formula: operation.formula,
-                }
-                break
-              case 'sheet_clear_range':
-                sheetMutation = {
-                  type: 'clear-range',
-                  range: operation.range,
-                  contentsOnly: operation.contentsOnly,
-                }
-                break
-            }
-            const result = await mutateUniverSheetArtifact(
-              sessionArtifactScope(),
-              artifactId,
-              input.expectedRevision,
-              sheetMutation,
-              { sessionId: managed.id, leaseId },
-            )
-            this.broadcastArtifactsChanged(managed.workspace.id)
-            return artifactEventResult(result.resolved, {
-              sheetInspection: result.sheetInspection,
-            })
-          }
           const updated = applyArtifactDraft(
             sessionArtifactScope(),
             artifactId,
-            { expectedRevision: input.expectedRevision, operation, leaseId },
+            { expectedRevision: input.expectedRevision, operation: input.operation, leaseId },
             managed.id,
           )
           this.broadcastArtifactsChanged(managed.workspace.id)
           return artifactEventResult(updated)
         },
-        artifactInspectFn: async (artifactId, range) => {
+        artifactInspectFn: async (artifactId) => {
           const leaseId = ensureAgentArtifactLease(artifactId)
           const scope = sessionArtifactScope()
           const inspected = inspectArtifact(scope, artifactId, {
@@ -4878,11 +4816,8 @@ export class SessionManager implements ISessionManager {
             leaseId,
           })
           const rendered = await renderOfficeArtifactPreview(scope, inspected)
-          const sheetInspection = range
-            ? await inspectUniverSheetRange(rendered, range)
-            : undefined
           this.broadcastArtifactsChanged(managed.workspace.id)
-          return artifactEventResult(rendered, sheetInspection ? { sheetInspection } : {})
+          return artifactEventResult(rendered)
         },
         artifactRenderFn: async (artifactId) => {
           const leaseId = ensureAgentArtifactLease(artifactId)
@@ -4910,6 +4845,89 @@ export class SessionManager implements ISessionManager {
           })
           this.broadcastArtifactsChanged(managed.workspace.id)
           return artifactEventResult(submitted)
+        },
+        imageGenerateFn: async (input) => {
+          const workspaceDefault = loadWorkspaceConfig(managed.workspace.rootPath)?.defaults?.defaultLlmConnection
+          const sessionConnection = resolveSessionConnection(managed.llmConnection, workspaceDefault)
+          const credentialManager = getCredentialManager()
+          const selected = await resolveImageGenerationConnection({
+            explicitSlug: input.connectionSlug,
+            preferredConnection: sessionConnection,
+            connections: getLlmConnections(),
+            getApiKey: (connectionSlug) => credentialManager.getLlmApiKey(connectionSlug),
+          })
+
+          const requestedPathExtension = input.outputPath ? extname(input.outputPath).toLowerCase() : ''
+          const extensionFormat: GeneratedImageFormat | undefined = requestedPathExtension === '.png'
+            ? 'png'
+            : requestedPathExtension === '.jpg' || requestedPathExtension === '.jpeg'
+              ? 'jpeg'
+              : requestedPathExtension === '.webp'
+                ? 'webp'
+                : undefined
+          if (requestedPathExtension && !extensionFormat) {
+            throw new Error('Image outputPath must end in .png, .jpg, .jpeg, or .webp.')
+          }
+          if (input.outputFormat && extensionFormat && input.outputFormat !== extensionFormat) {
+            throw new Error(`outputFormat ${input.outputFormat} does not match outputPath extension ${requestedPathExtension}.`)
+          }
+          const outputFormat = input.outputFormat ?? extensionFormat ?? 'png'
+          const generated = await generateImageWithOpenAI({
+            apiKey: selected.apiKey,
+            baseUrl: selected.connection.baseUrl,
+          }, {
+            prompt: input.prompt,
+            model: input.model,
+            size: input.size,
+            quality: input.quality,
+            background: input.background,
+            outputFormat,
+          })
+          if (extensionFormat && generated.format !== extensionFormat) {
+            throw new Error(`Image provider returned ${generated.format}, which does not match outputPath extension ${requestedPathExtension}.`)
+          }
+
+          const extension = generated.format === 'jpeg' ? 'jpg' : generated.format
+          const outputPath = input.outputPath?.trim()
+            || join('generated-images', `generated-${Date.now()}-${randomUUID().slice(0, 8)}.${extension}`)
+          const mimeType = generated.format === 'jpeg' ? 'image/jpeg' : `image/${generated.format}`
+          const created = createArtifactDraft(sessionArtifactScope(), {
+            sessionId: managed.id,
+            kind: 'image',
+            engineId: 'native-image-generation',
+            sourcePath: outputPath,
+            title: input.title?.trim() || basename(outputPath),
+            mimeType,
+            initialBase64: generated.bytes.toString('base64'),
+            provenance: {
+              origin: 'generated',
+              tool: 'image_generate',
+              provider: 'openai',
+              connectionSlug: selected.connection.slug,
+              model: generated.model,
+              prompt: input.prompt.trim(),
+              parameters: {
+                size: input.size ?? 'auto',
+                quality: input.quality ?? 'auto',
+                background: input.background ?? 'auto',
+                outputFormat: generated.format,
+              },
+              createdAt: Date.now(),
+            },
+          })
+          const submitted = submitArtifact(sessionArtifactScope(), created.artifact.id, {
+            sessionId: managed.id,
+            expectedRevision: created.artifact.draftRevision ?? undefined,
+          })
+          this.broadcastArtifactsChanged(managed.workspace.id)
+          return artifactEventResult(submitted, {
+            imageGeneration: {
+              provider: 'openai',
+              connectionSlug: selected.connection.slug,
+              model: generated.model,
+              revisedPrompt: generated.revisedPrompt,
+            },
+          })
         },
         setSessionLabelsFn: async (sessionId: string | undefined, labels: string[]) => {
           await this.setSessionLabels(sessionId ?? managed.id, labels)

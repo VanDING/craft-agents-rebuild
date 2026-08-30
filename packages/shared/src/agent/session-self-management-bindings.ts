@@ -198,4 +198,12 @@ export function attachSessionSelfManagementBindings(
     configurable: true,
     enumerable: true,
   });
+
+  Object.defineProperty(context, 'imageGenerate', {
+    get() {
+      return getSessionScopedToolCallbacks(sessionId)?.imageGenerateFn;
+    },
+    configurable: true,
+    enumerable: true,
+  });
 }

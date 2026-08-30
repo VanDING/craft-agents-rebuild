@@ -67,6 +67,7 @@ describe('session tool filtering helpers', () => {
     expect(blocked.has('artifact_create')).toBe(true);
     expect(blocked.has('artifact_apply')).toBe(true);
     expect(blocked.has('artifact_submit')).toBe(true);
+    expect(blocked.has('image_generate')).toBe(true);
 
     expect(blocked.has('source_oauth_trigger')).toBe(true);
     expect(blocked.has('source_credential_prompt')).toBe(true);

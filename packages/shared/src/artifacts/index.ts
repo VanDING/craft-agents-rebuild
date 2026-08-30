@@ -10,6 +10,7 @@ export type {
   ArtifactLease,
   ArtifactListFilter,
   ArtifactPreview,
+  ArtifactProvenance,
   ArtifactRevision,
   ArtifactRevisionOrigin,
   ArtifactStatus,
@@ -20,6 +21,18 @@ export type {
   ResolvedArtifact,
 } from './types.ts';
 export { ARTIFACT_KINDS } from './types.ts';
+export {
+  FILE_FORMAT_REGISTRY,
+  UNKNOWN_FILE_FORMAT,
+  getRegisteredExtension,
+  registeredFileExtensions,
+  resolveFileFormat,
+} from './file-formats.ts';
+export type {
+  ArtifactPreviewStrategy,
+  ArtifactValidationFamily,
+  FileFormatDefinition,
+} from './file-formats.ts';
 export {
   acceptArtifact,
   acquireArtifactLease,

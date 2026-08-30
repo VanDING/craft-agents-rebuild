@@ -141,6 +141,7 @@ export type {
   ArtifactApplyOperation,
   ArtifactApplyInput,
   ArtifactToolResult,
+  ImageGenerateInput,
 } from './context.ts';
 
 export { createNodeFileSystem } from './context.ts';
@@ -180,6 +181,7 @@ export {
   handleArtifactInspect,
   handleArtifactRender,
   handleArtifactSubmit,
+  handleImageGenerate,
 } from './handlers/index.ts';
 
 export type {
@@ -204,6 +206,7 @@ export type {
   ArtifactInspectArgs,
   ArtifactRenderArgs,
   ArtifactSubmitArgs,
+  ImageGenerateArgs,
 } from './handlers/index.ts';
 
 // Tool definitions — single source of truth
@@ -227,6 +230,7 @@ export {
   ArtifactInspectSchema,
   ArtifactRenderSchema,
   ArtifactSubmitSchema,
+  ImageGenerateSchema,
   // Browser tool schema
   BrowserToolSchema,
   // Developer feedback schema

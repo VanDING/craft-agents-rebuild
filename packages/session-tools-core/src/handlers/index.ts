@@ -88,6 +88,10 @@ export {
   handleArtifactRender,
   handleArtifactSubmit,
 } from './artifact.ts';
+
+// Native image generation
+export { handleImageGenerate } from './image-generate.ts';
+export type { ImageGenerateArgs } from './image-generate.ts';
 export type {
   ArtifactStatusArgs,
   ArtifactCreateArgs,

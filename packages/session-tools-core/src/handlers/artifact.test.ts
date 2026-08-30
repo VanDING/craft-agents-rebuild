@@ -21,7 +21,7 @@ describe('Artifact canonical handlers', () => {
       artifactStatus: async (id?: string) => { calls.push(['status', id]); return success; },
       artifactCreate: async (input: unknown) => { calls.push(['create', input]); return success; },
       artifactApply: async (id: string, input: unknown) => { calls.push(['apply', id, input]); return success; },
-      artifactInspect: async (id: string, range?: string) => { calls.push(['inspect', id, range]); return success; },
+      artifactInspect: async (id: string) => { calls.push(['inspect', id]); return success; },
       artifactRender: async (id: string) => { calls.push(['render', id]); return success; },
       artifactSubmit: async (id: string, revision?: string) => { calls.push(['submit', id, revision]); return success; },
     } as unknown as SessionToolContext;
@@ -34,13 +34,7 @@ describe('Artifact canonical handlers', () => {
         expectedRevision: 'r1',
         operation: { type: 'set_json', value: { ok: true } },
       }),
-      handleArtifactApply(ctx, {
-        artifactId: 'a',
-        expectedRevision: 'r2',
-        operation: { type: 'sheet_set_formula', range: 'Data!C1', formula: '=SUM(B2:B3)' },
-      }),
       handleArtifactInspect(ctx, { artifactId: 'a' }),
-      handleArtifactInspect(ctx, { artifactId: 'a', range: 'Data!A1:C3' }),
       handleArtifactRender(ctx, { artifactId: 'a' }),
       handleArtifactSubmit(ctx, { artifactId: 'a', expectedRevision: 'r3' }),
     ]);
@@ -48,16 +42,12 @@ describe('Artifact canonical handlers', () => {
     expect(results.every((result) => result.isError === false)).toBe(true);
     expect(results[0]?.content[0]?.text).toStartWith('CRAFT_ARTIFACT_EVENT:');
     expect(results[0]?.structuredContent).toEqual(success.structuredContent);
-    expect(calls).toHaveLength(8);
+    expect(calls).toHaveLength(6);
     expect(calls[2]).toEqual(['apply', 'a', {
       expectedRevision: 'r1',
       operation: { type: 'set_json', value: { ok: true } },
     }]);
-    expect(calls[3]).toEqual(['apply', 'a', {
-      expectedRevision: 'r2',
-      operation: { type: 'sheet_set_formula', range: 'Data!C1', formula: '=SUM(B2:B3)' },
-    }]);
-    expect(calls[5]).toEqual(['inspect', 'a', 'Data!A1:C3']);
+    expect(calls[3]).toEqual(['inspect', 'a']);
   });
 
   it('fails closed when the backend callback is unavailable', async () => {

@@ -357,13 +357,16 @@ export interface SessionToolContext {
   artifactApply?(artifactId: string, input: ArtifactApplyInput): Promise<ArtifactToolResult>;
 
   /** Validate the active draft/current revision. */
-  artifactInspect?(artifactId: string, range?: string): Promise<ArtifactToolResult>;
+  artifactInspect?(artifactId: string): Promise<ArtifactToolResult>;
 
   /** Refresh the engine-independent preview metadata for an artifact. */
   artifactRender?(artifactId: string): Promise<ArtifactToolResult>;
 
   /** Validate and move a draft to ready-for-user-review. */
   artifactSubmit?(artifactId: string, expectedRevision?: string): Promise<ArtifactToolResult>;
+
+  /** Generate one image and return it as a ready-for-review Artifact. */
+  imageGenerate?(input: ImageGenerateInput): Promise<ArtifactToolResult>;
 
   // ============================================================
   // Inter-Session Messaging
@@ -509,6 +512,10 @@ export type ArtifactToolKind =
   | 'diagram'
   | 'pdf'
   | 'image'
+  | 'audio'
+  | 'video'
+  | 'archive'
+  | 'file'
   | 'html'
   | 'text';
 
@@ -526,10 +533,7 @@ export interface ArtifactCreateInput {
 export type ArtifactApplyOperation =
   | { type: 'set_text'; text: string }
   | { type: 'set_json'; value: unknown }
-  | { type: 'replace_text'; search: string; replacement: string; replaceAll?: boolean }
-  | { type: 'sheet_set_range'; range: string; values: unknown[][] }
-  | { type: 'sheet_set_formula'; range: string; formula: string }
-  | { type: 'sheet_clear_range'; range: string; contentsOnly?: boolean };
+  | { type: 'replace_text'; search: string; replacement: string; replaceAll?: boolean };
 
 export interface ArtifactApplyInput {
   expectedRevision: string;
@@ -540,6 +544,18 @@ export interface ArtifactApplyInput {
 export interface ArtifactToolResult {
   text: string;
   structuredContent: Record<string, unknown>;
+}
+
+export interface ImageGenerateInput {
+  prompt: string;
+  outputPath?: string;
+  title?: string;
+  connectionSlug?: string;
+  model?: string;
+  size?: string;
+  quality?: 'auto' | 'low' | 'medium' | 'high';
+  background?: 'auto' | 'opaque' | 'transparent';
+  outputFormat?: 'png' | 'jpeg' | 'webp';
 }
 
 export interface SessionInfo {

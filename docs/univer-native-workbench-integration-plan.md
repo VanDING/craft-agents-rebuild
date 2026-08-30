@@ -1,10 +1,13 @@
 # CraftAgent 全局界面收敛与 Artifact Workbench —— 重规划 v2
 
 - 日期：2026-08-22（2026-08-24 更新）
-- 状态：实施中（M1/M1.5/M2/M3/M4 核心实现及当前平台真实窗口验收已完成；M1.5 的 saved view/history/detail peek 增强已落地；M5–M6 与跨平台 packaged smoke 待继续）
+- 状态：历史实施记录；Artifact/Workbench 基础继续有效，Univer 相关路线已于 2026-08-30 退役
 - 当前工作分支：`codex/right-panel-audit-replan`
 - 本文取代：2026-08-20 版“Craft Agent 原生能力工作台 —— 最终实施方案”
 - 核心原则：**产品界面与呈现模型优先，文档引擎可替换；Univer 是候选实现，不是产品架构本身。**
+
+> 后续基线：`docs/artifact-files-native-image-generation-plan.md`。该基线保留通用 Artifact/Workbench，
+> 一次性删除 Univer 且不提供 `.univer.json` 迁移；本文的 Univer 章节仅作为历史决策记录。
 
 ---
 

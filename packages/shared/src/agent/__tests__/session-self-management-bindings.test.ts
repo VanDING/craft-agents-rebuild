@@ -231,6 +231,23 @@ describe('attachSessionSelfManagementBindings', () => {
     const result = await ctx.artifactCreate!({ kind: 'text', sourcePath: 'report.txt' });
     expect(result.structuredContent).toEqual({ artifact: { id: 'a' } });
   });
+
+  it('resolves the native image generator through the session callback registry', async () => {
+    const ctx = createBaseContext(sessionId);
+    attachSessionSelfManagementBindings(ctx, sessionId);
+    expect(ctx.imageGenerate).toBeUndefined();
+
+    mergeSessionScopedToolCallbacks(sessionId, {
+      imageGenerateFn: async (input) => ({
+        text: `generated:${input.prompt}`,
+        structuredContent: { artifact: { id: 'image-1', status: 'ready' } },
+      }),
+    });
+
+    const result = await ctx.imageGenerate!({ prompt: 'A paper kite' });
+    expect(result.text).toBe('generated:A paper kite');
+    expect(result.structuredContent).toEqual({ artifact: { id: 'image-1', status: 'ready' } });
+  });
 });
 
 // ============================================================

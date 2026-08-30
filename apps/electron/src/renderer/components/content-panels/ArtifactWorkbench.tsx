@@ -2,14 +2,12 @@ import * as React from 'react'
 import { AlertTriangle, Check, Eye, FilePenLine, RotateCcw, Save, Send, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { useTranslation } from 'react-i18next'
-import { UNIVER_SHEET_ENGINE_ID } from '@craft-agent/artifact-engine-univer'
 import { useAppShellContext } from '@/context/AppShellContext'
 import { useArtifacts } from '@/hooks/useArtifacts'
 import { Button } from '@/components/ui/button'
 import { PanelHeader } from '../app-shell/PanelHeader'
 import { PanelEmptyState } from './PanelEmptyState'
 import { FilePreviewContent } from './FilePreviewContent'
-import { UniverSheetEditor, type UniverSheetEditorHandle } from '../artifacts/UniverSheetEditor'
 
 export function ArtifactWorkbench({ artifactId }: { artifactId: string }) {
   const { t } = useTranslation()
@@ -17,8 +15,8 @@ export function ArtifactWorkbench({ artifactId }: { artifactId: string }) {
   const artifactStore = useArtifacts(activeWorkspaceId ?? null)
   const resolved = artifactStore.artifacts.find(({ artifact }) => artifact.id === artifactId)
   const artifact = resolved?.artifact
-  const isUniverSheet = artifact?.engineId === UNIVER_SHEET_ENGINE_ID
   const activeRevision = artifact?.draftRevision ?? artifact?.currentRevision
+  const activeRevisionSize = artifact?.revisions.find((revision) => revision.id === activeRevision)?.size
   const renderedPreviewPath = artifact?.previews.find((preview) => (
     preview.revision === activeRevision
     && preview.path
@@ -26,13 +24,9 @@ export function ArtifactWorkbench({ artifactId }: { artifactId: string }) {
   ))?.path
   const [editing, setEditing] = React.useState(false)
   const [draftText, setDraftText] = React.useState('')
-  const [univerEditablePath, setUniverEditablePath] = React.useState<string | null>(null)
-  const [univerDirty, setUniverDirty] = React.useState(false)
   const [busy, setBusy] = React.useState(false)
-  const univerEditorRef = React.useRef<UniverSheetEditorHandle>(null)
   const leaseIdRef = React.useRef<string | null>(null)
   const draftRevisionRef = React.useRef<string | null>(null)
-  const univerChangeVersionRef = React.useRef(0)
 
   React.useEffect(() => {
     draftRevisionRef.current = artifact?.draftRevision ?? null
@@ -49,11 +43,6 @@ export function ArtifactWorkbench({ artifactId }: { artifactId: string }) {
 
   React.useEffect(() => () => { void releaseLease() }, [releaseLease])
 
-  const handleUniverDirtyChange = React.useCallback((dirty: boolean) => {
-    if (dirty) univerChangeVersionRef.current += 1
-    setUniverDirty(dirty)
-  }, [])
-
   const startEditing = async () => {
     if (!artifact?.capabilities.edit) return
     setBusy(true)
@@ -66,13 +55,7 @@ export function ArtifactWorkbench({ artifactId }: { artifactId: string }) {
       }
       leaseIdRef.current = leaseId
       draftRevisionRef.current = leased.artifact.draftRevision
-      if (isUniverSheet) {
-        setUniverEditablePath(leased.editablePath)
-        univerChangeVersionRef.current = 0
-        setUniverDirty(false)
-      } else {
-        setDraftText(await window.electronAPI.readFile(leased.editablePath))
-      }
+      setDraftText(await window.electronAPI.readFile(leased.editablePath))
       setEditing(true)
     } catch (cause) {
       await releaseLease()
@@ -84,26 +67,12 @@ export function ArtifactWorkbench({ artifactId }: { artifactId: string }) {
 
   const saveDraft = async () => {
     if (!draftRevisionRef.current || !leaseIdRef.current) return null
-    const changeVersion = univerChangeVersionRef.current
-    const operation = isUniverSheet
-      ? (() => {
-          const snapshot = univerEditorRef.current?.saveSnapshot()
-          return snapshot ? { type: 'set_json' as const, value: snapshot } : null
-        })()
-      : { type: 'set_text' as const, text: draftText }
-    if (!operation) {
-      toast.error(t('artifact.univerNotReady'))
-      return null
-    }
     const saved = await artifactStore.apply(artifactId, {
       expectedRevision: draftRevisionRef.current,
       leaseId: leaseIdRef.current,
-      operation,
+      operation: { type: 'set_text', text: draftText },
     })
     if (saved?.artifact.draftRevision) draftRevisionRef.current = saved.artifact.draftRevision
-    if (saved && isUniverSheet && univerChangeVersionRef.current === changeVersion) {
-      setUniverDirty(false)
-    }
     return saved
   }
 
@@ -118,10 +87,7 @@ export function ArtifactWorkbench({ artifactId }: { artifactId: string }) {
   }
 
   const cancelEditing = async () => {
-    if (isUniverSheet && univerDirty && !window.confirm(t('artifact.cancelUnsavedConfirm'))) return
     setEditing(false)
-    setUniverEditablePath(null)
-    setUniverDirty(false)
     await releaseLease()
     await artifactStore.refresh()
   }
@@ -145,8 +111,6 @@ export function ArtifactWorkbench({ artifactId }: { artifactId: string }) {
       }
       leaseIdRef.current = null
       setEditing(false)
-      setUniverEditablePath(null)
-      setUniverDirty(false)
       toast.success(t('artifact.readyForReview'))
     } finally {
       setBusy(false)
@@ -172,8 +136,6 @@ export function ArtifactWorkbench({ artifactId }: { artifactId: string }) {
       await artifactStore.discard(artifactId)
       leaseIdRef.current = null
       setEditing(false)
-      setUniverEditablePath(null)
-      setUniverDirty(false)
     } finally {
       setBusy(false)
     }
@@ -206,6 +168,15 @@ export function ArtifactWorkbench({ artifactId }: { artifactId: string }) {
         <span className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground" title={artifact.sourcePath}>
           {artifact.sourcePath}
         </span>
+        {artifact.provenance?.model && (
+          <span
+            className="max-w-48 truncate rounded-full bg-foreground/5 px-2 py-0.5 text-[10px] text-muted-foreground"
+            title={artifact.provenance.prompt}
+            data-testid="artifact-provenance"
+          >
+            {[artifact.provenance.provider, artifact.provenance.model].filter(Boolean).join(' · ')}
+          </span>
+        )}
         {artifact.status === 'draft' && artifact.capabilities.edit && !editing && (
           <Button size="sm" variant="outline" disabled={busy} onClick={() => void startEditing()} data-testid="artifact-edit">
             <FilePenLine className="mr-1.5 h-3.5 w-3.5" /> {t('artifact.edit')}
@@ -213,15 +184,7 @@ export function ArtifactWorkbench({ artifactId }: { artifactId: string }) {
         )}
         {editing && (
           <>
-            {isUniverSheet && univerDirty && (
-              <span
-                className="text-[11px] font-medium text-amber-600 dark:text-amber-300"
-                data-testid="artifact-unsaved"
-              >
-                {t('artifact.unsaved')}
-              </span>
-            )}
-            <Button size="sm" variant="outline" disabled={busy || (isUniverSheet && !univerDirty)} onClick={() => void save()} data-testid="artifact-save">
+            <Button size="sm" variant="outline" disabled={busy} onClick={() => void save()} data-testid="artifact-save">
               <Save className="mr-1.5 h-3.5 w-3.5" /> {t('common.save')}
             </Button>
             <Button size="sm" variant="ghost" disabled={busy} onClick={() => void cancelEditing()}>
@@ -265,15 +228,7 @@ export function ArtifactWorkbench({ artifactId }: { artifactId: string }) {
       )}
 
       <div className="min-h-0 flex-1 overflow-hidden">
-        {isUniverSheet && (editing ? (univerEditablePath ?? resolved.editablePath) : resolved.activePath) ? (
-          <UniverSheetEditor
-            key={`${editing ? 'edit' : 'preview'}:${(editing ? (univerEditablePath ?? resolved.editablePath) : resolved.activePath)!}`}
-            ref={univerEditorRef}
-            snapshotPath={(editing ? (univerEditablePath ?? resolved.editablePath) : resolved.activePath)!}
-            editable={editing}
-            onDirtyChange={handleUniverDirtyChange}
-          />
-        ) : editing ? (
+        {editing ? (
           <textarea
             value={draftText}
             onChange={(event) => setDraftText(event.target.value)}
@@ -281,7 +236,12 @@ export function ArtifactWorkbench({ artifactId }: { artifactId: string }) {
             className="h-full w-full resize-none bg-background p-4 font-mono text-xs leading-relaxed outline-none"
           />
         ) : (renderedPreviewPath || resolved.activePath) ? (
-          <FilePreviewContent filePath={renderedPreviewPath ?? resolved.activePath!} onFileClick={onOpenFile} />
+          <FilePreviewContent
+            filePath={renderedPreviewPath ?? resolved.activePath!}
+            onFileClick={onOpenFile}
+            mimeType={renderedPreviewPath ? undefined : artifact.mimeType}
+            fileSize={renderedPreviewPath ? undefined : activeRevisionSize}
+          />
         ) : (
           <PanelEmptyState title={t('artifact.previewUnavailable')} />
         )}

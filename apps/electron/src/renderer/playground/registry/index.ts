@@ -27,7 +27,6 @@ import { mobileWebUIComponents } from './mobile-webui'
 import { kanbanComponents } from './kanban'
 import { scheduleViewComponents } from './schedule-views'
 import { taskEditorComponents } from './task-editor'
-import { artifactComponents } from './artifacts'
 
 export * from './types'
 
@@ -50,7 +49,6 @@ export const componentRegistry: ComponentEntry[] = [
   ...kanbanComponents,
   ...scheduleViewComponents,
   ...taskEditorComponents,
-  ...artifactComponents,
   ...projectColorsComponents,
   ...editPopoverComponents,
   ...automationComponents,
