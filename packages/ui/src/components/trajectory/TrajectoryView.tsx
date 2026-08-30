@@ -17,12 +17,14 @@ import { TrajectoryTable } from './TrajectoryTable'
 import { RecordInspector } from './RecordInspector'
 import { TrajectoryOverview } from './TrajectoryOverview'
 import { TrajectoryContextView } from './TrajectoryContextView'
+import { TrajectoryMapView } from './TrajectoryMapView'
+import type { TrajectorySessionMap } from './trajectory-session-map'
 import './trajectory-theme.css'
 
 const DURATION_PREFERENCE_KEY = 'craft.trajectory.duration'
 const VIEW_PREFERENCE_KEY = 'craft.trajectory.view'
 
-export type TrajectoryRunView = 'overview' | 'trajectory' | 'context'
+export type TrajectoryRunView = 'overview' | 'trajectory' | 'context' | 'map'
 
 function readDurationPreference(): boolean {
   try {
@@ -37,7 +39,7 @@ function readViewPreference(): TrajectoryRunView {
     const value = localStorage.getItem(VIEW_PREFERENCE_KEY)
     if (value === 'prompt') return 'context'
     if (value === 'timeline' || value === 'events') return 'trajectory'
-    if (value === 'overview' || value === 'trajectory' || value === 'context') return value
+    if (value === 'overview' || value === 'trajectory' || value === 'context' || value === 'map') return value
   } catch {
     // Best-effort preference only.
   }
@@ -52,9 +54,12 @@ export interface TrajectoryViewProps {
   isProcessing?: boolean
   /** Session/environment facts formerly shown in the standalone Context panel. */
   contextSummary?: TrajectoryContextSummary
+  /** Current session and its connected branch/subtask family. */
+  sessionMap?: TrajectorySessionMap
   onOpenChat?: (messageId: string) => void
   onOpenReview?: (changeId: string) => void
   onOpenFile?: (path: string) => void
+  onOpenSession?: (sessionId: string) => void
   focus?: WorkbenchFocus
   onFocusChange?: (focus: Omit<WorkbenchFocus, 'sessionId' | 'updatedAt'>) => void
 }
@@ -81,7 +86,7 @@ function assistantRecordId(cell: TrajectoryCellProps): string {
   return cell.sourceSeq ?? cell.callId ?? `index-${cell.index}`
 }
 
-export function TrajectoryView({ snapshot, sessionTotal, isProcessing, contextSummary, onOpenChat, onOpenReview, onOpenFile, focus, onFocusChange }: TrajectoryViewProps) {
+export function TrajectoryView({ snapshot, sessionTotal, isProcessing, contextSummary, sessionMap, onOpenChat, onOpenReview, onOpenFile, onOpenSession, focus, onFocusChange }: TrajectoryViewProps) {
   const { t } = useTranslation()
   const [runView, setRunView] = useState<TrajectoryRunView>(readViewPreference)
   const [searchQuery, setSearchQuery] = useState('')
@@ -312,7 +317,7 @@ export function TrajectoryView({ snapshot, sessionTotal, isProcessing, contextSu
   return (
     <div className="trajectory-root flex h-full min-h-0 flex-col @container/trajectory">
       <div className="flex h-10 shrink-0 items-end gap-5 overflow-x-auto border-b border-border/50 bg-background/80 px-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="tablist" aria-label={t('trajectory.views.label')}>
-        {(['overview', 'trajectory', 'context'] as const).map(view => (
+        {(['overview', 'trajectory', 'context', 'map'] as const).map(view => (
           <button
             key={view}
             type="button"
@@ -365,6 +370,17 @@ export function TrajectoryView({ snapshot, sessionTotal, isProcessing, contextSu
             onRequestFocus={(requestSeq) => onFocusChange?.({ source: 'run', requestSeq })}
             onOpenChat={onOpenChat}
             onOpenFile={onOpenFile}
+          />
+        )}
+        {runView === 'map' && sessionMap && (
+          <TrajectoryMapView
+            turns={turns}
+            sessionMap={sessionMap}
+            onSelectRecord={(index) => {
+              onSelectIndex(index)
+              selectRunView('trajectory')
+            }}
+            onOpenSession={onOpenSession}
           />
         )}
       </div>

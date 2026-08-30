@@ -13,7 +13,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAtomValue, useSetAtom } from 'jotai'
 import { Activity } from 'lucide-react'
-import { TrajectoryView, buildTrajectorySnapshot, Spinner } from '@craft-agent/ui'
+import { TrajectoryView, buildTrajectorySnapshot, Spinner, type TrajectorySessionMap } from '@craft-agent/ui'
 import { PanelEmptyState } from './PanelEmptyState'
 import { activeSessionIdAtom } from '@/atoms/active-session'
 import { sessionAtomFamily, sessionMetaMapAtom, ensureSessionMessagesLoadedAtom } from '@/atoms/sessions'
@@ -79,6 +79,38 @@ export function TrajectoryPanel({ sessionId }: { sessionId?: string }) {
   const labelNames = useMemo(() => (
     meta?.labels?.map((id) => findLabelById(labelConfigs, id)?.name ?? id) ?? []
   ), [labelConfigs, meta?.labels])
+  const sessionMap = useMemo<TrajectorySessionMap | undefined>(() => {
+    if (!activeSessionId || !session) return undefined
+    const summaries = [...sessionMetaMap.values()]
+      .filter(candidate => candidate.workspaceId === session.workspaceId)
+      .map(candidate => ({
+        id: candidate.id,
+        title: candidate.name?.trim() || candidate.preview?.trim() || t('menu.newChat'),
+        preview: candidate.preview,
+        status: candidate.sessionStatus,
+        isProcessing: candidate.isProcessing,
+        parentSessionId: candidate.parentSessionId,
+        branchFromSessionId: candidate.branchFromSessionId,
+        branchFromMessageId: candidate.branchFromMessageId,
+        messageCount: candidate.messageCount,
+        createdAt: candidate.createdAt,
+      }))
+    if (!summaries.some(candidate => candidate.id === activeSessionId)) {
+      summaries.push({
+        id: activeSessionId,
+        title: session.name?.trim() || session.preview?.trim() || t('menu.newChat'),
+        preview: session.preview,
+        status: session.sessionStatus,
+        isProcessing: session.isProcessing,
+        parentSessionId: session.parentSessionId,
+        branchFromSessionId: session.branchFromSessionId,
+        branchFromMessageId: session.branchFromMessageId,
+        messageCount: session.messages.length,
+        createdAt: session.createdAt,
+      })
+    }
+    return { currentSessionId: activeSessionId, sessions: summaries }
+  }, [activeSessionId, session, sessionMetaMap, t])
 
   if (!activeSessionId) {
     return (
@@ -151,6 +183,7 @@ export function TrajectoryPanel({ sessionId }: { sessionId?: string }) {
               contextTokens: meta?.tokenUsage?.contextTokens,
               costUsd: meta?.tokenUsage?.costUsd,
             }}
+            sessionMap={sessionMap}
             focus={focusBySession[activeSessionId]}
             onFocusChange={(focus) => updateWorkbenchFocus({
               ...focus,
@@ -172,6 +205,7 @@ export function TrajectoryPanel({ sessionId }: { sessionId?: string }) {
               }
             }}
             onOpenFile={(path) => onOpenFile?.(path, activeSessionId)}
+            onOpenSession={(targetSessionId) => navigateToSession(targetSessionId)}
           />
         </div>
       </div>

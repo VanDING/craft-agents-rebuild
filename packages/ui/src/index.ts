@@ -71,9 +71,18 @@ export {
   TrajectoryTable,
   TrajectoryToolbar,
   TrajectoryStrip,
+  TrajectoryMapView,
   RecordInspector,
   type TrajectoryViewProps,
   type TrajectoryStripProps,
+  type TrajectoryMapViewProps,
+  type TrajectorySessionMap,
+  type TrajectoryMapSession,
+  type TrajectoryMapLayout,
+  type TrajectoryMapNode,
+  type TrajectoryMapEdge,
+  buildTrajectorySessionMapLayout,
+  selectTrajectorySessionFamily,
 } from './components/trajectory'
 export {
   buildTrajectorySnapshot,

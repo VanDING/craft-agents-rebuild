@@ -191,6 +191,7 @@ export async function createSession(
     isFlagged?: boolean;
     projectId?: string;
     parentSessionId?: string;
+    branchFromSessionId?: string;
     taskSlug?: string;
     taskRunId?: string;
     taskNodeId?: string;
@@ -228,6 +229,7 @@ export async function createSession(
     isFlagged: options?.isFlagged,
     projectId: options?.projectId,
     parentSessionId: options?.parentSessionId,
+    branchFromSessionId: options?.branchFromSessionId,
     taskSlug: options?.taskSlug,
     taskRunId: options?.taskRunId,
     taskNodeId: options?.taskNodeId,

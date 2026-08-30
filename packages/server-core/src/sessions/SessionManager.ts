@@ -912,6 +912,7 @@ interface ManagedSession {
   authRetryInProgress?: boolean
   // Whether this session is hidden from session list (e.g., mini edit sessions)
   hidden?: boolean
+  branchFromSessionId?: string
   branchFromMessageId?: string
   // Branch context strategy:
   // - sdk-fork: provider-level fork from parent SDK session
@@ -3259,6 +3260,7 @@ export class SessionManager implements ISessionManager {
       isFlagged: options?.isFlagged,
       projectId: resolvedProjectId,
       parentSessionId: options?.parentSessionId,
+      branchFromSessionId: validatedBranch?.sourceSessionId,
       taskSlug: options?.taskSlug,
       taskRunId: options?.taskRunId,
       taskNodeId: options?.taskNodeId,
@@ -3295,6 +3297,7 @@ export class SessionManager implements ISessionManager {
       }
 
       branchedStored.branchFromMessageId = validatedBranch.sourceMessageId
+      branchedStored.branchFromSessionId = validatedBranch.sourceSessionId
       if (validatedBranch.branchContextStrategy === 'sdk-fork') {
         branchedStored.branchFromSdkSessionId = validatedBranch.branchFromSdkSessionId
         branchedStored.branchFromSessionPath = validatedBranch.branchFromSessionPath

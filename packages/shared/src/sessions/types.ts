@@ -43,6 +43,7 @@ export const SESSION_PERSISTENT_FIELDS = [
   // Archive
   'isArchived', 'archivedAt',
   // Branching
+  'branchFromSessionId',
   'branchFromMessageId',
   'branchFromSdkSessionId',
   'branchFromSessionPath',
@@ -173,6 +174,8 @@ export interface SessionConfig {
   };
   /** When true, session is hidden from session list (e.g., mini edit sessions) */
   hidden?: boolean;
+  /** Source session id when this session is a conversation branch. */
+  branchFromSessionId?: string;
   /** Whether this session is archived */
   isArchived?: boolean;
   /** Timestamp when session was archived (for retention policy) */
@@ -309,6 +312,10 @@ export interface SessionHeader {
   isArchived?: boolean;
   /** Timestamp when session was archived (for retention policy) */
   archivedAt?: number;
+  /** Source session id when this session is a conversation branch. */
+  branchFromSessionId?: string;
+  /** Source message id that anchors this conversation branch. */
+  branchFromMessageId?: string;
   /** One-shot hidden summary injected on the first turn after a remote transfer. */
   transferredSessionSummary?: string;
   /** Whether the transferred-session summary has already been injected. */
@@ -411,6 +418,8 @@ export interface SessionMetadata {
   archivedAt?: number;
   /** Message ID that this session was branched from (hard context cutoff marker). */
   branchFromMessageId?: string;
+  /** Session ID that this session was branched from. */
+  branchFromSessionId?: string;
   /** Workspace-scoped project id this session belongs to (undefined = unbound). */
   projectId?: string;
   /** Parent session id — when set, this session is a subtask of the parent (undefined = top-level task). */

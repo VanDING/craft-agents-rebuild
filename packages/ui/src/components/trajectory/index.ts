@@ -2,6 +2,8 @@ export { TrajectoryView, type TrajectoryViewProps, type TrajectoryRunView, type 
 export { TrajectoryOverview } from './TrajectoryOverview'
 export { TrajectoryPromptView } from './TrajectoryPromptView'
 export { TrajectoryContextView } from './TrajectoryContextView'
+export { TrajectoryMapView, type TrajectoryMapViewProps } from './TrajectoryMapView'
+export { buildTrajectorySessionMapLayout, selectTrajectorySessionFamily, type TrajectorySessionMap, type TrajectoryMapSession, type TrajectoryMapLayout, type TrajectoryMapNode, type TrajectoryMapEdge } from './trajectory-session-map'
 export { TrajectoryTable, type TrajectoryTableProps } from './TrajectoryTable'
 export { TrajectoryToolbar, type TrajectoryToolbarProps } from './TrajectoryToolbar'
 export { TrajectoryStrip, type TrajectoryStripProps } from './TrajectoryStrip'

@@ -88,6 +88,10 @@ export interface Session {
   }
   createdAt?: number
   messageCount?: number
+  /** Source session id when this session is a conversation branch. */
+  branchFromSessionId?: string
+  /** Source message id that anchors this conversation branch. */
+  branchFromMessageId?: string
   tokenUsage?: {
     inputTokens: number
     outputTokens: number
