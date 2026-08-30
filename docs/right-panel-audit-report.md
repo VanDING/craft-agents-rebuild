@@ -4,6 +4,8 @@
 范围: session 对话窗口 + 全部右侧可呼出面板(kanban 除外——上游功能,不动以免影响合并)
 基准: opencode(https://github.com/anomalyco/opencode,dev 分支)右侧面板设计,但不局限于它。opencode 侧引用均已对照其 dev 分支源码核实。
 
+> **状态：历史审计与整改记录。** 本文记录的 P0/P1 已在文末所列批次完成；此后 Workbench、Artifact 和 Run 视图又经过多轮重构。文中的路径、截图推演和未落地 P2 不再自动构成当前 backlog，新增工作必须重新对照现行源码验证。
+
 面板清单(`lib/workbench-panels.ts:22-38`):sessions / board(kanban,豁免) / calendar / diff(Review) / files / context / preview / trajectory,外加 browser(非 DOM 面板)。本报告覆盖全部非豁免面板。
 
 ---

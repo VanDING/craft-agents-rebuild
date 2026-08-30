@@ -3,6 +3,8 @@
 日期：2026-08-15
 范围：`E:/VanDSH/packages/client/ui-trajectory/`（原版）↔ `E:/craft-agents/packages/ui/src/components/trajectory/` + `TrajectoryPanel.tsx`（移植版）
 
+> **状态：历史比较，已被当前 Run 工作区取代。** 2026-08-30 之后的实现已经形成 Overview / Trajectory / Context / Map 四视图，并补入稳定记录身份、Inspector、搜索、虚拟行、请求上下文、运行概览和会话关系图。下文的代码规模、测试数与“当前缺口”只描述 2026-08-15 的快照，不应作为今天的 backlog；当前运行时权威边界见 [`architecture/durable-agent-runtime.md`](architecture/durable-agent-runtime.md)。
+
 ---
 
 ## 0. 总览

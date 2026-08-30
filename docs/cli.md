@@ -12,8 +12,8 @@ Terminal client for Craft Agent server. Connects over WebSocket (`ws://` or `wss
 
 ```bash
 # Clone the repository
-git clone https://github.com/anthropics/craft-agents.git
-cd craft-agents
+git clone https://github.com/VanDING/craft-agents-rebuild.git
+cd craft-agents-rebuild
 
 # Install dependencies
 bun install

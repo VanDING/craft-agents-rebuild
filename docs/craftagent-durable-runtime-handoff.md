@@ -2,9 +2,9 @@
 
 > 更新时间：2026-08-27
 >
-> 工作分支：`codex/durable-runtime-phase-0-5`
+> 历史实施分支：`codex/durable-runtime-phase-0-5`（已合并到 `main`）
 >
-> 当前性质：Phase 0–5 的生产切换基线；canonical semantic execution 已成为新运行权威，旧文件保留为兼容投影/缓存
+> 当前性质：历史实施交接记录；Phase 0–5 已进入 `main`。现行架构合同以配套 ADR 和当前代码为准，本文中的“当前分支”“尚未提交”与中间缺口均按记录日期理解。
 >
 > 配套 ADR：[architecture/durable-agent-runtime.md](./architecture/durable-agent-runtime.md)
 
@@ -310,7 +310,7 @@ Runtime Host / runtime.db      唯一 durable execution authority
 
 最近一次综合定向测试结果：226 pass，0 fail。后续增量复验：77 pass，0 fail。`git diff --check` 通过。
 
-当前改动尚未提交 commit，全部位于：
+以下是当时验证阶段的分支位置；相关改动后来已提交并合并到 `main`：
 
 ```text
 codex/durable-runtime-phase-0-5

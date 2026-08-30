@@ -1,238 +1,144 @@
 <div align="center">
 
-# Craft Agents
+# Craft Agents (RE)
 
-**一个 Agent 原生工作台 —— 让 AI Agent 连接一切服务、API 与文档。**
+### 本地优先、执行持久、运行过程可审计的 Agent 工作空间。
 
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg)](CODE_OF_CONDUCT.md)
-[![English](https://img.shields.io/badge/Docs-English-blue.svg)](README.md)
+让 AI Agent 在文件、工具、服务和文档之间完成真正的工作，并让每个关键动作都可以检查、理解和确认。
+
+[![版本](https://img.shields.io/badge/版本-0.12.1-6d5bd0?style=flat-square)](apps/electron/resources/release-notes/0.12.1.md)
+[![Pi SDK](https://img.shields.io/badge/Pi%20SDK-0.84.4-5b7cfa?style=flat-square)](docs/pi-kernel.md)
+[![Bun](https://img.shields.io/badge/Bun-1.4.0-f9f1e1?style=flat-square&logo=bun&logoColor=000)](https://bun.sh/)
+[![License](https://img.shields.io/badge/license-Apache--2.0-2f80ed?style=flat-square)](LICENSE)
+[![English](https://img.shields.io/badge/README-English-2f855a?style=flat-square)](README.md)
 
 </div>
 
----
+![Craft Agents 运行上下文审计](docs/assets/readme/run-context.png)
 
-## 关于 Fork 与致谢
+Craft Agents (RE) 是一个面向严肃 Agent 工作的开源桌面与服务端工作空间。它把持久会话、多面板工作台、工具连接、自动化、文件 Artifact 和统一的 Pi Agent Runtime 组合在同一个产品里。
 
-> 本项目是 [`craft-ai-agents/craft-agents-oss`](https://github.com/craft-ai-agents/craft-agents-oss) 的一个 **fork** —— 上游由 [craft.do](https://craft.do) 团队打造。
->
-> 我们衷心感谢上游维护者与所有贡献者，没有他们的工作就没有这个项目。本 fork 在上游的基础上追求一个明确的架构方向：**统一为单一 AI 后台**（详见[与上游的差异](#与上游的差异)）。
+它最重要的差异是可信度：一次运行不只是一段逐字出现的回答。Craft 会记录执行边界、工具结果、上下文增长、Token、成本和恢复状态，让你知道发生了什么，也能决定接下来应该发生什么。
 
----
+## 工作过程始终可检查
 
-## 与上游的差异
+Agent 的工作不应该消失在一个加载动画后面。Run 工作区为每个会话提供四个互相补充的视图：
 
-<img width="2781" height="1480" alt="截屏2026-08-11 00 37 41" src="https://github.com/user-attachments/assets/3dd8facf-20f3-4039-8458-d222f44501de" />
-<img width="2781" height="1480" alt="截屏2026-08-11 00 39 05" src="https://github.com/user-attachments/assets/9f0a746a-60be-426e-8cd6-57f4e258c9ef" />
-<img width="2781" height="1480" alt="截屏2026-08-11 00 40 03" src="https://github.com/user-attachments/assets/ba2575a7-bebf-4d56-b39b-08dd323b6c59" />
-<img width="2781" height="1480" alt="截屏2026-08-11 00 39 21" src="https://github.com/user-attachments/assets/dd948992-74f0-4251-9125-67133b3c9ff5" />
+- **概览（Overview）**：汇总总耗时、首 Token 延迟、Token、成本、工具结果、上下文增长和需要关注的问题。
+- **轨迹（Trajectory）**：把轮次、模型响应、工具调用、失败、压缩和时间关系还原成可检查的执行账本。
+- **上下文（Context）**：展示每次模型请求如何组装，包括系统提示、对话历史和工具结果分别占用了多少上下文。
+- **关系图（Map）**：呈现相关会话与分支，同时保留各自的运行证据。
 
+在界面之下，每个工作空间都有本地 SQLite/WAL 运行时，以明确的 T1/T2 边界记录模型和工具副作用。无法确定的副作用会停留在 `unknown`，不会被静默重试，也不会被伪装成已经完成。
 
+![包含耗时、用量、失败和上下文增长的 Run 概览](docs/assets/readme/run-overview.png)
 
+## 它是工作空间，不是聊天窗口
 
+桌面应用围绕持久工作组织，而不是围绕一次性对话组织。
 
-本 fork 的核心变更在架构层面：**上游维护两套 AI 后台（Claude Agent SDK + Pi SDK）；本 fork 完全移除 Claude SDK，全部运行在 Pi SDK 上** —— 一条代码路径、一套扩展系统、一个提供商目录。
+| 能力 | 带来的体验 |
+| --- | --- |
+| **持久多会话工作空间** | 会话、项目、标签、状态、日历、看板和后台工作跨重启保留。 |
+| **Content Workbench** | 对话、Review、文件、预览、Artifact、上下文、Run 和浏览器可以并排打开。 |
+| **Sources 与 Skills** | 连接 MCP、REST API、本地目录和可复用的 `SKILL.md`，无需把每个服务硬编码进内核。 |
+| **权限与恢复** | Explore、Ask to Edit、Auto 与持久执行证据、显式恢复决策共同控制副作用。 |
+| **自动化与消息入口** | 定时执行、事件触发，并通过支持的消息网关触达 Agent。 |
+| **Headless 与 CLI** | 长任务可以运行在远程服务端，桌面端、Web UI 和 `craft-cli` 都可以作为客户端。 |
 
-| 维度 | 上游（`craft-agents-oss`） | 本 fork |
-|------|---------------------------|---------|
-| AI 后台 | Claude Agent SDK **+** Pi SDK（两条路径） | **仅 Pi SDK** —— 统一路径 |
-| 后台生命周期 | 两套事件与会话实现 | 一套 Pi 生命周期，以 `agent_settled` 为终态 |
-| 原生依赖 | 每平台 ~210 MB Claude 二进制 | 无 |
-| Provider 路径 | 两套并行实现 | 一套 —— 30+ 提供商，严格超集 |
-| 运行时工具同步 | 后台各自注册 | 增量 `sync_tools`，复用热会话 |
+## 文件会成为可审阅的 Artifact
 
-其他值得注意的变更：
+Craft 把生成或修改的文件看作有生命周期的交付物，而不是不透明的附件。Artifact revision 带有校验结果和来源信息；支持的格式可以安全预览，并在你接受或丢弃之前保持待审阅状态。
 
-- **移除**了 Claude SDK 后端、事件适配器、错误映射器与「扩展上下文 (1M)」开关；以通用 `ToolDefinition` 层和基于 `@modelcontextprotocol/sdk` 的 MCP 服务器替代
-- **新增 14 个提供商预设**（NVIDIA、Together AI、Fireworks、Moonshot AI、Cloudflare Workers AI / AI Gateway、Ant Ling、ZAI、小米等）
-- **修复 Windows 打包**（`build-win.ps1`）：PowerShell 5.1 SHA256、`@vscode/ripgrep` 二进制暂存、pi-agent-server 打包
-- **新增工具链**：共享 `tsconfig.base.json`、postinstall 依赖去重脚本（TS 7 下的 prosemirror）、内联 GitHub Copilot OAuth
-- **内容工作台** —— 面向所有 Agent 视图的通用多面板工作区（详见下文）
-- 当前内核架构与维护基线见 [`docs/pi-kernel.md`](docs/pi-kernel.md)
+统一格式注册表覆盖文本与源码、Markdown、结构化数据、图片、PDF、Office 与 OpenDocument、媒体、压缩包和未知二进制文件。现有文档工具仍负责真实编辑与转换，Artifact 只提供一条一致、可靠的审阅边界。
 
-### 内容工作台（Content Workbench）
+原生生图也遵循同一流程：一次工具调用生成一个经过验证的图片 Artifact，并记录 provider、model、connection、prompt、参数和 revision 来源。
 
-工作台把 Agent 的所有视图 —— 会话、看板、日历、审查、文件树、上下文、预览、浏览器 —— 变成可以并排摆放的对等面板：
+## 真正属于个人的工作空间
 
-- **顶栏平铺按钮** —— 每个面板类型都有直接的顶栏按钮，带三态指示（前台 / 聚焦 / 后台）；新建会话、新建浏览器窗口、会话列表开关始终可用；窄窗口从尾部顺序隐藏按钮，而非收进折叠菜单
-- **绑定内容面板** —— 审查与差异、文件树、上下文、预览通过 `PanelSlot` 并排渲染，各自绑定活跃会话；前台面板上限 **3 个**，并配有**按工作区持久化的后台面板集**（随时可还原）
-- **可预测的顶替规则** —— 前台满员时，**最左侧非聚焦**面板移入后台（新窗口恒从右侧出现）；**主会话固定在 index 0**，永不被顶替或移动
-- **一键全屏** —— 任意面板可展开为全屏浮层；展开期间顶栏自动隐藏（保证还原按钮可点击），Esc 或浮动还原按钮随时收回
-- **均分宽度** —— 打开、关闭或还原面板时宽度重置为 1/N；拖拽自定义的比例在下次数量变化前保持不变
-- **浮层收敛** —— 对话中的文件预览、Markdown/活动弹层、多文件差异视图统一进入绑定面板，不再漂浮为独立浮层
-- **看板与日历面板** —— 看板/日历以面板形式打开，头部带关闭与全屏按钮，全屏时自动补偿 macOS 红绿灯区域
-- **上下文面板升级** —— 一眼可见 token 用量、附件、最近打开文件与 source 连接状态
-- **会话列表独立开关** —— 顶栏独立按钮显示/隐藏会话列表列，与左侧栏解耦
-- **全面板键盘快捷键**（`⌘⇧R` 审查 / `⌘⇧E` 文件树 / `⌘⇧O` 上下文 / `⌘⇧P` 预览 / `⌘⇧T` 切换，以及面板间导航）
+Profile 与外观都是本地产品能力，不依赖账户体系。Profile 根据本地会话形成活动概览，但不读取消息内容；用户明确填写的偏好与系统观察到的使用统计相互独立。语义主题引擎则控制颜色、表面、深度、边框、排版、图标线宽和密度，并支持应用默认值与工作空间覆盖。
 
----
+<table>
+  <tr>
+    <td width="50%"><img src="docs/assets/readme/local-profile.png" alt="包含私密活动概览与偏好的本地 Profile" /></td>
+    <td width="50%"><img src="docs/assets/readme/theme-engine.png" alt="支持工作空间覆盖的语义主题引擎" /></td>
+  </tr>
+  <tr>
+    <td><strong>本地 Profile</strong><br />私密活动概览、身份、地区相关偏好与明确的个性化设置。</td>
+    <td><strong>语义主题</strong><br />由用户拥有的完整视觉系统，而不只是更换强调色。</td>
+  </tr>
+</table>
 
-## 项目介绍
+## 一个运行时，连接不同模型
 
-Craft Agents 是一个桌面工作台，目标是让我们能**高效地与 AI Agent 协作**。它提供：
+所有 provider 共用同一个 Pi Agent 后台、事件协议、工具注册表、权限系统和会话生命周期。Pi Runtime 运行在隔离子进程中，provider 或 agent 故障不会演变成桌面端的第二套执行路径。
 
-- **直观的多任务处理** —— 多会话收件箱，每个对话都是持久化的、一等公民的对象
-- **无负担地连接一切** —— 告诉 Agent「把 Linear 添加为 source」，它会自动找到公共 API 和 MCP 服务器、阅读文档、配置凭据并完成接入。REST API、本地文件系统、stdio MCP 服务器全部支持
-- **以文档为中心的工作流** —— 会话、Markdown、Diff、附件都是原生体验，而不是在聊天框上硬套一个代码编辑器
-- **流畅优美的界面** —— 基于 Electron + React 构建，设计上尽量不打扰你
-
-Craft Agents 遵循 **Agent-native 软件设计原则**，开箱即高度可定制。项目以 Apache 2.0 协议开源，你可以自由地修改与再分发。
-
----
-
-## 核心特性
-
-- **单一统一 AI 后台** —— 所有 LLM 连接共用一个 Pi SDK 运行时，支持 **30+ 提供商**（Anthropic、OpenAI、Google、DeepSeek、xAI、GitHub Copilot、AWS Bedrock 等）
-- **多会话收件箱** —— 桌面应用，支持会话管理、可自定义的状态工作流与标记
-- **流式响应** —— 实时输出，带工具调用可视化
-- **Sources 连接** —— 支持 MCP 服务器、REST API（Google、Slack、Microsoft…）与本地文件系统
-- **自助式连接** —— Agent 可以按需自主发现、认证并配置新的数据源
-- **权限模式** —— 三级体系（Explore / Ask to Edit / Auto），规则可自定义
-- **Skills** —— 按工作区存放的专用 Agent 指令；可导入 Claude Code 的 skills 或自行创建
-- **Automations** —— 事件驱动工作流：标签变化、定时任务、工具调用等均可触发新的 Agent 会话
-- **后台任务** —— 长时间运行的操作带进度跟踪
-- **动态状态系统** —— 工作区可自定义会话工作流状态（Todo → In Progress → Needs Review → Done）
-- **主题系统** —— 应用级与工作区级级联主题
-- **多文件 Diff** —— 类似 VS Code 的窗口，集中查看一轮对话产生的所有文件改动
-- **文件附件** —— 拖拽图片、PDF、Office 文档，自动转换后发送
-- **无头服务器 + CLI** —— 在 VPS 上远程运行会话，用终端或 Web UI 驱动
-
----
-
-## 架构总览
-
-```
-┌──────────────────────────────────────────────────────────────────────┐
-│            Electron 桌面端  ·  Web UI  ·  CLI                         │
-├──────────────────────────────────────────────────────────────────────┤
-│                        packages/server-core                          │
-│             SessionManager · BaseAgent · sources · auth · config     │
-├──────────────────────────────────────────────────────────────────────┤
-│                    packages/pi-agent-server                          │
-│              Pi SDK 子进程包装  (JSONL stdio)                        │
-├──────────────────────────────────────────────────────────────────────┤
-│                    @earendil-works/pi-coding-agent                   │
-│            统一运行时，覆盖 30+ LLM 提供商                            │
-└──────────────────────────────────────────────────────────────────────┘
+```text
+Electron Desktop  ·  Web UI  ·  craft-cli
+                    │
+          server-core / Runtime Host
+      sessions · permissions · sources · artifacts
+                    │
+              JSONL 子进程边界
+                    │
+          Pi SDK · provider APIs · tools
 ```
 
-整个应用运行在**单一 AI 后台**上 —— Pi SDK（`@earendil-works/pi-coding-agent`）。会话逻辑位于 `packages/server-core`；Pi SDK 运行在独立子进程（`packages/pi-agent-server`）中，使会话、凭据与工具执行保持崩溃隔离。
+连接层支持主流托管 provider、OAuth 产品、云平台，以及兼容 OpenAI/Anthropic 协议的自定义端点。模型与思考等级来自 provider 能力，而不是另一套 fork 专用后台。
 
-```
-Packages（包）:
-├── packages/shared            — Agent 逻辑、配置、认证、MCP、Sources、Automations
-├── packages/server-core       — 会话管理器、WebSocket RPC 传输、处理器
-├── packages/server            — 无头服务器入口
-├── packages/pi-agent-server   — Pi SDK 子进程包装（JSONL stdio）
-├── packages/core              — 核心类型与存储接口
-├── packages/ui                — 共享 React 组件（shadcn/ui + Tailwind）
-├── packages/session-tools-core — 共享工具定义
-├── packages/messaging-gateway — Telegram + WhatsApp 适配器
-└── packages/messaging-whatsapp-worker — WhatsApp 子进程
+### 当前技术基线
 
-Apps（应用）:
-├── apps/electron              — 桌面应用（Electron + React）
-├── apps/webui                 — Web UI（Vite + React）
-├── apps/viewer                — 会话查看器（Vite + React）
-└── apps/cli                   — 终端客户端（craft-cli）
-```
-
----
+| 层级 | 基线 |
+| --- | --- |
+| Agent 内核 | Pi SDK `0.84.4` |
+| 桌面端 | Electron `43.1`、React `19.2` |
+| 运行时与工具链 | Bun `1.4.0`、TypeScript `7`、Vite `8.1` |
+| 集成协议 | MCP SDK `1.29+`、原生 REST/本地文件/浏览器工具 |
+| 存储 | 本地会话数据 + 工作空间级 SQLite/WAL Durable Runtime |
 
 ## 快速开始
 
-### 前置要求
+### 环境要求
 
-- [Bun](https://bun.sh/) 运行时
-- 任意 LLM API Key（Anthropic、OpenAI、Google 或 30+ 支持提供商之一）
-
-### 源码构建
+- [Bun 1.4](https://bun.sh/) 或 `package.json` 固定的兼容版本
+- 至少一个受支持模型 provider 的凭据
+- macOS、Windows 或 Linux
 
 ```bash
-git clone https://github.com/VanDING/craft-agents-rebuild
+git clone https://github.com/VanDING/craft-agents-rebuild.git
 cd craft-agents-rebuild
 bun install
-
-# 运行桌面应用（自动构建并启动）
 bun run electron:start
 ```
 
-### 首次使用
+首次启动后，添加 AI 连接、创建工作空间，并按需连接 Source 或本地目录。在会话中按 **Shift+Tab** 可以循环切换 Explore、Ask to Edit 和 Auto 权限模式。
 
-1. **选择 AI 提供商** —— Anthropic API Key、Claude OAuth、OpenAI、Google AI Studio、GitHub Copilot，或 30+ 支持提供商中的任意一个
-2. **创建工作区** —— 会话、Sources、Skills、主题都存放在这里（`~/.craft-agent/workspaces/<name>/`）
-3. **连接 Sources**（可选）—— 直接告诉 Agent「把 GitHub 添加为 source」，粘贴 MCP 配置，或指向本地文件夹
-4. **开始对话** —— 创建会话，让 Agent 替你干活
-
-### 权限模式
-
-| 模式 | 显示 | 行为 |
-|------|------|------|
-| `safe` | Explore | 只读，阻止所有写操作 |
-| `ask` | Ask to Edit | 操作前请求批准（默认） |
-| `allow-all` | Auto | 自动批准所有命令 |
-
-在聊天界面按 **`SHIFT+TAB`** 可循环切换模式。
-
----
-
-## 无头服务器与 CLI
-
-在远程机器（如 Linux VPS）上以无头模式运行 Craft Agents，桌面端作为瘦客户端接入 —— 让长时间会话保持存活、随处可达：
+### Headless Server 与 CLI
 
 ```bash
 CRAFT_SERVER_TOKEN=$(openssl rand -hex 32) bun run server:start
+bun run apps/cli/src/index.ts run "Summarize this repository"
 ```
 
-服务器启动时会打印连接信息；设置 `CRAFT_SERVER_URL` 与 `CRAFT_SERVER_TOKEN` 后，即可让桌面应用以瘦客户端模式连接。
+远程连接、TLS、脚本调用和验证方式见 [CLI 参考文档](docs/cli.md)。
 
-| 变量 | 必填 | 默认值 | 说明 |
-|------|------|--------|------|
-| `CRAFT_SERVER_TOKEN` | 是 | — | 客户端认证 Bearer Token |
-| `CRAFT_RPC_HOST` | 否 | `127.0.0.1` | 绑定地址（远程访问用 `0.0.0.0`） |
-| `CRAFT_RPC_PORT` | 否 | `9100` | 绑定端口 |
-| `CRAFT_RPC_TLS_CERT` | 否 | — | PEM 证书路径（启用 `wss://`） |
-| `CRAFT_RPC_TLS_KEY` | 否 | — | PEM 私钥路径 |
-| `CRAFT_RPC_TLS_CA` | 否 | — | PEM CA 链（可选，用于客户端证书校验） |
-
-纯终端工作流可使用 [`craft-cli`](docs/cli.md) 客户端，通过 `ws://`/`wss://` 连接、流式输出，并支持脚本化：
+## 开发
 
 ```bash
-bun run apps/cli/src/index.ts run "Summarize this repo"
+bun run electron:dev       # 桌面端开发，Renderer HMR
+bun run typecheck:all      # 检查所有 workspace package
+bun run validate:dev       # 类型检查与运行时/文档聚焦测试
+bun run validate:ci        # CI 验证与 i18n 一致性、覆盖检查
 ```
 
----
+建议从[文档索引](docs/README.md)、[贡献指南](CONTRIBUTING.md)和 [Pi 内核维护基线](docs/pi-kernel.md)开始。
 
-## 开发与验证
+## 感谢 Craft 的开源基础
 
-```bash
-bun run typecheck:all       # 类型检查所有包
-bun run validate:dev        # 类型检查 + 单元测试
-bun run validate:ci         # 完整 CI 验证（含 i18n 对齐/覆盖检查）
+Craft Agents (RE) 是 [`craft-ai-agents/craft-agents-oss`](https://github.com/craft-ai-agents/craft-agents-oss) 的独立 fork。原项目由 [Craft](https://www.craft.do/) 团队和社区贡献者创建；没有他们的开源工作，就不会有这个项目，我们对此深表感谢。
 
-bun run electron:dev        # 桌面应用开发模式（HMR）
-bun run server:dev          # 无头服务器开发模式
-bun run electron:dist:win   # 打包安装包（另有 :mac / :linux）
-```
-
-### 故障排查
-
-| 症状 | 解决办法 |
-|------|----------|
-| 开发时模块解析错误 | `bun run server:build:subprocess`（重新构建 pi-agent-server bundle） |
-| 构建时报 "No matching export" | `bun install`（lockfile 与依赖不同步） |
-| 打包后的应用卡在 "thinking…" | 检查解包后的应用内是否存在 `resources/pi-agent-server/index.js` 和 `resources/app/vendor/bun/bun.exe` |
-
----
-
-## 文档与支持
-
-- [craft-cli 参考文档](docs/cli.md) —— 终端客户端用法、脚本化模式、TLS
-- [安全公告](SECURITY.md) —— 在此提交漏洞报告
-- [行为准则](CODE_OF_CONDUCT.md)
-
----
+本 fork 保留原始署名，同时发展自己的 Runtime、审计、工作空间、Artifact、Profile 与主题方向。本项目未获得 Craft Docs Limited 的认可，也与其不存在从属关系。署名和名称使用说明见 [NOTICE](NOTICE) 与 [TRADEMARK.md](TRADEMARK.md)。
 
 ## License
 
-[Apache 2.0](LICENSE)。本项目派生自同样采用 Apache 2.0 协议的 [`craft-ai-agents/craft-agents-oss`](https://github.com/craft-ai-agents/craft-agents-oss)，署名信息见 [NOTICE](NOTICE)。
+采用 [Apache License 2.0](LICENSE) 开源。

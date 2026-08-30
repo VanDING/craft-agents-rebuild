@@ -3,7 +3,7 @@
 - 作者：Craft Agent（与用户协作）
 - 日期：2026-08-20
 - 性质：探索性评估（实施未定）
-- 关联：本仓库 `univer-native-workbench-integration-plan.md` 的后续能力探索
+- 状态补充（2026-08-30）：仍是探索性评估。Univer 路线已经退役，当前文件产物基线改为 [`artifact-files-native-image-generation-plan.md`](artifact-files-native-image-generation-plan.md)。
 
 ---
 
@@ -61,7 +61,7 @@
 | 7 | 订阅/提醒（dsh-rss、BigFocus） | DSH | 协议桥接 | 有 automations，无 RSS | 中 | 补 RSS/定时监控 |
 | 8 | 本地语音（rpiv-voice） | Pi | 能力参考 | 无 | 中 | 低优先 |
 | 9 | 技能 Hub/市场（dsh-skill-hub） | DSH | 能力参考 | 有 skills，无市场 UI | 中 | 补浏览/安装 UI |
-| 10 | 办公能力（excel-chat/data-insight） | DSH | 能力参考 | 与 Univer 方案重叠 | 待定 | 先完成 Univer 再评估 |
+| 10 | 办公能力（excel-chat/data-insight） | DSH | 能力参考 | 已有 doc-tools、统一文件 Artifact 与安全预览；无内嵌 Office 引擎 | 待定 | 只在现有工具与 Artifact 边界内评估，不恢复 Univer |
 
 ### 4.4 不建议移植
 - **企业级 SaaS 集成**（Codex 的 airtable/zoho/salesforce 等）：应走 MCP source 机制，不硬编码进内核。

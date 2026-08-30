@@ -5,9 +5,15 @@ This file accumulates release notes for the next unreleased version. PRs that ad
 ## Features
 
 - **Switch providers within an existing conversation** — idle sessions can now change connection and model without losing their transcript. Cross-provider changes safely recreate the Pi runtime, while the selector is disabled during an active turn.
+- **Inspectable Run workspace** — every session now has Overview, Trajectory, Context, and Map views for timing, TTFT, token and cost accounting, tool outcomes, failures, context growth, request composition, compaction, and related-session structure. Evidence links open the corresponding chat, review, or file instead of leaving the audit surface disconnected.
+- **Local Profile and activity summary** — Settings now combines identity and personalization with deterministic local activity metrics, a 12-month heatmap, active-day and streak summaries, and token insights. Activity aggregation uses session metadata and never includes message content.
+- **Reviewable file Artifacts and native image generation** — a shared format registry now classifies text, data, images, PDF, Office/OpenDocument, media, archives, and unknown files without treating arbitrary binary data as text. Generated images enter the same validated, provenance-aware accept/discard lifecycle as other Artifacts.
+- **WeCom intelligent bot gateway** — workspaces can receive and continue agent sessions through the official WeCom intelligent-bot protocol alongside the existing messaging adapters.
 
 ## Improvements
 
+- **Durable execution authority** — workspace-local SQLite/WAL facts now place model, tool, task, usage, recovery, and projection state behind explicit T1/T2 boundaries. Unknown effects fail closed and require evidence-backed reconciliation instead of being automatically replayed or displayed as completed.
+- **Workbench surfaces organized around evidence** — Review, Files, Preview, Artifact, Context, Run, browser, and explicit multi-session panels now share consistent headers, navigation, fullscreen behavior, and cross-surface evidence links.
 - **Provider-owned model catalogs** — API-key setup now keeps the complete discovered model catalog synchronized and asks for one clear default model instead of the misleading Best, Balanced, and Fast tiers. Legacy three-tier connections migrate on their next catalog refresh.
 - **Accurate custom-endpoint branding** — connection icons now keep visual brand identity separate from OpenAI/Anthropic transport compatibility, with URL and model-family inference plus a neutral fallback for unknown endpoints.
 - **Unified full-page task and schedule editing** — New Task and WorkItem details now share one full-page editor, standalone schedules use the same navigation pattern instead of a modal, and Calendar supports empty-slot creation, drag-to-reschedule, duration resizing, and overlap layout. Project views also remove the redundant “All Tasks” and List create rows, replace native dropdowns, center titles against the full panel, and retire the premature Saved View feature.

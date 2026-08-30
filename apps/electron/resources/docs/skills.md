@@ -8,21 +8,21 @@ This guide explains how to create and configure skills in Craft Agent.
 
 ## What Are Skills?
 
-Skills are specialized instructions that extend Claude's capabilities for specific tasks. They use **the exact same SKILL.md format as the Claude Code SDK** - making skills fully compatible between systems.
+Skills are specialized instructions that extend the active agent for specific tasks. Craft uses a Claude Code-compatible `SKILL.md` structure while adding workspace scope, source requirements, permission hints, icons, and UI management.
 
 **Key points:**
 - Skills are invoked via slash commands (e.g., `/commit`, `/review-pr`)
 - Skills can be automatically triggered by file patterns (globs)
 - Skills can pre-approve specific tools to run without prompting
-- The SKILL.md format is identical to what Claude Code uses internally
+- Existing Claude Code-style skills can usually be imported; always validate Craft-specific metadata after import
 
-## Same Format as Claude Code SDK
+## Claude Code-compatible format
 
-Craft Agent uses **the identical SKILL.md format** as the Claude Code SDK. This means:
+Craft Agent deliberately preserves the familiar frontmatter-plus-Markdown shape:
 
-1. **Format compatibility**: Any skill written for Claude Code works in Craft Agent
-2. **Same frontmatter fields**: `name`, `description`, `globs`, `alwaysAllow`, `requiredSources`
-3. **Same content structure**: Markdown body with instructions for Claude
+1. **Portable structure**: a Markdown instruction body with YAML frontmatter
+2. **Shared core fields**: `name` and `description`, plus supported optional Craft fields such as `globs`, `alwaysAllow`, and `requiredSources`
+3. **Agent-neutral instructions**: write for the active agent unless a skill intentionally targets one model or provider
 
 **What Craft Agent adds:**
 - **Visual icons**: Display custom icons in the UI for each skill
@@ -34,11 +34,11 @@ Craft Agent uses **the identical SKILL.md format** as the Claude Code SDK. This 
 When a skill is invoked (e.g., `/commit`):
 
 1. **Workspace skill checked first** - If `~/.craft-agent/workspaces/{id}/skills/commit/SKILL.md` exists, it's used
-2. **SDK skill as fallback** - If no workspace skill exists, the built-in SDK skill is used
+2. **Built-in skill as fallback** - If no workspace skill exists, an available bundled skill may be used
 
 This allows you to:
-- **Override SDK skills** - Create a workspace skill with the same slug to replace built-in behavior
-- **Extend SDK skills** - Reference SDK behavior in your custom skill and add workspace-specific instructions
+- **Override built-in skills** - Create a workspace skill with the same slug to replace bundled behavior
+- **Extend built-in skills** - Reuse a bundled pattern and add workspace-specific instructions
 - **Create new skills** - Add entirely new skills not in the SDK
 
 ## Skill Storage
@@ -46,7 +46,7 @@ This allows you to:
 Skills are stored as folders:
 ```
 ~/.craft-agent/workspaces/{workspaceId}/skills/{slug}/
-├── SKILL.md          # Required: Skill definition (same format as Claude Code SDK)
+├── SKILL.md          # Required: YAML frontmatter + Markdown instructions
 ├── icon.svg          # Recommended: Skill icon for UI display
 ├── icon.png          # Alternative: PNG icon
 └── (other files)     # Optional: Additional resources
@@ -54,7 +54,7 @@ Skills are stored as folders:
 
 ## SKILL.md Format
 
-The format is identical to Claude Code SDK skills:
+The supported structure is:
 
 ```yaml
 ---
@@ -68,18 +68,18 @@ requiredSources:             # Optional: sources to auto-enable on invocation
 
 # Skill Instructions
 
-Your skill content goes here. This is injected into Claude's context
+Your skill content goes here. This is injected into the active agent's context
 when the skill is active.
 
 ## Guidelines
 
-- Specific instructions for Claude
+- Specific instructions for the agent
 - Best practices to follow
 - Things to avoid
 
 ## Examples
 
-Show Claude how to perform the task correctly.
+Show the agent how to perform the task correctly.
 ```
 
 ## Metadata Fields
@@ -234,8 +234,8 @@ When creating commits:
    - Use imperative mood ("Add feature" not "Added feature")
    - Explain why, not what (the diff shows what)
 
-3. **Co-authorship**:
-   Always include: `Co-Authored-By: Claude <noreply@anthropic.com>`
+3. **Attribution**:
+   Follow the repository's contribution policy. Do not invent a human or model co-author identity.
 ```
 
 **Recommended icon**: Git commit icon from Heroicons or Simple Icons
@@ -310,7 +310,7 @@ This is useful for:
 
 ## Best Practices
 
-1. **Be specific**: Give Claude clear, actionable instructions
+1. **Be specific**: Give the agent clear, actionable instructions
 2. **Include examples**: Show the expected output format
 3. **Set boundaries**: Explain what NOT to do
 4. **Keep focused**: One skill = one specific task or domain

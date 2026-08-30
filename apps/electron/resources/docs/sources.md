@@ -161,7 +161,7 @@ After validation passes, trigger the appropriate auth flow:
 
 ## guide.md Best Practices
 
-The guide.md file is critical—it helps Claude understand how to use the source effectively in future sessions.
+The guide.md file is critical—it helps the agent understand how to use the source effectively in future sessions.
 
 ### Structure
 
@@ -197,7 +197,7 @@ Concrete examples tailored to the user's workflow:
 2. **Include concrete examples**: Use their actual project names and workflows
 3. **Document user preferences**: Any preferences they shared for future sessions
 4. **Note scope boundaries**: What the source can and cannot do
-5. **Keep it actionable**: Focus on what Claude needs to know to help effectively
+5. **Keep it actionable**: Focus on what the agent needs to know to help effectively
 
 ## Example Conversational Flow
 
@@ -241,7 +241,7 @@ Sources are stored as folders under:
 
 Each source folder contains:
 - `config.json` - Source configuration (required)
-- `guide.md` - Usage documentation for Claude (optional)
+- `guide.md` - Usage documentation for the agent (optional)
 - `permissions.json` - Custom permission rules for Explore mode (optional)
 - `icon.svg`, `icon.png`, `icon.jpg`, or `icon.jpeg` - Source icon (optional)
 
@@ -394,7 +394,7 @@ With environment variables:
 
 ### API Sources
 
-REST APIs become flexible tools that Claude can call.
+REST APIs become flexible tools that the agent can call.
 
 **Request bodies:** By default, `params` is JSON-serialized for POST/PUT/PATCH requests. For endpoints that expect non-JSON bodies (plain text, XML, form data, etc.), use the special `_rawBody` and `_contentType` params:
 
@@ -698,7 +698,7 @@ Filesystem access for local folders.
 
 ## guide.md Format
 
-The guide.md file helps Claude understand how to use the source effectively.
+The guide.md file helps the agent understand how to use the source effectively.
 
 ```markdown
 # Source Name

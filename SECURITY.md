@@ -1,58 +1,45 @@
-# Security Policy
+# Security policy
 
-## Reporting a Vulnerability
+## Reporting a vulnerability
 
-We take security seriously. If you discover a security vulnerability in Craft Agents, please report it responsibly.
+Please do not disclose security vulnerabilities in a public issue, discussion, pull request, or chat transcript.
 
-### How to Report
+Use GitHub's private vulnerability reporting for this repository:
 
-**Please do NOT report security vulnerabilities through public GitHub issues.**
+- [Report a vulnerability privately](https://github.com/VanDING/craft-agents-rebuild/security/advisories/new)
 
-Instead, please send an email to: **security@craft.do**
+Include the affected version or commit, impact, reproduction steps, and any suggested mitigation. Remove API keys, OAuth tokens, personal workspace data, and other secrets from logs or attachments.
 
-Include the following information:
-- Description of the vulnerability
-- Steps to reproduce the issue
-- Potential impact
-- Any suggested fixes (optional)
+If private reporting is unavailable, open a public issue containing only a request for a private maintainer contact. Do not include vulnerability details in that issue.
 
-### What to Expect
+## Supported versions
 
-- **Acknowledgment**: We will acknowledge receipt within 48 hours
-- **Initial Assessment**: We will provide an initial assessment within 7 days
-- **Resolution Timeline**: We aim to resolve critical issues within 30 days
+This independently maintained fork supports the latest published version and current `main` branch. Older releases may not receive backported fixes.
 
-### Scope
+| Version | Supported |
+| --- | --- |
+| Latest release | Yes |
+| Current `main` | Yes |
+| Older releases | No guaranteed backports |
 
-This policy applies to:
-- The Craft Agents desktop application
-- The `@craft-agent/*` npm packages
-- Official Craft Agents repositories
+## Scope
 
-### Out of Scope
+Reports may cover:
 
-- Third-party dependencies (report to their maintainers)
-- Social engineering attacks
-- Denial of service attacks
+- the Electron desktop application and preload boundary;
+- the headless server, WebSocket/RPC transport, Web UI, and CLI;
+- provider authentication and credential storage;
+- tool permissions, sources, browser integration, and local file access;
+- the durable runtime, Artifact storage, automations, and messaging gateways;
+- build, update, and packaging behavior maintained by this fork.
 
-## Supported Versions
+Third-party services and dependencies should also be reported to their own maintainers when the vulnerability originates there.
 
-| Version | Supported          |
-| ------- | ------------------ |
-| Latest  | :white_check_mark: |
-| < Latest | :x:               |
+## Safe handling
 
-We only provide security updates for the latest version. Please keep your installation up to date.
+- Use a test workspace and disposable credentials.
+- Do not access data that is not yours.
+- Stop once you have enough evidence to demonstrate the issue.
+- Allow maintainers a reasonable opportunity to investigate before public disclosure.
 
-## Security Best Practices
-
-When using Craft Agents:
-
-1. **Keep credentials secure**: Never commit `.env` files or credentials
-2. **Use environment variables**: Store secrets in environment variables
-3. **Review permissions**: Be cautious with "Execute" permission mode
-4. **Update regularly**: Keep the application updated
-
-## Acknowledgments
-
-We appreciate responsible disclosure and will acknowledge security researchers who report valid vulnerabilities (with their permission).
+Craft Agents (RE) is an independent fork. Please do not send fork-specific reports to the upstream Craft security address unless you have separately verified that the same issue affects the upstream project.

@@ -7,6 +7,8 @@
 - 关联基线：`docs/univer-native-workbench-integration-plan.md`、`docs/theme-engine-design.md`、`docs/cross-ecosystem-plugin-porting-assessment.md`
 
 > 存档决策（2026-08-30）：本方案作为可能的远期 Design Layer 参考保留，当前不进入实施。当前实施范围以 `docs/artifact-files-native-image-generation-plan.md` 为准：删除 Univer、扩展通用文件 Artifact，并加入原生图片生成；会话、Agent Runtime、工具、预览、审阅与接受流程继续复用现有系统。
+>
+> 文内所有 `artifact-engine-univer`、Univer snapshot、迁移和兼容描述均是存档时的目标态设想，已经失效，不能据此恢复依赖或实现迁移器。
 
 ---
 

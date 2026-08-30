@@ -1,121 +1,99 @@
-# Contributing to Craft Agents
+# Contributing to Craft Agents (RE)
 
-Thank you for your interest in contributing to Craft Agents! This document provides guidelines and instructions for contributing.
+Thank you for helping improve Craft Agents (RE). Contributions should preserve the project's central properties: one Pi agent backend, durable and auditable execution, explicit permission boundaries, local-first data, and a coherent desktop workspace.
 
-## Getting Started
+## Set up the repository
 
-### Prerequisites
+### Requirements
 
-- [Bun](https://bun.sh/) runtime
-- Node.js 18+ (for some tooling)
+- [Bun 1.4](https://bun.sh/) or the version pinned by the root `packageManager` field
 - macOS, Linux, or Windows
-
-### Development Setup
-
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/lukilabs/craft-agents-oss.git
-   cd craft-agents-oss
-   ```
-
-2. Install dependencies:
-   ```bash
-   bun install
-   ```
-
-3. Set up environment variables:
-   ```bash
-   cp .env.example .env
-   # Edit .env with your credentials
-   ```
-
-4. Run in development mode:
-   ```bash
-   bun run electron:dev
-   ```
-
-## Development Workflow
-
-### Branch Naming
-
-Use descriptive branch names:
-- `feature/add-new-tool` - New features
-- `fix/resolve-auth-issue` - Bug fixes
-- `refactor/simplify-agent-loop` - Code refactoring
-- `docs/update-readme` - Documentation updates
-
-### Making Changes
-
-1. Create a feature branch from `main`
-2. Make your changes
-3. Run type checking: `bun run typecheck:all`
-4. Commit your changes with clear, descriptive messages
-5. Push to your fork and create a pull request
-
-### Code Style
-
-- We use TypeScript throughout the codebase
-- Follow existing patterns in the codebase
-- Use meaningful variable and function names
-- Add comments for complex logic
-
-### Type Checking
-
-Before submitting a PR, ensure all type checks pass:
+- Credentials for any provider or external service involved in the change
 
 ```bash
-bun run typecheck:all
+git clone https://github.com/VanDING/craft-agents-rebuild.git
+cd craft-agents-rebuild
+bun install
+cp .env.example .env
+bun run electron:dev
 ```
 
-## Pull Request Process
+Do not commit credentials, workspace data, session transcripts, or generated provider tokens.
 
-1. **Title**: Use a clear, descriptive title
-2. **Description**: Explain what the PR does and why
-3. **Testing**: Describe how you tested the changes
-4. **Screenshots**: Include screenshots for UI changes
+## Understand the relevant contract
 
-### PR Template
+Start with the [documentation index](docs/README.md). Before changing runtime, provider, event, permission, or tool behavior, read:
 
-```markdown
-## Summary
-Brief description of changes
+- [Pi kernel maintenance baseline](docs/pi-kernel.md)
+- [Durable Agent Runtime ADR](docs/architecture/durable-agent-runtime.md)
+- [Electron runtime guide](apps/electron/README.md)
 
-## Changes
-- Change 1
-- Change 2
+Do not introduce a second provider-specific session lifecycle or treat compatibility transcripts as execution authority.
 
-## Testing
-How you tested these changes
+## Make a change
 
-## Screenshots (if applicable)
+1. Create a focused branch from `main`.
+2. Follow the patterns and terminology already used in the affected package.
+3. Add or update focused tests for observable behavior and failure paths.
+4. Update documentation when a public contract, setup step, or architecture boundary changes.
+5. Add a concise entry to `apps/electron/resources/release-notes/next.md` for user-visible behavior.
+6. Run the smallest validation that directly covers the change.
+
+Prefer a focused test command over the full suite. Run broader checks when the change crosses packages, alters shared types, or affects packaging.
+
+```bash
+bun run typecheck:all      # All workspace type checks
+bun run validate:dev       # Type checks and core runtime/document tests
+bun run validate:ci        # CI validation plus i18n parity and coverage
 ```
 
-## Project Structure
+Useful development commands:
 
-```
-craft-agents/
-├── apps/
-│   ├── electron/    # Desktop GUI (primary interface)
-│   └── tui/         # Terminal CLI (deprecated)
-└── packages/
-    ├── core/        # @craft-agent/core - Shared types
-    ├── shared/      # @craft-agent/shared - Business logic
-    └── ui/          # @craft-agent/ui - React components
+```bash
+bun run electron:dev
+bun run electron:build
+bun run server:dev
+bun run webui:dev
 ```
 
-## Key Areas
+## Repository map
 
-- **Agent Logic**: `packages/shared/src/agent/`
-- **Authentication**: `packages/shared/src/auth/`
-- **MCP Integration**: `packages/shared/src/mcp/`
-- **UI Components**: `packages/ui/src/`
-- **Electron App**: `apps/electron/`
+```text
+apps/
+├── electron/             Desktop application
+├── cli/                  Terminal client
+├── webui/                Headless-server Web UI
+├── viewer/               Shared-session viewer
+└── marketing/            Project website
 
-## Questions?
+packages/
+├── shared/               Agent, configuration, auth, sources, and shared contracts
+├── server-core/          Sessions, Runtime Host, RPC handlers, and services
+├── pi-agent-server/      Isolated Pi SDK subprocess
+├── session-tools-core/   Canonical session tool definitions and handlers
+├── ui/                   Shared React UI
+├── core/                 Core types and storage interfaces
+├── server/               Headless server entry point
+├── messaging-gateway/    Messaging adapters
+└── messaging-whatsapp-worker/
+```
 
-- Open an issue for bugs or feature requests
-- Start a discussion for questions or ideas
+## Pull requests
+
+A pull request should explain:
+
+- the user or maintenance problem;
+- the chosen behavior and important trade-offs;
+- tests and manual verification performed;
+- screenshots or recordings for visible UI changes;
+- migration, compatibility, permission, or recovery implications.
+
+Keep generated files, unrelated formatting, and personal workspace artifacts out of the change. Preserve upstream attribution and third-party license notices when reusing code or assets.
+
+## Reporting security issues
+
+Do not disclose a vulnerability in a public issue or pull request. Follow the private process in [SECURITY.md](SECURITY.md).
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the Apache License 2.0.
+By contributing, you agree that your contributions are licensed under the [Apache License 2.0](LICENSE).
