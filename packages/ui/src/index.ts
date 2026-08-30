@@ -70,9 +70,10 @@ export {
   TrajectoryView,
   TrajectoryTable,
   TrajectoryToolbar,
-  TrajectoryTimeline,
+  TrajectoryStrip,
   RecordInspector,
   type TrajectoryViewProps,
+  type TrajectoryStripProps,
 } from './components/trajectory'
 export {
   buildTrajectorySnapshot,

@@ -32,6 +32,18 @@ describe('deriveRequestContexts', () => {
     expect(deriveRequestContexts(snapshot).map(context => context.promptVersion)).toEqual([1, 2])
   })
 
+  it('keeps chronological display order when provider request sequences repeat', () => {
+    const snapshot = buildTrajectorySnapshot({ messages: [
+      message({ id: 'a1', role: 'assistant', requestSeq: 12, promptSnapshot: 'one' }),
+      message({ id: 'a2', role: 'assistant', requestSeq: 1, promptSnapshot: 'two' }),
+      message({ id: 'a3', role: 'assistant', requestSeq: 1, promptSnapshot: 'three' }),
+    ] })
+    const contexts = deriveRequestContexts(snapshot)
+    expect(contexts.map(context => context.requestSeq)).toEqual([1, 2, 3])
+    expect(contexts.map(context => context.sourceRequestSeq)).toEqual([12, 1, 1])
+    expect(contexts.map(context => context.id)).toEqual(['a1', 'a2', 'a3'])
+  })
+
   it('uses a request-time manifest when available', () => {
     const snapshot = buildTrajectorySnapshot({ messages: [
       message({

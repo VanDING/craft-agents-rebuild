@@ -32,7 +32,12 @@ export type TrajectoryContribution =
     }
   | {
       kind: 'request-header'
+      /** Stable 1-based display order in the persisted message stream. */
       requestSeq: number
+      /** Provider/runtime sequence retained for diagnostics; it may restart. */
+      sourceRequestSeq: number
+      /** Stable source identity for this assembled request. */
+      requestId: string
       prompt: string
       usage?: PiUsage
       time: number
@@ -62,11 +67,11 @@ export interface TrajectorySnapshot {
   messages: readonly Message[]
   /** Chronological contributions (all kinds). */
   contributions: readonly TrajectoryContribution[]
-  /** Request ordinal → captured system prompt (prompt-diff source). */
+  /** Stable display ordinal → captured system prompt (prompt-diff source). */
   prompts: ReadonlyMap<number, string>
   /** Call id → schema JSON (tool schema inspection). */
   callSchemas: ReadonlyMap<string, string>
-  /** Per-request usage by request ordinal. */
+  /** Per-request usage by stable display ordinal. */
   requestUsage: ReadonlyMap<number, PiUsage>
   /** Session-level cumulative usage (sum of all request usage). */
   totalUsage: PiUsage | undefined

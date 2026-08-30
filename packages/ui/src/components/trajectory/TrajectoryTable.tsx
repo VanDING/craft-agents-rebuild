@@ -107,6 +107,17 @@ export const TrajectoryTable = memo(function TrajectoryTable({
   )
   const visibleRows = rows.slice(visibleWindow.start, visibleWindow.end)
 
+  useLayoutEffect(() => {
+    if (selectedIndex === null) return
+    const pane = paneRef.current
+    const rowIndex = rows.findIndex(row => row.record.cell.index === selectedIndex)
+    if (!pane || rowIndex < 0) return
+    const top = rows.slice(0, rowIndex).reduce((sum, row) => sum + row.height, 0)
+    const bottom = top + (rows[rowIndex]?.height ?? 0)
+    if (top < pane.scrollTop) pane.scrollTo({ top, behavior: 'smooth' })
+    else if (bottom > pane.scrollTop + pane.clientHeight) pane.scrollTo({ top: Math.max(0, bottom - pane.clientHeight), behavior: 'smooth' })
+  }, [rows, selectedIndex])
+
   return (
     <div
       ref={paneRef}
@@ -140,6 +151,7 @@ export const TrajectoryTable = memo(function TrajectoryTable({
                 aria-selected={selected || undefined}
                 data-kind={cell.kind}
                 data-error={cell.isError || undefined}
+                data-request-only={cell.kind === 'system' && cell.requestSeq !== undefined || undefined}
                 data-collapsed-summary={record.collapsedSummaryKind}
                 data-timeline-focus={focus}
                 data-record-index={isCollapsedSummary ? undefined : cell.index}

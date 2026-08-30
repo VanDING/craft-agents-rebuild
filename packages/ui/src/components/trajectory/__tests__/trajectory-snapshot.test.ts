@@ -115,6 +115,18 @@ describe('buildTrajectorySnapshot', () => {
     expect(snapshot.totalUsage?.cost.total).toBe(0.6)
   })
 
+  it('assigns stable ordinals when the provider request sequence restarts', () => {
+    const snapshot = buildTrajectorySnapshot({ messages: [
+      msg({ id: 'a1', role: 'assistant', requestSeq: 7, promptSnapshot: 'one', timestamp: 2_000 }),
+      msg({ id: 'a2', role: 'assistant', requestSeq: 1, promptSnapshot: 'two', timestamp: 4_000 }),
+    ] })
+    const headers = snapshot.contributions.filter(contribution => contribution.kind === 'request-header')
+    expect(headers.map(header => header.requestSeq)).toEqual([1, 2])
+    expect(headers.map(header => header.sourceRequestSeq)).toEqual([7, 1])
+    expect(snapshot.prompts.get(1)).toBe('one')
+    expect(snapshot.prompts.get(2)).toBe('two')
+  })
+
   it('falls back to session lastFullUsage when no message usage', () => {
     const input: TrajectorySessionInput = {
       messages: [msg({ role: 'user', content: 'x' })],

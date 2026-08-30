@@ -81,6 +81,7 @@ export function buildTrajectorySnapshot(input: TrajectorySessionInput): Trajecto
 
   let turnCounter = 0
   let lastTurnId: string | undefined
+  let requestOrdinal = 0
 
   for (const message of messages) {
     // Track turn boundaries for turn-end markers.
@@ -104,16 +105,19 @@ export function buildTrajectorySnapshot(input: TrajectorySessionInput): Trajecto
     // Request header: captured system prompt + usage anchored before its
     // assistant message (prompt diff + per-request token buckets).
     if (message.role === 'assistant' && message.requestSeq !== undefined) {
+      requestOrdinal += 1
       if (message.promptSnapshot !== undefined) {
-        prompts.set(message.requestSeq, message.promptSnapshot)
+        prompts.set(requestOrdinal, message.promptSnapshot)
       }
       if (message.usage) {
-        requestUsage.set(message.requestSeq, message.usage)
+        requestUsage.set(requestOrdinal, message.usage)
         totalUsage = totalUsage ? addUsage(totalUsage, message.usage) : message.usage
       }
       contributions.push({
         kind: 'request-header',
-        requestSeq: message.requestSeq,
+        requestSeq: requestOrdinal,
+        sourceRequestSeq: message.requestSeq,
+        requestId: message.id,
         prompt: message.promptSnapshot ?? '',
         usage: message.usage,
         time: message.timestamp,

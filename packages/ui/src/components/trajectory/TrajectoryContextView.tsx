@@ -60,7 +60,7 @@ export function TrajectoryContextView({ snapshot, focusedRequestSeq, onRequestFo
 
   const selectedIndex = Math.max(0, contexts.findIndex(context => context.requestSeq === selectedSeq))
   const current = contexts[selectedIndex] ?? contexts.at(-1)
-  const previous = current ? contexts.findLast(context => context.requestSeq < current.requestSeq) : undefined
+  const previous = selectedIndex > 0 ? contexts[selectedIndex - 1] : undefined
   const delta = current ? requestContextDelta(current, previous) : undefined
 
   if (!current) {
@@ -100,9 +100,10 @@ export function TrajectoryContextView({ snapshot, focusedRequestSeq, onRequestFo
               </div>
               <div className="max-h-64 overflow-y-auto p-1" role="listbox">
                 {filteredContexts.map((context) => {
-                  const requestDelta = requestContextDelta(context, contexts.findLast(candidate => candidate.requestSeq < context.requestSeq))
+                  const contextIndex = contexts.indexOf(context)
+                  const requestDelta = requestContextDelta(context, contextIndex > 0 ? contexts[contextIndex - 1] : undefined)
                   return (
-                    <button key={context.requestSeq} type="button" role="option" aria-selected={context.requestSeq === current.requestSeq} onClick={() => selectRequest(context.requestSeq)} className={`grid w-full grid-cols-[minmax(0,1fr)_auto] gap-x-3 rounded-md px-2.5 py-2 text-left outline-none hover:bg-foreground/[0.04] focus-visible:bg-foreground/[0.04] ${context.requestSeq === current.requestSeq ? 'bg-accent/8' : ''}`}>
+                    <button key={context.id} type="button" role="option" aria-selected={context.id === current.id} onClick={() => selectRequest(context.requestSeq)} className={`grid w-full grid-cols-[minmax(0,1fr)_auto] gap-x-3 rounded-md px-2.5 py-2 text-left outline-none hover:bg-foreground/[0.04] focus-visible:bg-foreground/[0.04] ${context.id === current.id ? 'bg-accent/8' : ''}`}>
                       <span className="text-[12px] font-medium">{t('trajectory.context.request', { seq: context.requestSeq })}</span>
                       <span className="text-[11px] tabular-nums text-muted-foreground">{formatNumber(context.inputTokens ?? context.estimatedTokens)}</span>
                       <span className="text-[11px] text-muted-foreground">{context.captured ? t('trajectory.context.captured') : t('trajectory.context.estimated')}</span>
@@ -122,7 +123,7 @@ export function TrajectoryContextView({ snapshot, focusedRequestSeq, onRequestFo
         <div className="ml-auto hidden h-7 min-w-28 max-w-72 flex-1 items-end gap-px rounded-md bg-foreground/[0.025] px-1.5 py-1 @min-[620px]/trajectory:flex" aria-label={t('trajectory.context.requestTrend')}>
           {contexts.map(context => {
             const tokens = context.inputTokens ?? context.estimatedTokens
-            return <button key={context.requestSeq} type="button" onClick={() => selectRequest(context.requestSeq)} title={`${t('trajectory.context.request', { seq: context.requestSeq })} · ${formatNumber(tokens)}`} className={`min-w-px flex-1 rounded-[1px] outline-none transition-colors focus-visible:ring-1 focus-visible:ring-ring ${context.requestSeq === current.requestSeq ? 'bg-accent' : 'bg-accent/30 hover:bg-accent/55'}`} style={{ height: `${Math.max(14, (tokens / maxRequestTokens) * 100)}%` }} />
+            return <button key={context.id} type="button" onClick={() => selectRequest(context.requestSeq)} title={`${t('trajectory.context.request', { seq: context.requestSeq })} · ${formatNumber(tokens)}`} className={`min-w-px flex-1 rounded-[1px] outline-none transition-colors focus-visible:ring-1 focus-visible:ring-ring ${context.id === current.id ? 'bg-accent' : 'bg-accent/30 hover:bg-accent/55'}`} style={{ height: `${Math.max(14, (tokens / maxRequestTokens) * 100)}%` }} />
           })}
         </div>
       </div>

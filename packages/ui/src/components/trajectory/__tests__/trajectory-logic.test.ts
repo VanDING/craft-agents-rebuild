@@ -13,7 +13,7 @@ import {
   type TrajectoryTurnModel,
 } from '../trajectory-layout'
 import { filterRecords, searchTrajectory, toolCallTextParts } from '../trajectory-search-index'
-import { computeVirtualRowWindow, projectVirtualRows, CONTENT_ROW_HEIGHT, COLLAPSED_SUMMARY_HEIGHT } from '../trajectory-virtual-rows'
+import { computeVirtualRowWindow, projectVirtualRows, CONTENT_ROW_HEIGHT, COLLAPSED_SUMMARY_HEIGHT, REQUEST_BOUNDARY_HEIGHT } from '../trajectory-virtual-rows'
 import { deriveTrajectoryTimeline, trajectoryTimelineFocusIndexes } from '../trajectory-timeline'
 
 function msg(overrides: Partial<Message> & { role: Message['role'] }): Message {
@@ -209,7 +209,8 @@ describe('virtual rows', () => {
     const flat = flattenTurnRecords(turns)
     const rows = projectVirtualRows(flat)
     expect(rows.length).toBe(flat.length)
-    expect(rows.every(r => r.height === CONTENT_ROW_HEIGHT)).toBe(true)
+    expect(rows.find(row => row.record.cell.kind === 'system')?.height).toBe(REQUEST_BOUNDARY_HEIGHT)
+    expect(rows.filter(row => row.record.cell.kind !== 'system').every(row => row.height === CONTENT_ROW_HEIGHT)).toBe(true)
     // Collapsed summary rows get the compact height.
     const collapsed = collapseTurnRecords(flat, new Set([1]))
     const projected = projectVirtualRows(collapsed)
@@ -235,16 +236,16 @@ describe('virtual window', () => {
   it('renders only the rows overlapping the viewport plus overscan', () => {
     const win = computeVirtualRowWindow(rows, 0, 180)
     expect(win.start).toBe(0)
-    expect(win.end).toBe(10)
+    expect(win.end).toBe(11)
     expect(win.top).toBe(0)
     expect(win.bottom).toBe(100 * CONTENT_ROW_HEIGHT - win.end * CONTENT_ROW_HEIGHT)
   })
 
   it('slices with top and bottom spacers when scrolled', () => {
     const win = computeVirtualRowWindow(rows, 300, 180)
-    expect(win.start).toBe(3)
-    expect(win.end).toBe(19)
-    expect(win.top).toBe(108)
+    expect(win.start).toBe(5)
+    expect(win.end).toBe(21)
+    expect(win.top).toBe(150)
     expect(win.bottom).toBe(100 * CONTENT_ROW_HEIGHT - win.end * CONTENT_ROW_HEIGHT)
   })
 

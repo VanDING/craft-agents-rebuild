@@ -12,8 +12,7 @@ interface TrajectoryOverviewProps {
   records: readonly TrajectoryRenderRecord[]
   isProcessing?: boolean
   contextSummary?: TrajectoryContextSummary
-  onOpenEvents: (index?: number) => void
-  onOpenTimeline: () => void
+  onOpenTrajectory: (index?: number) => void
   onOpenContext: (requestSeq?: number) => void
 }
 
@@ -33,8 +32,7 @@ export function TrajectoryOverview({
   records,
   isProcessing,
   contextSummary,
-  onOpenEvents,
-  onOpenTimeline,
+  onOpenTrajectory,
   onOpenContext,
 }: TrajectoryOverviewProps) {
   const { t } = useTranslation()
@@ -149,15 +147,15 @@ export function TrajectoryOverview({
         <section>
           <div className="mb-2 flex items-center gap-2">
             <h3 className="text-[12px] font-semibold">{t('trajectory.overview.runShape')}</h3>
-            <button type="button" className="ml-auto text-[11px] font-medium text-accent hover:underline" onClick={onOpenTimeline}>
-              {t('trajectory.overview.openTimeline')}
+            <button type="button" className="ml-auto text-[11px] font-medium text-accent hover:underline" onClick={() => onOpenTrajectory()}>
+              {t('trajectory.overview.openTrajectory')}
             </button>
           </div>
           <button
             type="button"
-            onClick={onOpenTimeline}
+            onClick={() => onOpenTrajectory()}
             className="flex h-12 w-full items-center gap-1 rounded-xl border border-border/55 bg-background/70 px-3 outline-none transition-colors hover:bg-foreground/[0.025] focus-visible:ring-2 focus-visible:ring-ring"
-            aria-label={t('trajectory.overview.openTimeline')}
+            aria-label={t('trajectory.overview.openTrajectory')}
           >
             {contentRecords.slice(0, 18).map((record, index) => (
               <span
@@ -182,7 +180,7 @@ export function TrajectoryOverview({
                 const value = context.inputTokens ?? context.estimatedTokens
                 return (
                   <button
-                    key={context.requestSeq}
+                    key={context.id}
                     type="button"
                     onClick={() => onOpenContext(context.requestSeq)}
                     className="group flex h-full min-w-3 flex-1 flex-col items-center justify-end gap-1 outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -217,8 +215,8 @@ export function TrajectoryOverview({
         <section>
           <div className="mb-2 flex items-center gap-2">
             <h3 className="text-[12px] font-semibold">{t('trajectory.overview.needsAttention')}</h3>
-            <button type="button" className="ml-auto text-[11px] font-medium text-accent hover:underline" onClick={() => onOpenEvents()}>
-              {t('trajectory.overview.viewAllEvents')}
+            <button type="button" className="ml-auto text-[11px] font-medium text-accent hover:underline" onClick={() => onOpenTrajectory()}>
+              {t('trajectory.overview.viewTrajectory')}
             </button>
           </div>
           <div className="overflow-hidden rounded-xl border border-border/55 bg-background/70">
@@ -226,7 +224,7 @@ export function TrajectoryOverview({
               <button
                 key={`${index}-${label}`}
                 type="button"
-                onClick={() => onOpenEvents(index)}
+                onClick={() => onOpenTrajectory(index)}
                 className="grid min-h-10 w-full grid-cols-[18px_minmax(0,1fr)_auto] items-center gap-2 border-b border-border/45 px-3 text-left text-[12px] outline-none last:border-b-0 hover:bg-foreground/[0.025] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
               >
                 <Icon className={`h-3.5 w-3.5 ${tone}`} />

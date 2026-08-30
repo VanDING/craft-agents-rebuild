@@ -12,7 +12,7 @@ import { deriveTrajectoryLayout, flattenTurnRecords, type TrajectoryCellProps, t
 import { searchTrajectory } from './trajectory-search-index'
 import { trajectoryTimelineFocusIndexes, type TrajectoryTimelineMode, type TrajectoryTimeRange } from './trajectory-timeline'
 import { TrajectoryToolbar } from './TrajectoryToolbar'
-import { TrajectoryMazeTimeline } from './TrajectoryMazeTimeline'
+import { TrajectoryStrip } from './TrajectoryStrip'
 import { TrajectoryTable } from './TrajectoryTable'
 import { RecordInspector } from './RecordInspector'
 import { TrajectoryOverview } from './TrajectoryOverview'
@@ -22,7 +22,7 @@ import './trajectory-theme.css'
 const DURATION_PREFERENCE_KEY = 'craft.trajectory.duration'
 const VIEW_PREFERENCE_KEY = 'craft.trajectory.view'
 
-export type TrajectoryRunView = 'overview' | 'timeline' | 'events' | 'context'
+export type TrajectoryRunView = 'overview' | 'trajectory' | 'context'
 
 function readDurationPreference(): boolean {
   try {
@@ -36,7 +36,8 @@ function readViewPreference(): TrajectoryRunView {
   try {
     const value = localStorage.getItem(VIEW_PREFERENCE_KEY)
     if (value === 'prompt') return 'context'
-    if (value === 'overview' || value === 'timeline' || value === 'events' || value === 'context') return value
+    if (value === 'timeline' || value === 'events') return 'trajectory'
+    if (value === 'overview' || value === 'trajectory' || value === 'context') return value
   } catch {
     // Best-effort preference only.
   }
@@ -220,8 +221,8 @@ export function TrajectoryView({ snapshot, sessionTotal, isProcessing, contextSu
     }
   }
 
-  const selectRunView = (view: TrajectoryRunView, preserveTimelineRange = false) => {
-    if (view !== 'timeline' && !preserveTimelineRange) setTimelineRange(null)
+  const selectRunView = (view: TrajectoryRunView) => {
+    if (view !== 'trajectory') setTimelineRange(null)
     setRunView(view)
     try {
       localStorage.setItem(VIEW_PREFERENCE_KEY, view)
@@ -230,8 +231,8 @@ export function TrajectoryView({ snapshot, sessionTotal, isProcessing, contextSu
     }
   }
 
-  const openEvents = (index?: number) => {
-    selectRunView('events')
+  const openTrajectory = (index?: number) => {
+    selectRunView('trajectory')
     if (index !== undefined) onSelectIndex(index)
   }
 
@@ -250,22 +251,9 @@ export function TrajectoryView({ snapshot, sessionTotal, isProcessing, contextSu
     setTimelineMode(next ? 'actual' : 'duration')
   }
 
-  const handleTimelineModeChange = (next: TrajectoryTimelineMode) => {
-    setTimelineMode(next)
-    const usesDuration = next !== 'sequence'
-    setActualDuration(usesDuration)
-    setActualTime(next === 'actual')
-    try {
-      localStorage.setItem(DURATION_PREFERENCE_KEY, usesDuration ? '1' : '0')
-    } catch {
-      // Best-effort preference only.
-    }
-  }
-
   // Previous request prompt for the inspector diff tab.
   const previousPrompt = useMemo(() => {
-    if (!selectedCell?.sourceMessage) return undefined
-    const seq = selectedCell.sourceMessage.requestSeq
+    const seq = selectedCell?.requestSeq
     if (seq === undefined) return undefined
     return snapshot.prompts.get(seq - 1)
   }, [selectedCell, snapshot.prompts])
@@ -324,7 +312,7 @@ export function TrajectoryView({ snapshot, sessionTotal, isProcessing, contextSu
   return (
     <div className="trajectory-root flex h-full min-h-0 flex-col @container/trajectory">
       <div className="flex h-10 shrink-0 items-end gap-5 overflow-x-auto border-b border-border/50 bg-background/80 px-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="tablist" aria-label={t('trajectory.views.label')}>
-        {(['overview', 'timeline', 'events', 'context'] as const).map(view => (
+        {(['overview', 'trajectory', 'context'] as const).map(view => (
           <button
             key={view}
             type="button"
@@ -346,17 +334,17 @@ export function TrajectoryView({ snapshot, sessionTotal, isProcessing, contextSu
             records={flatRecords}
             isProcessing={isProcessing}
             contextSummary={contextSummary}
-            onOpenEvents={openEvents}
-            onOpenTimeline={() => selectRunView('timeline')}
+            onOpenTrajectory={openTrajectory}
             onOpenContext={(requestSeq) => {
               if (requestSeq !== undefined) onFocusChange?.({ source: 'run', requestSeq })
               selectRunView('context')
             }}
           />
         )}
-        {runView === 'timeline' && (
-          <div className="relative flex h-full min-h-0 min-w-0">
-            <TrajectoryMazeTimeline
+        {runView === 'trajectory' && (
+          <div className="flex h-full min-h-0 flex-col">
+            {toolbar(true, true)}
+            <TrajectoryStrip
               turns={turns}
               mode={timelineMode}
               range={timelineRange}
@@ -365,28 +353,8 @@ export function TrajectoryView({ snapshot, sessionTotal, isProcessing, contextSu
                 setTimelineRange(range)
                 if (range) onFocusChange?.({ source: 'run', timelineRange: { ...range, mode: timelineMode } })
               }}
-              onModeChange={handleTimelineModeChange}
-              onOpenEventsForRange={() => selectRunView('events', true)}
               onRecordSelect={onSelectIndex}
             />
-            {inspector}
-          </div>
-        )}
-        {runView === 'events' && (
-          <div className="flex h-full min-h-0 flex-col">
-            {toolbar(false, true)}
-            {timelineRange !== null && (
-              <div className="flex min-h-8 shrink-0 items-center justify-between gap-3 border-b border-border/50 bg-accent/5 px-3 text-[11px] text-muted-foreground">
-                <span>{t('trajectory.timeline.filteredEvents', { count: timelineFocusIndexes?.size ?? 0 })}</span>
-                <button
-                  type="button"
-                  className="shrink-0 rounded px-1.5 py-1 text-foreground hover:bg-accent/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  onClick={() => setTimelineRange(null)}
-                >
-                  {t('trajectory.timeline.clearSelection')}
-                </button>
-              </div>
-            )}
             {ledger}
           </div>
         )}

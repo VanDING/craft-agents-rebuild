@@ -8,8 +8,9 @@
 import type { TrajectoryRenderRecord } from './trajectory-layout'
 import { trajectoryRecordId } from './trajectory-layout'
 
-export const CONTENT_ROW_HEIGHT = 36
+export const CONTENT_ROW_HEIGHT = 30
 export const COLLAPSED_SUMMARY_HEIGHT = 24
+export const REQUEST_BOUNDARY_HEIGHT = 16
 
 /** One virtualizer item. */
 export interface TrajectoryVirtualRow {
@@ -86,7 +87,11 @@ export function projectVirtualRows(
 ): readonly TrajectoryVirtualRow[] {
   return records.map((record, index) => ({
     record,
-    height: record.collapsedSummary !== undefined ? COLLAPSED_SUMMARY_HEIGHT : CONTENT_ROW_HEIGHT,
+    height: record.collapsedSummary !== undefined
+      ? COLLAPSED_SUMMARY_HEIGHT
+      : record.cell.kind === 'system' && record.cell.requestSeq !== undefined
+        ? REQUEST_BOUNDARY_HEIGHT
+        : CONTENT_ROW_HEIGHT,
     key: record.collapsedSummary !== undefined
       ? `summary-${record.turn ?? 'between'}-${index}`
       : trajectoryRecordId(record.cell),

@@ -1,0 +1,31 @@
+.root {
+  display: grid;
+  min-height: 62px;
+  flex: none;
+  grid-template-columns: 58px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  box-sizing: border-box;
+  padding: 4px 9px;
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
+  background: color-mix(in srgb, var(--dsw-alias-bg-layer-2) 72%, var(--dsw-alias-bg-layer-1));
+}
+
+.labels { display: grid; height: 54px; grid-template-rows: repeat(3, 18px); align-items: center; color: var(--dsw-alias-label-tertiary); font: 9px/12px var(--ds-font-family-code); }
+.canvas { position: relative; height: 54px; min-width: 0; overflow: hidden; border-inline: 1px solid var(--dsw-alias-border-l1); }
+.lane { position: absolute; right: 0; left: 0; height: 18px; border-bottom: 1px solid color-mix(in srgb, var(--dsw-alias-border-l1) 64%, transparent); }
+.turn { position: absolute; z-index: 1; top: 0; bottom: 0; width: 1px; background: color-mix(in srgb, var(--dsw-alias-border-l2) 60%, transparent); pointer-events: none; }
+.span { position: absolute; z-index: 2; min-width: 2px; height: 10px; padding: 0; border: 0; border-radius: 2px; background: var(--dsw-alias-label-caption); opacity: .58; cursor: pointer; }
+.span[data-kind='user'], .span[data-kind='system'], .span[data-kind='context'] { background: var(--dsw-alias-state-business-primary); }
+.span[data-kind='message'], .span[data-kind='compacted'] { background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 52%, var(--dsw-alias-label-secondary)); }
+.span[data-kind='tool'], .span[data-kind='subtool'] { background: var(--dsw-alias-state-warn-label); }
+.span[data-error='true'] { background: var(--dsw-alias-state-error-primary); opacity: .92; }
+.span:hover, .span[data-active='true'] { z-index: 3; opacity: 1; box-shadow: 0 0 0 1px var(--dsw-alias-bg-layer-1), 0 0 0 2px var(--dsw-alias-state-business-primary); }
+.clear { height: 24px; padding: 0 6px; border: 0; border-radius: 5px; color: var(--dsw-alias-label-secondary); background: transparent; cursor: pointer; font: var(--dsw-font-xxs-12); }
+.clear:hover { color: var(--dsw-alias-label-primary); background: var(--dsw-alias-interactive-bg-hover); }
+
+@container trajectory (max-width: 620px) {
+  .root { grid-template-columns: 36px minmax(0, 1fr); gap: 5px; padding-inline: 6px; }
+  .clear { display: none; }
+  .labels { font-size: 8px; }
+}

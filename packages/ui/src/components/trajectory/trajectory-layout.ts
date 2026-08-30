@@ -72,6 +72,8 @@ export interface TrajectoryCellProps {
   think?: number
   /** Session-global request ordinal (request-header cells). */
   requestSeq?: number
+  /** Provider/runtime sequence, which may restart during one persisted run. */
+  sourceRequestSeq?: number
   /** Whether the cell renders its selection treatment. */
   selected?: boolean
   /** Underlying Craft message (for inspector access to raw fields). */
@@ -340,6 +342,7 @@ export function deriveTrajectoryLayout(input: TrajectoryLayoutInput): readonly T
   const { contributions, prompts, requestUsage, callSchemas } = input
   const turns: TrajectoryTurnModel[] = []
   let index = 0
+  let activeRequestOrdinal: number | undefined
 
   // Current section accumulator (mutable container so closure control-flow
   // analysis does not narrow the captured variables to never).
@@ -364,6 +367,7 @@ export function deriveTrajectoryLayout(input: TrajectoryLayoutInput): readonly T
     switch (contribution.kind) {
       case 'request-header': {
         index += 1
+        activeRequestOrdinal = contribution.requestSeq
         const usage = requestUsage.get(contribution.requestSeq)
         const prompt = prompts.get(contribution.requestSeq)
         const turn = ensureTurn(contribution.turn)
@@ -375,6 +379,7 @@ export function deriveTrajectoryLayout(input: TrajectoryLayoutInput): readonly T
           previewMarkdown: prompt,
           inputDetail: prompt,
           requestSeq: contribution.requestSeq,
+          sourceRequestSeq: contribution.sourceRequestSeq,
           timeSeconds: null,
           startedAt: contribution.time,
         }
@@ -417,6 +422,8 @@ export function deriveTrajectoryLayout(input: TrajectoryLayoutInput): readonly T
             assistantMetrics: message.assistantMetrics,
             outputBlocks: message.outputBlocks,
             sourceMessage: message,
+            requestSeq: activeRequestOrdinal,
+            sourceRequestSeq: message.requestSeq,
           }
           const cell = message.usage ? usageToCell(base, message.usage) : base
           group.cells.push(cell)

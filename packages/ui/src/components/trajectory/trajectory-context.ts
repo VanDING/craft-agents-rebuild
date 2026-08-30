@@ -23,7 +23,12 @@ export interface TrajectoryContextGroup {
 }
 
 export interface TrajectoryRequestContext {
+  /** Assistant message identity; stable even when provider sequence restarts. */
+  id: string
+  /** Stable 1-based display order in the persisted message stream. */
   requestSeq: number
+  /** Provider/runtime sequence retained for diagnostics. */
+  sourceRequestSeq: number
   promptVersion: number
   /** Exact provider input tokens when recorded; category values remain estimates. */
   inputTokens?: number
@@ -113,17 +118,19 @@ export function deriveRequestContexts(snapshot: TrajectorySnapshot): readonly Tr
   const contexts: TrajectoryRequestContext[] = []
   const accumulated: TrajectoryContextItem[] = []
   const promptVersions = new Map<string, number>()
+  let requestOrdinal = 0
 
   for (const message of snapshot.messages) {
     if (message.role === 'assistant' && message.requestSeq !== undefined) {
-      const prompt = snapshot.prompts.get(message.requestSeq) ?? message.promptSnapshot ?? ''
+      requestOrdinal += 1
+      const prompt = snapshot.prompts.get(requestOrdinal) ?? message.promptSnapshot ?? ''
       let promptVersion = promptVersions.get(prompt)
       if (promptVersion === undefined) {
         promptVersion = promptVersions.size + 1
         promptVersions.set(prompt, promptVersion)
       }
       const systemItem: TrajectoryContextItem = {
-        id: `system:${message.requestSeq}`,
+        id: `system:${message.id}`,
         category: 'system',
         label: `System prompt v${promptVersion}`,
         content: prompt,
@@ -135,7 +142,7 @@ export function deriveRequestContexts(snapshot: TrajectorySnapshot): readonly Tr
         const content = tool.description ?? ''
         const chars = tool.schemaChars + content.length
         return {
-          id: `tool-definition:${message.requestSeq}:${index}`,
+          id: `tool-definition:${message.id}:${index}`,
           category: 'tools',
           label: `${tool.name} · registered tool`,
           content,
@@ -172,7 +179,9 @@ export function deriveRequestContexts(snapshot: TrajectorySnapshot): readonly Tr
         }
       }).filter(group => group.items.length > 0 || group.chars > 0)
       contexts.push({
-        requestSeq: message.requestSeq,
+        id: message.id,
+        requestSeq: requestOrdinal,
+        sourceRequestSeq: message.requestSeq,
         promptVersion,
         inputTokens: message.usage ? message.usage.input + message.usage.cacheRead : undefined,
         groups,
