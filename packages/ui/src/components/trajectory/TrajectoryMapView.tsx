@@ -8,6 +8,7 @@ import styles from './TrajectoryMapView.module.css'
 export interface TrajectoryMapViewProps {
   turns: readonly TrajectoryTurnModel[]
   sessionMap: TrajectorySessionMap
+  onSelectRecord?: (index: number) => void
   onOpenSession?: (sessionId: string) => void
 }
 
@@ -15,6 +16,14 @@ interface ViewportTransform {
   x: number
   y: number
   scale: number
+}
+
+interface TurnSummary {
+  turn: number
+  question: string
+  answer: string
+  toolCount: number
+  recordIndex?: number
 }
 
 const MIN_SCALE = 0.05
@@ -46,7 +55,29 @@ function edgeLabelPoint(edge: TrajectoryMapEdge, nodes: ReadonlyMap<string, Traj
   }
 }
 
-export function TrajectoryMapView({ turns, sessionMap, onOpenSession }: TrajectoryMapViewProps) {
+function compactText(value: string | undefined, fallback: string): string {
+  const text = value?.replace(/\s+/g, ' ').trim() || fallback
+  return text.length > 120 ? `${text.slice(0, 119)}…` : text
+}
+
+function summarizeTurns(turns: readonly TrajectoryTurnModel[]): readonly TurnSummary[] {
+  return turns.flatMap((turn, index) => {
+    if (turn.turn === null) return []
+    const cells = turn.groups.flatMap(group => group.cells)
+    const user = cells.find(cell => cell.kind === 'user')
+    const assistant = [...cells].reverse().find(cell => cell.kind === 'message')
+    const tools = cells.filter(cell => cell.kind === 'tool' || cell.kind === 'subtool')
+    return [{
+      turn: turn.turn ?? index + 1,
+      question: compactText(user?.text, 'Continuation'),
+      answer: compactText(assistant?.text, tools.length > 0 ? 'Tool work' : 'No assistant response'),
+      toolCount: tools.length,
+      recordIndex: user?.index ?? assistant?.index,
+    }]
+  })
+}
+
+export function TrajectoryMapView({ turns, sessionMap, onSelectRecord, onOpenSession }: TrajectoryMapViewProps) {
   const { t } = useTranslation()
   const viewportRef = useRef<HTMLDivElement>(null)
   const fittedRef = useRef(false)
@@ -62,6 +93,12 @@ export function TrajectoryMapView({ turns, sessionMap, onOpenSession }: Trajecto
     [collapsed, sessionMap, turns],
   )
   const nodes = useMemo(() => new Map(layout.nodes.map(node => [node.id, node])), [layout.nodes])
+  const turnSummaries = useMemo(() => summarizeTurns(turns), [turns])
+  const selectedNode = nodes.get(selectedId) ?? nodes.get(`session:${sessionMap.currentSessionId}`)
+
+  useEffect(() => {
+    setSelectedId(`session:${sessionMap.currentSessionId}`)
+  }, [sessionMap.currentSessionId])
 
   const fit = useCallback(() => {
     const viewport = viewportRef.current
@@ -180,102 +217,160 @@ export function TrajectoryMapView({ turns, sessionMap, onOpenSession }: Trajecto
         </div>
       </div>
 
-      <div
-        ref={viewportRef}
-        className={styles.viewport}
-        onWheel={(event) => {
-          event.preventDefault()
-          const rect = event.currentTarget.getBoundingClientRect()
-          const cx = event.clientX - rect.left
-          const cy = event.clientY - rect.top
-          setTransform(previous => {
-            const nextScale = clampScale(previous.scale * (event.deltaY > 0 ? 0.9 : 1.1))
-            const ratio = nextScale / previous.scale
-            return { scale: nextScale, x: cx - (cx - previous.x) * ratio, y: cy - (cy - previous.y) * ratio }
-          })
-        }}
-        onPointerDown={(event) => {
-          if (event.button !== 0 || (event.target as HTMLElement).closest('button')) return
-          event.currentTarget.setPointerCapture(event.pointerId)
-          dragRef.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, originX: transform.x, originY: transform.y }
-          event.currentTarget.dataset.dragging = 'true'
-        }}
-        onPointerMove={(event) => {
-          const drag = dragRef.current
-          if (!drag || drag.pointerId !== event.pointerId) return
-          setTransform(previous => ({ ...previous, x: drag.originX + event.clientX - drag.x, y: drag.originY + event.clientY - drag.y }))
-        }}
-        onPointerUp={endDrag}
-        onPointerCancel={endDrag}
-      >
+      <div className={styles.body}>
         <div
-          className={styles.canvas}
-          data-compact={transform.scale < 0.62 ? 'true' : 'false'}
-          style={{ width: layout.width, height: layout.height, transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})` }}
+          ref={viewportRef}
+          className={styles.viewport}
+          onWheel={(event) => {
+            event.preventDefault()
+            const rect = event.currentTarget.getBoundingClientRect()
+            const cx = event.clientX - rect.left
+            const cy = event.clientY - rect.top
+            setTransform(previous => {
+              const nextScale = clampScale(previous.scale * (event.deltaY > 0 ? 0.9 : 1.1))
+              const ratio = nextScale / previous.scale
+              return { scale: nextScale, x: cx - (cx - previous.x) * ratio, y: cy - (cy - previous.y) * ratio }
+            })
+          }}
+          onPointerDown={(event) => {
+            if (event.button !== 0 || (event.target as HTMLElement).closest('button')) return
+            event.currentTarget.setPointerCapture(event.pointerId)
+            dragRef.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, originX: transform.x, originY: transform.y }
+            event.currentTarget.dataset.dragging = 'true'
+          }}
+          onPointerMove={(event) => {
+            const drag = dragRef.current
+            if (!drag || drag.pointerId !== event.pointerId) return
+            setTransform(previous => ({ ...previous, x: drag.originX + event.clientX - drag.x, y: drag.originY + event.clientY - drag.y }))
+          }}
+          onPointerUp={endDrag}
+          onPointerCancel={endDrag}
         >
-          <svg className={styles.edges} width={layout.width} height={layout.height} aria-hidden="true">
-            {layout.edges.map(edge => {
-              const labelPoint = edge.sourceTurn !== undefined ? edgeLabelPoint(edge, nodes) : null
-              return (
-                <g key={edge.id}>
-                  <path d={edgePath(edge, nodes)} className={styles[`${edge.kind}Edge`]} />
-                  {labelPoint && (
-                    <text x={labelPoint.x} y={labelPoint.y} className={styles.edgeLabel} textAnchor="middle">
-                      {t('trajectory.map.turn', { turn: edge.sourceTurn })}
-                    </text>
-                  )}
-                </g>
-              )
-            })}
-          </svg>
+          <div
+            className={styles.canvas}
+            data-compact={transform.scale < 0.62 ? 'true' : 'false'}
+            style={{ width: layout.width, height: layout.height, transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})` }}
+          >
+            <svg className={styles.edges} width={layout.width} height={layout.height} aria-hidden="true">
+              {layout.edges.map(edge => {
+                const labelPoint = edge.sourceTurn !== undefined ? edgeLabelPoint(edge, nodes) : null
+                return (
+                  <g key={edge.id}>
+                    <path d={edgePath(edge, nodes)} className={styles[`${edge.kind}Edge`]} />
+                    {labelPoint && (
+                      <text x={labelPoint.x} y={labelPoint.y} className={styles.edgeLabel} textAnchor="middle">
+                        {t('trajectory.map.turn', { turn: edge.sourceTurn })}
+                      </text>
+                    )}
+                  </g>
+                )
+              })}
+            </svg>
 
-          {layout.nodes.map(node => (
-            <div
-              key={node.id}
-              className={`${styles.sessionCard} ${styles[node.relation]} ${node.session.id === sessionMap.currentSessionId ? styles.activeSession : ''} ${selectedId === node.id ? styles.selectedSession : ''}`}
-              style={{ left: node.x, top: node.y, width: node.width, height: node.height }}
-            >
-              <button
-                type="button"
-                className={styles.sessionOpen}
-                onClick={() => setSelectedId(node.id)}
-                onDoubleClick={() => node.session.id !== sessionMap.currentSessionId && onOpenSession?.(node.session.id)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' && node.session.id !== sessionMap.currentSessionId) onOpenSession?.(node.session.id)
-                }}
+            {layout.nodes.map(node => (
+              <div
+                key={node.id}
+                className={`${styles.sessionCard} ${node.session.id === sessionMap.currentSessionId ? styles.activeSession : ''} ${selectedId === node.id ? styles.selectedSession : ''}`}
+                data-relation={node.relation}
+                style={{ left: node.x, top: node.y, width: node.width, height: node.height }}
               >
-                <span className={styles.cardEyebrow}>
-                  <GitBranch />{t(`trajectory.map.relation.${node.relation}`)}
-                  {node.branchFromTurn !== undefined && ` · ${t('trajectory.map.turn', { turn: node.branchFromTurn })}`}
-                </span>
-                <strong>{node.session.title}</strong>
-                <span className={styles.sessionPreview}>{node.session.preview || t('trajectory.map.noPreview')}</span>
-                <span className={styles.cardMeta}>
-                  {node.session.isProcessing ? t('trajectory.map.processing') : node.session.status || t('trajectory.map.ready')}
-                  {node.turnCount !== undefined
-                    ? ` · ${t('trajectory.map.turn', { turn: node.turnCount })}`
-                    : node.session.messageCount !== undefined && ` · ${t('trajectory.map.messages', { count: node.session.messageCount })}`}
-                </span>
-              </button>
-              {node.childCount > 0 && (
                 <button
                   type="button"
-                  className={styles.collapse}
-                  aria-label={collapsed.has(node.session.id) ? t('trajectory.map.expand') : t('trajectory.map.collapse')}
-                  onClick={() => setCollapsed(current => {
-                    const next = new Set(current)
-                    if (next.has(node.session.id)) next.delete(node.session.id)
-                    else next.add(node.session.id)
-                    return next
-                  })}
+                  className={styles.sessionOpen}
+                  onClick={() => setSelectedId(node.id)}
+                  onDoubleClick={() => node.session.id !== sessionMap.currentSessionId && onOpenSession?.(node.session.id)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' && node.session.id !== sessionMap.currentSessionId) onOpenSession?.(node.session.id)
+                  }}
                 >
-                  {collapsed.has(node.session.id) ? <ChevronRight /> : <ChevronDown />}
-                  {node.childCount}
+                  <span className={styles.cardEyebrow}>
+                    <GitBranch />{t(`trajectory.map.relation.${node.relation}`)}
+                    {node.branchFromTurn !== undefined && ` · ${t('trajectory.map.turn', { turn: node.branchFromTurn })}`}
+                  </span>
+                  <strong>{node.session.title}</strong>
+                  <span className={styles.sessionPreview}>{node.session.preview || t('trajectory.map.noPreview')}</span>
+                  <span className={styles.cardMeta}>
+                    {node.session.isProcessing ? t('trajectory.map.processing') : node.session.status || t('trajectory.map.ready')}
+                    {node.turnCount !== undefined
+                      ? ` · ${t('trajectory.map.turn', { turn: node.turnCount })}`
+                      : node.session.messageCount !== undefined && ` · ${t('trajectory.map.messages', { count: node.session.messageCount })}`}
+                  </span>
                 </button>
-              )}
-            </div>
-          ))}
+                {node.childCount > 0 && (
+                  <button
+                    type="button"
+                    className={styles.collapse}
+                    aria-label={collapsed.has(node.session.id) ? t('trajectory.map.expand') : t('trajectory.map.collapse')}
+                    onClick={() => setCollapsed(current => {
+                      const next = new Set(current)
+                      if (next.has(node.session.id)) next.delete(node.session.id)
+                      else next.add(node.session.id)
+                      return next
+                    })}
+                  >
+                    {collapsed.has(node.session.id) ? <ChevronRight /> : <ChevronDown />}
+                    {node.childCount}
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
+
+        {selectedNode && (
+          <aside className={styles.inspector} aria-label={selectedNode.session.title}>
+            <div className={styles.inspectorHeader}>
+              <span className={styles.cardEyebrow}>
+                <GitBranch />{t(`trajectory.map.relation.${selectedNode.relation}`)}
+              </span>
+              <h3>{selectedNode.session.title}</h3>
+              <p>{selectedNode.session.preview || t('trajectory.map.noPreview')}</p>
+              <div className={styles.inspectorMeta}>
+                <span>{selectedNode.session.isProcessing ? t('trajectory.map.processing') : selectedNode.session.status || t('trajectory.map.ready')}</span>
+                {selectedNode.turnCount !== undefined && <span>{t('trajectory.map.turn', { turn: selectedNode.turnCount })}</span>}
+                {selectedNode.turnCount === undefined && selectedNode.session.messageCount !== undefined && (
+                  <span>{t('trajectory.map.messages', { count: selectedNode.session.messageCount })}</span>
+                )}
+              </div>
+            </div>
+
+            {selectedNode.session.id === sessionMap.currentSessionId ? (
+              <>
+                <div className={styles.inspectorSectionTitle}>
+                  <strong>{t('trajectory.views.trajectory')}</strong>
+                  <span>{turnSummaries.length}</span>
+                </div>
+                <div className={styles.turnList}>
+                  {turnSummaries.map(summary => (
+                    <button
+                      key={`${summary.turn}:${summary.recordIndex ?? 'empty'}`}
+                      type="button"
+                      className={styles.turnRow}
+                      disabled={summary.recordIndex === undefined || !onSelectRecord}
+                      onClick={() => summary.recordIndex !== undefined && onSelectRecord?.(summary.recordIndex)}
+                      aria-label={t('trajectory.map.turn', { turn: summary.turn })}
+                    >
+                      <span className={styles.turnNumber}>{summary.turn}</span>
+                      <span className={styles.turnCopy}>
+                        <strong>{summary.question}</strong>
+                        <small>{summary.answer}</small>
+                      </span>
+                      {summary.toolCount > 0 && (
+                        <span className={styles.turnTools}>{t('trajectory.map.tools', { count: summary.toolCount })}</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div className={styles.inspectorActions}>
+                <button type="button" onClick={() => onOpenSession?.(selectedNode.session.id)}>
+                  {t('common.open')}
+                </button>
+              </div>
+            )}
+          </aside>
+        )}
       </div>
     </div>
   )

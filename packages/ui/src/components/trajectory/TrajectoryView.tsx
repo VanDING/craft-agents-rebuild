@@ -376,6 +376,10 @@ export function TrajectoryView({ snapshot, sessionTotal, isProcessing, contextSu
           <TrajectoryMapView
             turns={turns}
             sessionMap={sessionMap}
+            onSelectRecord={(index) => {
+              onSelectIndex(index)
+              selectRunView('trajectory')
+            }}
             onOpenSession={onOpenSession}
           />
         )}
