@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'bun:test'
 import type { Message } from '@craft-agent/core/types'
 import { buildTrajectorySnapshot } from '../trajectory-snapshot'
-import { deriveRequestContexts, requestContextDelta } from '../trajectory-context'
+import {
+  bucketRequestContexts,
+  deriveRequestContexts,
+  requestContextDelta,
+  type TrajectoryRequestContext,
+} from '../trajectory-context'
 
 function message(overrides: Partial<Message> & Pick<Message, 'id' | 'role'>): Message {
   return { content: '', timestamp: 1, ...overrides }
@@ -67,5 +72,27 @@ describe('deriveRequestContexts', () => {
     expect(context.provider).toBe('anthropic')
     expect(context.groups.find(group => group.category === 'user')?.chars).toBe(120)
     expect(context.groups.find(group => group.category === 'tools')?.items[0]?.label).toContain('Read')
+  })
+})
+
+describe('bucketRequestContexts', () => {
+  it('bounds long runs while preserving endpoints and context peaks', () => {
+    const contexts: TrajectoryRequestContext[] = Array.from({ length: 420 }, (_, index) => ({
+      id: `request-${index + 1}`,
+      requestSeq: index + 1,
+      sourceRequestSeq: index + 1,
+      promptVersion: 1,
+      groups: [],
+      totalChars: 0,
+      estimatedTokens: index === 211 ? 99_999 : index + 1,
+      captured: false,
+    }))
+
+    const buckets = bucketRequestContexts(contexts, 72)
+
+    expect(buckets).toHaveLength(72)
+    expect(buckets[0]?.startSeq).toBe(1)
+    expect(buckets.at(-1)?.endSeq).toBe(420)
+    expect(buckets.some(bucket => bucket.requestSeq === 212 && bucket.value === 99_999)).toBe(true)
   })
 })

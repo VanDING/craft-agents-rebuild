@@ -4,7 +4,7 @@ import type { TrajectorySnapshot } from './trajectory-contract'
 import type { TrajectoryContextSummary } from './TrajectoryView'
 import { formatDurationMillis, type TrajectoryRenderRecord, type TrajectoryTurnModel } from './trajectory-layout'
 import { recordDisplayText } from './trajectory-search-index'
-import { deriveRequestContexts } from './trajectory-context'
+import { bucketRequestContexts, deriveRequestContexts } from './trajectory-context'
 
 interface TrajectoryOverviewProps {
   snapshot: TrajectorySnapshot
@@ -58,7 +58,9 @@ export function TrajectoryOverview({
     ? Math.max(0, snapshot.timeRange.end - snapshot.timeRange.start)
     : null
   const requestContexts = deriveRequestContexts(snapshot)
-  const maxContextTokens = Math.max(1, ...requestContexts.map(context => context.inputTokens ?? context.estimatedTokens))
+  const contextGrowth = bucketRequestContexts(requestContexts)
+  const contextLabelStride = Math.max(1, Math.ceil(contextGrowth.length / 16))
+  const maxContextTokens = Math.max(1, ...contextGrowth.map(context => context.value))
   const latestUserGoal = [...snapshot.messages].reverse().find(message => message.role === 'user' && message.content.trim())?.content.replace(/\s+/g, ' ').trim()
   const toolNames = [...new Set(toolRecords.map(record => record.cell.sourceMessage?.toolDisplayName ?? record.cell.sourceMessage?.toolName).filter(Boolean))] as string[]
 
@@ -175,20 +177,23 @@ export function TrajectoryOverview({
                 {t('trajectory.overview.openContext')}
               </button>
             </div>
-            <div className="flex h-28 items-end gap-1.5 rounded-xl border border-border/55 bg-background/70 px-3 pb-3 pt-5 shadow-minimal">
-              {requestContexts.map(context => {
-                const value = context.inputTokens ?? context.estimatedTokens
+            <div className="flex h-28 min-w-0 items-end gap-px overflow-hidden rounded-xl border border-border/55 bg-background/70 px-3 pb-3 pt-5 shadow-minimal">
+              {contextGrowth.map((context, index) => {
+                const sequence = context.startSeq === context.endSeq
+                  ? String(context.endSeq)
+                  : `${context.startSeq}–${context.endSeq}`
+                const showLabel = index === 0 || index === contextGrowth.length - 1 || index % contextLabelStride === 0
                 return (
                   <button
                     key={context.id}
                     type="button"
                     onClick={() => onOpenContext(context.requestSeq)}
-                    className="group flex h-full min-w-3 flex-1 flex-col items-center justify-end gap-1 outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    title={t('trajectory.overview.contextRequestTitle', { seq: context.requestSeq, tokens: value })}
+                    className="group relative flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-1 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    title={t('trajectory.overview.contextRequestTitle', { seq: sequence, tokens: context.value })}
                   >
-                    <span className="text-[8px] tabular-nums text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100">{formatTokens(value)}</span>
-                    <span className="w-full max-w-8 rounded-t-sm bg-accent/65 transition-colors group-hover:bg-accent" style={{ height: `${Math.max(4, (value / maxContextTokens) * 70)}%` }} />
-                    <span className="text-[8px] tabular-nums text-muted-foreground">{context.requestSeq}</span>
+                    <span className="pointer-events-none absolute left-1/2 top-0 z-10 -translate-x-1/2 whitespace-nowrap rounded bg-popover px-1 text-[8px] tabular-nums text-popover-foreground opacity-0 shadow-xs transition-opacity group-hover:opacity-100">{formatTokens(context.value)}</span>
+                    <span className="w-full max-w-8 rounded-t-sm bg-accent/65 transition-colors group-hover:bg-accent" style={{ height: `${Math.max(4, (context.value / maxContextTokens) * 70)}%` }} />
+                    <span className="h-3 whitespace-nowrap text-[8px] tabular-nums text-muted-foreground">{showLabel ? context.endSeq : ''}</span>
                   </button>
                 )
               })}

@@ -95,6 +95,7 @@ export function TrajectoryMapView({ turns, sessionMap, onSelectRecord, onOpenSes
   const nodes = useMemo(() => new Map(layout.nodes.map(node => [node.id, node])), [layout.nodes])
   const turnSummaries = useMemo(() => summarizeTurns(turns), [turns])
   const selectedNode = nodes.get(selectedId) ?? nodes.get(`session:${sessionMap.currentSessionId}`)
+  const rendersAtNativeScale = Math.abs(transform.scale - 1) < 0.001
 
   useEffect(() => {
     setSelectedId(`session:${sessionMap.currentSessionId}`)
@@ -249,7 +250,9 @@ export function TrajectoryMapView({ turns, sessionMap, onSelectRecord, onOpenSes
           <div
             className={styles.canvas}
             data-compact={transform.scale < 0.62 ? 'true' : 'false'}
-            style={{ width: layout.width, height: layout.height, transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})` }}
+            style={rendersAtNativeScale
+              ? { width: layout.width, height: layout.height, left: Math.round(transform.x), top: Math.round(transform.y), transform: 'none' }
+              : { width: layout.width, height: layout.height, transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})` }}
           >
             <svg className={styles.edges} width={layout.width} height={layout.height} aria-hidden="true">
               {layout.edges.map(edge => {

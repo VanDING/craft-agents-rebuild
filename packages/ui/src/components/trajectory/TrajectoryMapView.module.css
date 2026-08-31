@@ -80,7 +80,6 @@
   position: absolute;
   inset: 0 auto auto 0;
   transform-origin: 0 0;
-  will-change: transform;
 }
 
 .edges { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
@@ -92,7 +91,7 @@
   stroke: hsl(var(--background));
   stroke-width: 5px;
   paint-order: stroke;
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 650;
   letter-spacing: 0.02em;
 }
@@ -150,7 +149,7 @@
   gap: 5px;
   overflow: hidden;
   color: hsl(var(--muted-foreground));
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 680;
   letter-spacing: 0.045em;
   text-overflow: ellipsis;
@@ -162,7 +161,7 @@
   max-width: 100%;
   overflow: hidden;
   color: hsl(var(--foreground));
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 650;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -172,8 +171,8 @@
   max-width: 100%;
   overflow: hidden;
   color: hsl(var(--muted-foreground));
-  font-size: 10px;
-  line-height: 1.35;
+  font-size: 11px;
+  line-height: 1.4;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
 }
@@ -182,7 +181,7 @@
   margin-top: auto;
   gap: 8px;
   color: hsl(var(--muted-foreground));
-  font-size: 9px;
+  font-size: 10px;
 }
 
 .collapse {
@@ -247,7 +246,7 @@
   border-radius: 999px;
   color: hsl(var(--muted-foreground));
   background: hsl(var(--muted) / 0.28);
-  font-size: 9px;
+  font-size: 10px;
 }
 .inspectorSectionTitle {
   display: flex;
@@ -319,12 +318,12 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.turnCopy strong { color: hsl(var(--foreground)); font-size: 10px; font-weight: 620; }
-.turnCopy small { color: hsl(var(--muted-foreground)); font-size: 9px; }
+.turnCopy strong { color: hsl(var(--foreground)); font-size: 11px; font-weight: 620; }
+.turnCopy small { color: hsl(var(--muted-foreground)); font-size: 10px; }
 .turnTools {
   margin-top: 3px;
   color: hsl(var(--muted-foreground));
-  font-size: 9px;
+  font-size: 10px;
   font-variant-numeric: tabular-nums;
 }
 .inspectorActions { padding: 16px 18px; }

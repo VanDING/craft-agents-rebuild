@@ -40,6 +40,15 @@ export interface TrajectoryRequestContext {
   model?: string
 }
 
+export interface TrajectoryContextGrowthBucket {
+  id: string
+  startSeq: number
+  endSeq: number
+  /** Request represented by the peak value, used for drill-down. */
+  requestSeq: number
+  value: number
+}
+
 const CATEGORY_ORDER: readonly TrajectoryContextCategory[] = [
   'system', 'user', 'assistant', 'tools', 'attachments', 'injected',
 ]
@@ -195,6 +204,37 @@ export function deriveRequestContexts(snapshot: TrajectorySnapshot): readonly Tr
     accumulated.push(...messageItems(message))
   }
   return contexts
+}
+
+/**
+ * Keep long context histories within a bounded chart while retaining peaks.
+ * Buckets are distributed evenly so both ends of the run remain represented.
+ */
+export function bucketRequestContexts(
+  contexts: readonly TrajectoryRequestContext[],
+  maxBuckets = 72,
+): readonly TrajectoryContextGrowthBucket[] {
+  if (contexts.length === 0 || maxBuckets <= 0) return []
+  const bucketCount = Math.min(contexts.length, Math.floor(maxBuckets))
+  return Array.from({ length: bucketCount }, (_, bucketIndex) => {
+    const startIndex = Math.floor((bucketIndex * contexts.length) / bucketCount)
+    const endIndex = Math.floor(((bucketIndex + 1) * contexts.length) / bucketCount)
+    const entries = contexts.slice(startIndex, endIndex)
+    const peak = entries.reduce((selected, context) => {
+      const value = context.inputTokens ?? context.estimatedTokens
+      const selectedValue = selected.inputTokens ?? selected.estimatedTokens
+      return value >= selectedValue ? context : selected
+    })
+    const first = entries[0]!
+    const last = entries[entries.length - 1]!
+    return {
+      id: `${first.id}:${last.id}`,
+      startSeq: first.requestSeq,
+      endSeq: last.requestSeq,
+      requestSeq: peak.requestSeq,
+      value: peak.inputTokens ?? peak.estimatedTokens,
+    }
+  })
 }
 
 export function requestContextDelta(
