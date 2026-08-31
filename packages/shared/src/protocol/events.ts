@@ -14,11 +14,15 @@ import type {
   UnreadSummary,
   UpdateInfo,
   BrowserInstanceInfo,
+  TerminalDataEvent,
+  TerminalExitEvent,
   DeepLinkNavigation,
   TaskGenerateResult,
 } from './dto'
 
 export interface BroadcastEventMap {
+  [RPC_CHANNELS.terminal.DATA]: [event: TerminalDataEvent]
+  [RPC_CHANNELS.terminal.EXIT]: [event: TerminalExitEvent]
   // Session events (workspace-scoped via broadcastToWorkspace)
   [RPC_CHANNELS.sessions.EVENT]: [event: SessionEvent]
   [RPC_CHANNELS.sessions.UNREAD_SUMMARY_CHANGED]: [summary: UnreadSummary]

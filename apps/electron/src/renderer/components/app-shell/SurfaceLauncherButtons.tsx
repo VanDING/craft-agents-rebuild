@@ -19,6 +19,7 @@ import { useAtomValue } from 'jotai'
 import {
   MessageSquare, Columns3, CalendarDays, GitCompareArrows,
   FolderTree, ListFilter, FileText, Globe, Activity,
+  SquareTerminal,
   type LucideIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -63,6 +64,7 @@ export const SURFACE_LAUNCHER_ICONS: Record<SurfaceLauncherKind, LucideIcon> = {
   context: ListFilter,
   preview: FileText,
   trajectory: Activity,
+  terminal: SquareTerminal,
 }
 
 export function SurfaceLauncherButtons({

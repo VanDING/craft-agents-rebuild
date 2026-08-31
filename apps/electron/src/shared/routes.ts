@@ -227,6 +227,7 @@ export const routes = {
 
     /** Review-Diff panel (bound to the active session) */
     diff: () => 'diff' as const,
+    terminal: () => 'terminal' as const,
 
     /** Files tree panel (bound to the active session) */
     files: () => 'files' as const,

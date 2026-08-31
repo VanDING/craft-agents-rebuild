@@ -899,3 +899,24 @@ export interface CalendarEntryInput {
   note?: string
   projectId?: string
 }
+
+export interface TerminalInfo {
+  id: string
+  workspaceId: string
+  cwd: string
+  shell: string
+  running: boolean
+  exitCode?: number
+  output: string
+}
+
+export interface TerminalCreateOptions {
+  workspaceId: string
+  cwd: string
+  cols?: number
+  rows?: number
+}
+
+export interface TerminalDataEvent { id: string; data: string }
+export interface TerminalExitEvent { id: string; exitCode: number; signal?: number }
+export interface TerminalReadResult { terminalId: string; cwd: string; running: boolean; text: string; truncated: boolean }

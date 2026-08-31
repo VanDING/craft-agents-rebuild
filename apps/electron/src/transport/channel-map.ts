@@ -17,6 +17,14 @@ function listener(channel: string) {
 }
 
 export const CHANNEL_MAP = {
+  createTerminal: invoke(RPC_CHANNELS.terminal.CREATE),
+  getTerminalForWorkspace: invoke(RPC_CHANNELS.terminal.GET_FOR_WORKSPACE),
+  writeTerminal: invoke(RPC_CHANNELS.terminal.WRITE),
+  resizeTerminal: invoke(RPC_CHANNELS.terminal.RESIZE),
+  destroyTerminal: invoke(RPC_CHANNELS.terminal.DESTROY),
+  destroyTerminalForWorkspace: invoke(RPC_CHANNELS.terminal.DESTROY_FOR_WORKSPACE),
+  onTerminalData: listener(RPC_CHANNELS.terminal.DATA),
+  onTerminalExit: listener(RPC_CHANNELS.terminal.EXIT),
   // Session management
   getSessions: invoke(RPC_CHANNELS.sessions.GET),
   getUnreadSummary: invoke(RPC_CHANNELS.sessions.GET_UNREAD_SUMMARY),

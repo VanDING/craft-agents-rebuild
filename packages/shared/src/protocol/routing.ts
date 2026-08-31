@@ -15,6 +15,14 @@ import { RPC_CHANNELS } from './channels'
 // ---------------------------------------------------------------------------
 
 export const LOCAL_ONLY_CHANNELS = new Set<string>([
+  RPC_CHANNELS.terminal.CREATE,
+  RPC_CHANNELS.terminal.GET_FOR_WORKSPACE,
+  RPC_CHANNELS.terminal.WRITE,
+  RPC_CHANNELS.terminal.RESIZE,
+  RPC_CHANNELS.terminal.DESTROY,
+  RPC_CHANNELS.terminal.DESTROY_FOR_WORKSPACE,
+  RPC_CHANNELS.terminal.DATA,
+  RPC_CHANNELS.terminal.EXIT,
   // remote — local connectivity management (reaches out to remote server from local app)
   RPC_CHANNELS.remote.TEST_CONNECTION,
 

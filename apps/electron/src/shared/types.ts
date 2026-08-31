@@ -222,9 +222,21 @@ import type {
   DirectoryListingResult,
   RemoteSessionTransferPayload,
   ImportRemoteSessionTransferResult,
+  TerminalInfo,
+  TerminalCreateOptions,
+  TerminalDataEvent,
+  TerminalExitEvent,
 } from '@craft-agent/shared/protocol'
 
 export interface ElectronAPI {
+  createTerminal(options: TerminalCreateOptions): Promise<TerminalInfo>
+  getTerminalForWorkspace(workspaceId: string): Promise<TerminalInfo | null>
+  writeTerminal(id: string, data: string): Promise<void>
+  resizeTerminal(id: string, cols: number, rows: number): Promise<void>
+  destroyTerminal(id: string): Promise<void>
+  destroyTerminalForWorkspace(workspaceId: string): Promise<void>
+  onTerminalData(callback: (event: TerminalDataEvent) => void): () => void
+  onTerminalExit(callback: (event: TerminalExitEvent) => void): () => void
   // Session management
   getSessions(): Promise<Session[]>
   getUnreadSummary(): Promise<UnreadSummary>
@@ -996,7 +1008,7 @@ export interface ProjectsNavigationState {
  * session and carry no session id in their route — the route is a single
  * segment constant (`diff`/`files`/`context`/`preview`).
  */
-export type BoundPanelType = 'diff' | 'files' | 'context' | 'preview' | 'trajectory' | 'artifact'
+export type BoundPanelType = 'diff' | 'files' | 'context' | 'preview' | 'trajectory' | 'terminal' | 'artifact'
 
 /**
  * Content-workbench panel navigation state.

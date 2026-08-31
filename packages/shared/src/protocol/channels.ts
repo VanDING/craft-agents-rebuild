@@ -140,6 +140,16 @@ export const RPC_CHANNELS = {
     HOME_DIR: 'system:homeDir',
     IS_DEBUG_MODE: 'system:isDebugMode',
   },
+  terminal: {
+    CREATE: 'terminal:create',
+    GET_FOR_WORKSPACE: 'terminal:getForWorkspace',
+    WRITE: 'terminal:write',
+    RESIZE: 'terminal:resize',
+    DESTROY: 'terminal:destroy',
+    DESTROY_FOR_WORKSPACE: 'terminal:destroyForWorkspace',
+    DATA: 'terminal:data',
+    EXIT: 'terminal:exit',
+  },
   update: {
     CHECK: 'update:check',
     GET_INFO: 'update:getInfo',

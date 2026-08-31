@@ -1281,6 +1281,7 @@ export class SessionManager implements ISessionManager {
   }
 
   private browserPaneManager: IBrowserPaneManager | null = null
+  private terminalReader: ((workspaceId: string, maxChars?: number) => import('@craft-agent/shared/protocol').TerminalReadResult | null) | null = null
   private rpcServer: RpcServer | null = null
   private remoteBpms = new Map<string, RemoteBrowserPaneManager>()
   /** Pinned desktop client per session for `client:browser:invoke` routing. */
@@ -1294,6 +1295,10 @@ export class SessionManager implements ISessionManager {
   setBrowserPaneManager(bpm: IBrowserPaneManager): void {
     this.browserPaneManager = bpm
     bpm.setSessionPathResolver((sessionId) => this.getSessionPath(sessionId))
+  }
+
+  setTerminalReader(reader: (workspaceId: string, maxChars?: number) => import('@craft-agent/shared/protocol').TerminalReadResult | null): void {
+    this.terminalReader = reader
   }
 
   /**
@@ -4765,6 +4770,7 @@ export class SessionManager implements ISessionManager {
 
       // Wire up session self-management and Artifact tools.
       mergeSessionScopedToolCallbacks(managed.id, {
+        terminalReadFn: (maxChars?: number) => this.terminalReader?.(managed.workspace.id, maxChars) ?? null,
         artifactStatusFn: async (artifactId?: string) => {
           if (artifactId) {
             const resolved = assertOwnedArtifact(artifactId)

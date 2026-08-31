@@ -26,10 +26,11 @@ import { ContextPanel } from './ContextPanel'
 import { PreviewPanel } from './PreviewPanel'
 import { TrajectoryPanel } from './TrajectoryPanel'
 import { ArtifactWorkbench } from './ArtifactWorkbench'
+import { TerminalPanel } from './TerminalPanel'
 
 /** True for panel types that are rendered by this dispatcher (bound panels). */
 export function isBoundPanelType(panelType: SurfaceRenderEntry['panelType']): boolean {
-  return panelType === 'diff' || panelType === 'files' || panelType === 'context' || panelType === 'preview' || panelType === 'trajectory' || panelType === 'artifact'
+  return panelType === 'diff' || panelType === 'files' || panelType === 'context' || panelType === 'preview' || panelType === 'trajectory' || panelType === 'terminal' || panelType === 'artifact'
 }
 
 export function BoundPanelContent({ entry }: { entry: SurfaceRenderEntry }) {
@@ -53,6 +54,8 @@ export function BoundPanelContent({ entry }: { entry: SurfaceRenderEntry }) {
       return <PreviewPanel sessionId={entry.sessionId} />
     case 'trajectory':
       return <TrajectoryPanel sessionId={entry.sessionId} />
+    case 'terminal':
+      return <TerminalPanel />
     case 'artifact':
       return navState.artifactId
         ? <ArtifactWorkbench artifactId={navState.artifactId} />

@@ -391,6 +391,7 @@
   "contentPanel.button.preview": "预览",
   "contentPanel.button.review": "审查",
   "contentPanel.button.sessions": "会话",
+  "contentPanel.button.terminal": "终端",
   "contentPanel.button.trajectory": "运行",
   "contentPanel.collapse": "收起工作台",
   "contentPanel.context.attachmentsEmpty": "无附件",

@@ -24,6 +24,7 @@ export type SurfaceLauncherKind =
   | 'context'
   | 'preview'
   | 'trajectory'
+  | 'terminal'
 
 export const SURFACE_LAUNCHER_KINDS: readonly SurfaceLauncherKind[] = [
   'sessions',
@@ -32,6 +33,7 @@ export const SURFACE_LAUNCHER_KINDS: readonly SurfaceLauncherKind[] = [
   'diff',
   'files',
   'trajectory',
+  'terminal',
 ] as const
 
 export const PRIMARY_SURFACE_LAUNCHER_KINDS = ['sessions', 'kanban', 'calendar'] as const
@@ -42,6 +44,7 @@ export const CONTEXT_WORKBENCH_LAUNCHER_KINDS = [
   'diff',
   'files',
   'trajectory',
+  'terminal',
 ] as const
 export type ContextWorkbenchLauncherKind = (typeof CONTEXT_WORKBENCH_LAUNCHER_KINDS)[number]
 
@@ -60,6 +63,7 @@ export const SURFACE_LAUNCHER_ROUTES: Record<SurfaceLauncherKind, ViewRoute> = {
   context: 'context',
   preview: 'preview',
   trajectory: 'trajectory',
+  terminal: 'terminal',
 }
 
 /**

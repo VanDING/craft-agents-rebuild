@@ -50,6 +50,7 @@ export interface SessionScopedToolCallbacks {
    * with the session's bound browser instance.
    */
   browserPaneFns?: BrowserPaneFns;
+  terminalReadFn?: (maxChars?: number) => import('@craft-agent/shared/protocol').TerminalReadResult | null;
 
   /** Set labels on a session (defaults to current). */
   setSessionLabelsFn?: (sessionId: string | undefined, labels: string[]) => void | Promise<void>;

@@ -19,6 +19,20 @@ const path = require('path');
 const fs = require('fs');
 
 module.exports = async function afterPack(context) {
+  if (context.electronPlatformName !== 'win32') {
+    const prebuilds = path.join(
+      context.appOutDir,
+      ...(context.electronPlatformName === 'darwin' ? ['Craft Agents.app', 'Contents', 'Resources'] : ['resources']),
+      'app', 'node_modules', 'node-pty', 'prebuilds',
+    );
+    if (fs.existsSync(prebuilds)) {
+      for (const entry of fs.readdirSync(prebuilds, { withFileTypes: true })) {
+        const helper = path.join(prebuilds, entry.name, 'spawn-helper');
+        if (entry.isDirectory() && fs.existsSync(helper)) fs.chmodSync(helper, 0o755);
+      }
+    }
+  }
+
   // Only process macOS builds
   if (context.electronPlatformName !== 'darwin') {
     console.log('Skipping Liquid Glass icon (not macOS)');

@@ -266,6 +266,7 @@ async function buildWhatsAppWorker(): Promise<void> {
       "--target=node20",
       `--outfile=${WA_WORKER_OUTPUT}`,
       "--external:electron",
+      "--external:node-pty",
       // Baileys' runtime-optional features — wrapped in try/catch at the
       // call site and not used by Craft Agent (we send text + documents, no
       // link previews, no inline image processing, no terminal QR).

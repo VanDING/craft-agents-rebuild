@@ -111,6 +111,7 @@ import { initializeBackendHostRuntime } from '@craft-agent/shared/agent/backend'
 import { setPowerShellValidatorRoot } from '@craft-agent/shared/agent'
 import { handleDeepLink } from './deep-link'
 import { BrowserPaneManager } from './browser-pane-manager'
+import { TerminalManager } from './terminal-manager'
 import { OAuthFlowStore } from '@craft-agent/shared/auth'
 import { registerThumbnailScheme, registerThumbnailHandler } from './thumbnail-protocol'
 import log, { isDebugMode, mainLog, getLogFilePath, getMessagingGatewayLogFilePath, messagingGatewayLog, autoUpdateLog } from './logger'
@@ -213,6 +214,7 @@ const DEEPLINK_SCHEME = process.env.CRAFT_DEEPLINK_SCHEME || 'craftagents'
 let windowManager: WindowManager | null = null
 let sessionManager: SessionManager | null = null
 let browserPaneManager: BrowserPaneManager | null = null
+let terminalManager: TerminalManager | null = null
 let oauthFlowStore: OAuthFlowStore | null = null
 let moduleSink: EventSink | null = null
 let moduleClientResolver: ((webContentsId: number) => string | undefined) | null = null
@@ -515,6 +517,7 @@ app.whenReady().then(async () => {
     browserPaneManager.setWindowManager(windowManager)
     browserPaneManager.registerToolbarIpc()
     browserPaneManager.registerCapabilityIpc()
+    terminalManager = new TerminalManager()
 
     // Build real PlatformServices from Electron APIs
     const platform: PlatformServices = createElectronPlatform({
@@ -710,6 +713,7 @@ app.whenReady().then(async () => {
         createSessionManager: () => {
           const sm = new SessionManager()
           sm.setBrowserPaneManager(browserPaneManager!)
+          sm.setTerminalReader((workspaceId, maxChars) => terminalManager?.readForWorkspace(workspaceId, maxChars) ?? null)
           return sm
         },
         bindRpcServer: (sm, server) => sm.setRpcServer(server),
@@ -746,6 +750,7 @@ app.whenReady().then(async () => {
             platform: p,
             windowManager: windowManager ?? undefined,
             browserPaneManager: browserPaneManager ?? undefined,
+            terminalManager: terminalManager!,
             oauthFlowStore: ofs,
             messagingRegistry: messagingHandle.registry,
           }
@@ -1350,6 +1355,7 @@ async function performQuitCleanup(): Promise<void> {
   if (browserPaneManager) {
     browserPaneManager.destroyAll()
   }
+  terminalManager?.destroyAll()
 
   // Clean up OAuth flow store (stop periodic cleanup timer)
   if (oauthFlowStore) {

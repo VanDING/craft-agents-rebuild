@@ -391,6 +391,7 @@
   "contentPanel.button.preview": "Előnézet",
   "contentPanel.button.review": "Áttekintés",
   "contentPanel.button.sessions": "Munkamenetek",
+  "contentPanel.button.terminal": "Terminál",
   "contentPanel.button.trajectory": "Futtatás",
   "contentPanel.collapse": "Munkaterület összecsukása",
   "contentPanel.context.attachmentsEmpty": "Nincs melléklet",

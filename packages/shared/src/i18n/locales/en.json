@@ -391,6 +391,7 @@
   "contentPanel.button.preview": "Preview",
   "contentPanel.button.review": "Review",
   "contentPanel.button.sessions": "Sessions",
+  "contentPanel.button.terminal": "Terminal",
   "contentPanel.button.trajectory": "Run",
   "contentPanel.collapse": "Collapse workbench",
   "contentPanel.context.attachmentsEmpty": "No attachments",

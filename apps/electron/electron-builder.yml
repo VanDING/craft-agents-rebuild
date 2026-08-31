@@ -60,6 +60,10 @@ files:
 
 
 extraResources:
+  # Native PTY runtime for the local integrated terminal. Hoisted to the
+  # workspace root by bun, so the source is repo-root-relative.
+  - from: ../../node_modules/node-pty
+    to: app/node_modules/node-pty
   # Pi agent server subprocess (Pi SDK sessions)
   - from: dist/resources/pi-agent-server
     to: pi-agent-server

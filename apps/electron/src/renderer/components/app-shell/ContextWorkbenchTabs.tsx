@@ -18,6 +18,7 @@ import { activeSessionIdAtom } from '@/atoms/active-session'
 import { sessionMetaMapAtom } from '@/atoms/sessions'
 import { SURFACE_LAUNCHER_ICONS } from './SurfaceLauncherButtons'
 import { surfaceLauncherLabelKey } from '@/lib/surface-launchers'
+import { useAppShellContext } from '@/context/AppShellContext'
 
 interface ContextWorkbenchTabsProps {
   state: WorkbenchState
@@ -41,6 +42,7 @@ export function ContextWorkbenchTabs({ state }: ContextWorkbenchTabsProps) {
   const activeSessionId = useAtomValue(activeSessionIdAtom)
   const sessionMetaMap = useAtomValue(sessionMetaMapAtom)
   const reduceMotion = useReducedMotion()
+  const { activeWorkspaceId } = useAppShellContext()
   const activeItem = state.items.find((item) => item.id === state.activeItemId) ?? null
   const boundSessionId = activeItem?.binding.type === 'session'
     ? activeItem.binding.sessionId
@@ -73,6 +75,8 @@ export function ContextWorkbenchTabs({ state }: ContextWorkbenchTabsProps) {
   }
 
   const handleClose = (itemId: string, index: number) => {
+    const closingItem = state.items[index]
+    if (closingItem?.kind === 'terminal' && activeWorkspaceId) void window.electronAPI.destroyTerminalForWorkspace(activeWorkspaceId)
     const focusTarget = itemId === state.activeItemId
       ? state.items[index + 1] ?? state.items[index - 1]
       : state.items.find((item) => item.id === state.activeItemId)
@@ -144,7 +148,7 @@ export function ContextWorkbenchTabs({ state }: ContextWorkbenchTabsProps) {
       </div>
       </LayoutGroup>
 
-      {activeSessionName && activeItem?.kind !== 'artifact' && (
+      {activeSessionName && activeItem?.kind !== 'artifact' && activeItem?.kind !== 'terminal' && (
         <span
           className="@max-[700px]/panel:hidden flex min-w-0 max-w-44 shrink items-center gap-1 rounded-full border border-border/50 bg-foreground/[0.025] px-2 py-0.5 text-[11px] text-muted-foreground"
           title={activeSessionName}
@@ -154,7 +158,7 @@ export function ContextWorkbenchTabs({ state }: ContextWorkbenchTabsProps) {
         </span>
       )}
 
-      {activeItem && activeItem.kind !== 'artifact' && activeSessionId && (
+      {activeItem && activeItem.kind !== 'artifact' && activeItem.kind !== 'terminal' && activeSessionId && (
         <Tooltip>
           <TooltipTrigger asChild>
             <button

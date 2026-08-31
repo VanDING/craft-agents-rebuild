@@ -172,6 +172,10 @@ export const BrowserToolSchema = z.object({
   ]).describe('Browser command as a string (e.g., "click @e1") or array (e.g., ["evaluate", "var x = 1; x + 2"]). Array mode preserves semicolons and whitespace in arguments.'),
 });
 
+export const TerminalReadSchema = z.object({
+  maxChars: z.number().int().min(1000).max(100000).optional().describe('Maximum recent plain-text characters to return (default 20000)'),
+});
+
 export const SpawnSessionSchema = z.object({
   help: z.boolean().optional().describe('If true, returns available connections, models, and sources instead of creating a session'),
   prompt: z.string().optional().describe('Instructions for the new session (required when not in help mode)'),
@@ -526,6 +530,10 @@ Examples:
 - \`close\` — close and destroy the browser window
 - \`hide\` — hide the window while preserving state`,
 
+  terminal_read: `Read a bounded recent plain-text snapshot from the user-owned integrated terminal for this workspace.
+
+This is strictly read-only: it cannot create a terminal, type commands, send input, resize, or interrupt processes. Use it only when terminal output is relevant to the user's request. It is available only in the local desktop app after the user has opened a terminal.`,
+
   call_llm: `Invoke a secondary LLM for focused subtasks. Use for:
 - Cost optimization: use a smaller model for simple tasks (summarization, classification)
 - Structured output: JSON schema compliance via prompt instructions
@@ -705,6 +713,7 @@ export const SESSION_TOOL_DEFS: SessionToolDef[] = [
   // Browser tool (backend-specific — requires BrowserPaneManager in Electron)
   // Single CLI-like tool that handles all browser actions via command string.
   { name: 'browser_tool', description: TOOL_DESCRIPTIONS.browser_tool, inputSchema: BrowserToolSchema, executionMode: 'backend', safeMode: 'allow', handler: null },
+  { name: 'terminal_read', description: TOOL_DESCRIPTIONS.terminal_read, inputSchema: TerminalReadSchema, executionMode: 'backend', safeMode: 'allow', readOnly: true, handler: null },
   // Session self-management tools (registry — use context callbacks to reach SessionManager)
   { name: 'set_session_labels', description: TOOL_DESCRIPTIONS.set_session_labels, inputSchema: SetSessionLabelsSchema, executionMode: 'registry', safeMode: 'block', handler: handleSetSessionLabels },
   { name: 'set_session_status', description: TOOL_DESCRIPTIONS.set_session_status, inputSchema: SetSessionStatusSchema, executionMode: 'registry', safeMode: 'block', handler: handleSetSessionStatus },

@@ -391,6 +391,7 @@
   "contentPanel.button.preview": "Vista previa",
   "contentPanel.button.review": "Revisión",
   "contentPanel.button.sessions": "Sesiones",
+  "contentPanel.button.terminal": "Terminal",
   "contentPanel.button.trajectory": "Ejecución",
   "contentPanel.collapse": "Contraer el área de trabajo",
   "contentPanel.context.attachmentsEmpty": "Sin archivos adjuntos",

@@ -145,6 +145,7 @@ export const PI_BACKEND_SESSION_TOOL_NAMES = new Set<string>([
   'call_llm',
   'spawn_session',
   'browser_tool',
+  'terminal_read',
 ]);
 
 /**
@@ -1762,6 +1763,14 @@ export class PiAgent extends BaseAgent {
           const friendly = mapBrowserToolErrorCode(code) ?? msg;
           return { content: friendly, isError: true };
         }
+      }
+
+      if (toolName === 'terminal_read') {
+        const read = getSessionScopedToolCallbacks(this._sessionId)?.terminalReadFn;
+        if (!read) return { content: 'Integrated terminal reading is unavailable outside the local desktop app.', isError: true };
+        const result = read(typeof args.maxChars === 'number' ? args.maxChars : undefined);
+        if (!result) return { content: 'No integrated terminal has been opened for this workspace.', isError: true };
+        return { content: JSON.stringify(result, null, 2), isError: false };
       }
 
       const def = SESSION_TOOL_REGISTRY.get(toolName);

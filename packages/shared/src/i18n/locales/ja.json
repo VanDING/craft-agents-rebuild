@@ -391,6 +391,7 @@
   "contentPanel.button.preview": "プレビュー",
   "contentPanel.button.review": "レビュー",
   "contentPanel.button.sessions": "セッション",
+  "contentPanel.button.terminal": "ターミナル",
   "contentPanel.button.trajectory": "実行",
   "contentPanel.collapse": "ワークベンチを折りたたむ",
   "contentPanel.context.attachmentsEmpty": "添付ファイルなし",

@@ -151,7 +151,7 @@ export function createWorkbenchItem(route: ViewRoute, id?: string): WorkbenchIte
     id: id ?? generateWorkbenchItemId(),
     route: canonicalRoute,
     kind: classification.kind,
-    binding: { type: 'follow-primary' },
+    binding: classification.kind === 'terminal' ? { type: 'workspace' } : { type: 'follow-primary' },
   }
 }
 
