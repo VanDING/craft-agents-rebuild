@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'bun:test'
-import { parseWeComCredentials, WeComAdapter } from '../adapters/wecom/index'
+import {
+  normalizeWeComInboundText,
+  parseWeComCredentials,
+  WeComAdapter,
+} from '../adapters/wecom/index'
+import { parseCommand } from '../commands'
 
 describe('parseWeComCredentials', () => {
   it('parses and trims valid credentials', () => {
@@ -84,5 +89,45 @@ describe('WeComAdapter static contract', () => {
     await adapter.clearButtons?.('group-1', result.messageId)
     expect(updated).toHaveLength(1)
     expect(updated[0]!.task_id).toBe(result.messageId)
+  })
+
+  it('strips the leading bot mention from group text before command parsing', async () => {
+    const adapter = new WeComAdapter()
+    const received: Array<{ channelId: string; senderId: string; text: string }> = []
+    adapter.onMessage(async (message) => {
+      received.push({
+        channelId: message.channelId,
+        senderId: message.senderId,
+        text: message.text,
+      })
+    })
+
+    const internals = adapter as unknown as {
+      handleFrame(frame: unknown): Promise<void>
+    }
+    await internals.handleFrame({
+      headers: { req_id: 'group-command-1' },
+      body: {
+        msgid: 'group-command-1',
+        aibotid: 'bot',
+        msgtype: 'text',
+        chattype: 'group',
+        chatid: 'group-1',
+        from: { userid: 'user-1' },
+        text: { content: '@西西扶柿 /pair 507108' },
+      },
+    })
+
+    expect(received).toEqual([{
+      channelId: 'group-1',
+      senderId: 'user-1',
+      text: '/pair 507108',
+    }])
+    expect(parseCommand(received[0]!.text)).toEqual({ cmd: '/pair', args: '507108' })
+  })
+
+  it('normalizes group conversation text but leaves direct-message text intact', () => {
+    expect(normalizeWeComInboundText('@西西扶柿 帮我分析这个问题', 'group')).toBe('帮我分析这个问题')
+    expect(normalizeWeComInboundText('@Alice hello', 'single')).toBe('@Alice hello')
   })
 })

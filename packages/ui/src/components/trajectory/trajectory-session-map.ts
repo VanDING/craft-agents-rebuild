@@ -18,39 +18,28 @@ export interface TrajectorySessionMap {
   sessions: readonly TrajectoryMapSession[]
 }
 
-export type TrajectoryMapNode =
-  | {
-      id: string
-      type: 'turn'
-      x: number
-      y: number
-      width: number
-      height: number
-      turn: number
-      question: string
-      answer: string
-      toolCount: number
-      errorCount: number
-      recordIndex?: number
-      messageId?: string
-    }
-  | {
-      id: string
-      type: 'session'
-      x: number
-      y: number
-      width: number
-      height: number
-      session: TrajectoryMapSession
-      relation: 'current' | 'branch' | 'subtask' | 'related'
-      childCount: number
-    }
+export interface TrajectoryMapNode {
+  id: string
+  type: 'session'
+  x: number
+  y: number
+  width: number
+  height: number
+  session: TrajectoryMapSession
+  relation: 'current' | 'branch' | 'subtask' | 'related'
+  childCount: number
+  /** Loaded turn count is available for the active session only. */
+  turnCount?: number
+  /** Exact turn that produced this branch, when the source session is active. */
+  branchFromTurn?: number
+}
 
 export interface TrajectoryMapEdge {
   id: string
   from: string
   to: string
-  kind: 'continuation' | 'branch' | 'subtask'
+  kind: 'branch' | 'subtask'
+  sourceTurn?: number
 }
 
 export interface TrajectoryMapLayout {
@@ -60,17 +49,11 @@ export interface TrajectoryMapLayout {
   height: number
 }
 
-const NODE_WIDTH = 260
-const TURN_HEIGHT = 132
-const SESSION_HEIGHT = 112
-const X_GAP = 40
-const Y_GAP = 76
-
-function compactText(value: string | undefined, fallback = ''): string {
-  const compact = value?.replace(/\s+/g, ' ').trim() ?? ''
-  if (compact.length <= 150) return compact || fallback
-  return `${compact.slice(0, 149)}…`
-}
+const NODE_WIDTH = 264
+const NODE_HEIGHT = 116
+const X_GAP = 84
+const Y_GAP = 30
+const CANVAS_PAD = 48
 
 function sessionParentId(session: TrajectoryMapSession): string | undefined {
   return session.branchFromSessionId ?? session.parentSessionId
@@ -109,29 +92,33 @@ export function selectTrajectorySessionFamily(
   return sessions.filter(session => selected.has(session.id))
 }
 
-function turnNode(turn: TrajectoryTurnModel, ordinal: number): TrajectoryMapNode {
-  const cells = turn.groups.flatMap(group => group.cells)
-  const user = cells.find(cell => cell.kind === 'user')
-  const assistant = [...cells].reverse().find(cell => cell.kind === 'message')
-  const tools = cells.filter(cell => cell.kind === 'tool' || cell.kind === 'subtool')
-  return {
-    id: `turn:${turn.turn ?? ordinal + 1}`,
-    type: 'turn',
-    x: NODE_WIDTH + X_GAP + ordinal * (NODE_WIDTH + X_GAP),
-    y: 36,
-    width: NODE_WIDTH,
-    height: TURN_HEIGHT,
-    turn: turn.turn ?? ordinal + 1,
-    question: compactText(user?.text, 'Continuation'),
-    answer: compactText(assistant?.text, tools.length > 0 ? 'Tool work' : 'No assistant response'),
-    toolCount: tools.length,
-    errorCount: tools.filter(cell => cell.isError).length,
-    recordIndex: user?.index ?? assistant?.index,
-    messageId: user?.sourceSeq ?? assistant?.sourceSeq,
-  }
+function relationOf(session: TrajectoryMapSession, currentSessionId: string): TrajectoryMapNode['relation'] {
+  if (session.id === currentSessionId) return 'current'
+  if (session.branchFromSessionId) return 'branch'
+  if (session.parentSessionId) return 'subtask'
+  return 'related'
 }
 
-/** Deterministic, read-only projection of turns and related sessions onto a canvas. */
+function turnByMessageId(turns: readonly TrajectoryTurnModel[]): ReadonlyMap<string, number> {
+  const result = new Map<string, number>()
+  for (let index = 0; index < turns.length; index += 1) {
+    const turn = turns[index]
+    if (!turn || turn.turn === null) continue
+    const ordinal = turn.turn ?? index + 1
+    for (const cell of turn.groups.flatMap(group => group.cells)) {
+      if (cell.sourceSeq) result.set(cell.sourceSeq, ordinal)
+      if (cell.sourceMessage?.id) result.set(cell.sourceMessage.id, ordinal)
+    }
+  }
+  return result
+}
+
+/**
+ * Deterministic, read-only projection of the active session family.
+ *
+ * Turns remain internal to their session. Only real sessions become canvas
+ * nodes; a turn appears solely as metadata on the branch it produced.
+ */
 export function buildTrajectorySessionMapLayout(
   turns: readonly TrajectoryTurnModel[],
   input: TrajectorySessionMap,
@@ -140,7 +127,7 @@ export function buildTrajectorySessionMapLayout(
   const sessions = selectTrajectorySessionFamily(input.currentSessionId, input.sessions)
   const byId = new Map(sessions.map(session => [session.id, session]))
   const current = byId.get(input.currentSessionId)
-  if (!current) return { nodes: [], edges: [], width: 720, height: 420 }
+  if (!current) return { nodes: [], edges: [], width: 360, height: 240 }
 
   const children = new Map<string, TrajectoryMapSession[]>()
   for (const session of sessions) {
@@ -154,145 +141,91 @@ export function buildTrajectorySessionMapLayout(
     list.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0) || a.id.localeCompare(b.id))
   }
 
+  let root = current
+  const lineage = new Set<string>([root.id])
+  let parentId = sessionParentId(root)
+  while (parentId && byId.has(parentId) && !lineage.has(parentId)) {
+    root = byId.get(parentId)!
+    lineage.add(root.id)
+    parentId = sessionParentId(root)
+  }
+
   const visible = new Set<string>()
-  const addVisible = (id: string) => {
-    if (visible.has(id)) return
+  const visit = (id: string, path: ReadonlySet<string>) => {
+    if (visible.has(id) || path.has(id)) return
     visible.add(id)
     if (collapsedSessionIds.has(id)) return
-    for (const child of children.get(id) ?? []) addVisible(child.id)
+    const nextPath = new Set(path)
+    nextPath.add(id)
+    for (const child of children.get(id) ?? []) visit(child.id, nextPath)
   }
-  let familyRoot = current
-  let rootParent = sessionParentId(familyRoot)
-  const rootPath = new Set<string>([current.id])
-  while (rootParent && byId.has(rootParent) && !rootPath.has(rootParent)) {
-    rootPath.add(rootParent)
-    familyRoot = byId.get(rootParent)!
-    rootParent = sessionParentId(familyRoot)
-  }
-  addVisible(familyRoot.id)
+  visit(root.id, new Set())
 
+  const subtreeHeight = new Map<string, number>()
+  const measure = (id: string, path: ReadonlySet<string>): number => {
+    const cached = subtreeHeight.get(id)
+    if (cached !== undefined) return cached
+    if (path.has(id)) return NODE_HEIGHT
+    const nextPath = new Set(path)
+    nextPath.add(id)
+    const visibleChildren = (children.get(id) ?? []).filter(child => visible.has(child.id))
+    const childrenHeight = visibleChildren.reduce(
+      (total, child, index) => total + measure(child.id, nextPath) + (index > 0 ? Y_GAP : 0),
+      0,
+    )
+    const height = Math.max(NODE_HEIGHT, childrenHeight)
+    subtreeHeight.set(id, height)
+    return height
+  }
+  measure(root.id, new Set())
+
+  const messageTurns = turnByMessageId(turns)
+  const currentTurnCount = turns.filter(turn => turn.turn !== null).length
   const nodes: TrajectoryMapNode[] = []
   const edges: TrajectoryMapEdge[] = []
-  const currentNode: TrajectoryMapNode = {
-    id: `session:${current.id}`,
-    type: 'session',
-    x: 0,
-    y: 46,
-    width: NODE_WIDTH,
-    height: SESSION_HEIGHT,
-    session: current,
-    relation: 'current',
-    childCount: children.get(current.id)?.length ?? 0,
-  }
-  nodes.push(currentNode)
 
-  const visibleTurns = turns.filter(turn => turn.turn !== null)
-  const turnNodes = visibleTurns.map(turnNode)
-  nodes.push(...turnNodes)
-  const firstTurn = turnNodes[0]
-  if (firstTurn) {
-    edges.push({ id: `session:${current.id}->${firstTurn.id}`, from: currentNode.id, to: firstTurn.id, kind: 'continuation' })
-    for (let index = 1; index < turnNodes.length; index += 1) {
-      const previous = turnNodes[index - 1]
-      const next = turnNodes[index]
-      if (previous && next) edges.push({ id: `${previous.id}->${next.id}`, from: previous.id, to: next.id, kind: 'continuation' })
-    }
-  }
-
-  const messageTurn = new Map<string, TrajectoryMapNode>()
-  for (let index = 0; index < visibleTurns.length; index += 1) {
-    const node = turnNodes[index]
-    const turn = visibleTurns[index]
-    if (!node || !turn) continue
-    for (const cell of turn.groups.flatMap(group => group.cells)) {
-      if (cell.sourceSeq) messageTurn.set(cell.sourceSeq, node)
-      if (cell.sourceMessage?.id) messageTurn.set(cell.sourceMessage.id, node)
-    }
-  }
-
-  let ancestorDepth = 0
-  let parentId = sessionParentId(current)
-  let childId = current.id
-  const lineageIds = new Set<string>([current.id])
-  while (parentId && byId.has(parentId) && !lineageIds.has(parentId)) {
-    const session = byId.get(parentId)!
-    lineageIds.add(session.id)
-    ancestorDepth += 1
-    const node: TrajectoryMapNode = {
-      id: `session:${session.id}`,
-      type: 'session',
-      x: -ancestorDepth * (NODE_WIDTH + X_GAP),
-      y: 46,
-      width: NODE_WIDTH,
-      height: SESSION_HEIGHT,
-      session,
-      relation: session.branchFromSessionId ? 'branch' : 'subtask',
-      childCount: 0,
-    }
-    nodes.push(node)
-    const child = byId.get(childId)!
-    edges.push({
-      id: `${node.id}->session:${childId}`,
-      from: node.id,
-      to: `session:${childId}`,
-      kind: child.branchFromSessionId ? 'branch' : 'subtask',
-    })
-    childId = session.id
-    parentId = sessionParentId(session)
-  }
-
-  const sideSessions = sessions
-    .filter(session => visible.has(session.id) && !lineageIds.has(session.id))
-    .map(session => {
-      let depth = 1
-      let sourceId = sessionParentId(session)
-      const path = new Set<string>([session.id])
-      while (sourceId && !lineageIds.has(sourceId) && byId.has(sourceId) && !path.has(sourceId)) {
-        path.add(sourceId)
-        depth += 1
-        sourceId = sessionParentId(byId.get(sourceId)!)
-      }
-      return { session, depth }
-    })
-    .sort((a, b) => a.depth - b.depth || (a.session.createdAt ?? 0) - (b.session.createdAt ?? 0) || a.session.id.localeCompare(b.session.id))
-  const depthCounts = new Map<number, number>()
-  for (const { session, depth } of sideSessions) {
-    const sibling = depthCounts.get(depth) ?? 0
-    depthCounts.set(depth, sibling + 1)
-    const branchAnchor = session.branchFromSessionId === current.id && session.branchFromMessageId
-      ? messageTurn.get(session.branchFromMessageId)
+  const place = (session: TrajectoryMapSession, depth: number, top: number, path: ReadonlySet<string>) => {
+    if (path.has(session.id)) return
+    const nextPath = new Set(path)
+    nextPath.add(session.id)
+    const blockHeight = subtreeHeight.get(session.id) ?? NODE_HEIGHT
+    const branchFromTurn = session.branchFromSessionId === input.currentSessionId && session.branchFromMessageId
+      ? messageTurns.get(session.branchFromMessageId)
       : undefined
-    const x = branchAnchor
-      ? branchAnchor.x
-      : (NODE_WIDTH + X_GAP) + sibling * (NODE_WIDTH + X_GAP)
-    const y = TURN_HEIGHT + Y_GAP + (depth - 1) * (SESSION_HEIGHT + Y_GAP)
-    const node: TrajectoryMapNode = {
+    nodes.push({
       id: `session:${session.id}`,
       type: 'session',
-      x,
-      y,
+      x: CANVAS_PAD + depth * (NODE_WIDTH + X_GAP),
+      y: CANVAS_PAD + top + (blockHeight - NODE_HEIGHT) / 2,
       width: NODE_WIDTH,
-      height: SESSION_HEIGHT,
+      height: NODE_HEIGHT,
       session,
-      relation: session.branchFromSessionId ? 'branch' : session.parentSessionId ? 'subtask' : 'related',
+      relation: relationOf(session, input.currentSessionId),
       childCount: children.get(session.id)?.length ?? 0,
-    }
-    nodes.push(node)
-    const source = branchAnchor?.id ?? `session:${sessionParentId(session) ?? current.id}`
-    edges.push({
-      id: `${source}->${node.id}`,
-      from: source,
-      to: node.id,
-      kind: session.branchFromSessionId ? 'branch' : 'subtask',
+      turnCount: session.id === input.currentSessionId ? currentTurnCount : undefined,
+      branchFromTurn,
     })
-  }
 
-  const minX = Math.min(...nodes.map(node => node.x))
-  const minY = Math.min(...nodes.map(node => node.y))
-  const shiftX = 36 - minX
-  const shiftY = 36 - minY
-  const shifted = nodes.map(node => ({ ...node, x: node.x + shiftX, y: node.y + shiftY }))
-  const width = Math.max(720, ...shifted.map(node => node.x + node.width + 36))
-  const height = Math.max(420, ...shifted.map(node => node.y + node.height + 36))
-  return { nodes: shifted, edges, width, height }
+    const visibleChildren = (children.get(session.id) ?? []).filter(child => visible.has(child.id))
+    let childTop = top
+    for (const child of visibleChildren) {
+      const sourceTurn = child.branchFromSessionId === input.currentSessionId && child.branchFromMessageId
+        ? messageTurns.get(child.branchFromMessageId)
+        : undefined
+      edges.push({
+        id: `session:${session.id}->session:${child.id}`,
+        from: `session:${session.id}`,
+        to: `session:${child.id}`,
+        kind: child.branchFromSessionId ? 'branch' : 'subtask',
+        sourceTurn,
+      })
+      place(child, depth + 1, childTop, nextPath)
+      childTop += (subtreeHeight.get(child.id) ?? NODE_HEIGHT) + Y_GAP
+    }
+  }
+  place(root, 0, 0, new Set())
+
+  const width = Math.max(360, ...nodes.map(node => node.x + node.width + CANVAS_PAD))
+  const height = Math.max(240, ...nodes.map(node => node.y + node.height + CANVAS_PAD))
+  return { nodes, edges, width, height }
 }

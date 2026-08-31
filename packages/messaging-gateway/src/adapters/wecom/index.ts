@@ -73,6 +73,21 @@ export function parseWeComCredentials(token: string | undefined): WeComCredentia
   }
 }
 
+/**
+ * WeCom keeps the leading `@BotName` in group-message text even though the
+ * mention is only transport syntax used to address the bot. Remove that one
+ * leading mention before the gateway performs command detection or forwards
+ * free-form text to a session. Direct messages are left untouched.
+ */
+export function normalizeWeComInboundText(
+  text: string,
+  chattype: WeComBody['chattype'],
+): string {
+  const trimmed = text.trim()
+  if (chattype !== 'group') return trimmed
+  return trimmed.replace(/^@[^\s]+\s*/u, '').trim()
+}
+
 type WeComBody = {
   msgid: string
   aibotid: string
@@ -353,6 +368,7 @@ export class WeComAdapter implements PlatformAdapter {
           attachments.push(await this.downloadAttachment(type, media.url, media.aeskey))
         }
       }
+      text = normalizeWeComInboundText(text, body.chattype)
       if (!text && attachments.length === 0) return
 
       const channelId = body.chattype === 'group' && body.chatid ? body.chatid : body.from.userid

@@ -1,6 +1,6 @@
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Bot, ChevronDown, ChevronRight, GitBranch, LocateFixed, Maximize2, MessageSquare, Minus, Plus, Wrench } from 'lucide-react'
+import { ChevronDown, ChevronRight, GitBranch, LocateFixed, Maximize2, Minus, Plus } from 'lucide-react'
 import type { TrajectoryTurnModel } from './trajectory-layout'
 import { buildTrajectorySessionMapLayout, type TrajectoryMapEdge, type TrajectoryMapNode, type TrajectorySessionMap } from './trajectory-session-map'
 import styles from './TrajectoryMapView.module.css'
@@ -8,7 +8,6 @@ import styles from './TrajectoryMapView.module.css'
 export interface TrajectoryMapViewProps {
   turns: readonly TrajectoryTurnModel[]
   sessionMap: TrajectorySessionMap
-  onSelectRecord?: (index: number) => void
   onOpenSession?: (sessionId: string) => void
 }
 
@@ -18,8 +17,8 @@ interface ViewportTransform {
   scale: number
 }
 
-const MIN_SCALE = 0.45
-const MAX_SCALE = 1.5
+const MIN_SCALE = 0.05
+const MAX_SCALE = 1.6
 
 function clampScale(scale: number): number {
   return Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale))
@@ -29,29 +28,34 @@ function edgePath(edge: TrajectoryMapEdge, nodes: ReadonlyMap<string, Trajectory
   const source = nodes.get(edge.from)
   const target = nodes.get(edge.to)
   if (!source || !target) return ''
-  const vertical = target.y > source.y + source.height / 2
-  if (vertical) {
-    const x1 = source.x + source.width / 2
-    const y1 = source.y + source.height
-    const x2 = target.x + target.width / 2
-    const y2 = target.y
-    const bend = Math.max(36, (y2 - y1) / 2)
-    return `M ${x1} ${y1} C ${x1} ${y1 + bend}, ${x2} ${y2 - bend}, ${x2} ${y2}`
-  }
   const x1 = source.x + source.width
   const y1 = source.y + source.height / 2
   const x2 = target.x
   const y2 = target.y + target.height / 2
-  const bend = Math.max(42, Math.abs(x2 - x1) / 2)
+  const bend = Math.max(44, (x2 - x1) / 2)
   return `M ${x1} ${y1} C ${x1 + bend} ${y1}, ${x2 - bend} ${y2}, ${x2} ${y2}`
 }
 
-export function TrajectoryMapView({ turns, sessionMap, onSelectRecord, onOpenSession }: TrajectoryMapViewProps) {
+function edgeLabelPoint(edge: TrajectoryMapEdge, nodes: ReadonlyMap<string, TrajectoryMapNode>): { x: number, y: number } | null {
+  const source = nodes.get(edge.from)
+  const target = nodes.get(edge.to)
+  if (!source || !target) return null
+  return {
+    x: (source.x + source.width + target.x) / 2,
+    y: (source.y + source.height / 2 + target.y + target.height / 2) / 2 - 7,
+  }
+}
+
+export function TrajectoryMapView({ turns, sessionMap, onOpenSession }: TrajectoryMapViewProps) {
   const { t } = useTranslation()
   const viewportRef = useRef<HTMLDivElement>(null)
+  const fittedRef = useRef(false)
+  const lastViewportSizeRef = useRef({ width: 0, height: 0 })
+  const previousCurrentPositionRef = useRef<{ x: number, y: number } | null>(null)
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
-  const [transform, setTransform] = useState<ViewportTransform>({ x: 28, y: 28, scale: 0.8 })
-  const dragRef = useRef<{ pointerId: number; x: number; y: number; originX: number; originY: number } | null>(null)
+  const [selectedId, setSelectedId] = useState(`session:${sessionMap.currentSessionId}`)
+  const [transform, setTransform] = useState<ViewportTransform>({ x: 28, y: 28, scale: 0.9 })
+  const dragRef = useRef<{ pointerId: number, x: number, y: number, originX: number, originY: number } | null>(null)
 
   const layout = useMemo(
     () => buildTrajectorySessionMapLayout(turns, sessionMap, collapsed),
@@ -61,8 +65,8 @@ export function TrajectoryMapView({ turns, sessionMap, onSelectRecord, onOpenSes
 
   const fit = useCallback(() => {
     const viewport = viewportRef.current
-    if (!viewport) return
-    const padding = 56
+    if (!viewport || viewport.clientWidth <= 0 || viewport.clientHeight <= 0) return false
+    const padding = 48
     const scale = clampScale(Math.min(
       (viewport.clientWidth - padding * 2) / layout.width,
       (viewport.clientHeight - padding * 2) / layout.height,
@@ -73,22 +77,67 @@ export function TrajectoryMapView({ turns, sessionMap, onSelectRecord, onOpenSes
       x: (viewport.clientWidth - layout.width * scale) / 2,
       y: (viewport.clientHeight - layout.height * scale) / 2,
     })
+    return true
   }, [layout.height, layout.width])
+  const fitRef = useRef(fit)
+  fitRef.current = fit
 
   const locateCurrent = useCallback(() => {
     const viewport = viewportRef.current
     const current = nodes.get(`session:${sessionMap.currentSessionId}`)
     if (!viewport || !current) return
-    setTransform(previous => ({
-      ...previous,
-      x: viewport.clientWidth / 2 - (current.x + current.width / 2) * previous.scale,
-      y: viewport.clientHeight / 2 - (current.y + current.height / 2) * previous.scale,
-    }))
+    setSelectedId(current.id)
+    setTransform(previous => {
+      const scale = Math.max(previous.scale, 0.82)
+      return {
+        scale,
+        x: viewport.clientWidth / 2 - (current.x + current.width / 2) * scale,
+        y: viewport.clientHeight / 2 - (current.y + current.height / 2) * scale,
+      }
+    })
   }, [nodes, sessionMap.currentSessionId])
 
   useLayoutEffect(() => {
-    fit()
+    if (fittedRef.current) return
+    fittedRef.current = fit()
   }, [fit])
+
+  useLayoutEffect(() => {
+    const current = nodes.get(`session:${sessionMap.currentSessionId}`)
+    if (!current) return
+    const previous = previousCurrentPositionRef.current
+    previousCurrentPositionRef.current = { x: current.x, y: current.y }
+    if (!previous || !fittedRef.current) return
+    if (previous.x === current.x && previous.y === current.y) return
+    setTransform(value => ({
+      ...value,
+      x: value.x + (previous.x - current.x) * value.scale,
+      y: value.y + (previous.y - current.y) * value.scale,
+    }))
+  }, [nodes, sessionMap.currentSessionId])
+
+  useEffect(() => {
+    const viewport = viewportRef.current
+    if (!viewport || typeof ResizeObserver !== 'function') return
+    const observer = new ResizeObserver(entries => {
+      const entry = entries[0]
+      if (!entry) return
+      const width = entry.contentRect.width
+      const height = entry.contentRect.height
+      const previous = lastViewportSizeRef.current
+      lastViewportSizeRef.current = { width, height }
+      if (!fittedRef.current) {
+        fittedRef.current = fitRef.current()
+        return
+      }
+      if (previous.width === 0 || previous.height === 0) return
+      const widthDelta = Math.abs(width - previous.width) / previous.width
+      const heightDelta = Math.abs(height - previous.height) / previous.height
+      if (widthDelta > 0.03 || heightDelta > 0.03) fitRef.current()
+    })
+    observer.observe(viewport)
+    return () => observer.disconnect()
+  }, [])
 
   const zoom = (factor: number) => {
     const viewport = viewportRef.current
@@ -104,6 +153,13 @@ export function TrajectoryMapView({ turns, sessionMap, onSelectRecord, onOpenSes
         y: cy - (cy - previous.y) * ratio,
       }
     })
+  }
+
+  const endDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (dragRef.current?.pointerId !== event.pointerId) return
+    dragRef.current = null
+    delete event.currentTarget.dataset.dragging
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
   }
 
   return (
@@ -149,59 +205,56 @@ export function TrajectoryMapView({ turns, sessionMap, onSelectRecord, onOpenSes
           if (!drag || drag.pointerId !== event.pointerId) return
           setTransform(previous => ({ ...previous, x: drag.originX + event.clientX - drag.x, y: drag.originY + event.clientY - drag.y }))
         }}
-        onPointerUp={(event) => {
-          if (dragRef.current?.pointerId !== event.pointerId) return
-          dragRef.current = null
-          delete event.currentTarget.dataset.dragging
-          event.currentTarget.releasePointerCapture(event.pointerId)
-        }}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
       >
         <div
           className={styles.canvas}
+          data-compact={transform.scale < 0.62 ? 'true' : 'false'}
           style={{ width: layout.width, height: layout.height, transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})` }}
         >
           <svg className={styles.edges} width={layout.width} height={layout.height} aria-hidden="true">
-            {layout.edges.map(edge => (
-              <path key={edge.id} d={edgePath(edge, nodes)} className={styles[`${edge.kind}Edge`]} />
-            ))}
+            {layout.edges.map(edge => {
+              const labelPoint = edge.sourceTurn !== undefined ? edgeLabelPoint(edge, nodes) : null
+              return (
+                <g key={edge.id}>
+                  <path d={edgePath(edge, nodes)} className={styles[`${edge.kind}Edge`]} />
+                  {labelPoint && (
+                    <text x={labelPoint.x} y={labelPoint.y} className={styles.edgeLabel} textAnchor="middle">
+                      {t('trajectory.map.turn', { turn: edge.sourceTurn })}
+                    </text>
+                  )}
+                </g>
+              )
+            })}
           </svg>
 
-          {layout.nodes.map(node => node.type === 'turn' ? (
-            <button
-              key={node.id}
-              type="button"
-              className={styles.turnCard}
-              style={{ left: node.x, top: node.y, width: node.width, height: node.height }}
-              onClick={() => node.recordIndex !== undefined && onSelectRecord?.(node.recordIndex)}
-            >
-              <span className={styles.cardEyebrow}>{t('trajectory.map.turn', { turn: node.turn })}</span>
-              <span className={styles.question}><MessageSquare />{node.question}</span>
-              <span className={styles.answer}><Bot />{node.answer}</span>
-              <span className={styles.cardMeta}>
-                <span><Wrench />{t('trajectory.map.tools', { count: node.toolCount })}</span>
-                {node.errorCount > 0 && <span className={styles.error}>{t('trajectory.map.errors', { count: node.errorCount })}</span>}
-              </span>
-            </button>
-          ) : (
+          {layout.nodes.map(node => (
             <div
               key={node.id}
-              className={`${styles.sessionCard} ${styles[node.relation]} ${node.session.id === sessionMap.currentSessionId ? styles.activeSession : ''}`}
+              className={`${styles.sessionCard} ${styles[node.relation]} ${node.session.id === sessionMap.currentSessionId ? styles.activeSession : ''} ${selectedId === node.id ? styles.selectedSession : ''}`}
               style={{ left: node.x, top: node.y, width: node.width, height: node.height }}
             >
               <button
                 type="button"
                 className={styles.sessionOpen}
-                disabled={node.session.id === sessionMap.currentSessionId}
-                onClick={() => node.session.id !== sessionMap.currentSessionId && onOpenSession?.(node.session.id)}
+                onClick={() => setSelectedId(node.id)}
+                onDoubleClick={() => node.session.id !== sessionMap.currentSessionId && onOpenSession?.(node.session.id)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && node.session.id !== sessionMap.currentSessionId) onOpenSession?.(node.session.id)
+                }}
               >
                 <span className={styles.cardEyebrow}>
                   <GitBranch />{t(`trajectory.map.relation.${node.relation}`)}
+                  {node.branchFromTurn !== undefined && ` · ${t('trajectory.map.turn', { turn: node.branchFromTurn })}`}
                 </span>
                 <strong>{node.session.title}</strong>
                 <span className={styles.sessionPreview}>{node.session.preview || t('trajectory.map.noPreview')}</span>
                 <span className={styles.cardMeta}>
                   {node.session.isProcessing ? t('trajectory.map.processing') : node.session.status || t('trajectory.map.ready')}
-                  {node.session.messageCount !== undefined && ` · ${t('trajectory.map.messages', { count: node.session.messageCount })}`}
+                  {node.turnCount !== undefined
+                    ? ` · ${t('trajectory.map.turn', { turn: node.turnCount })}`
+                    : node.session.messageCount !== undefined && ` · ${t('trajectory.map.messages', { count: node.session.messageCount })}`}
                 </span>
               </button>
               {node.childCount > 0 && (

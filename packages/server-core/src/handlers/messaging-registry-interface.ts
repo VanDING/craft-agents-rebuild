@@ -92,7 +92,8 @@ export interface MessagingConfigInfo {
   enabled: boolean
   /**
    * Per-platform config. Telegram may carry optional `supergroup`,
-   * `accessMode`, and `owners` fields; other platforms only use `enabled`.
+   * `accessMode`, and `owners` fields; WeCom may carry `accessMode` and
+   * `owners`; other platforms only use `enabled`.
    */
   platforms: Record<
     string,

@@ -125,6 +125,29 @@ describe('evaluatePreBindingAccess', () => {
 // ---------------------------------------------------------------------------
 
 describe('evaluateBindingAccess', () => {
+  it('allows any WeCom group member after the platform is unlocked', () => {
+    const verdict = evaluateBindingAccess({
+      msg: buildMsg({
+        platform: 'wecom',
+        channelId: 'group-1',
+        senderId: STRANGER_ID,
+      }),
+      workspaceConfig: {
+        enabled: true,
+        platforms: {
+          wecom: {
+            enabled: true,
+            accessMode: 'open',
+            owners: [OWNER],
+          },
+        },
+      },
+      // Fresh /pair bindings inherit the workspace policy.
+      binding: { config: normalizeBindingConfig('wecom') },
+    })
+    expect(verdict.allow).toBe(true)
+  })
+
   it('binding accessMode "open" allows any non-bot sender', () => {
     const verdict = evaluateBindingAccess({
       msg: buildMsg({ senderId: STRANGER_ID }),

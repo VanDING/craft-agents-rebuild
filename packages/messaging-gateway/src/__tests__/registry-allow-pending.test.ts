@@ -84,6 +84,26 @@ describe('MessagingGatewayRegistry.allowPendingSender — reason branching', () 
     expect(pending.find((p: { userId: string }) => p.userId === 'stranger')).toBeUndefined()
   })
 
+  it("promotes a rejected WeCom group sender to a WeCom owner", () => {
+    const { registry, workspaceId } = makeRegistry()
+    const state = getInternalState(registry, workspaceId)!
+    state.gateway.getPendingStore().recordRejection({
+      platform: 'wecom',
+      senderId: 'wecom-user-2',
+      senderName: 'Group Member',
+      reason: 'not-owner',
+      channelId: 'group-1',
+    })
+
+    const result = registry.allowPendingSender(workspaceId, 'wecom', 'wecom-user-2')
+
+    expect(result.owners).toEqual([
+      expect.objectContaining({ userId: 'wecom-user-2', displayName: 'Group Member' }),
+    ])
+    expect(registry.getPlatformOwners(workspaceId, 'wecom')).toEqual(result.owners)
+    expect(state.gateway.getPendingStore().list('wecom')).toHaveLength(0)
+  })
+
   it("'not-on-binding-allowlist' reject appends to binding allow-list, NOT workspace owners", () => {
     const { registry, workspaceId } = makeRegistry()
     const state = getInternalState(registry, workspaceId)!

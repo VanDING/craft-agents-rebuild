@@ -24,6 +24,12 @@ This index separates current product and architecture documentation from histori
 | [Theme engine design](theme-engine-design.md) | Implemented | Semantic token layers, user-owned themes, app defaults, and workspace overrides. |
 | [Profile and preferences](profile-preferences-plan.md) | Implemented baseline | Local profile, activity summary, identity, location, and preferences; optional sharing remains deferred. |
 
+## Project planning
+
+| Document | Status | Purpose |
+| --- | --- | --- |
+| [Project assessment and development roadmap](project-assessment-and-roadmap-2026-08-31.md) | Proposed; implementation not started | Point-in-time assessment of product, architecture, quality, release, security, and governance, followed by a phased convergence and development roadmap. |
+
 ## Historical, research, and deferred records
 
 These documents preserve decisions and evidence. Their paths, line numbers, branch names, screenshots, dependency versions, and gap lists may describe the repository at the date recorded rather than today.

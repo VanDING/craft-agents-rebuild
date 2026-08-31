@@ -21,7 +21,6 @@
 .actions,
 .legend span,
 .cardMeta,
-.cardMeta span,
 .cardEyebrow {
   display: flex;
   align-items: center;
@@ -34,7 +33,7 @@
 }
 
 .legend span { gap: 5px; }
-.legend i { width: 6px; height: 6px; border-radius: 999px; }
+.legend i { width: 7px; height: 7px; border-radius: 999px; }
 .currentDot { background: hsl(var(--accent)); }
 .branchDot { background: #9b7ad5; }
 .subtaskDot { background: #d59642; }
@@ -60,9 +59,13 @@
   overflow: hidden;
   cursor: grab;
   touch-action: none;
-  background-color: hsl(var(--muted) / 0.12);
-  background-image: radial-gradient(hsl(var(--muted-foreground) / 0.18) 0.7px, transparent 0.7px);
-  background-size: 18px 18px;
+  background-color: hsl(var(--muted) / 0.1);
+  background-image:
+    linear-gradient(hsl(var(--muted-foreground) / 0.055) 1px, transparent 1px),
+    linear-gradient(90deg, hsl(var(--muted-foreground) / 0.055) 1px, transparent 1px),
+    radial-gradient(hsl(var(--muted-foreground) / 0.2) 0.8px, transparent 0.8px);
+  background-position: -1px -1px, -1px -1px, 8px 8px;
+  background-size: 72px 72px, 72px 72px, 18px 18px;
 }
 .viewport[data-dragging='true'] { cursor: grabbing; }
 
@@ -74,74 +77,40 @@
 }
 
 .edges { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
-.edges path { fill: none; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
-.continuationEdge { stroke: hsl(var(--muted-foreground) / 0.42); }
-.branchEdge { stroke: #9b7ad5; stroke-dasharray: 5 4; }
-.subtaskEdge { stroke: #d59642; stroke-dasharray: 2 4; }
-
-.turnCard,
-.sessionCard {
-  position: absolute;
-  overflow: hidden;
-  border: 1px solid hsl(var(--border) / 0.72);
-  border-radius: 11px;
-  background: hsl(var(--card) / 0.97);
-  box-shadow: 0 1px 2px hsl(var(--foreground) / 0.04), 0 7px 20px hsl(var(--foreground) / 0.035);
-}
-
-.turnCard {
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-  padding: 12px 13px 10px;
-  text-align: left;
-  color: hsl(var(--foreground));
-}
-.turnCard:hover { border-color: hsl(var(--accent) / 0.55); box-shadow: 0 7px 24px hsl(var(--accent) / 0.08); }
-.turnCard:focus-visible, .sessionOpen:focus-visible, .collapse:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
-
-.cardEyebrow {
-  gap: 5px;
-  color: hsl(var(--muted-foreground));
+.edges path { fill: none; stroke-width: 2; vector-effect: non-scaling-stroke; }
+.branchEdge { stroke: #9b7ad5; stroke-dasharray: 6 4; }
+.subtaskEdge { stroke: #d59642; stroke-dasharray: 3 4; }
+.edgeLabel {
+  fill: hsl(var(--muted-foreground));
+  stroke: hsl(var(--background));
+  stroke-width: 5px;
+  paint-order: stroke;
   font-size: 9px;
   font-weight: 650;
-  letter-spacing: 0.045em;
-  text-transform: uppercase;
+  letter-spacing: 0.02em;
 }
-.cardEyebrow svg { width: 11px; height: 11px; }
 
-.question,
-.answer {
-  display: flex;
-  min-width: 0;
-  gap: 7px;
-  overflow: hidden;
-  color: hsl(var(--foreground));
-  font-size: 11px;
-  line-height: 1.35;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.sessionCard {
+  position: absolute;
+  overflow: visible;
+  border: 1px solid hsl(var(--border) / 0.78);
+  border-left-width: 4px;
+  border-radius: 12px;
+  background: hsl(var(--card) / 0.985);
+  box-shadow: 0 1px 2px hsl(var(--foreground) / 0.05), 0 9px 24px hsl(var(--foreground) / 0.045);
+  transition: border-color 140ms ease, box-shadow 140ms ease, opacity 140ms ease;
 }
-.answer { color: hsl(var(--muted-foreground)); }
-.question svg, .answer svg { width: 11px; height: 11px; margin-top: 2px; flex: 0 0 auto; opacity: 0.7; }
-
-.cardMeta {
-  min-height: 16px;
-  margin-top: auto;
-  gap: 8px;
-  color: hsl(var(--muted-foreground));
-  font-size: 9px;
-}
-.cardMeta span { gap: 4px; }
-.cardMeta svg { width: 10px; height: 10px; }
-.error { color: hsl(var(--destructive)); }
-
-.sessionCard { border-left-width: 3px; }
 .sessionCard.current { border-left-color: hsl(var(--accent)); }
 .sessionCard.branch { border-left-color: #9b7ad5; }
 .sessionCard.subtask { border-left-color: #d59642; }
 .sessionCard.related { border-left-color: hsl(var(--muted-foreground)); }
-.activeSession { box-shadow: 0 0 0 1px hsl(var(--accent) / 0.18), 0 9px 24px hsl(var(--accent) / 0.08); }
+.activeSession {
+  box-shadow: 0 0 0 1px hsl(var(--accent) / 0.2), 0 12px 30px hsl(var(--accent) / 0.1);
+}
+.selectedSession {
+  border-color: hsl(var(--accent) / 0.7);
+  box-shadow: 0 0 0 2px hsl(var(--accent) / 0.12), 0 12px 30px hsl(var(--accent) / 0.1);
+}
 
 .sessionOpen {
   display: flex;
@@ -149,18 +118,59 @@
   height: 100%;
   flex-direction: column;
   align-items: flex-start;
-  gap: 5px;
-  padding: 11px 42px 10px 12px;
+  gap: 6px;
+  overflow: hidden;
+  padding: 12px 43px 11px 13px;
+  border-radius: 9px;
   text-align: left;
 }
-.sessionOpen:hover { background: hsl(var(--muted) / 0.28); }
-.sessionOpen:disabled { cursor: default; }
-.sessionOpen:disabled:hover { background: transparent; }
-.sessionOpen strong { max-width: 100%; overflow: hidden; color: hsl(var(--foreground)); font-size: 11px; font-weight: 620; text-overflow: ellipsis; white-space: nowrap; }
-.sessionPreview { max-width: 100%; overflow: hidden; color: hsl(var(--muted-foreground)); font-size: 10px; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+.sessionOpen:hover { background: hsl(var(--muted) / 0.25); }
+.sessionOpen:focus-visible,
+.collapse:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 3px; }
+
+.cardEyebrow {
+  max-width: 100%;
+  gap: 5px;
+  overflow: hidden;
+  color: hsl(var(--muted-foreground));
+  font-size: 9px;
+  font-weight: 680;
+  letter-spacing: 0.045em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.cardEyebrow svg { width: 11px; height: 11px; flex: 0 0 auto; }
+.sessionOpen strong {
+  max-width: 100%;
+  overflow: hidden;
+  color: hsl(var(--foreground));
+  font-size: 12px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sessionPreview {
+  display: -webkit-box;
+  max-width: 100%;
+  overflow: hidden;
+  color: hsl(var(--muted-foreground));
+  font-size: 10px;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.cardMeta {
+  min-height: 14px;
+  margin-top: auto;
+  gap: 8px;
+  color: hsl(var(--muted-foreground));
+  font-size: 9px;
+}
 
 .collapse {
   position: absolute;
+  z-index: 2;
   top: 9px;
   right: 9px;
   display: flex;
@@ -174,6 +184,12 @@
 }
 .collapse:hover { background: hsl(var(--muted)); color: hsl(var(--foreground)); }
 .collapse svg { width: 11px; height: 11px; }
+
+/* At overview scale, cards become topology markers rather than illegible mini documents. */
+.canvas[data-compact='true'] .sessionPreview,
+.canvas[data-compact='true'] .cardMeta { display: none; }
+.canvas[data-compact='true'] .sessionOpen { justify-content: center; gap: 8px; }
+.canvas[data-compact='true'] .sessionCard:not(.activeSession):not(.selectedSession) { opacity: 0.86; }
 
 @container trajectory (max-width: 560px) {
   .legend span:not(:first-child) { display: none; }

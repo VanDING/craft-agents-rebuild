@@ -128,6 +128,20 @@ describe('MessagingGatewayRegistry — config preservation across writes', () =>
     expect(registry.getPlatformAccessMode(workspaceId, 'telegram')).toBe('owner-only')
   })
 
+  it('supports WeCom owner management and public unlock without losing owners', () => {
+    const { registry, workspaceId } = makeRegistry()
+    registry.setPlatformOwners(workspaceId, 'wecom', [
+      { userId: 'wecom-owner', addedAt: Date.now() },
+    ])
+    registry.setPlatformAccessMode(workspaceId, 'wecom', 'owner-only')
+    registry.setPlatformAccessMode(workspaceId, 'wecom', 'open')
+
+    expect(registry.getPlatformOwners(workspaceId, 'wecom')).toEqual([
+      expect.objectContaining({ userId: 'wecom-owner' }),
+    ])
+    expect(registry.getPlatformAccessMode(workspaceId, 'wecom')).toBe('open')
+  })
+
   it('seedFirstOwner is no-op when owners already exist', async () => {
     const { registry, workspaceId } = makeRegistry()
     registry.setPlatformOwners(workspaceId, 'telegram', [
@@ -184,5 +198,25 @@ describe('MessagingGatewayRegistry — lock-down migrates open bindings', () => 
 
     const reloaded = store.getAll().find((x: { id: string }) => x.id === wa.id)
     expect(reloaded.config.accessMode).toBe('open')
+  })
+
+  it('WeCom lock-down migrates only WeCom open bindings to inherit', () => {
+    const { registry, workspaceId } = makeRegistry()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const state = (registry as any).workspaces.get(workspaceId) ??
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (registry as any).bootstrapWorkspace(workspaceId)
+    const store = state.gateway.getBindingStore()
+    const wecom = store.bind('ws-test', 'sess-A', 'wecom', 'group-1', undefined, {
+      accessMode: 'open',
+    })
+    const telegram = store.bind('ws-test', 'sess-B', 'telegram', 'chat-1', undefined, {
+      accessMode: 'open',
+    })
+
+    registry.setPlatformAccessMode(workspaceId, 'wecom', 'owner-only')
+
+    expect(store.getAll().find((x: { id: string }) => x.id === wecom.id).config.accessMode).toBe('inherit')
+    expect(store.getAll().find((x: { id: string }) => x.id === telegram.id).config.accessMode).toBe('open')
   })
 })
