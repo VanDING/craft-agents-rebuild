@@ -225,7 +225,7 @@ export const routes = {
     // the panel content follows the active session.
     // ─────────────────────────────────────────────
 
-    /** Review-Diff panel (bound to the active session) */
+    /** @deprecated Legacy alias; normalized to Files > Changed. */
     diff: () => 'diff' as const,
     terminal: () => 'terminal' as const,
 

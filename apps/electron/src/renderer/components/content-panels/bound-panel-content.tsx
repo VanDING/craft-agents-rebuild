@@ -2,7 +2,7 @@
  * BoundPanelContent - Central dispatcher for bound content-workbench panels.
  *
  * SurfaceSlot routes the active workbench item by `entry.panelType`. Bound items
- * (diff/files/context/preview) render here; all other panel types flow through
+ * (files/context/preview/trajectory/terminal/artifact) render here; all other panel types flow through
  * the existing MainContentPanel path.
  *
  * This is the single landing point for the per-panel branches (each bound
@@ -20,7 +20,6 @@ import { isOtherNavigation } from '../../../shared/types'
 import { parseRouteToNavigationState } from '../../../shared/route-parser'
 import type { SurfaceRenderEntry } from '@/atoms/workbench'
 import { PanelEmptyState } from './PanelEmptyState'
-import { ReviewPanel } from './ReviewPanel'
 import { FilesPanel } from './FilesPanel'
 import { ContextPanel } from './ContextPanel'
 import { PreviewPanel } from './PreviewPanel'
@@ -30,7 +29,7 @@ import { TerminalPanel } from './TerminalPanel'
 
 /** True for panel types that are rendered by this dispatcher (bound panels). */
 export function isBoundPanelType(panelType: SurfaceRenderEntry['panelType']): boolean {
-  return panelType === 'diff' || panelType === 'files' || panelType === 'context' || panelType === 'preview' || panelType === 'trajectory' || panelType === 'terminal' || panelType === 'artifact'
+  return panelType === 'files' || panelType === 'context' || panelType === 'preview' || panelType === 'trajectory' || panelType === 'terminal' || panelType === 'artifact'
 }
 
 export function BoundPanelContent({ entry }: { entry: SurfaceRenderEntry }) {
@@ -44,8 +43,6 @@ export function BoundPanelContent({ entry }: { entry: SurfaceRenderEntry }) {
   }
 
   switch (entry.panelType) {
-    case 'diff':
-      return <ReviewPanel sessionId={entry.sessionId} />
     case 'files':
       return <FilesPanel sessionId={entry.sessionId} />
     case 'context':

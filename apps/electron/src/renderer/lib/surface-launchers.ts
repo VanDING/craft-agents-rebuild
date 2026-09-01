@@ -19,7 +19,6 @@ export type SurfaceLauncherKind =
   | 'sessions'
   | 'kanban'
   | 'calendar'
-  | 'diff'
   | 'files'
   | 'context'
   | 'preview'
@@ -30,7 +29,6 @@ export const SURFACE_LAUNCHER_KINDS: readonly SurfaceLauncherKind[] = [
   'sessions',
   'kanban',
   'calendar',
-  'diff',
   'files',
   'trajectory',
   'terminal',
@@ -41,7 +39,6 @@ export type PrimarySurfaceLauncherKind = (typeof PRIMARY_SURFACE_LAUNCHER_KINDS)
 
 /** Only consolidated Workbench homes appear as direct top-bar launchers. */
 export const CONTEXT_WORKBENCH_LAUNCHER_KINDS = [
-  'diff',
   'files',
   'trajectory',
   'terminal',
@@ -58,7 +55,6 @@ export const SURFACE_LAUNCHER_ROUTES: Record<SurfaceLauncherKind, ViewRoute> = {
   sessions: 'allSessions',
   kanban: 'kanban',
   calendar: 'calendar',
-  diff: 'diff',
   files: 'files',
   context: 'context',
   preview: 'preview',

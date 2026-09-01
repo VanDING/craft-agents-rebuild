@@ -14,7 +14,7 @@ import { atom } from 'jotai'
 import { parseRouteToNavigationState } from '../../shared/route-parser'
 import type { ViewRoute } from '../../shared/routes'
 import type { BoundPanelType } from '../../shared/types'
-import { filesPanelViewAtom } from './content-panel-ui'
+import { filesPanelViewAtom, type FilesPanelView } from './content-panel-ui'
 
 export const PRIMARY_SURFACE_ID = 'primary-surface'
 
@@ -78,6 +78,8 @@ export interface SurfaceRestoreState {
   workbenchRoutes: ViewRoute[]
   activeWorkbenchRoute: ViewRoute | null
   workbenchOpen: boolean
+  /** In-memory migration hint for legacy `diff` / `preview` aliases. */
+  filesView?: FilesPanelView
   companionPrimaryWidth?: number
   workbenchBindings?: Record<string, WorkbenchBinding>
 }
@@ -159,6 +161,7 @@ export function createWorkbenchItem(route: ViewRoute, id?: string): WorkbenchIte
 function canonicalWorkbenchRoute(route: ViewRoute): ViewRoute {
   if (route === 'context') return 'trajectory'
   if (route === 'preview') return 'files'
+  if (route === 'diff') return 'files'
   return route
 }
 
@@ -204,12 +207,22 @@ export function deriveSurfaceRestoreState(
   const focusedWorkbenchRoute = focusedClassification?.role === 'workbench' && focusedRoute
     ? canonicalWorkbenchRoute(focusedRoute)
     : null
+  const filesAliases = routes.filter((route) => canonicalWorkbenchRoute(route) === 'files')
+  const preferredFilesAlias = focusedRoute && canonicalWorkbenchRoute(focusedRoute) === 'files'
+    ? focusedRoute
+    : filesAliases.at(-1)
+  const filesView = preferredFilesAlias === 'diff'
+    ? 'changed'
+    : preferredFilesAlias === 'preview'
+      ? 'opened'
+      : undefined
 
   return {
     primaryRoute,
     workbenchRoutes,
     activeWorkbenchRoute: focusedWorkbenchRoute ?? workbenchRoutes.at(-1) ?? null,
     workbenchOpen: workbenchRoutes.length > 0,
+    ...(filesView ? { filesView } : {}),
   }
 }
 
@@ -451,6 +464,7 @@ export const openWorkbenchItemAtom = atom(
   null,
   (get, set, route: ViewRoute) => {
     if (route === 'preview') set(filesPanelViewAtom, 'opened')
+    if (route === 'diff') set(filesPanelViewAtom, 'changed')
     const candidate = createWorkbenchItem(route)
     if (!candidate) {
       console.warn('[workbench] Ignored non-workbench route:', route)
@@ -594,7 +608,12 @@ export const hydrateSurfaceStateAtom = atom(
       seenItems.add(identity)
       const existing = current.items.find((item) => workbenchIdentity(item.route, item.kind) === identity)
       const item = createWorkbenchItem(canonicalRoute, existing?.id)
-      const restoredBinding = restore.workbenchBindings?.[route]
+      const aliases = restore.workbenchRoutes.filter((candidate) => canonicalWorkbenchRoute(candidate) === canonicalRoute)
+      const preferredAlias = restore.activeWorkbenchRoute
+        && canonicalWorkbenchRoute(restore.activeWorkbenchRoute) === canonicalRoute
+        ? restore.activeWorkbenchRoute
+        : aliases.at(-1) ?? route
+      const restoredBinding = restore.workbenchBindings?.[preferredAlias]
         ?? restore.workbenchBindings?.[canonicalRoute]
       if (item) items.push({
         ...item,
@@ -602,7 +621,18 @@ export const hydrateSurfaceStateAtom = atom(
       })
     }
 
-    if (restore.workbenchRoutes.includes('preview')) set(filesPanelViewAtom, 'opened')
+    const filesAliases = restore.workbenchRoutes.filter((route) => canonicalWorkbenchRoute(route) === 'files')
+    const preferredFilesAlias = restore.activeWorkbenchRoute
+      && canonicalWorkbenchRoute(restore.activeWorkbenchRoute) === 'files'
+      ? restore.activeWorkbenchRoute
+      : filesAliases.at(-1)
+    if (restore.filesView) {
+      set(filesPanelViewAtom, restore.filesView)
+    } else if (preferredFilesAlias === 'diff') {
+      set(filesPanelViewAtom, 'changed')
+    } else if (preferredFilesAlias === 'preview') {
+      set(filesPanelViewAtom, 'opened')
+    }
 
     const canonicalActiveRoute = restore.activeWorkbenchRoute
       ? canonicalWorkbenchRoute(restore.activeWorkbenchRoute)

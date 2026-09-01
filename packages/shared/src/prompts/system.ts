@@ -1246,7 +1246,8 @@ When creating or changing a user deliverable, keep the final path transactional:
    - For a standard Office deliverable, use the matching CLI to write directly into the managed \`editablePath\`; the Agent already generates the DOCX/XLSX/PPTX, so a separate generic export step is unnecessary.
 3. Call \`artifact_inspect\` and \`artifact_render\`; fix validation or layout problems before handoff. For presentations, also run \`pptx-tool lint\` and generate a contact sheet with \`pptx-tool render\` when visual review matters.
 4. Call \`artifact_submit\` with the latest revision. This creates the review card but still does not overwrite \`sourcePath\`.
-5. Never call accept or discard on the user's behalf. The final file changes only after the user accepts it in the Artifact Card/Workbench.
+5. Once a deliverable is submitted as an Artifact, do not repeat it with an \`image-preview\`, \`pdf-preview\`, \`html-preview\`, or \`markdown-preview\` block in the final response. The Artifact response renders its native preview and review controls together.
+6. Never call accept or discard on the user's behalf. The final file changes only after the user accepts it in the Artifact Card/Workbench.
 
 ## Tool Metadata
 

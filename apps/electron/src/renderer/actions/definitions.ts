@@ -176,8 +176,8 @@ export const actions = {
   },
   'panel.diff': {
     id: 'panel.diff',
-    label: 'Open Review & Diff Panel',
-    description: 'Open or focus the Review & Diff panel (bound to the active session)',
+    label: 'Open Changed Files',
+    description: 'Open the Changed view in the session Files panel',
     defaultHotkey: 'mod+shift+r',
     category: 'Panels',
   },

@@ -6,7 +6,7 @@ export function artifactEventsForTurn(activities: readonly ActivityItem[]): Arti
   const byArtifact = new Map<string, ArtifactEventSnapshot>()
   for (const activity of activities) {
     const canonicalToolName = activity.toolName?.split('__').at(-1)
-    if (!canonicalToolName?.startsWith('artifact_')) continue
+    if (!(canonicalToolName?.startsWith('artifact_') || canonicalToolName === 'image_generate')) continue
     const event = parseArtifactEvent(activity.content)
     if (!event) continue
     // Preserve last-event ordering when one turn creates, applies and submits.

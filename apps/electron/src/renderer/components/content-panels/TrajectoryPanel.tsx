@@ -17,7 +17,7 @@ import { TrajectoryView, buildTrajectorySnapshot, Spinner, type TrajectorySessio
 import { PanelEmptyState } from './PanelEmptyState'
 import { activeSessionIdAtom } from '@/atoms/active-session'
 import { sessionAtomFamily, sessionMetaMapAtom, ensureSessionMessagesLoadedAtom } from '@/atoms/sessions'
-import { chatFocusRequestAtom, reviewPanelFocusRequestAtom, updateWorkbenchFocusAtom, workbenchFocusBySessionAtom } from '@/atoms/content-panel-ui'
+import { chatFocusRequestAtom, filesPanelFocusRequestAtom, updateWorkbenchFocusAtom, workbenchFocusBySessionAtom } from '@/atoms/content-panel-ui'
 import { collapseWorkbenchAtom, openWorkbenchItemAtom, setWorkbenchItemBindingAtom } from '@/atoms/workbench'
 import { useAppShellContext } from '@/context/AppShellContext'
 import { useNavigation } from '@/contexts/NavigationContext'
@@ -32,7 +32,7 @@ export function TrajectoryPanel({ sessionId }: { sessionId?: string }) {
   const sessionMetaMap = useAtomValue(sessionMetaMapAtom)
   const ensureMessagesLoaded = useSetAtom(ensureSessionMessagesLoadedAtom)
   const setChatFocusRequest = useSetAtom(chatFocusRequestAtom)
-  const setReviewFocusRequest = useSetAtom(reviewPanelFocusRequestAtom)
+  const setFilesFocusRequest = useSetAtom(filesPanelFocusRequestAtom)
   const focusBySession = useAtomValue(workbenchFocusBySessionAtom)
   const updateWorkbenchFocus = useSetAtom(updateWorkbenchFocusAtom)
   const openWorkbenchItem = useSetAtom(openWorkbenchItemAtom)
@@ -195,11 +195,11 @@ export function TrajectoryPanel({ sessionId }: { sessionId?: string }) {
               collapseWorkbench()
             }}
             onOpenReview={(changeId) => {
-              setReviewFocusRequest({ sessionId: activeSessionId, changeId, nonce: Date.now() })
-              const reviewItemId = openWorkbenchItem('diff')
-              if (reviewItemId) {
+              setFilesFocusRequest({ sessionId: activeSessionId, view: 'changed', changeId, nonce: Date.now() })
+              const filesItemId = openWorkbenchItem('files')
+              if (filesItemId) {
                 setWorkbenchItemBinding({
-                  id: reviewItemId,
+                  id: filesItemId,
                   binding: { type: 'session', sessionId: activeSessionId },
                 })
               }

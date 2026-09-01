@@ -95,6 +95,7 @@ import { sourcesAtom } from "@/atoms/sources"
 import { skillsAtom } from "@/atoms/skills"
 import { activeSessionIdAtom } from "@/atoms/active-session"
 import { expandedWorkbenchItemIdAtom } from "@/atoms/overlay"
+import { filesPanelViewAtom } from "@/atoms/content-panel-ui"
 import {
   addForegroundSessionAtom,
   collapseWorkbenchAtom,
@@ -1183,7 +1184,7 @@ function AppShellContent({
 
   // Active session for bound content panels + TopBar session-bound affordances.
   // Sticky: follows the focused session, but holds the last focused session while
-  // a non-session panel (projects/diff/files/context/preview) is focused.
+  // a non-session surface (projects/files/trajectory/terminal) is focused.
   const topBarActiveSessionId = useAtomValue(activeSessionIdAtom)
 
   // Focus chat input for the target session only.
@@ -2069,14 +2070,14 @@ function AppShellContent({
   }, [store, workspaces, contextValue.activeWorkspaceId, handleNewBrowserWindow, t])
 
   /** Primary launchers navigate; bound launchers activate a Workbench tab. */
-  const lastWorkbenchKindRef = useRef<SurfaceLauncherKind>('diff')
+  const lastWorkbenchKindRef = useRef<SurfaceLauncherKind>('files')
   const openSurfaceLauncher = useCallback((kind: SurfaceLauncherKind) => {
     if (kind === 'sessions' || kind === 'kanban' || kind === 'calendar') {
       navigate(SURFACE_LAUNCHER_ROUTES[kind])
       return
     }
 
-    if (kind === 'diff' || kind === 'files' || kind === 'context' || kind === 'preview' || kind === 'trajectory') {
+    if (kind === 'files' || kind === 'context' || kind === 'preview' || kind === 'trajectory' || kind === 'terminal') {
       lastWorkbenchKindRef.current = kind
     }
     store.set(openWorkbenchItemAtom, SURFACE_LAUNCHER_ROUTES[kind])
@@ -2104,8 +2105,14 @@ function AppShellContent({
   }, [store, openSurfaceLauncher])
 
   // Workbench panel hotkeys (definitions in actions/definitions.ts).
-  useAction('panel.diff', () => openSurfaceLauncher('diff'))
-  useAction('panel.files', () => openSurfaceLauncher('files'))
+  useAction('panel.diff', () => {
+    store.set(filesPanelViewAtom, 'changed')
+    openSurfaceLauncher('files')
+  })
+  useAction('panel.files', () => {
+    store.set(filesPanelViewAtom, 'explorer')
+    openSurfaceLauncher('files')
+  })
   useAction('panel.context', () => openSurfaceLauncher('context'))
   useAction('panel.preview', () => openSurfaceLauncher('preview'))
   useAction('panel.toggle', toggleWorkbench)

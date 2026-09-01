@@ -14,6 +14,8 @@ export function createArtifactEventSnapshot(resolved: ResolvedArtifact): Artifac
     status: artifact.status,
     revision: artifact.draftRevision ?? artifact.currentRevision,
     sourcePath: artifact.sourcePath,
+    previewPath: resolved.activePath ?? undefined,
+    mimeType: artifact.mimeType,
     validation: artifact.validation,
     provenance: artifact.provenance,
     timestamp: artifact.updatedAt,
@@ -38,6 +40,8 @@ export function parseArtifactEvent(text: string | undefined): ArtifactEventSnaps
       || typeof parsed.sessionId !== 'string'
       || typeof parsed.title !== 'string'
       || typeof parsed.sourcePath !== 'string'
+      || (parsed.previewPath !== undefined && typeof parsed.previewPath !== 'string')
+      || (parsed.mimeType !== undefined && typeof parsed.mimeType !== 'string')
     ) return null;
     return parsed;
   } catch {

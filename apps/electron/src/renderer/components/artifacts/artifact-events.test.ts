@@ -40,6 +40,13 @@ describe('artifactEventsForTurn', () => {
     expect(result).toEqual([snapshot])
   })
 
+  it('accepts the atomic native image generation workflow', () => {
+    const snapshot = event({ kind: 'image', status: 'ready' })
+    expect(artifactEventsForTurn([
+      activity('mcp__session__image_generate', snapshot),
+    ])).toEqual([snapshot])
+  })
+
   it('keeps the latest event and ordering for each artifact in one turn', () => {
     const first = event({ artifactId: 'a', timestamp: 1, status: 'draft' })
     const second = event({ artifactId: 'b', timestamp: 2 })

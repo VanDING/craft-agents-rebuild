@@ -1,7 +1,7 @@
 /**
  * Active Session State
  *
- * Bound content-workbench panels (Review-Diff / Files / Context / Preview) bind
+ * Bound content-workbench panels (Files / Run / Terminal / Artifact) bind
  * their content to the *active* session, not merely the focused one.
  *
  * Semantics in the v2 Surface model:

@@ -1004,11 +1004,11 @@ export interface ProjectsNavigationState {
 /**
  * Bound content-workbench panel types.
  *
- * These panels (Review-Diff, Files tree, Context, Preview) follow the active
+ * These panels (Files, Context, Preview, Run, Terminal, Artifact) follow the active
  * session and carry no session id in their route — the route is a single
- * segment constant (`diff`/`files`/`context`/`preview`).
+ * segment constant. Legacy `diff` routes normalize to Files.
  */
-export type BoundPanelType = 'diff' | 'files' | 'context' | 'preview' | 'trajectory' | 'terminal' | 'artifact'
+export type BoundPanelType = 'files' | 'context' | 'preview' | 'trajectory' | 'terminal' | 'artifact'
 
 /**
  * Content-workbench panel navigation state.
@@ -1238,7 +1238,8 @@ export const parseNavigationStateKey = (key: string): NavigationState | null => 
       return artifactId ? { navigator: 'other', panel: 'artifact', artifactId } : null
     }
     const [, panel] = key.split(':')
-    if (panel && ['diff', 'files', 'context', 'preview', 'trajectory'].includes(panel)) {
+    if (panel === 'diff') return { navigator: 'other', panel: 'files' }
+    if (panel && ['files', 'context', 'preview', 'trajectory'].includes(panel)) {
       return { navigator: 'other', panel: panel as BoundPanelType }
     }
   }

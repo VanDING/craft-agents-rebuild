@@ -1,35 +1,30 @@
 /**
- * ReviewPanel - Review & Diff panel bound to the active session.
+ * ChangedFilesView - the Files panel's changed-files subview.
  *
  * Renders the session's file changes (Edit/Write activities) as a list grouped
  * by file, colored by diff kind (add / del / mix), with ±N line stats. Clicking
  * a file expands an embedded ShikiDiffViewer / UnifiedDiffViewer in the panel
- * (no overlay). Empty states guide the user when there is no active session or
- * no changes yet; while messages are still loading a placeholder is shown so
- * "no changes" is never a false positive.
+ * (no overlay). Message loading is owned by the parent Files panel, so this
+ * view only handles loaded changes and their empty state.
  *
  * Selected-file and scroll-focus state live in global atoms (content-panel-ui)
  * so the panel keeps identical state when expanded to fullscreen (Task 11).
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from 'motion/react'
 import { useTranslation } from 'react-i18next'
 import { useAtomValue, useSetAtom } from 'jotai'
 import { ChevronRight, ChevronDown, FilePlus, Files, PencilLine, GitCompareArrows, ChevronsUp } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { usePlatform, UnifiedDiffViewer, Spinner } from '@craft-agent/ui'
+import { usePlatform, UnifiedDiffViewer, type FileChange } from '@craft-agent/ui'
 import { ShikiDiffViewer } from '@/components/shiki/ShikiDiffViewer'
 import { useTheme } from '@/hooks/useTheme'
 import { PanelEmptyState } from './PanelEmptyState'
-import { activeSessionIdAtom } from '@/atoms/active-session'
-import { sessionAtomFamily, ensureSessionMessagesLoadedAtom } from '@/atoms/sessions'
-import { useSessionActivities } from '@/lib/use-session-activities'
-import { collectFileChangesFromActivities } from '@/lib/file-changes'
 import { computeChangeStats, createFileSections } from '@craft-agent/ui'
 import { diffKindForSection, type DiffKind } from '@/lib/diff-kinds'
 import { useDiffViewerSettings } from '@/lib/use-diff-viewer-settings'
-import { reviewPanelSelectedKeyBySessionAtom, reviewPanelFocusRequestAtom, updateWorkbenchFocusAtom } from '@/atoms/content-panel-ui'
+import { changedFilesSelectedKeyBySessionAtom, filesPanelFocusRequestAtom, updateWorkbenchFocusAtom } from '@/atoms/content-panel-ui'
 import { motionSpring, motionTween } from '@craft-agent/ui/motion'
 
 const KIND_DOTS: Record<DiffKind, string> = {
@@ -69,46 +64,23 @@ const fileBaseName = (path: string): string => {
   return normalized.slice(normalized.lastIndexOf('/') + 1) || path
 }
 
-export function ReviewPanel({ sessionId }: { sessionId?: string }) {
+export function ChangedFilesView({ sessionId, changes }: { sessionId: string; changes: FileChange[] }) {
   const { t } = useTranslation()
-  const currentActiveSessionId = useAtomValue(activeSessionIdAtom)
-  const activeSessionId = sessionId ?? currentActiveSessionId
-  const session = useAtomValue(sessionAtomFamily(activeSessionId ?? 'missing'))
-  const ensureMessagesLoaded = useSetAtom(ensureSessionMessagesLoadedAtom)
   const { onOpenFileExternal } = usePlatform()
   const { isDark } = useTheme()
   const [viewerSettings, setViewerSettings] = useDiffViewerSettings()
   const reduceMotion = useReducedMotion()
 
-  const selectedKeyBySession = useAtomValue(reviewPanelSelectedKeyBySessionAtom)
-  const setSelectedKeyBySession = useSetAtom(reviewPanelSelectedKeyBySessionAtom)
-  const selectedKey = activeSessionId ? selectedKeyBySession[activeSessionId] ?? null : null
+  const selectedKeyBySession = useAtomValue(changedFilesSelectedKeyBySessionAtom)
+  const setSelectedKeyBySession = useSetAtom(changedFilesSelectedKeyBySessionAtom)
+  const selectedKey = selectedKeyBySession[sessionId] ?? null
   const setSelectedKey = useCallback((key: string | null) => {
-    if (!activeSessionId) return
-    setSelectedKeyBySession(current => ({ ...current, [activeSessionId]: key }))
-  }, [activeSessionId, setSelectedKeyBySession])
+    setSelectedKeyBySession(current => ({ ...current, [sessionId]: key }))
+  }, [sessionId, setSelectedKeyBySession])
   const updateWorkbenchFocus = useSetAtom(updateWorkbenchFocusAtom)
-  const focusRequest = useAtomValue(reviewPanelFocusRequestAtom)
-  const setFocusRequest = useSetAtom(reviewPanelFocusRequestAtom)
-
-  // Start as loading so the first frame never flashes "no changes" while the
-  // async message load (or a missing session) resolves.
-  const [messagesLoading, setMessagesLoading] = useState(true)
+  const focusRequest = useAtomValue(filesPanelFocusRequestAtom)
+  const setFocusRequest = useSetAtom(filesPanelFocusRequestAtom)
   const changeRefs = useRef(new Map<string, HTMLDivElement>())
-
-  // Load conversation messages (async) so "no changes" is never a false positive.
-  useEffect(() => {
-    if (!activeSessionId) return
-    let stale = false
-    setMessagesLoading(true)
-    ensureMessagesLoaded(activeSessionId).finally(() => {
-      if (!stale) setMessagesLoading(false)
-    })
-    return () => { stale = true }
-  }, [activeSessionId, ensureMessagesLoaded])
-
-  const activities = useSessionActivities(session)
-  const changes = useMemo(() => collectFileChangesFromActivities(activities), [activities])
   const sections = useMemo(() => createFileSections(changes, true), [changes])
   const totalStats = useMemo(() => {
     let additions = 0
@@ -130,7 +102,7 @@ export function ReviewPanel({ sessionId }: { sessionId?: string }) {
   // Consume a scroll-to-change request from ChatDisplay: open the containing
   // section, then scroll the change into view once rendered.
   useEffect(() => {
-    if (!focusRequest || focusRequest.sessionId !== activeSessionId) return
+    if (!focusRequest || focusRequest.sessionId !== sessionId || focusRequest.view !== 'changed' || !focusRequest.changeId) return
     const { changeId } = focusRequest
     const matchingChange = sections
       .flatMap((section) => section.changes)
@@ -144,13 +116,13 @@ export function ReviewPanel({ sessionId }: { sessionId?: string }) {
     if (containing && selectedKey !== containing.key) {
       setSelectedKey(containing.key)
     }
-    if (activeSessionId) updateWorkbenchFocus({ sessionId: activeSessionId, source: 'review', changeId: resolvedChangeId, filePath: containing?.filePath })
+    updateWorkbenchFocus({ sessionId, source: 'files', changeId: resolvedChangeId, filePath: containing?.filePath })
     const timer = setTimeout(() => {
       changeRefs.current.get(resolvedChangeId)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }, 120)
     setFocusRequest(null)
     return () => clearTimeout(timer)
-  }, [activeSessionId, focusRequest, sections, selectedKey, setSelectedKey, setFocusRequest, updateWorkbenchFocus])
+  }, [sessionId, focusRequest, sections, selectedKey, setSelectedKey, setFocusRequest, updateWorkbenchFocus])
 
   // Review-specific controls live below the shared panel header so its centered
   // title and bound-session subtitle keep the same geometry as every other panel.
@@ -170,7 +142,7 @@ export function ReviewPanel({ sessionId }: { sessionId?: string }) {
       >
         {viewerSettings.diffStyle === style && (
           <motion.span
-            layoutId="review-diff-style"
+            layoutId="changed-files-diff-style"
             className="pointer-events-none absolute inset-0 z-0 rounded-md border border-border/55 bg-background shadow-minimal"
             transition={motionSpring(reduceMotion, 'responsive')}
           />
@@ -180,7 +152,7 @@ export function ReviewPanel({ sessionId }: { sessionId?: string }) {
     ))
     return (
       <div className="flex items-center gap-1.5">
-        <LayoutGroup id="review-diff-style">
+        <LayoutGroup id="changed-files-diff-style">
           <div className="flex items-center rounded-lg border border-border/60 bg-foreground/[0.025] p-0.5">{styleButtons}</div>
         </LayoutGroup>
         <div className="border-l border-border/55 pl-1.5">
@@ -199,24 +171,13 @@ export function ReviewPanel({ sessionId }: { sessionId?: string }) {
     )
   }, [viewerSettings, setViewerSettings, selectedKey, setSelectedKey, t, reduceMotion])
 
-  if (!activeSessionId) {
-    return (
-      <>
-        <PanelEmptyState
-          title={t('contentPanel.noActiveSession')}
-          icon={<GitCompareArrows className="h-6 w-6" />}
-        />
-      </>
-    )
-  }
-
   return (
     <div className="flex h-full min-h-0 flex-col">
-      {!messagesLoading && changes.length > 0 && (
+      {changes.length > 0 && (
         <div className="flex h-10 shrink-0 items-center gap-2 border-b border-border/50 bg-background/55 px-2.5 backdrop-blur-sm">
           <div
             className="flex min-w-0 items-center gap-2 text-[11px] font-medium tabular-nums text-muted-foreground @max-[420px]/panel:hidden"
-            aria-label={`${t('contentPanel.title.review')}: ${sections.length}`}
+            aria-label={`${t('contentPanel.files.view.changed')}: ${sections.length}`}
           >
             <span className="inline-flex items-center gap-1">
               <Files className="h-3.5 w-3.5" />
@@ -233,18 +194,14 @@ export function ReviewPanel({ sessionId }: { sessionId?: string }) {
         </div>
       )}
 
-      {messagesLoading ? (
-        <div className="flex flex-1 items-center justify-center">
-          <Spinner />
-        </div>
-      ) : changes.length === 0 ? (
+      {changes.length === 0 ? (
         <PanelEmptyState
           title={t('contentPanel.diff.noChanges')}
           hint={t('contentPanel.diff.noChangesHint')}
           icon={<GitCompareArrows className="h-6 w-6" />}
         />
       ) : (
-        <nav className="min-h-0 flex-1 overflow-y-auto bg-foreground/[0.012] p-2.5" aria-label={t('contentPanel.title.review')}>
+        <nav className="min-h-0 flex-1 overflow-y-auto bg-foreground/[0.012] p-2.5" aria-label={t('contentPanel.files.view.changed')}>
           <ul className="flex flex-col gap-2">
             {sections.map((section) => {
               const key = section.key

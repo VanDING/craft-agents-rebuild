@@ -11,13 +11,12 @@ const normalizeRoute = (route: string) => route as ViewRoute
 
 describe('v2 Surface URL', () => {
   it('round-trips Primary and collapsed Workbench tabs independently', () => {
-    const diff = createWorkbenchItem('diff')!
-    diff.binding = { type: 'session', sessionId: 's1' }
-    const files = createWorkbenchItem('files')!
+    const files = createWorkbenchItem('diff')!
+    files.binding = { type: 'session', sessionId: 's1' }
     const state: WorkbenchState = {
       open: false,
-      activeItemId: diff.id,
-      items: [diff, files],
+      activeItemId: files.id,
+      items: [files],
       primaryWidth: 432,
       expandedItemId: null,
     }
@@ -37,12 +36,12 @@ describe('v2 Surface URL', () => {
       restore: {
         primaryRoute: 'projects/calendar',
         foregroundSessionIds: ['s1', 's2'],
-        workbenchRoutes: ['diff', 'files'],
-        activeWorkbenchRoute: 'diff',
+        workbenchRoutes: ['files'],
+        activeWorkbenchRoute: 'files',
         workbenchOpen: false,
         companionPrimaryWidth: 432,
         workbenchBindings: {
-          diff: { type: 'session', sessionId: 's1' },
+          files: { type: 'session', sessionId: 's1' },
         },
       },
     })
@@ -115,9 +114,10 @@ describe('legacy panel URL migration', () => {
       source: 'legacy-panels',
       restore: {
         primaryRoute: 'projects/board',
-        workbenchRoutes: ['diff'],
-        activeWorkbenchRoute: 'diff',
+        workbenchRoutes: ['files'],
+        activeWorkbenchRoute: 'files',
         workbenchOpen: true,
+        filesView: 'changed',
       },
     })
   })

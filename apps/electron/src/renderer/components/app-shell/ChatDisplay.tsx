@@ -65,10 +65,12 @@ import { CHAT_LAYOUT } from "@/config/layout"
 import { collectFileChangesFromActivities, getFirstFileChangeIdForActivity } from "@/lib/file-changes"
 import { handleErrorMessageAction } from "./error-message-actions"
 import { addPreviewEntryAtom, type PreviewEntry } from "@/atoms/preview"
-import { chatFocusRequestAtom, reviewPanelFocusRequestAtom } from "@/atoms/content-panel-ui"
+import { chatFocusRequestAtom, filesPanelFocusRequestAtom } from "@/atoms/content-panel-ui"
 import { usePanelTriggerOpener } from "@/lib/panel-triggers"
 import { useArtifacts } from "@/hooks/useArtifacts"
 import { ArtifactTurnCards } from "@/components/artifacts/ArtifactTurnCards"
+import { artifactEventsForTurn } from "@/components/artifacts/artifact-events"
+import { dedupeArtifactPreviews } from "@/components/artifacts/artifact-preview-dedupe"
 import { RecoveryReconciliationDialog } from "./RecoveryReconciliationDialog"
 import { ModelRecoveryReconciliationDialog } from "./ModelRecoveryReconciliationDialog"
 
@@ -947,12 +949,12 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
   }, [validMatches.length, currentMatchIndex, isHighlighting, session?.id, onMatchInfoChange])
 
   // ============================================================================
-  // Preview / Diff panel triggers (overlays converged into workbench panels)
+  // Preview / changed-files triggers (consolidated into the Files workbench)
   // ============================================================================
 
   const openTriggeredPanel = usePanelTriggerOpener()
   const addPreviewEntry = useSetAtom(addPreviewEntryAtom)
-  const setReviewPanelFocusRequest = useSetAtom(reviewPanelFocusRequestAtom)
+  const setFilesPanelFocusRequest = useSetAtom(filesPanelFocusRequestAtom)
   const artifactStore = useArtifacts(workspaceId ?? session?.workspaceId ?? null, session?.id)
 
   const openArtifact = useCallback((artifactId: string) => {
@@ -993,13 +995,11 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
     openPreviewEntry({ type: 'markdown', content: message.content, title: t('contentPanel.preview.message'), id: `msg:${message.id}` })
   }, [openPreviewEntry, t])
 
-  // Open the Review/Diff panel, optionally scrolling to a specific change.
+  // Open Files > Changed, optionally scrolling to a specific change.
   const openDiffPanel = useCallback((focusedChangeId?: string) => {
-    if (focusedChangeId) {
-      if (session?.id) setReviewPanelFocusRequest({ sessionId: session.id, changeId: focusedChangeId, nonce: Date.now() })
-    }
-    openTriggeredPanel('diff')
-  }, [openTriggeredPanel, session?.id, setReviewPanelFocusRequest])
+    if (session?.id) setFilesPanelFocusRequest({ sessionId: session.id, view: 'changed', changeId: focusedChangeId, nonce: Date.now() })
+    openTriggeredPanel('files')
+  }, [openTriggeredPanel, session?.id, setFilesPanelFocusRequest])
 
   // Ref to track total turn count for scroll handler
   const totalTurnCountRef = React.useRef(0)
@@ -1693,6 +1693,17 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
 
                     // Assistant turns - render with TurnCard (buffered streaming)
                     const assistantUiKey = getAssistantTurnUiKey(turn, index)
+                    const turnArtifactEvents = artifactEventsForTurn(turn.activities)
+                    const response = turn.response && turnArtifactEvents.length > 0
+                      ? {
+                          ...turn.response,
+                          text: dedupeArtifactPreviews(
+                            turn.response.text,
+                            turnArtifactEvents,
+                            artifactStore.artifacts,
+                          ),
+                        }
+                      : turn.response
                     return (
                       <div
                         key={turnKey}
@@ -1711,7 +1722,18 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
                         hasActiveFollowUpAnnotations={pendingFollowUpAnnotations.length > 0}
                         turnId={turn.turnId}
                         activities={turn.activities}
-                        response={turn.response}
+                        response={response}
+                        responseSupplement={turnArtifactEvents.length > 0 ? (
+                          <ArtifactTurnCards
+                            activities={turn.activities}
+                            events={turnArtifactEvents}
+                            artifacts={artifactStore.artifacts}
+                            onOpen={openArtifact}
+                            onAccept={acceptArtifact}
+                            onDiscard={discardArtifact}
+                            onRevise={reviseArtifact}
+                          />
+                        ) : undefined}
                         intent={turn.intent}
                         isStreaming={turn.isStreaming}
                         isComplete={turn.isComplete}
@@ -1845,7 +1867,7 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
                             return ext === 'md' || ext === 'txt'
                           })()
 
-                          // Edit/Write tool → Review/Diff panel (focused on this change)
+                          // Edit/Write tool → Files > Changed (focused on this change)
                           // Exception: Write to .md/.txt files goes to preview panel instead
                           if ((activity.toolName === 'Edit' || activity.toolName === 'Write') && !isDocumentWrite) {
                             const changes = collectFileChangesFromActivities(turn.activities)
@@ -1872,14 +1894,6 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
                             openDiffPanel()
                           }
                         }}
-                      />
-                      <ArtifactTurnCards
-                        activities={turn.activities}
-                        artifacts={artifactStore.artifacts}
-                        onOpen={openArtifact}
-                        onAccept={acceptArtifact}
-                        onDiscard={discardArtifact}
-                        onRevise={reviseArtifact}
                       />
                       </div>
                     )

@@ -147,7 +147,14 @@ export function parseCompoundRoute(route: string): ParsedCompoundRoute | null {
 
   // Bound content-workbench panels — standalone single-segment routes that
   // carry no session id (content follows the active session).
-  if (first === 'diff' || first === 'files' || first === 'context' || first === 'preview' || first === 'trajectory' || first === 'terminal') {
+  if (first === 'diff') {
+    return {
+      navigator: 'other',
+      panel: 'files',
+      details: null,
+    }
+  }
+  if (first === 'files' || first === 'context' || first === 'preview' || first === 'trajectory' || first === 'terminal') {
     return {
       navigator: 'other',
       panel: first as BoundPanelType,
@@ -381,7 +388,7 @@ export function buildCompoundRoute(parsed: ParsedCompoundRoute): string {
     if (parsed.panel === 'artifact' && parsed.details?.type === 'artifact') {
       return `artifact/${encodeURIComponent(parsed.details.id)}`
     }
-    return parsed.panel ?? 'diff'
+    return parsed.panel ?? 'files'
   }
 
   if (parsed.navigator === 'settings') {
@@ -529,7 +536,7 @@ function convertCompoundToViewRoute(compound: ParsedCompoundRoute): ParsedRoute 
   if (compound.navigator === 'other') {
     return {
       type: 'view',
-      name: compound.panel ?? 'diff',
+      name: compound.panel ?? 'files',
       id: compound.details?.type === 'artifact' ? compound.details.id : undefined,
       params: {},
     }
@@ -646,7 +653,7 @@ export function parseRouteToNavigationState(route: string): NavigationState | nu
 function convertCompoundToNavigationState(compound: ParsedCompoundRoute): NavigationState {
   // Bound workbench panels
   if (compound.navigator === 'other') {
-    const panel = compound.panel ?? 'diff'
+    const panel = compound.panel ?? 'files'
     return panel === 'artifact'
       ? { navigator: 'other', panel, artifactId: compound.details?.id }
       : { navigator: 'other', panel }

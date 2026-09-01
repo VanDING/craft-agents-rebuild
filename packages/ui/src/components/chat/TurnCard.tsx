@@ -302,6 +302,8 @@ export interface TurnCardProps {
   activities: ActivityItem[]
   /** Final response content (may be streaming) */
   response?: ResponseContent
+  /** Structured content rendered inside the native response card after markdown. */
+  responseSupplement?: React.ReactNode
   /** Primary intent/goal for this turn (shown in collapsed preview) */
   intent?: string
   /** Whether content is still being received */
@@ -1419,6 +1421,8 @@ export interface ResponseCardProps {
   text: string
   /** Whether the content is still streaming */
   isStreaming: boolean
+  /** Structured content rendered in the same card as the markdown response. */
+  supplementaryContent?: React.ReactNode
   /** When streaming started - used for buffering timeout calculation */
   streamStartTime?: number
   /** Callback to open file in editor */
@@ -1684,6 +1688,7 @@ function applyTextHighlightRange(
 export function ResponseCard({
   text,
   isStreaming,
+  supplementaryContent,
   streamStartTime,
   onOpenFile,
   onOpenUrl,
@@ -2473,7 +2478,7 @@ export function ResponseCard({
   const isBuffering = isStreaming && !bufferDecision.shouldShow
 
   // While buffering, return null - TurnCard will show a subtle indicator instead
-  if (isBuffering) {
+  if (isBuffering && !supplementaryContent) {
     return null
   }
 
@@ -2538,6 +2543,7 @@ export function ResponseCard({
               >
                 {text}
               </Markdown>
+              {supplementaryContent}
               {annotationOverlayLayer}
             </div>
           </div>
@@ -2684,6 +2690,7 @@ export function ResponseCard({
             >
               {displayedText}
             </Markdown>
+            {supplementaryContent}
             {annotationOverlayLayer}
           </div>
         </div>
@@ -2799,6 +2806,7 @@ export const TurnCard = React.memo(function TurnCard({
   turnId,
   activities,
   response,
+  responseSupplement,
   intent,
   isStreaming,
   isComplete,
@@ -2977,6 +2985,7 @@ export const TurnCard = React.memo(function TurnCard({
       return true
     })
     && !response
+    && !responseSupplement
   if (hasNoMeaningfulWork) {
     return null
   }
@@ -3234,7 +3243,7 @@ export const TurnCard = React.memo(function TurnCard({
       {/* Animated version for playground demos */}
       {animateResponse && (
         <AnimatePresence>
-          {response && !isBuffering && (
+          {(response || responseSupplement) && (!isBuffering || responseSupplement) && (
             <motion.div
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
@@ -3242,16 +3251,17 @@ export const TurnCard = React.memo(function TurnCard({
               className={cn("select-text", hasActivities && "mt-2")}
             >
               <ResponseCard
-                text={response.text}
-                isStreaming={response.isStreaming}
-                streamStartTime={response.streamStartTime}
+                text={response?.text ?? ''}
+                isStreaming={response?.isStreaming ?? isStreaming}
+                streamStartTime={response?.streamStartTime}
+                supplementaryContent={responseSupplement}
                 sessionId={sessionId}
                 onOpenFile={onOpenFile}
                 onOpenUrl={onOpenUrl}
-                onPopOut={onPopOut ? () => onPopOut(response.text) : undefined}
-                variant={response.isPlan ? 'plan' : 'response'}
-                messageId={response.messageId}
-                annotations={response.annotations}
+                onPopOut={onPopOut && response ? () => onPopOut(response.text) : undefined}
+                variant={response?.isPlan ? 'plan' : 'response'}
+                messageId={response?.messageId}
+                annotations={response?.annotations}
                 onAddAnnotation={onAddAnnotation}
                 onRemoveAnnotation={onRemoveAnnotation}
                 onUpdateAnnotation={onUpdateAnnotation}
@@ -3260,7 +3270,7 @@ export const TurnCard = React.memo(function TurnCard({
                 onAcceptWithCompact={onAcceptPlanWithCompact}
                 isLastResponse={isLastResponse}
                 compactMode={compactMode}
-                onBranch={safeOnBranch && response.messageId ? (options?: { newPanel?: boolean }) => safeOnBranch(response.messageId!, options) : undefined}
+                onBranch={safeOnBranch && response?.messageId ? (options?: { newPanel?: boolean }) => safeOnBranch(response.messageId!, options) : undefined}
                 sendMessageKey={sendMessageKey}
                 hasActiveFollowUpAnnotations={hasActiveFollowUpAnnotations}
                 openAnnotationRequest={openAnnotationRequest}
@@ -3271,19 +3281,20 @@ export const TurnCard = React.memo(function TurnCard({
         </AnimatePresence>
       )}
       {/* Non-animated version for regular app use */}
-      {!animateResponse && response && !isBuffering && (
+      {!animateResponse && (response || responseSupplement) && (!isBuffering || responseSupplement) && (
         <div className={cn("select-text", hasActivities && "mt-2")}>
           <ResponseCard
-            text={response.text}
-            isStreaming={response.isStreaming}
-            streamStartTime={response.streamStartTime}
+            text={response?.text ?? ''}
+            isStreaming={response?.isStreaming ?? isStreaming}
+            streamStartTime={response?.streamStartTime}
+            supplementaryContent={responseSupplement}
             sessionId={sessionId}
             onOpenFile={onOpenFile}
             onOpenUrl={onOpenUrl}
-            onPopOut={onPopOut ? () => onPopOut(response.text) : undefined}
-            variant={response.isPlan ? 'plan' : 'response'}
-            messageId={response.messageId}
-            annotations={response.annotations}
+            onPopOut={onPopOut && response ? () => onPopOut(response.text) : undefined}
+            variant={response?.isPlan ? 'plan' : 'response'}
+            messageId={response?.messageId}
+            annotations={response?.annotations}
             onAddAnnotation={onAddAnnotation}
             onRemoveAnnotation={onRemoveAnnotation}
             onUpdateAnnotation={onUpdateAnnotation}
@@ -3292,7 +3303,7 @@ export const TurnCard = React.memo(function TurnCard({
             onAcceptWithCompact={onAcceptPlanWithCompact}
             isLastResponse={isLastResponse}
             compactMode={compactMode}
-            onBranch={safeOnBranch && response.messageId ? (options?: { newPanel?: boolean }) => safeOnBranch(response.messageId!, options) : undefined}
+            onBranch={safeOnBranch && response?.messageId ? (options?: { newPanel?: boolean }) => safeOnBranch(response.messageId!, options) : undefined}
             sendMessageKey={sendMessageKey}
             hasActiveFollowUpAnnotations={hasActiveFollowUpAnnotations}
             openAnnotationRequest={openAnnotationRequest}
@@ -3333,6 +3344,7 @@ export const TurnCard = React.memo(function TurnCard({
 
   // Re-render when response object changes (e.g., annotation updates)
   if (prev.response !== next.response) return false
+  if (prev.responseSupplement !== next.responseSupplement) return false
 
   // Re-render when external annotation-open requests change
   if (prev.openAnnotationRequest !== next.openAnnotationRequest) return false

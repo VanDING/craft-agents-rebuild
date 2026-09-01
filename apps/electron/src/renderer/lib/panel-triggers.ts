@@ -15,7 +15,7 @@ import type { ViewRoute } from '../../shared/routes'
 export function usePanelTriggerOpener() {
   const store = useStore()
 
-  return useCallback((kind: 'diff' | 'preview'): void => {
+  return useCallback((kind: 'files' | 'preview'): void => {
     const route: ViewRoute = kind === 'preview'
       ? SURFACE_LAUNCHER_ROUTES.preview
       : SURFACE_LAUNCHER_ROUTES[kind]

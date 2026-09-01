@@ -18,7 +18,7 @@ function isSessionNavigation(state: NavigationState | null): boolean {
 
 describe('Surface content types', () => {
   it('maps every bound route to its Context Workbench type', () => {
-    expect(getSurfacePanelTypeFromRoute('diff')).toBe('diff')
+    expect(getSurfacePanelTypeFromRoute('diff')).toBe('files')
     expect(getSurfacePanelTypeFromRoute('files')).toBe('files')
     expect(getSurfacePanelTypeFromRoute('context')).toBe('context')
     expect(getSurfacePanelTypeFromRoute('preview')).toBe('preview')
@@ -48,9 +48,9 @@ describe('Surface content types', () => {
   })
 
   it('round-trips bound navigation states without session identity', () => {
-    expect(parseRouteToNavigationState('diff')).toEqual({ navigator: 'other', panel: 'diff' })
+    expect(parseRouteToNavigationState('diff')).toEqual({ navigator: 'other', panel: 'files' })
     expect(buildRouteFromNavigationState({ navigator: 'other', panel: 'preview' })).toBe('preview')
-    const boundRoutes: BoundPanelType[] = ['diff', 'files', 'context', 'preview', 'trajectory']
+    const boundRoutes: BoundPanelType[] = ['files', 'context', 'preview', 'trajectory']
     for (const route of boundRoutes) {
       expect(isSessionNavigation(parseRouteToNavigationState(route))).toBe(false)
     }
@@ -62,7 +62,7 @@ describe('Surface content types', () => {
     store.set(openWorkbenchItemAtom, 'diff')
     store.set(openWorkbenchItemAtom, 'files')
 
-    expect(store.get(workbenchStateAtom).items.map((item) => item.kind)).toEqual(['diff', 'files'])
+    expect(store.get(workbenchStateAtom).items.map((item) => item.kind)).toEqual(['files'])
     expect(store.get(renderedSurfaceEntriesAtom).map((entry) => entry.panelType)).toEqual(['session', 'files'])
   })
 
@@ -80,6 +80,6 @@ describe('Surface content types', () => {
     })
 
     expect(store.get(workbenchStateAtom).items.map((item) => item.id)).toEqual(beforeIds)
-    expect(store.get(renderedSurfaceEntriesAtom).map((entry) => entry.panelType)).toEqual(['session', 'diff'])
+    expect(store.get(renderedSurfaceEntriesAtom).map((entry) => entry.panelType)).toEqual(['session', 'files'])
   })
 })

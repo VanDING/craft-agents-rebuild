@@ -183,6 +183,9 @@ export interface ArtifactEventSnapshot {
   status: ArtifactStatus;
   revision: string | null;
   sourcePath: string;
+  /** Stable path for rendering the revision represented by this event. */
+  previewPath?: string;
+  mimeType?: string;
   validation?: ArtifactValidation;
   provenance?: ArtifactProvenance;
   timestamp: number;

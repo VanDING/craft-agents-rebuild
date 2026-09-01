@@ -272,7 +272,10 @@ describe('artifact revision storage', () => {
       tool: 'vendor-tool',
       createdAt: 123,
     });
-    expect(parseArtifactEvent(serializeArtifactEvent(ready))?.provenance).toEqual({
+    const replayed = parseArtifactEvent(serializeArtifactEvent(ready));
+    expect(replayed?.previewPath).toBe(ready.activePath ?? undefined);
+    expect(replayed?.mimeType).toBe(ready.artifact.mimeType);
+    expect(replayed?.provenance).toEqual({
       origin: 'tool',
       tool: 'vendor-tool',
       createdAt: 123,

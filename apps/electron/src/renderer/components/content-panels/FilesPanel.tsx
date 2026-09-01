@@ -8,20 +8,21 @@ import { Spinner } from '@craft-agent/ui'
 import { Input } from '@/components/ui/input'
 import { PanelEmptyState } from './PanelEmptyState'
 import { PanelRow } from './PanelSection'
+import { ChangedFilesView } from './ChangedFilesView'
 import { PreviewPanel } from './PreviewPanel'
 import { SessionFilesSection } from '../right-sidebar/SessionFilesSection'
 import { activeSessionIdAtom } from '@/atoms/active-session'
 import { ensureSessionMessagesLoadedAtom, loadedSessionsAtom, sessionAtomFamily, sessionMetaMapAtom } from '@/atoms/sessions'
-import { filesPanelViewAtom, reviewPanelFocusRequestAtom, updateWorkbenchFocusAtom, type FilesPanelView } from '@/atoms/content-panel-ui'
+import { filesPanelFocusRequestAtom, filesPanelViewAtom, updateWorkbenchFocusAtom, type FilesPanelView } from '@/atoms/content-panel-ui'
 import { getPathBasename } from '@/lib/platform'
 import { useSessionActivities } from '@/lib/use-session-activities'
 import { collectFileChangesFromActivities, getFirstFileChangeIdForActivity } from '@/lib/file-changes'
 import { collectFileActivity, resolveFileActivityPath, type FileActivityOperation } from '@/lib/file-activity'
 import { useAppShellContext } from '@/context/AppShellContext'
-import { openWorkbenchItemAtom, setWorkbenchItemBindingAtom } from '@/atoms/workbench'
 
 const FILE_VIEWS: ReadonlyArray<{ id: FilesPanelView; key: string }> = [
   { id: 'explorer', key: 'contentPanel.files.view.explorer' },
+  { id: 'changed', key: 'contentPanel.files.view.changed' },
   { id: 'opened', key: 'contentPanel.files.view.opened' },
   { id: 'activity', key: 'contentPanel.files.view.activity' },
   { id: 'attachments', key: 'contentPanel.files.view.attachments' },
@@ -41,15 +42,14 @@ export function FilesPanel({ sessionId }: { sessionId?: string }) {
   const [loadError, setLoadError] = useState(false)
   const { onOpenFile, workspaces } = useAppShellContext()
   const updateWorkbenchFocus = useSetAtom(updateWorkbenchFocusAtom)
-  const setReviewFocusRequest = useSetAtom(reviewPanelFocusRequestAtom)
-  const openWorkbenchItem = useSetAtom(openWorkbenchItemAtom)
-  const setWorkbenchItemBinding = useSetAtom(setWorkbenchItemBindingAtom)
+  const focusRequest = useAtomValue(filesPanelFocusRequestAtom)
+  const setFilesFocusRequest = useSetAtom(filesPanelFocusRequestAtom)
 
   const meta = activeSessionId ? sessionMetaMap.get(activeSessionId) : undefined
   const workingDirectory = meta?.workingDirectory
   const activityBaseDirectory = workingDirectory ?? workspaces.find(workspace => workspace.id === meta?.workspaceId)?.rootPath
   const messagesLoaded = activeSessionId ? loadedSessions.has(activeSessionId) : false
-  const needsMessages = view === 'activity' || view === 'attachments'
+  const needsMessages = view === 'changed' || view === 'activity' || view === 'attachments'
   const activities = useSessionActivities(session)
   const changes = useMemo(() => collectFileChangesFromActivities(activities), [activities])
   const fileActivity = useMemo(() => collectFileActivity(activities), [activities])
@@ -62,6 +62,12 @@ export function FilesPanel({ sessionId }: { sessionId?: string }) {
       return true
     })
   }, [session])
+
+  useEffect(() => {
+    if (focusRequest?.sessionId !== activeSessionId) return
+    if (focusRequest.view !== view) setView(focusRequest.view)
+    if (!focusRequest.changeId) setFilesFocusRequest(null)
+  }, [activeSessionId, focusRequest, setFilesFocusRequest, setView, view])
 
   useEffect(() => {
     if (!activeSessionId || view === 'explorer' || view === 'opened') return
@@ -131,6 +137,8 @@ export function FilesPanel({ sessionId }: { sessionId?: string }) {
 
         {view === 'opened' && <PreviewPanel sessionId={activeSessionId} />}
 
+        {view === 'changed' && messagesLoaded && <ChangedFilesView sessionId={activeSessionId} changes={changes} />}
+
         {view === 'activity' && messagesLoaded && (
           fileActivity.length > 0 ? (
             <div className="flex h-full min-h-0 flex-col bg-foreground/[0.012]">
@@ -163,9 +171,8 @@ export function FilesPanel({ sessionId }: { sessionId?: string }) {
                         {changeId && (
                           <button type="button" className="rounded px-1.5 py-1 text-[10px] font-medium text-accent hover:bg-accent/10" onClick={() => {
                             updateWorkbenchFocus({ sessionId: activeSessionId, source: 'files', filePath: resolvedPath ?? record.path, callId: record.activityId, changeId })
-                            setReviewFocusRequest({ sessionId: activeSessionId, changeId, nonce: Date.now() })
-                            const reviewItemId = openWorkbenchItem('diff')
-                            if (reviewItemId) setWorkbenchItemBinding({ id: reviewItemId, binding: { type: 'session', sessionId: activeSessionId } })
+                            setFilesFocusRequest({ sessionId: activeSessionId, view: 'changed', changeId, nonce: Date.now() })
+                            setView('changed')
                           }}>{t('contentPanel.files.activity.review')}</button>
                         )}
                       </div>

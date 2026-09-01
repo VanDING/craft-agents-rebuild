@@ -90,7 +90,7 @@ export const EMPTY_TRAJECTORY_SNAPSHOT: TrajectorySnapshot = {
   timeRange: undefined,
 }
 
-/** Shared evidence identity used to keep Run, Files, Review, and Chat aligned. */
+/** Shared evidence identity used to keep Run, Files, and Chat aligned. */
 export interface WorkbenchFocus {
   sessionId: string
   requestSeq?: number
@@ -102,6 +102,6 @@ export interface WorkbenchFocus {
   changeId?: string
   /** Range focus is expressed in the active timeline coordinate system. */
   timelineRange?: { start: number; end: number; mode: 'sequence' | 'duration' | 'time' | 'actual' }
-  source: 'run' | 'files' | 'review' | 'chat'
+  source: 'run' | 'files' | 'chat'
   updatedAt: number
 }
