@@ -37,6 +37,7 @@ function piModelToDefinition(m: Model<Api>): ModelDefinition {
     description: `${m.provider} model via Craft Agents Backend`,
     provider: 'pi',
     contextWindow: m.contextWindow,
+    maxTokens: m.maxTokens,
     supportsThinking: m.reasoning,
     supportedThinkingLevels: getSupportedThinkingLevels(m) as ThinkingLevel[],
     ...(m.thinkingLevelMap

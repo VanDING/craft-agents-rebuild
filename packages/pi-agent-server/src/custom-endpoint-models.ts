@@ -9,6 +9,7 @@ export interface CustomEndpointModelDefaults {
 
 export interface CustomEndpointModelOverrides {
   contextWindow?: number
+  maxTokens?: number
   supportsImages?: boolean
   supportsThinking?: boolean
   thinkingLevelMap?: Partial<Record<'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max', string | null>>
@@ -21,6 +22,7 @@ export interface CustomEndpointModelEntry extends CustomEndpointModelOverrides {
 export type CustomEndpointModelConfig = string | {
   id: string
   contextWindow?: number
+  maxTokens?: number
   supportsImages?: boolean
   supportsThinking?: boolean
   thinkingLevelMap?: CustomEndpointModelOverrides['thinkingLevelMap']
@@ -46,6 +48,7 @@ export function normalizeCustomEndpointModelEntry(model: CustomEndpointModelConf
   return {
     id: stripPiPrefix(model.id),
     ...(model.contextWindow !== undefined ? { contextWindow: model.contextWindow } : {}),
+    ...(model.maxTokens !== undefined ? { maxTokens: model.maxTokens } : {}),
     ...(model.supportsImages !== undefined ? { supportsImages: model.supportsImages } : {}),
     ...(model.supportsThinking !== undefined ? { supportsThinking: model.supportsThinking } : {}),
     ...(model.thinkingLevelMap ? { thinkingLevelMap: model.thinkingLevelMap } : {}),
@@ -54,7 +57,7 @@ export function normalizeCustomEndpointModelEntry(model: CustomEndpointModelConf
 
 /**
  * Build a synthetic model definition for a custom endpoint.
- * Uses reasonable defaults for context window and max tokens since we can't
+ * Uses conservative defaults for context window and max tokens since we can't
  * query the endpoint for its actual capabilities. Image support must be
  * explicitly enabled either at the connection level or per-model.
  *
@@ -80,7 +83,7 @@ export function buildCustomEndpointModelDef(
     input,
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextWindow: overrides?.contextWindow ?? 131_072,
-    maxTokens: 8_192,
+    maxTokens: overrides?.maxTokens ?? 16_384,
     ...(api === 'openai-completions' ? { compat: { supportsStore: false } } : {}),
   }
 }

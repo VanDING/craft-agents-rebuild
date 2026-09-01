@@ -4,6 +4,7 @@
  */
 
 import { spawn } from "bun";
+import * as esbuild from "esbuild";
 import { existsSync, readFileSync, statSync, mkdirSync, copyFileSync, rmSync } from "fs";
 import { join } from "path";
 
@@ -42,12 +43,7 @@ function loadEnvFile(): void {
   }
 }
 
-// Get build-time defines for esbuild (OAuth, Sentry DSN, etc.)
-// NOTE: Sentry source map upload is intentionally disabled for the main process.
-// To enable in the future, add @sentry/esbuild-plugin. See apps/electron/CLAUDE.md.
-// NOTE: Google OAuth credentials are NOT baked into the build - users provide their own
-// via source config. See README_FOR_OSS.md for setup instructions.
-function getBuildDefines(): string[] {
+function getBuildDefines(): Record<string, string> {
   const definedVars = [
     "SLACK_OAUTH_CLIENT_ID",
     "SLACK_OAUTH_CLIENT_SECRET",
@@ -57,10 +53,13 @@ function getBuildDefines(): string[] {
     "CRAFT_DEV_RUNTIME",
   ];
 
-  return definedVars.map((varName) => {
+  const defines: Record<string, string> = {};
+  for (const varName of definedVars) {
     const value = process.env[varName] || "";
-    return `--define:process.env.${varName}="${value}"`;
-  });
+    // JSON.stringify renders the value as a string literal, not an identifier.
+    defines[`process.env.${varName}`] = JSON.stringify(value);
+  }
+  return defines;
 }
 
 // Wait for file to stabilize (no size changes)
@@ -319,39 +318,32 @@ async function main(): Promise<void> {
 
   console.log("🔨 Building main process...");
 
-  const proc = spawn({
-    cmd: [
-      "bun", "run", "esbuild",
-      "apps/electron/src/main/index.ts",
-      "--bundle",
-      "--platform=node",
-      "--format=cjs",
-      "--outfile=apps/electron/dist/main.cjs",
-      "--external:electron",
-      // The main process no longer imports any ESM-only SDK: the Pi agent
-      // server runs as a separate subprocess (resources/pi-agent-server), so
-      // the bundle only externalizes `electron` itself. Keep the grammY
-      // polyfill shims below (node-fetch@2 + abort-controller@3) working:
-
+  // Use the esbuild JS API (not the CLI): bun 1.4 refuses to pass arguments
+  // containing cmd.exe special characters to .cmd shims, which the quoted
+  // --define values triggered on Windows.
+  try {
+    await esbuild.build({
+      entryPoints: ["apps/electron/src/main/index.ts"],
+      bundle: true,
+      platform: "node",
+      format: "cjs",
+      outfile: "apps/electron/dist/main.cjs",
+      external: ["electron"],
       // Replace grammY's bundled polyfills (node-fetch@2 + abort-controller@3)
       // with native Node globals. esbuild otherwise renames the polyfill's
       // `class AbortSignal` to `_AbortSignal` to dodge collision with the
       // global, which then breaks node-fetch@2's `constructor.name` check and
       // fails every Telegram API call with a TypeError.
-      "--alias:node-fetch=./apps/electron/src/main/shims/node-fetch.cjs",
-      "--alias:abort-controller=./apps/electron/src/main/shims/abort-controller.cjs",
-      ...buildDefines,
-    ],
-    cwd: ROOT_DIR,
-    stdout: "inherit",
-    stderr: "inherit",
-  });
-
-  const exitCode = await proc.exited;
-
-  if (exitCode !== 0) {
-    console.error("❌ esbuild failed with exit code", exitCode);
-    process.exit(exitCode);
+      alias: {
+        "node-fetch": join(ROOT_DIR, "apps/electron/src/main/shims/node-fetch.cjs"),
+        "abort-controller": join(ROOT_DIR, "apps/electron/src/main/shims/abort-controller.cjs"),
+      },
+      define: buildDefines,
+      logLevel: "warning",
+    });
+  } catch (err) {
+    console.error("❌ esbuild failed:", (err as Error).message);
+    process.exit(1);
   }
 
   // Wait for file to stabilize

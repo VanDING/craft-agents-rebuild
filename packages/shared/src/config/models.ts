@@ -112,6 +112,8 @@ export interface ModelDefinition {
   provider: ModelProvider;
   /** Maximum context window in tokens */
   contextWindow: number;
+  /** Maximum tokens the model can emit in one response. */
+  maxTokens?: number;
   /** Whether this model supports thinking/reasoning effort. Defaults to true when undefined. */
   supportsThinking?: boolean;
   /** Thinking levels accepted by this concrete model, as reported by Pi. */

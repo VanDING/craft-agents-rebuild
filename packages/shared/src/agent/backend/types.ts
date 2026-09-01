@@ -46,6 +46,7 @@ export interface BackendRuntimeUpdate {
     customModels?: Array<string | {
       id: string;
       contextWindow?: number;
+      maxTokens?: number;
       supportsImages?: boolean;
       supportsThinking?: boolean;
       thinkingLevelMap?: Partial<Record<ThinkingLevel, string | null>>;

@@ -3652,10 +3652,11 @@ export class SessionManager implements ISessionManager {
               if (typeof model === 'string') return model
               const supportsImages = typeof model.supportsImages === 'boolean' ? model.supportsImages : undefined
               const supportsThinking = typeof model.supportsThinking === 'boolean' ? model.supportsThinking : undefined
-              if (model.contextWindow || supportsImages !== undefined || supportsThinking !== undefined || model.thinkingLevelMap) {
+              if (model.contextWindow || model.maxTokens || supportsImages !== undefined || supportsThinking !== undefined || model.thinkingLevelMap) {
                 return {
                   id: model.id,
                   ...(model.contextWindow ? { contextWindow: model.contextWindow } : {}),
+                  ...(model.maxTokens ? { maxTokens: model.maxTokens } : {}),
                   ...(supportsImages !== undefined ? { supportsImages } : {}),
                   ...(supportsThinking !== undefined ? { supportsThinking } : {}),
                   ...(model.thinkingLevelMap ? { thinkingLevelMap: model.thinkingLevelMap } : {}),

@@ -29,6 +29,7 @@ This index separates current product and architecture documentation from histori
 | Document | Status | Purpose |
 | --- | --- | --- |
 | [Project assessment and development roadmap](project-assessment-and-roadmap-2026-08-31.md) | Proposed; implementation not started | Point-in-time assessment of product, architecture, quality, release, security, and governance, followed by a phased convergence and development roadmap. |
+| [Performance optimization assessment and plan](performance-optimization-plan-2026-09-01.md) | Proposed; implementation not started | Evidence-bounded review of startup, streaming, rendering, persistence, search, and build performance, followed by budgets, benchmark requirements, and a phased implementation plan. |
 
 ## Historical, research, and deferred records
 

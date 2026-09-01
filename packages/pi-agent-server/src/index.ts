@@ -206,6 +206,11 @@ import {
   type CustomEndpointModelEntry,
   type CustomEndpointModelOverrides,
 } from './custom-endpoint-models.ts';
+import {
+  LENGTH_CONTINUATION_PROMPT,
+  LengthContinuationTracker,
+  MAX_AUTO_LENGTH_CONTINUATIONS,
+} from './length-continuation.ts';
 
 // Direct source imports from shared (bundled by bun build)
 import { handleLargeResponse, estimateTokens, tokenLimitFor } from '../../shared/src/utils/large-response.ts';
@@ -265,7 +270,7 @@ interface InitMessage {
   branchFromSessionPath?: string;
   branchFromSdkTurnId?: string;
   customEndpoint?: { api: CustomEndpointApi; supportsImages?: boolean };
-  customModels?: Array<string | { id: string; contextWindow?: number; supportsImages?: boolean; supportsThinking?: boolean; thinkingLevelMap?: CustomEndpointModelEntry['thinkingLevelMap'] }>;
+  customModels?: Array<string | { id: string; contextWindow?: number; maxTokens?: number; supportsImages?: boolean; supportsThinking?: boolean; thinkingLevelMap?: CustomEndpointModelEntry['thinkingLevelMap'] }>;
   piAuth?: { provider: string; credential: PiCredential };
   /** Whether the browser session tool is enabled (false = exclude via SDK denylist) */
   browserToolEnabled?: boolean;
@@ -279,7 +284,7 @@ interface RuntimeConfigUpdateMessage {
   authType?: string;
   baseUrl?: string;
   customEndpoint?: { api: CustomEndpointApi; supportsImages?: boolean };
-  customModels?: Array<string | { id: string; contextWindow?: number; supportsImages?: boolean; supportsThinking?: boolean; thinkingLevelMap?: CustomEndpointModelEntry['thinkingLevelMap'] }>;
+  customModels?: Array<string | { id: string; contextWindow?: number; maxTokens?: number; supportsImages?: boolean; supportsThinking?: boolean; thinkingLevelMap?: CustomEndpointModelEntry['thinkingLevelMap'] }>;
 }
 
 /** Messages from main process (stdin) */
@@ -499,6 +504,7 @@ let piModelRuntime: ModelRuntime | null = null;
 let piModelRegistry: PiModelRegistry | null = null;
 let moduleCredentialStore: InMemoryCredentialStore | null = null;
 let unsubscribeEvents: (() => void) | null = null;
+const lengthContinuationTracker = new LengthContinuationTracker();
 
 // Init config (set on 'init' message)
 let initConfig: Extract<InboundMessage, { type: 'init' }> | null = null;
@@ -799,10 +805,19 @@ function registerCustomEndpointModels(
   }
   for (const m of models) {
     customEndpointModelIds.add(m.id);
-    if (m.contextWindow || m.supportsImages !== undefined) {
+    if (
+      m.contextWindow !== undefined
+      || m.maxTokens !== undefined
+      || m.supportsImages !== undefined
+      || m.supportsThinking !== undefined
+      || m.thinkingLevelMap !== undefined
+    ) {
       customModelOverrides.set(m.id, {
-        ...(m.contextWindow ? { contextWindow: m.contextWindow } : {}),
+        ...(m.contextWindow !== undefined ? { contextWindow: m.contextWindow } : {}),
+        ...(m.maxTokens !== undefined ? { maxTokens: m.maxTokens } : {}),
         ...(m.supportsImages !== undefined ? { supportsImages: m.supportsImages } : {}),
+        ...(m.supportsThinking !== undefined ? { supportsThinking: m.supportsThinking } : {}),
+        ...(m.thinkingLevelMap !== undefined ? { thinkingLevelMap: m.thinkingLevelMap } : {}),
       });
     }
   }
@@ -866,6 +881,7 @@ async function createAuthenticatedRuntime(): Promise<{
       : [initConfig.model || 'default']
     ).map(normalizeCustomEndpointModelEntry);
     customEndpointModelIds = new Set();  // Reset on fresh registry creation
+    customModelOverrides.clear();
     registerCustomEndpointModels(modelRegistry, api, initConfig.baseUrl!.trim(), modelEntries);
   } else if (hasCustomEndpoint && !initConfig?.customEndpoint) {
     debugLog('Custom endpoint without protocol config — models may not resolve. Set customEndpoint.api for proper routing.');
@@ -1748,6 +1764,7 @@ function extractToolExecutionMetadata(args: Record<string, unknown> | undefined)
 
 function handleSessionEvent(event: AgentSessionEvent): void {
   let forwardedEvent: OutboundAgentEvent = event;
+  let lengthContinuationAttempt: number | undefined;
 
   // Log API errors for debugging and attach provider-native turn anchor for branch cutoffs.
   if (event.type === 'message_end') {
@@ -1755,6 +1772,7 @@ function handleSessionEvent(event: AgentSessionEvent): void {
       role?: string;
       stopReason?: string;
       errorMessage?: string;
+      usage?: { output?: number };
       durableOperationId?: string;
       durableSeq?: number;
       durableRequestSeq?: number;
@@ -1764,6 +1782,9 @@ function handleSessionEvent(event: AgentSessionEvent): void {
     }
 
     if (msg?.role === 'assistant' && piSession) {
+      const modelMaxTokens = piSession.agent.state.model?.maxTokens;
+      lengthContinuationAttempt = lengthContinuationTracker.nextAttempt(msg, modelMaxTokens);
+
       // CRITICAL: do NOT read `getLeafId()` here.
       //
       // The Pi SDK fires `message_end` synchronously BEFORE calling
@@ -1916,6 +1937,13 @@ function handleSessionEvent(event: AgentSessionEvent): void {
 
   // Forward all events to main process
   send({ type: 'event', event: forwardedEvent });
+  if (lengthContinuationAttempt !== undefined && piSession) {
+    const activeSession = piSession;
+    debugLog(`Output limit reached; queuing automatic continuation ${lengthContinuationAttempt}/${MAX_AUTO_LENGTH_CONTINUATIONS}`);
+    void activeSession.followUp(LENGTH_CONTINUATION_PROMPT).catch(error => {
+      debugLog(`Could not queue automatic length continuation: ${error instanceof Error ? error.message : String(error)}`);
+    });
+  }
   if (event.type === 'agent_settled') {
     durableToolBatches.clear();
     currentDurableRunOperationId = undefined;
@@ -1999,6 +2027,7 @@ async function waitForCompaction(session: { isCompacting: boolean }, timeoutMs =
 }
 
 async function handlePrompt(msg: Extract<InboundMessage, { type: 'prompt' }>): Promise<void> {
+  lengthContinuationTracker.reset();
   currentUserMessage = msg.message;
   durableToolBatches.clear();
   currentDurableRunOperationId = msg.durableRunOperationId;

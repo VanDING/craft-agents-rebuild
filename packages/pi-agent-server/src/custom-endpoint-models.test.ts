@@ -31,14 +31,16 @@ describe('normalizeCustomEndpointModelEntry', () => {
     })
   })
 
-  it('preserves context window and image support together', () => {
+  it('preserves context window, output limit and image support together', () => {
     expect(normalizeCustomEndpointModelEntry({
       id: 'pi/vision-model',
       contextWindow: 262_144,
+      maxTokens: 32_768,
       supportsImages: true,
     })).toEqual({
       id: 'vision-model',
       contextWindow: 262_144,
+      maxTokens: 32_768,
       supportsImages: true,
     })
   })
@@ -60,6 +62,12 @@ describe('buildCustomEndpointModelDef', () => {
   it('defaults custom endpoint models to text-only input', () => {
     const model = buildCustomEndpointModelDef('my-model')
     expect(model.input).toEqual(['text'])
+    expect(model.maxTokens).toBe(16_384)
+  })
+
+  it('uses an explicit per-model output limit', () => {
+    const model = buildCustomEndpointModelDef('long-output-model', undefined, { maxTokens: 32_768 })
+    expect(model.maxTokens).toBe(32_768)
   })
 
   it('enables image input when the connection explicitly opts in', () => {
