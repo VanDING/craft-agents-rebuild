@@ -108,6 +108,7 @@ export function classifySurfaceRoute(route: ViewRoute): SurfaceRouteClassificati
     case 'settings':
     case 'skills':
     case 'automations':
+    case 'pages':
       return { role: 'primary', kind: 'management' }
     case 'other':
       return { role: 'workbench', kind: navState.panel }

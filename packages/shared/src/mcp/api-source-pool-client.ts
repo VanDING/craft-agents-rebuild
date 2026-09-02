@@ -10,8 +10,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
-import type { PoolClient } from './client.ts';
-import type { DurableToolExecutionIdentity } from '../durable-runtime/types.ts';
+import type { PoolCallToolOptions, PoolClient } from './client.ts';
 import { durableToolMeta } from './durable-tool-meta.ts';
 
 export class ApiSourcePoolClient implements PoolClient {
@@ -40,14 +39,15 @@ export class ApiSourcePoolClient implements PoolClient {
     return result.tools;
   }
 
-  async callTool(name: string, args: Record<string, unknown>, durableTool?: DurableToolExecutionIdentity): Promise<unknown> {
+  async callTool(name: string, args: Record<string, unknown>, options?: PoolCallToolOptions): Promise<unknown> {
     if (!this.connected) await this.connect();
     return this.client.callTool({
       name,
       arguments: args,
-      ...(durableTool ? {
-        _meta: durableToolMeta(durableTool),
-      } : {}),
+      ...(options?.durableTool ? { _meta: durableToolMeta(options.durableTool) } : {}),
+    }, undefined, {
+      ...(options?.signal ? { signal: options.signal } : {}),
+      ...(options?.timeoutMs !== undefined ? { timeout: options.timeoutMs } : {}),
     });
   }
 

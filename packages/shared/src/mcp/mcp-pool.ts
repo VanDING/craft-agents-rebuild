@@ -13,13 +13,12 @@
  * - Runtime source switching without session restart
  */
 
-import { CraftMcpClient, type McpClientConfig, type PoolClient } from './client.ts';
+import { CraftMcpClient, type McpClientConfig, type PoolCallToolOptions, type PoolClient } from './client.ts';
 import { ApiSourcePoolClient } from './api-source-pool-client.ts';
 import { proxyToolName } from './proxy-tool-name.ts';
 import type { AgentMcpServerConfig } from '../agent/backend/types.ts';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import type { DurableToolExecutionIdentity } from '../durable-runtime/types.ts';
 import { isLocalMcpEnabled } from '../workspaces/storage.ts';
 import { guardLargeResult } from '../utils/large-response.ts';
 import {
@@ -192,6 +191,31 @@ export class McpClientPool {
   async connectInProcess(slug: string, mcpServer: McpServer): Promise<void> {
     if (this.clients.has(slug)) return;
     await this.registerClient(slug, new ApiSourcePoolClient(mcpServer));
+  }
+
+  /**
+   * Ensure one source is connected with the given config, without touching
+   * other pool members (unlike sync(), which reconciles the full set).
+   * Reconnects when the config changed (e.g. refreshed OAuth token), and
+   * applies the same local-MCP gate as sync(): stdio configs are refused
+   * when local MCP is disabled for this workspace.
+   *
+   * @throws Error for stdio configs while local MCP is disabled, and on
+   *   connection failure (propagated from connect()).
+   */
+  async ensureConnected(slug: string, config: AgentMcpServerConfig): Promise<void> {
+    if (config.type === 'stdio' && this.workspaceRootPath && !isLocalMcpEnabled(this.workspaceRootPath)) {
+      throw new Error(`Local MCP is disabled for this workspace — cannot connect stdio source "${slug}"`);
+    }
+
+    if (this.clients.has(slug)) {
+      const oldConfig = this.activeConfigs.get(slug);
+      if (!oldConfig || !mcpConfigChanged(oldConfig, config)) return;
+      this.debug(`Config changed for ${slug}, reconnecting with fresh credentials`);
+      await this.disconnect(slug);
+    }
+
+    await this.connect(slug, config);
   }
 
   /**
@@ -371,7 +395,7 @@ export class McpClientPool {
    * Execute an MCP tool by its proxy name (mcp__{slug}__{toolName}).
    * Returns a result matching the subprocess protocol format.
    */
-  async callTool(proxyName: string, args: Record<string, unknown>, durableTool?: DurableToolExecutionIdentity): Promise<McpToolResult> {
+  async callTool(proxyName: string, args: Record<string, unknown>, options?: PoolCallToolOptions): Promise<McpToolResult> {
     const info = this.proxyTools.get(proxyName);
     if (!info) {
       return {
@@ -392,7 +416,7 @@ export class McpClientPool {
     }
 
     try {
-      const result = await client.callTool(originalName, args, durableTool) as {
+      const result = await client.callTool(originalName, args, options) as {
         content?: Array<{ type: string; text?: unknown; data?: string; mimeType?: string }>;
         isError?: boolean;
       };

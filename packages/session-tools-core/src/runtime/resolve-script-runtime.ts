@@ -39,10 +39,17 @@ function resolveBinaryOnPath(binary: string): string | null {
     return null;
   }
 
-  const firstMatch = result.stdout
+  const matches = result.stdout
     ?.split(/\r?\n/)
     .map(line => line.trim())
-    .find(Boolean);
+    .filter(Boolean) ?? [];
+
+  // `where bun` can list an extensionless npm shim before bun.exe on Windows.
+  // child_process.spawn cannot execute that shim directly, so prefer a native
+  // executable whenever the resolver reports one.
+  const firstMatch = process.platform === 'win32'
+    ? matches.find(match => /\.(?:exe|com)$/i.test(match)) ?? matches[0]
+    : matches[0];
 
   return firstMatch ?? null;
 }

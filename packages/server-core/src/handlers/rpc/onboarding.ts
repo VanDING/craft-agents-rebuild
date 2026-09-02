@@ -33,6 +33,8 @@ export function registerOnboardingHandlers(server: RpcServer, deps: HandlerDeps)
   // Get current auth state
   server.handle(RPC_CHANNELS.onboarding.GET_AUTH_STATE, async () => {
     const authState = await getAuthState()
+    // Honor "Setup later" like the Electron main handler does — without the
+    // flag, headless/WebUI clients re-enter onboarding on every reload.
     const setupNeeds = getSetupNeeds(authState, isSetupDeferred())
     // Redact raw credentials — renderer only needs boolean flags (hasCredentials, setupNeeds)
     return {

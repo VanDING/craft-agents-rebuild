@@ -21,6 +21,8 @@ import type { NavigationState } from '../../shared/types'
  * - sessions: a session is selected
  * - settings: a subpage is selected (bare `settings` route → false)
  * - sources / skills / automations: a detail item is selected
+ * - pages: always — both the library grid and a page render in the content
+ *   panel (pages has no navigator list to fall back to)
  */
 export function isDetailNavState(navState: NavigationState | null): boolean {
   if (!navState) return false
@@ -35,6 +37,8 @@ export function isDetailNavState(navState: NavigationState | null): boolean {
       return navState.details !== null
     case 'projects':
       return navState.details !== null || navState.view !== 'overview'
+    case 'pages':
+      return true
     case 'other':
       // Bound workbench panels are standalone — never "detail" mode.
       return false
@@ -57,6 +61,8 @@ export function buildNavigatorRootRoute(navState: NavigationState): ViewRoute | 
       return buildRouteFromNavigationState({ ...navState, subpage: null }) as ViewRoute
     case 'projects':
       return buildRouteFromNavigationState({ ...navState, view: 'overview', details: null }) as ViewRoute
+    case 'pages':
+      return buildRouteFromNavigationState({ ...navState, details: null }) as ViewRoute
     case 'other':
       return null
   }

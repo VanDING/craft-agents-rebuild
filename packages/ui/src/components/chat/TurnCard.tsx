@@ -3243,7 +3243,7 @@ export const TurnCard = React.memo(function TurnCard({
       {/* Animated version for playground demos */}
       {animateResponse && (
         <AnimatePresence>
-          {(response || responseSupplement) && (!isBuffering || responseSupplement) && (
+          {(response || responseSupplement) && (!isBuffering || (responseSupplement && isComplete)) && (
             <motion.div
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
@@ -3281,7 +3281,7 @@ export const TurnCard = React.memo(function TurnCard({
         </AnimatePresence>
       )}
       {/* Non-animated version for regular app use */}
-      {!animateResponse && (response || responseSupplement) && (!isBuffering || responseSupplement) && (
+      {!animateResponse && (response || responseSupplement) && (!isBuffering || (responseSupplement && isComplete)) && (
         <div className={cn("select-text", hasActivities && "mt-2")}>
           <ResponseCard
             text={response?.text ?? ''}

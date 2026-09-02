@@ -243,6 +243,13 @@ export const routes = {
 
     /** Trajectory panel (turn-aware event ledger, bound to the active session) */
     trajectory: () => 'trajectory' as const,
+
+    /** Pages view (full-width library grid, or one page's embedded render) */
+    pages: (pageSlug?: string) =>
+      pageSlug
+        ? `pages/page/${pageSlug}` as const
+        : 'pages' as const,
+
   },
 } as const
 

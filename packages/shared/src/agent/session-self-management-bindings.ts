@@ -1,7 +1,8 @@
 /**
  * Session Self-Management Bindings
  *
- * Attaches session-management and Artifact properties to a SessionToolContext using
+ * Attaches session-scoped tool properties (session management, tasks,
+ * messaging, Artifacts, Pages) to a SessionToolContext using
  * Object.defineProperty with non-memoized lazy getters. Each access resolves
  * the callback from the session-scoped tool callback registry at call time,
  * so late merges and callback replacements are immediately visible without
@@ -24,7 +25,8 @@ import { getSessionScopedToolCallbacks } from './session-scoped-tool-callback-re
 /**
  * Attach session self-management bindings to a SessionToolContext.
  *
- * Defines lazy getters for session self-management and Artifact callbacks.
+ * Defines lazy getters for session-management, messaging, task, Artifact,
+ * image-generation, and Pages callbacks.
  *
  * @param context - The SessionToolContext to augment (mutated in place)
  * @param sessionId - The session ID for registry lookup and getSessionInfo defaulting
@@ -183,6 +185,14 @@ export function attachSessionSelfManagementBindings(
   Object.defineProperty(context, 'artifactSubmit', {
     get() {
       return getSessionScopedToolCallbacks(sessionId)?.artifactSubmitFn;
+    },
+    configurable: true,
+    enumerable: true,
+  });
+
+  Object.defineProperty(context, 'pages', {
+    get() {
+      return getSessionScopedToolCallbacks(sessionId)?.pages;
     },
     configurable: true,
     enumerable: true,

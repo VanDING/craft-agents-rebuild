@@ -1,6 +1,6 @@
 {
   "name": "craft-agent",
-  "version": "0.12.1",
+  "version": "0.13.0",
   "license": "Apache-2.0",
   "description": "Open-source desktop and server agent workspace powered by the Pi SDK",
   "type": "module",
@@ -25,6 +25,7 @@
     "test": "for dir in packages/* apps/*; do tests=$(find \"$dir\" -path '*/node_modules/*' -prune -o -type f \\( -name '*.test.ts' -o -name '*.test.tsx' -o -name '*.test.js' -o -name '*.test.jsx' -o -name '*.spec.ts' -o -name '*.spec.tsx' -o -name '*.spec.js' -o -name '*.spec.jsx' \\) -print -quit); if [ -n \"$tests\" ]; then (cd \"$dir\" && bun test) || exit 1; fi; done && for f in $(find packages apps -name '*.isolated.ts'); do bun test \"./$f\" || exit 1; done",
     "typecheck": "bun run typecheck:shared",
     "typecheck:shared": "cd packages/shared && bun run tsc --noEmit",
+    "typecheck:staged": "bash scripts/typecheck-staged.sh",
     "typecheck:all": "cd packages/core && bun run tsc --noEmit && cd ../shared && bun run tsc --noEmit && cd ../server-core && bun run tsc --noEmit && cd ../server && bun run tsc --noEmit && cd ../session-tools-core && bun run tsc --noEmit && cd ../pi-agent-server && bun run typecheck && cd ../../apps/electron && bun run typecheck && cd ../../packages/ui && bun run tsc --noEmit && cd ../messaging-gateway && bun run tsc --noEmit && cd ../messaging-whatsapp-worker && bun run tsc --noEmit",
     "server:start": "bun run packages/server/src/index.ts",
     "server:dev": "bun run server:build:subprocess && CRAFT_DEBUG=true CRAFT_BUNDLED_ASSETS_ROOT=$PWD/apps/electron bun run packages/server/src/index.ts",

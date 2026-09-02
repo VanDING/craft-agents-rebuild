@@ -103,6 +103,13 @@ export interface SessionScopedToolCallbacks {
   imageGenerateFn?: (
     input: import('@craft-agent/session-tools-core').ImageGenerateInput,
   ) => Promise<import('@craft-agent/session-tools-core').ArtifactToolResult>;
+
+  /**
+   * Pages tools (list/get/create/update/write data/delete) — grouped in one
+   * object because the six operations always ship together. Wired by
+   * SessionManager to the invoking session's workspace.
+   */
+  pages?: import('@craft-agent/session-tools-core').PagesToolCallbacks;
 }
 
 // Registry of callbacks keyed by sessionId

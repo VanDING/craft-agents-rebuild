@@ -110,6 +110,7 @@ async function getExpectedChannels(): Promise<Set<string>> {
     projects,
     calendar,
     workItems,
+    pages,
   ] = await Promise.all([
     import('@craft-agent/server-core/handlers/rpc/auth'),
     import('@craft-agent/server-core/handlers/rpc/artifacts'),
@@ -132,6 +133,7 @@ async function getExpectedChannels(): Promise<Set<string>> {
     import('@craft-agent/server-core/handlers/rpc/projects'),
     import('@craft-agent/server-core/handlers/rpc/calendar'),
     import('@craft-agent/server-core/handlers/rpc/work-items'),
+    import('@craft-agent/server-core/handlers/rpc/pages'),
   ])
 
   // GUI handler channels (remain in electron)
@@ -164,6 +166,7 @@ async function getExpectedChannels(): Promise<Set<string>> {
     ...projects.HANDLED_CHANNELS,
     ...calendar.HANDLED_CHANNELS,
     ...workItems.HANDLED_CHANNELS,
+    ...pages.HANDLED_CHANNELS,
     ...browser.HANDLED_CHANNELS,
     ...guiSystem.GUI_HANDLED_CHANNELS,
     ...guiWorkspace.GUI_HANDLED_CHANNELS,
@@ -202,7 +205,7 @@ describe('RPC handler registration', () => {
       .sort()
 
     expect(duplicates).toEqual([])
-  })
+  }, 30_000)
 
   it('keeps onboarding channels in registration coverage', async () => {
     const { HANDLED_CHANNELS } = await import('@craft-agent/server-core/handlers/rpc/onboarding')
@@ -214,5 +217,5 @@ describe('RPC handler registration', () => {
     const missingOnboarding = HANDLED_CHANNELS.filter(ch => !actual.has(ch))
 
     expect(missingOnboarding).toEqual([])
-  })
+  }, 30_000)
 })

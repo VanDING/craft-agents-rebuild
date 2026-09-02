@@ -1642,7 +1642,7 @@ export class PiAgent extends BaseAgent {
 
     // MCP source tools — route through centralized pool
     if (this.mcpPool?.isProxyTool(toolName)) {
-      return this.mcpPool.callTool(toolName, args, durableTool);
+      return this.mcpPool.callTool(toolName, args, { durableTool });
     }
 
     // Unknown tool

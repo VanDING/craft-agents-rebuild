@@ -100,3 +100,21 @@ export type {
   ArtifactRenderArgs,
   ArtifactSubmitArgs,
 } from './artifact.ts';
+
+// Pages
+export {
+  handleListPages,
+  handleGetPage,
+  handleCreatePage,
+  handleUpdatePage,
+  handleWritePageData,
+  handleDeletePage,
+} from './pages.ts';
+export type {
+  ListPagesArgs,
+  GetPageArgs,
+  CreatePageArgs,
+  UpdatePageArgs,
+  WritePageDataArgs,
+  DeletePageArgs,
+} from './pages.ts';
