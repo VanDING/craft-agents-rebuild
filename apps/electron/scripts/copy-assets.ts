@@ -20,7 +20,15 @@ import { join } from 'path';
 rmSync('dist/resources', { recursive: true, force: true });
 cpSync('resources', 'dist/resources', { recursive: true });
 
-console.log('✓ Copied resources/ → dist/resources/');
+// CLI tools (wrappers, python scripts, platform uv binary) are staged by
+// electron-builder via extraResources → <resources>/app/resources/{bin,scripts}
+// so spawned child processes can execute them. Exclude them from the asar copy:
+// an asar-virtual copy would otherwise duplicate ~80MB (uv.exe) and mislead
+// path resolution (asar files are not executable by external processes).
+rmSync('dist/resources/bin', { recursive: true, force: true });
+rmSync('dist/resources/scripts', { recursive: true, force: true });
+
+console.log('✓ Copied resources/ → dist/resources/ (excluded bin/ + scripts/, shipped via extraResources)');
 
 // Copy PowerShell parser script (for Windows command validation in Explore mode)
 // Source: packages/shared/src/agent/powershell-parser.ps1
