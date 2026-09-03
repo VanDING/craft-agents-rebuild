@@ -108,7 +108,7 @@ export function createSearchTool(
     description:
       'Search the web for current information. Returns titles, URLs, and snippets. Use for current information, documentation lookups, or fact-checking.',
     promptSnippet:
-      'Use web_search for up-to-date information, documentation lookups, or fact-checking. Returns titles, URLs, and snippets. Accepts a query, optional count (1-10), and optional public engines (bing, duckduckgo, baidu, sogou, so360, brave, exa, startpage, csdn, juejin) for concurrent multi-engine search.',
+      'Search the web for up-to-date information, documentation lookups, or fact-checking. Returns titles, URLs, and snippets. Accepts a query, optional count (1-10), and optional public engines (bing, duckduckgo, baidu, sogou, so360, brave, exa, startpage, csdn, juejin) for concurrent multi-engine search.',
     parameters: schema,
     async execute(toolCallId, params) {
       const { query } = params;

@@ -934,7 +934,15 @@ async function ensureSession(): Promise<AgentSession> {
   const webFetchTool = createWebFetchTool(() =>
     initConfig ? getSessionPath(initConfig.workspaceRootPath, initConfig.sessionId) : null
   );
-  const webTools = [searchTool, webFetchTool];
+  // Pi SDK exposes custom tools to the model under the `mcp__session__`
+  // namespace and resolves executions by that exposed name. Register with the
+  // prefix baked in (same contract as the proxy tools built below); otherwise
+  // the tools appear in the model's list as mcp__session__web_search but the
+  // registry lookup misses (registered bare) → "Tool … not found" on every call.
+  const webTools = [searchTool, webFetchTool].map((tool) => ({
+    ...tool,
+    name: `mcp__session__${tool.name}`,
+  }));
 
   // Pi SDK 0.70.0 registration contract:
   //   - `customTools` accepts ToolDefinition[] — our hook-wrapped objects go here
