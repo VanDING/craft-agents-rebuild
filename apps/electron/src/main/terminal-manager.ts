@@ -1,5 +1,6 @@
 import { createRequire } from 'node:module'
 import { randomUUID } from 'node:crypto'
+import { spawnSync } from 'node:child_process'
 import { chmodSync, existsSync, statSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import type { IPty } from 'node-pty'
@@ -29,6 +30,35 @@ function ensureSpawnHelperExecutable(packageRoot: string): void {
   if (existsSync(helper)) chmodSync(helper, 0o755)
 }
 
+/**
+ * Resolve the interactive terminal shell on Windows.
+ *
+ * Preference order matches the agent shell channel (Pi SDK PowerShell tool):
+ * PowerShell 7 (pwsh) first, then Windows PowerShell 5.1 (powershell.exe),
+ * then the legacy COMSPEC (cmd.exe) as a last resort. cmd.exe used to be the
+ * default via COMSPEC, which made the integrated terminal behave differently
+ * from agent command execution and lacked modern PS7 features (UTF-8 by
+ * default, better quoting for native executables).
+ *
+ * Result is cached for the process lifetime (a pwsh install does not change
+ * while the app runs).
+ */
+let cachedWindowsShell: string | undefined
+
+function resolveWindowsShell(): string {
+  if (cachedWindowsShell) return cachedWindowsShell
+  for (const candidate of ['pwsh.exe', 'powershell.exe']) {
+    const probe = spawnSync('where.exe', [candidate], { encoding: 'utf8' })
+    const found = probe.stdout?.split(/\r?\n/).map(line => line.trim()).find(Boolean)
+    if (found) {
+      cachedWindowsShell = found
+      return found
+    }
+  }
+  cachedWindowsShell = process.env.COMSPEC || 'powershell.exe'
+  return cachedWindowsShell
+}
+
 export function stripTerminalControlSequences(value: string): string {
   return value
     .replace(/\u001b\][^\u0007]*(?:\u0007|\u001b\\)/g, '')
@@ -50,7 +80,7 @@ export class TerminalManager {
     if (!existsSync(options.cwd) || !statSync(options.cwd).isDirectory()) throw new Error(`Terminal working directory does not exist: ${options.cwd}`)
 
     const shell = process.platform === 'win32'
-      ? process.env.COMSPEC || 'powershell.exe'
+      ? resolveWindowsShell()
       : process.env.SHELL || '/bin/zsh'
     const pty = loadNodePty().spawn(shell, [], {
       name: 'xterm-256color',
