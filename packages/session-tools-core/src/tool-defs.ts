@@ -533,7 +533,9 @@ Use this for short Python/Node/Bun snippets when strict Explore-mode Bash parsin
 - Input files are restricted to the current session directory
 - Filesystem writes are restricted to the current session directory
 - Timeout is capped (default 5000ms, max 15000ms)
-- Network/filesystem isolation is required in all permission modes; if unavailable, execution is blocked`,
+- Network/filesystem isolation is required in all permission modes; if unavailable, execution is blocked
+
+**Platform note:** Windows has no network-isolation backend (sandbox-exec/unshare/firejail are unavailable), so this tool always fails on Windows — prefer transform_data or direct Bash for inline diagnostics there.`,
 
   render_template: `Render a source's HTML template with data.
 
