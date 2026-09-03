@@ -19,7 +19,7 @@ import { filesPanelViewAtom, type FilesPanelView } from './content-panel-ui'
 export const PRIMARY_SURFACE_ID = 'primary-surface'
 
 export const MIN_WORKBENCH_WIDTH = 360
-export const DEFAULT_COMPANION_PRIMARY_WIDTH = 420
+export const DEFAULT_COMPANION_PRIMARY_WIDTH = 600
 export const MIN_COMPANION_PRIMARY_WIDTH = 360
 export const MAX_COMPANION_PRIMARY_WIDTH = 600
 export const MAX_FOREGROUND_CONVERSATIONS = 3
