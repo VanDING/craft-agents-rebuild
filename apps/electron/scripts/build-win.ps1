@@ -222,30 +222,6 @@ foreach ($dep in @("interceptor-common.ts", "feature-flags.ts", "interceptor-req
     }
 }
 
-# 5b. Build and stage Pi agent server (bun build → resources/pi-agent-server/).
-#     The packaged app resolves piServerPath from resources/pi-agent-server/index.js
-#     at runtime (see packages/shared/…/runtime-resolver.ts:resolveServerPath).
-Write-Host "Building Pi agent server..."
-
-Push-Location "$RootDir\packages\pi-agent-server"
-try {
-    # Bundle + thin launcher: Pi 0.85+ ships top-level entry guards that throw
-    # when the bundle runs as the direct entry (argv[1] === import.meta.url).
-    & bun build src/index.ts --outfile=dist/bundle.js --target=bun --format=esm --external koffi
-    if ($LASTEXITCODE -ne 0) { throw "Pi agent server build failed" }
-    & bun scripts/write-launcher.ts
-    if ($LASTEXITCODE -ne 0) { throw "Pi agent server launcher failed" }
-} finally {
-    Pop-Location
-}
-
-Write-Host "Staging Pi agent server into resources..."
-$PiAgentSource = "$RootDir\packages\pi-agent-server\dist"
-$PiAgentDest = "$ElectronDir\resources\pi-agent-server"
-New-Item -ItemType Directory -Force -Path $PiAgentDest | Out-Null
-Remove-Item -Recurse -Force "$PiAgentDest\*" -ErrorAction SilentlyContinue
-Copy-Item -Recurse -Force "$PiAgentSource\*" $PiAgentDest
-
 # 6. Build Electron app
 Write-Host "Building Electron app..."
 

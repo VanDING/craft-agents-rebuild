@@ -63,35 +63,6 @@ function getBuildDefines(): Record<string, string> {
   return defines;
 }
 
-// Wait for file to stabilize (no size changes)
-async function waitForFileStable(filePath: string, timeoutMs = 10000): Promise<boolean> {
-  const startTime = Date.now();
-  let lastSize = -1;
-  let stableCount = 0;
-
-  while (Date.now() - startTime < timeoutMs) {
-    if (!existsSync(filePath)) {
-      await Bun.sleep(100);
-      continue;
-    }
-
-    const stats = statSync(filePath);
-    if (stats.size === lastSize) {
-      stableCount++;
-      if (stableCount >= 3) {
-        return true;
-      }
-    } else {
-      stableCount = 0;
-      lastSize = stats.size;
-    }
-
-    await Bun.sleep(100);
-  }
-
-  return false;
-}
-
 // Verify a JavaScript file is syntactically valid
 async function verifyJsFile(filePath: string): Promise<{ valid: boolean; error?: string }> {
   if (!existsSync(filePath)) {
@@ -338,15 +309,6 @@ async function main(): Promise<void> {
     });
   } catch (err) {
     console.error("❌ esbuild failed:", (err as Error).message);
-    process.exit(1);
-  }
-
-  // Wait for file to stabilize
-  console.log("⏳ Waiting for file to stabilize...");
-  const stable = await waitForFileStable(OUTPUT_FILE);
-
-  if (!stable) {
-    console.error("❌ Output file did not stabilize");
     process.exit(1);
   }
 

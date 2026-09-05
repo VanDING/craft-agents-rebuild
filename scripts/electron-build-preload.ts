@@ -26,35 +26,6 @@ const OUTPUTS = [
   },
 ] as const;
 
-// Wait for file to stabilize (no size changes)
-async function waitForFileStable(filePath: string, timeoutMs = 10000): Promise<boolean> {
-  const startTime = Date.now();
-  let lastSize = -1;
-  let stableCount = 0;
-
-  while (Date.now() - startTime < timeoutMs) {
-    if (!existsSync(filePath)) {
-      await Bun.sleep(100);
-      continue;
-    }
-
-    const stats = statSync(filePath);
-    if (stats.size === lastSize) {
-      stableCount++;
-      if (stableCount >= 3) {
-        return true;
-      }
-    } else {
-      stableCount = 0;
-      lastSize = stats.size;
-    }
-
-    await Bun.sleep(100);
-  }
-
-  return false;
-}
-
 // Verify a JavaScript file is syntactically valid
 async function verifyJsFile(filePath: string): Promise<{ valid: boolean; error?: string }> {
   if (!existsSync(filePath)) {
@@ -113,17 +84,6 @@ async function main(): Promise<void> {
     if (exitCode !== 0) {
       console.error(`❌ Failed to build ${output.label} (exit code ${exitCode})`);
       process.exit(exitCode);
-    }
-  }
-
-  console.log("⏳ Waiting for preload outputs to stabilize...");
-
-  for (const output of OUTPUTS) {
-    const outputPath = join(ROOT_DIR, output.outfile);
-    const stable = await waitForFileStable(outputPath);
-    if (!stable) {
-      console.error(`❌ ${output.label} did not stabilize`);
-      process.exit(1);
     }
   }
 
