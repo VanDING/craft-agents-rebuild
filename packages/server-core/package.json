@@ -28,7 +28,7 @@
   "dependencies": {
     "@craft-agent/core": "workspace:*",
     "@craft-agent/shared": "workspace:*",
-    "@earendil-works/pi-ai": "0.85.0",
+    "@earendil-works/pi-ai": "0.85.1",
     "jose": "^6.0.0",
     "markitdown-js": "^0.0.14",
     "openai": "^6.18.0",
