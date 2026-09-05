@@ -11,7 +11,7 @@
 
 import type { PermissionMode } from '../agent/mode-manager.ts';
 import type { ThinkingLevel } from '../agent/thinking-levels.ts';
-import type { StoredAttachment, MessageRole, ToolStatus, AuthRequestType, AuthStatus, CredentialInputMode, StoredMessage } from '@craft-agent/core/types';
+import type { PiUsage, StoredAttachment, MessageRole, ToolStatus, AuthRequestType, AuthStatus, CredentialInputMode, StoredMessage } from '@craft-agent/core/types';
 
 /**
  * Session fields that persist to disk.
@@ -88,13 +88,17 @@ export type BuiltInStatusId = 'todo' | 'in-progress' | 'needs-review' | 'done' |
  * Session token usage tracking
  */
 export interface SessionTokenUsage {
+  /** Cumulative input across requests, including cache reads and writes. */
   inputTokens: number;
   outputTokens: number;
   totalTokens: number;
+  /** Current context occupancy, independent of cumulative usage. */
   contextTokens: number;
   costUsd: number;
   cacheReadTokens?: number;
   cacheCreationTokens?: number;
+  /** Cumulative provider usage from the request ledger. */
+  full?: PiUsage;
   /** Model's context window size in tokens (from SDK modelUsage) */
   contextWindow?: number;
 }

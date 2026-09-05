@@ -1,5 +1,6 @@
 import type { DurableCanonicalContextItem, RuntimeEvent, ToolOutcome } from '@craft-agent/shared/durable-runtime'
-import type { Message } from '@craft-agent/core/types'
+import { sumTokenUsage } from '@craft-agent/core/utils'
+import type { PiUsage, Message } from '@craft-agent/core/types'
 import type { RuntimeUsageRow } from './store.js'
 
 export type DurableProjectionItem = DurableCanonicalContextItem
@@ -209,7 +210,8 @@ export function projectCanonicalSessionMessages(events: RuntimeEvent[], legacy: 
   let semanticIndex = 0
   const merged: Message[] = []
   for (const message of legacy) {
-    const modelVisible = message.role === 'user' || message.role === 'assistant' || Boolean(message.toolUseId)
+    // Empty assistant records carry request usage, not model-visible text.
+    const modelVisible = message.role === 'user' || (message.role === 'assistant' && !(message.usage && !message.content)) || Boolean(message.toolUseId)
     if (modelVisible) {
       const replacement = canonical[semanticIndex++]
       if (replacement) merged.push(replacement)
@@ -248,30 +250,50 @@ export interface DurableUsageProjection {
   inputTokens: number
   outputTokens: number
   totalTokens: number
+  contextTokens: number
   costUsd: number
   cacheReadTokens: number
   cacheCreationTokens: number
-  lastFullUsage?: unknown
+  full: PiUsage
+  lastFullUsage?: PiUsage
 }
 
-/** Rebuild UI token/cost totals exclusively from deduplicated usage facts. */
+/** Rebuild cumulative usage exclusively from unique request facts. */
 export function projectDurableUsage(rows: RuntimeUsageRow[]): DurableUsageProjection {
-  const ordered = [...rows].sort((left, right) =>
-    left.createdAt - right.createdAt || left.usageId.localeCompare(right.usageId))
-  const last = ordered.at(-1)
-  const lastPayload = last?.payload && typeof last.payload === 'object'
-    ? last.payload as { usage?: { cacheRead?: number; cacheWrite?: number } }
-    : undefined
-  const inputTokens = last?.inputTokens ?? 0
-  const outputTokens = ordered.reduce((sum, item) => sum + (item.outputTokens ?? 0), 0)
+  const ordered = [...new Map(rows.map(row => [row.usageId, row])).values()]
+    .sort((left, right) => left.createdAt - right.createdAt || left.usageId.localeCompare(right.usageId))
+  const usages = ordered.map(row => {
+    const payload = row.payload as { usage?: Partial<PiUsage> } | undefined
+    const usage = payload?.usage
+    return sumTokenUsage([{
+      input: row.inputTokens ?? usage?.input ?? 0,
+      output: row.outputTokens ?? usage?.output ?? 0,
+      cacheRead: usage?.cacheRead ?? 0,
+      cacheWrite: usage?.cacheWrite ?? 0,
+      reasoning: usage?.reasoning,
+      cacheWrite1h: usage?.cacheWrite1h,
+      totalTokens: 0,
+      cost: {
+        input: usage?.cost?.input ?? 0,
+        output: usage?.cost?.output ?? 0,
+        cacheRead: usage?.cost?.cacheRead ?? 0,
+        cacheWrite: usage?.cost?.cacheWrite ?? 0,
+        total: row.costUsd ?? usage?.cost?.total ?? 0,
+      },
+    }])
+  })
+  const full = sumTokenUsage(usages)
+  const lastFullUsage = usages.at(-1)
   return {
     attempts: ordered.length,
-    inputTokens,
-    outputTokens,
-    totalTokens: inputTokens + outputTokens,
-    costUsd: ordered.reduce((sum, item) => sum + (item.costUsd ?? 0), 0),
-    cacheReadTokens: lastPayload?.usage?.cacheRead ?? 0,
-    cacheCreationTokens: lastPayload?.usage?.cacheWrite ?? 0,
-    lastFullUsage: lastPayload?.usage,
+    inputTokens: full.input + full.cacheRead + full.cacheWrite,
+    outputTokens: full.output,
+    totalTokens: full.totalTokens,
+    contextTokens: lastFullUsage?.totalTokens ?? 0,
+    costUsd: full.cost.total,
+    cacheReadTokens: full.cacheRead,
+    cacheCreationTokens: full.cacheWrite,
+    full,
+    lastFullUsage,
   }
 }

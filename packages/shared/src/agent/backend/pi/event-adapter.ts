@@ -9,6 +9,7 @@
  * Claude / Codex / Copilot backends.
  */
 
+import { sumTokenUsage } from '@craft-agent/core/utils';
 import type { AgentEvent as CraftAgentEvent, PiUsage, TrajectorySourceBlock } from '@craft-agent/core/types';
 import type {
   AgentEvent as PiAgentEvent,
@@ -67,8 +68,8 @@ export class PiEventAdapter extends BaseEventAdapter {
   // leaving the badge blank.
   private miniModel: string | undefined;
 
-  // Track last usage for emitting with complete event
-  private lastUsage: { input: number; output: number; cacheRead: number; cacheWrite: number; totalTokens: number; cost: { total: number } } | undefined;
+  private lastUsage: PiUsage | undefined;
+  private turnUsage: PiUsage | undefined;
 
   // Tool wall-clock tracking: toolCallId → start timestamp (epoch ms).
   // Server-forwarded `ts` on tool_execution_start (set by pi-agent-server)
@@ -78,9 +79,6 @@ export class PiEventAdapter extends BaseEventAdapter {
   // Per-session request ordinal for trajectory request-header grouping.
   // Incremented on each assistant message_end (matches turn request count).
   private requestSeq: number = 0;
-
-  // Last assistant usage (full PiUsage) for text_complete emission.
-  private lastFullUsage: PiUsage | undefined;
 
   // Assistant step timing (trajectory TTFT / decoding): stepStartTime from
   // message_start, firstTokenTime from the first text_delta, completedTime
@@ -137,6 +135,8 @@ export class PiEventAdapter extends BaseEventAdapter {
   }
 
   protected onTurnStart(): void {
+    this.lastUsage = undefined;
+    this.turnUsage = undefined;
     this.toolNames.clear();
     this.hasStreamedDeltas = false;
     this.hasEmittedFinalText = false;
@@ -206,18 +206,18 @@ export class PiEventAdapter extends BaseEventAdapter {
             yield { type: 'error', message: this.pendingLengthError };
             this.pendingLengthError = null;
           }
-          if (this.lastUsage) {
-            const lastCallInputTokens = this.lastUsage.input + (this.lastUsage.cacheRead || 0);
+          if (this.turnUsage) {
+            const usage = this.turnUsage;
+            this.turnUsage = undefined;
             yield {
               type: 'complete',
               usage: {
-                // getContextUsage() is authoritative after compaction. Falling
-                // back preserves compatibility with older/synthetic events.
-                inputTokens: settledContextTokens ?? lastCallInputTokens,
-                outputTokens: this.lastUsage.output,
-                cacheReadTokens: this.lastUsage.cacheRead,
-                cacheCreationTokens: this.lastUsage.cacheWrite,
-                costUsd: this.lastUsage.cost.total,
+                inputTokens: usage.input + usage.cacheRead + usage.cacheWrite,
+                outputTokens: usage.output,
+                contextTokens: settledContextTokens ?? this.lastUsage?.totalTokens,
+                cacheReadTokens: usage.cacheRead,
+                cacheCreationTokens: usage.cacheWrite,
+                costUsd: usage.cost.total,
                 contextWindow: settledContextWindow ?? this.contextWindow,
               },
             };
@@ -296,6 +296,16 @@ export class PiEventAdapter extends BaseEventAdapter {
           ?? (msg as { responseId?: string }).responseId;
         if (msg?.role !== 'assistant') break;
 
+        const messageUsage = msg.usage && typeof msg.usage.input === 'number'
+          ? sumTokenUsage([msg.usage as PiUsage])
+          : undefined;
+        if (messageUsage) {
+          this.lastUsage = messageUsage;
+          this.turnUsage = sumTokenUsage(this.turnUsage
+            ? [this.turnUsage, this.lastUsage]
+            : [this.lastUsage]);
+        }
+
         // Surface API errors — Pi SDK sets stopReason: 'error' and errorMessage on failures
         if (msg.stopReason === 'error' && msg.errorMessage) {
           // Context overflow: hand recovery to the SDK's _runAutoCompaction
@@ -327,21 +337,13 @@ export class PiEventAdapter extends BaseEventAdapter {
           this.pendingLengthError = null;
         }
 
-        // Make the current provider response authoritative before constructing
-        // `text_complete`. Previously that event captured `lastFullUsage` from
-        // the preceding response, so per-message/durable cost lagged by one
-        // model call and a single-call session commonly persisted $0.
-        if (msg.usage && typeof msg.usage.input === 'number') {
-          this.lastUsage = msg.usage;
-          this.lastFullUsage = msg.usage as PiUsage;
-        }
-
         // Extract text content from the final assistant message
         const textContent = this.extractTextFromMessage(event.message);
         // Pi SDK stopReason: 'toolUse' means the model will call tools next (intermediate commentary),
         // 'stop'/'end_turn' means final response. Same logic as Claude's stop_reason === 'tool_use'.
-        const isIntermediate = msg.stopReason === 'toolUse' || isLengthLimited;
-        if (textContent && (isIntermediate || !this.hasEmittedFinalText)) {
+        const isIntermediate = msg.stopReason === 'toolUse' || isLengthLimited || !textContent;
+        // Preserve usage/request metadata even for tool-only or thinking-only responses.
+        if ((textContent || msg.usage) && (isIntermediate || !this.hasEmittedFinalText)) {
           if (!isIntermediate) this.hasEmittedFinalText = true;
 
           const mTurnId = this.messageSubTurnId || this.nextSubTurnId('m');
@@ -356,7 +358,7 @@ export class PiEventAdapter extends BaseEventAdapter {
           }
 
           // Capture full provider usage for trajectory per-request buckets.
-          const usage = this.lastFullUsage;
+          const usage = messageUsage;
 
           // Wall-clock step metrics for TTFT / decoding / throughput.
           const stepStartTime = this.pendingStepStart;
@@ -375,7 +377,7 @@ export class PiEventAdapter extends BaseEventAdapter {
 
           yield {
             type: 'text_complete',
-            text: textContent,
+            text: textContent ?? '',
             isIntermediate,
             turnId: mTurnId,
             sdkMessageId,
@@ -393,7 +395,7 @@ export class PiEventAdapter extends BaseEventAdapter {
 
         // Emit usage_update if the assistant message includes token usage
         if (msg.usage && typeof msg.usage.input === 'number') {
-          const inputTokens = msg.usage.input + (msg.usage.cacheRead || 0);
+          const inputTokens = this.lastUsage!.totalTokens;
           yield {
             type: 'usage_update',
             usage: {

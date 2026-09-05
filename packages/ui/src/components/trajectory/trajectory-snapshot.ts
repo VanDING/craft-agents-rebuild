@@ -7,6 +7,7 @@
  * No React, no side effects — fully unit-testable.
  */
 
+import { sumTokenUsage } from '@craft-agent/core/utils'
 import type { Message, PiUsage } from '@craft-agent/core/types'
 import {
   EMPTY_TRAJECTORY_SNAPSHOT,
@@ -27,34 +28,12 @@ export interface TrajectorySessionInput {
     costUsd: number
     cacheReadTokens?: number
     cacheCreationTokens?: number
+    /** Cumulative provider usage from the request ledger. */
+    full?: PiUsage
     contextWindow?: number
   }
   /** Last turn's full provider usage breakdown (Pi SDK). */
   lastFullUsage?: PiUsage
-}
-
-/** Sum two PiUsage buckets into one. */
-function addUsage(a: PiUsage, b: PiUsage): PiUsage {
-  return {
-    input: a.input + b.input,
-    output: a.output + b.output,
-    cacheRead: a.cacheRead + b.cacheRead,
-    cacheWrite: a.cacheWrite + b.cacheWrite,
-    cacheWrite1h: a.cacheWrite1h !== undefined || b.cacheWrite1h !== undefined
-      ? (a.cacheWrite1h ?? 0) + (b.cacheWrite1h ?? 0)
-      : undefined,
-    reasoning: a.reasoning !== undefined || b.reasoning !== undefined
-      ? (a.reasoning ?? 0) + (b.reasoning ?? 0)
-      : undefined,
-    totalTokens: a.totalTokens + b.totalTokens,
-    cost: {
-      input: a.cost.input + b.cost.input,
-      output: a.cost.output + b.cost.output,
-      cacheRead: a.cost.cacheRead + b.cost.cacheRead,
-      cacheWrite: a.cost.cacheWrite + b.cost.cacheWrite,
-      total: a.cost.total + b.cost.total,
-    },
-  }
 }
 
 /**
@@ -70,7 +49,7 @@ function addUsage(a: PiUsage, b: PiUsage): PiUsage {
 export function buildTrajectorySnapshot(input: TrajectorySessionInput): TrajectorySnapshot {
   const { messages, lastFullUsage } = input
   if (!messages || messages.length === 0) {
-    return { ...EMPTY_TRAJECTORY_SNAPSHOT, messages, totalUsage: lastFullUsage }
+    return { ...EMPTY_TRAJECTORY_SNAPSHOT, messages, totalUsage: input.tokenUsage?.full ?? lastFullUsage }
   }
 
   const contributions: TrajectoryContribution[] = []
@@ -111,7 +90,7 @@ export function buildTrajectorySnapshot(input: TrajectorySessionInput): Trajecto
       }
       if (message.usage) {
         requestUsage.set(requestOrdinal, message.usage)
-        totalUsage = totalUsage ? addUsage(totalUsage, message.usage) : message.usage
+        totalUsage = totalUsage ? sumTokenUsage([totalUsage, message.usage]) : message.usage
       }
       contributions.push({
         kind: 'request-header',
@@ -176,7 +155,8 @@ export function buildTrajectorySnapshot(input: TrajectorySessionInput): Trajecto
     prompts,
     callSchemas,
     requestUsage,
-    totalUsage: totalUsage ?? lastFullUsage,
+    // The ledger includes tool-only, failed and utility model requests too.
+    totalUsage: input.tokenUsage?.full ?? totalUsage ?? lastFullUsage,
     timeRange,
   }
 }

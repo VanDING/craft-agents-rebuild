@@ -484,13 +484,17 @@ export interface StoredMessage {
  * Token usage tracking
  */
 export interface TokenUsage {
+  /** Cumulative input, including cache reads and writes, across all requests. */
   inputTokens: number;
   outputTokens: number;
   totalTokens: number;
+  /** Current context occupancy; independent of cumulative usage. */
   contextTokens: number;
   costUsd: number;
   cacheReadTokens?: number;
   cacheCreationTokens?: number;
+  /** Cumulative provider buckets from the deduplicated request ledger. */
+  full?: PiUsage;
 }
 
 /**
@@ -644,11 +648,12 @@ export interface PiUsage {
 
 /**
  * Usage data emitted by CraftAgent in 'complete' events
- * Note: This is a subset of TokenUsage - totalTokens/contextTokens are computed by consumers
+ * Input/output/cache/cost are totals for this turn, not the last request.
  */
 export interface AgentEventUsage {
   inputTokens: number;
   outputTokens: number;
+  contextTokens?: number;
   cacheReadTokens?: number;
   cacheCreationTokens?: number;
   costUsd?: number;
@@ -698,7 +703,8 @@ export type AgentEvent =
   | { type: 'workflow_agent_completed'; workflowId: string; agentId: string; turnId?: string }
   | { type: 'shell_killed'; shellId: string; turnId?: string }
   | { type: 'source_activated'; sourceSlug: string; originalMessage: string }
-  | { type: 'usage_update'; usage: Pick<AgentEventUsage, 'inputTokens' | 'contextWindow'>; full?: PiUsage }
+  // Backend context update: inputTokens is the legacy name for current occupancy, not cumulative input.
+  | { type: 'usage_update'; usage: { inputTokens: number; contextWindow?: number }; full?: PiUsage }
   | { type: 'steer_undelivered'; message: string };
 
 /**

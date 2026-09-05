@@ -1977,7 +1977,7 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
               onConnectionChange,
               contextStatus: {
                 isCompacting: session.currentStatus?.statusType === 'compacting',
-                inputTokens: session.tokenUsage?.inputTokens,
+                inputTokens: session.tokenUsage?.contextTokens,
                 contextWindow: session.tokenUsage?.contextWindow,
               },
               followUpItems: followUpInputItems,

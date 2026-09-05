@@ -192,7 +192,7 @@ export function deriveRequestContexts(snapshot: TrajectorySnapshot): readonly Tr
         requestSeq: requestOrdinal,
         sourceRequestSeq: message.requestSeq,
         promptVersion,
-        inputTokens: message.usage ? message.usage.input + message.usage.cacheRead : undefined,
+        inputTokens: message.usage ? message.usage.input + message.usage.cacheRead + message.usage.cacheWrite : undefined,
         groups,
         totalChars: groups.reduce((sum, group) => sum + group.chars, 0),
         estimatedTokens: groups.reduce((sum, group) => sum + group.estimatedTokens, 0),

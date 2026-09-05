@@ -129,6 +129,23 @@ describe('TaskRunner (Conductor)', () => {
     expect(host.sent).toHaveLength(0);
   });
 
+  it('pauses at the cumulative token budget even when current context is small', async () => {
+    saveTaskSpec(root, specOf({ id: 'tokens', title: 'Tokens', goal: 'test', token_budget: 500,
+      nodes: [{ id: 'a', prompt: 'a' }, { id: 'b', prompt: 'b', depends_on: ['a'] }] }));
+    const runner = makeRunner();
+    runner.run('tokens', { runId: 'token-run', orchestratorSessionId: 'orch' });
+    await tick();
+    host.complete('a', { finalText: 'done', tokenUsage: {
+      inputTokens: 700, outputTokens: 50, totalTokens: 750, contextTokens: 10,
+      cacheReadTokens: 600, costUsd: 0.01,
+    } });
+    await tick();
+    const snapshot = runner.getRunState('tokens', 'token-run')!;
+    expect(snapshot.tokensUsed).toBe(750);
+    expect(snapshot.status).toBe('paused');
+    expect(host.dispatchedNames()).toEqual(['a']);
+  });
+
   it('runs a dependency chain, feeding each output into the next', async () => {
     saveTaskSpec(
       root,

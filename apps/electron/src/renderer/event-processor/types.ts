@@ -530,10 +530,7 @@ export interface SourceActivatedEvent {
 export interface UsageUpdateEvent {
   type: 'usage_update'
   sessionId: string
-  tokenUsage: {
-    inputTokens: number
-    contextWindow?: number
-  }
+  tokenUsage: NonNullable<Session['tokenUsage']>
   /** Full provider usage breakdown (Pi SDK) when the backend exposes it. */
   full?: PiUsage
 }

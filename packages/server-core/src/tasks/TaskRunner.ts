@@ -128,7 +128,7 @@ export interface RunSnapshot {
   status: RunStatus;
   orchestratorSessionId?: string;
   nodes: NodeRunStatus[];
-  /** Sum of each child's (input + output) tokens observed at completion. */
+  /** Sum of each child's cumulative request tokens observed at completion. */
   tokensUsed: number;
 }
 
@@ -217,7 +217,7 @@ class ActiveRun {
   private readonly maxParallel: number;
   private inFlight = 0;
   private tokensUsed = 0;
-  /** Last observed cumulative (input+output) tokens per child session — for delta accounting. */
+  /** Last observed cumulative tokens per child session — for delta accounting. */
   private readonly sessionTokens = new Map<string, number>();
   private runStatus: RunStatus = 'running';
   private unsubscribe?: () => void;
@@ -585,7 +585,7 @@ class ActiveRun {
     if (evt.tokenUsage) {
       // `tokenUsage` is cumulative-per-session; add only the delta since this session's last
       // observed total so a node that ever runs >1 turn (future retry/loop) can't double-count.
-      const cumulative = (evt.tokenUsage.inputTokens ?? 0) + (evt.tokenUsage.outputTokens ?? 0);
+      const cumulative = evt.tokenUsage.totalTokens ?? 0;
       const prev = this.sessionTokens.get(evt.sessionId) ?? 0;
       this.tokensUsed += Math.max(0, cumulative - prev);
       this.sessionTokens.set(evt.sessionId, cumulative);

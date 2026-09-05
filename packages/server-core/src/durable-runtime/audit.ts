@@ -55,7 +55,8 @@ export function auditLegacyProjection(events: RuntimeEvent[], messages: Message[
   }
 
   for (const message of messages) {
-    const modelVisibleLegacy = message.role === 'user' || message.role === 'assistant' || !!message.toolUseId
+    // Empty assistant records carry request usage, not model-visible text.
+    const modelVisibleLegacy = message.role === 'user' || (message.role === 'assistant' && !(message.usage && !message.content)) || !!message.toolUseId
     if (modelVisibleLegacy) {
       const represented = message.toolUseId
         ? events.some(event => (event.type === 'tool_call_observed'

@@ -190,7 +190,7 @@ function usageToCell(
   if (!usage) return cell
   return {
     ...cell,
-    input: usage.input + usage.cacheRead,
+    input: usage.input + usage.cacheRead + usage.cacheWrite,
     cacheRead: usage.cacheRead,
     cacheWrite: usage.cacheWrite,
     output: usage.output,

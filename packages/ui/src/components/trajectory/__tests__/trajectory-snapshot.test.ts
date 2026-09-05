@@ -140,3 +140,15 @@ describe('buildTrajectorySnapshot', () => {
     expect(EMPTY_TRAJECTORY_SNAPSHOT.contributions).toEqual([])
   })
 })
+
+
+describe('ledger usage authority', () => {
+  it('includes requests absent from the visible transcript, even with no messages', () => {
+    const full = { ...usage, input: 100, totalTokens: 108 };
+    const tokenUsage = { inputTokens: 103, outputTokens: 5, totalTokens: 108,
+      contextTokens: 20, costUsd: 0.3, full };
+    for (const messages of [[], [msg({ role: 'assistant', content: 'done', requestSeq: 1, usage })]]) {
+      expect(buildTrajectorySnapshot({ messages, tokenUsage, lastFullUsage: usage }).totalUsage).toEqual(full);
+    }
+  });
+});

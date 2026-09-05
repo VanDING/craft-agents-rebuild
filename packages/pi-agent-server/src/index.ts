@@ -45,8 +45,8 @@ import type {
   CreateAgentSessionOptions,
   ToolDefinition,
 } from '@earendil-works/pi-coding-agent';
-import type { AssistantMessage, Context, Credential, Model, SimpleStreamOptions } from '@earendil-works/pi-ai';
-import { createAssistantMessageEventStream, InMemoryCredentialStore } from '@earendil-works/pi-ai';
+import type { AssistantMessage, Context, Credential, Model } from '@earendil-works/pi-ai';
+import { InMemoryCredentialStore } from '@earendil-works/pi-ai';
 
 // Pi AI types
 import type { TextContent as PiTextContent } from '@earendil-works/pi-ai';
@@ -75,7 +75,8 @@ registerBunOAuthFlows();
 // Agent construction would throw "No default stream function configured"
 // in the bundled output. Same pattern as setBedrockProviderModule above;
 // the call is idempotent.
-import { setDefaultStreamFn } from '@earendil-works/pi-agent-core';
+import { setDefaultStreamFn, type StreamFn } from '@earendil-works/pi-agent-core';
+import { wrapDurableModelStream } from './durable-model-stream.ts';
 import { streamSimple } from '@earendil-works/pi-ai/compat';
 
 function canonicalModelRequestHash(model: Model<any>, context: Context): string {
@@ -128,73 +129,35 @@ function buildRequestContextSnapshot(model: Model<any>, context: Context) {
   };
 }
 
-function durableStreamSimple(model: Model<any>, context: Context, options?: SimpleStreamOptions) {
-  const target = createAssistantMessageEventStream();
-  void (async () => {
-    try {
-      const requestSeq = ++promptSnapshotSeq;
-      rememberPromptSnapshot(requestSeq, context.systemPrompt ?? '', buildRequestContextSnapshot(model, context));
-      const providerRequestId = String(requestSeq);
-      const canonicalRequestHash = canonicalModelRequestHash(model, context);
-      const durableRun = currentDurableModelRun();
-      if (!initConfig || !durableRun) {
-        const source = streamSimple(model, context, options);
-        for await (const event of source) {
-          if (event.type === 'done' || event.type === 'error') {
-            Object.assign((event.type === 'done' ? event.message : event.error) as object, {
-              durableRequestSeq: requestSeq,
-            });
-          }
-          target.push(event);
-        }
-        return;
-      }
-      const prepared = await requestDurableModelPrepare(
-        providerRequestId,
-        model.provider,
-        model.id,
-        canonicalRequestHash,
-      );
-      const source = streamSimple(model, context, options);
-      for await (const event of source) {
-        if (event.type === 'done' || event.type === 'error') {
-          const message = event.type === 'done' ? event.message : event.error;
-          const committedSeq = await requestDurableModelOutcome({
-            prepared,
-            providerRequestId,
-            provider: model.provider,
-            model: model.id,
-            canonicalRequestHash,
-            message,
-          });
-          Object.assign(message as object, {
-            durableOperationId: prepared.operationId,
-            durableSeq: committedSeq,
-            durableRequestSeq: requestSeq,
-          });
-          rememberDurableToolBatch(message, prepared.operationId);
-        }
-        target.push(event);
-      }
-    } catch (error) {
-      const failed: AssistantMessage = {
-        role: 'assistant',
-        content: [],
-        api: model.api,
-        provider: model.provider,
-        model: model.id,
-        usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
-        stopReason: 'error',
-        errorMessage: error instanceof Error ? error.message : String(error),
-        timestamp: Date.now(),
-      };
-      target.push({ type: 'error', reason: 'error', error: failed });
+function withDurableAccounting(stream: StreamFn): StreamFn {
+  return wrapDurableModelStream(stream, async (model, context) => {
+    const requestSeq = ++promptSnapshotSeq;
+    rememberPromptSnapshot(requestSeq, context.systemPrompt ?? '', buildRequestContextSnapshot(model, context));
+    const providerRequestId = String(requestSeq);
+    const canonicalRequestHash = canonicalModelRequestHash(model, context);
+    const durableRun = currentDurableModelRun();
+    if (!initConfig || !durableRun) {
+      return async message => { Object.assign(message, { durableRequestSeq: requestSeq }); };
     }
-  })();
-  return target;
+    const prepared = await requestDurableModelPrepare(
+      providerRequestId, model.provider, model.id, canonicalRequestHash,
+    );
+    return async message => {
+      const committedSeq = await requestDurableModelOutcome({
+        prepared, providerRequestId, provider: model.provider, model: model.id,
+        canonicalRequestHash, message,
+      });
+      Object.assign(message, {
+        durableOperationId: prepared.operationId,
+        durableSeq: committedSeq,
+        durableRequestSeq: requestSeq,
+      });
+      rememberDurableToolBatch(message, prepared.operationId);
+    };
+  });
 }
 
-setDefaultStreamFn(durableStreamSimple);
+setDefaultStreamFn(withDurableAccounting(streamSimple));
 
 // Model resolution (extracted for testability + custom-endpoint precedence)
 import { resolvePiModel, isDeniedMiniModelId, isModelNotFoundError } from './model-resolution.ts';
@@ -1068,6 +1031,9 @@ async function ensureSession(): Promise<AgentSession> {
 
   // Create the session — tools flow through customTools + allowlist (see comment above).
   const { session } = await createAgentSession(sessionOptions);
+  // SDK 0.85 supplies its own ModelRuntime stream, bypassing the global default.
+  // Wrap that stream so main requests and compaction both cross the ledger boundary.
+  session.agent.streamFunction = withDurableAccounting(session.agent.streamFunction);
   piSession = session;
 
   toolsChanged = false;
@@ -1612,6 +1578,7 @@ async function queryLlm(request: LLMQueryRequest): Promise<LLMQueryResult> {
     };
 
     const { session: ephemeralSession } = await createAgentSession(ephemeralOptions);
+    ephemeralSession.agent.streamFunction = withDurableAccounting(ephemeralSession.agent.streamFunction);
 
     // Pi SDK ignores options.model for ephemeral sessions (same issue as options.tools).
     // Explicitly set the model after creation to ensure the mini model is used.

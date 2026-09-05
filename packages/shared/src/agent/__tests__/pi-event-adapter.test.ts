@@ -90,11 +90,68 @@ describe('PiEventAdapter', () => {
       expect(events.at(-1)).toMatchObject({
         type: 'complete',
         usage: {
-          inputTokens: 42_000,
+          inputTokens: 91_000,
+          contextTokens: 42_000,
           outputTokens: 500,
           contextWindow: 200_000,
         },
       });
+    });
+  });
+
+  describe('usage accounting', () => {
+    const usage = { input: 100, output: 10, cacheRead: 20, cacheWrite: 5, totalTokens: 135,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0.01 } };
+
+    it('counts tool-only requests and emits their trajectory metadata', () => {
+      const events = collect(adapter.adaptEvent({ type: 'message_end', requestSeq: 8,
+        message: { role: 'assistant', stopReason: 'toolUse', usage,
+          content: [{ type: 'toolCall', id: 'call', name: 'read', arguments: {} }] },
+      } as any));
+      expect(events).toMatchObject([
+        { type: 'text_complete', text: '', isIntermediate: true, requestSeq: 8, usage },
+        { type: 'usage_update', usage: { inputTokens: 135 } },
+      ]);
+      collect(adapter.adaptEvent({ type: 'message_end', message: {
+        role: 'assistant', stopReason: 'stop', content: 'done', usage,
+      } } as any));
+      expect(collect(adapter.adaptEvent({ type: 'agent_settled',
+        contextUsage: { tokens: 50, contextWindow: 1000 },
+      } as any)).at(-1)).toMatchObject({ type: 'complete', usage: {
+        inputTokens: 250, outputTokens: 20, cacheReadTokens: 40, cacheCreationTokens: 10,
+        costUsd: 0.02, contextTokens: 50,
+      } });
+      expect(collect(adapter.adaptEvent({ type: 'agent_settled' } as any))).toEqual([{ type: 'complete' }]);
+    });
+
+    it('does not reuse previous-turn usage after an empty or failed turn', () => {
+      collect(adapter.adaptEvent({ type: 'message_end', message: {
+        role: 'assistant', stopReason: 'stop', content: 'done', usage,
+      } } as any));
+      adapter.startTurn();
+      collect(adapter.adaptEvent({ type: 'message_end', message: {
+        role: 'assistant', stopReason: 'error', errorMessage: 'network failure', content: [],
+      } } as any));
+      expect(collect(adapter.adaptEvent({ type: 'agent_settled' } as any))).toEqual([{ type: 'complete' }]);
+    });
+
+    it('does not attach preceding-request usage to a response without usage', () => {
+      collect(adapter.adaptEvent({ type: 'message_end', message: {
+        role: 'assistant', stopReason: 'toolUse', content: 'working', usage,
+      } } as any));
+      const events = collect(adapter.adaptEvent({ type: 'message_end', message: {
+        role: 'assistant', stopReason: 'stop', content: 'done',
+      } } as any));
+      expect(events[0].type).toBe('text_complete');
+      expect(events[0].usage).toBeUndefined();
+    });
+
+    it('includes provider-reported usage on failed attempts', () => {
+      collect(adapter.adaptEvent({ type: 'message_end', message: {
+        role: 'assistant', stopReason: 'error', errorMessage: 'network failure', content: [], usage,
+      } } as any));
+      expect(collect(adapter.adaptEvent({ type: 'agent_settled' } as any)).at(-1))
+        .toMatchObject({ type: 'complete', usage: { inputTokens: 125, outputTokens: 10, costUsd: 0.01 } });
     });
   });
 

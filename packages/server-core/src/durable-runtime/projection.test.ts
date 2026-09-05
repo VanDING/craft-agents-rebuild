@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test'
+import { auditLegacyProjection } from './audit.js'
 import type { RuntimeEvent } from '@craft-agent/shared/durable-runtime'
 import { projectCanonicalSessionMessages, projectDurableSession, projectDurableUsage, projectModelContext, reduceWorkspaceSessionProjection } from './projection.js'
 
@@ -61,12 +62,13 @@ describe('durable projections', () => {
     ])
     expect(projection).toEqual(expect.objectContaining({
       attempts: 2,
-      inputTokens: 130,
+      inputTokens: 292,
       outputTokens: 25,
-      totalTokens: 155,
+      totalTokens: 317,
+      contextTokens: 182,
       costUsd: 0.03,
-      cacheReadTokens: 30,
-      cacheCreationTokens: 7,
+      cacheReadTokens: 50,
+      cacheCreationTokens: 12,
     }))
   })
 
@@ -93,3 +95,30 @@ describe('durable projections', () => {
     expect(projected[3]).toMatchObject({ content: 'canonical answer', annotations: [], durableSeq: 4 })
   })
 })
+
+
+describe('usage regression cases', () => {
+  test('deduplicates requests and counts reasoning/cache subcategories once', () => {
+    const row = { usageId: 'one', operationId: 'run', sessionId: 's', createdAt: 1,
+      inputTokens: 1, outputTokens: 100,
+      payload: { usage: { cacheRead: 10000, cacheWrite: 50, cacheWrite1h: 20, reasoning: 80 } } };
+    const projection = projectDurableUsage([row, row]);
+    expect(projection).toMatchObject({ attempts: 1, inputTokens: 10051, outputTokens: 100, totalTokens: 10151,
+      full: { reasoning: 80, cacheWrite1h: 20, totalTokens: 10151 } });
+  });
+
+  test('preserves tool-only request usage through canonical projection without inventing model text', () => {
+    const usage = { input: 100, output: 10, cacheRead: 20, cacheWrite: 5, totalTokens: 135,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
+    const messages = [
+      { id: 'u', role: 'user' as const, content: 'hello', timestamp: 1 },
+      { id: 'usage', role: 'assistant' as const, content: '', isIntermediate: true, timestamp: 2, requestSeq: 1, usage },
+      { id: 'a', role: 'assistant' as const, content: 'answer', timestamp: 3 },
+    ];
+    const events = [fact(1, 'user_message_committed', { messageId: 'u', content: 'hello' }),
+      fact(3, 'assistant_message_committed', { messageId: 'a', content: 'answer' })];
+    expect(auditLegacyProjection(events, messages)).toEqual([]);
+    expect(projectCanonicalSessionMessages(events, messages)).toMatchObject(messages);
+    expect(projectModelContext(events).map(item => item.kind)).toEqual(['user', 'assistant']);
+  });
+});

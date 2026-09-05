@@ -100,6 +100,8 @@ export interface Session {
     costUsd: number
     cacheReadTokens?: number
     cacheCreationTokens?: number
+    /** Cumulative provider usage from the request ledger. */
+    full?: PiUsage
     /** Model's context window size in tokens (from SDK modelUsage) */
     contextWindow?: number
   }
@@ -427,7 +429,7 @@ export type SessionEvent =
   | { type: 'auth_request'; sessionId: string; message: Message; request: SharedAuthRequest }
   | { type: 'auth_completed'; sessionId: string; requestId: string; success: boolean; cancelled?: boolean; error?: string }
   | { type: 'source_activated'; sessionId: string; sourceSlug: string; originalMessage: string }
-  | { type: 'usage_update'; sessionId: string; tokenUsage: { inputTokens: number; contextWindow?: number }; full?: PiUsage }
+  | { type: 'usage_update'; sessionId: string; tokenUsage: NonNullable<Session['tokenUsage']>; full?: PiUsage }
   | { type: 'message_annotations_updated'; sessionId: string; messageId: string; annotations: AnnotationV1[] }
   | { type: 'working_directory_error'; sessionId: string; error: string }
 

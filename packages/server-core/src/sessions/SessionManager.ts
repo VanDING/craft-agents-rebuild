@@ -709,6 +709,8 @@ interface ManagedSession {
     costUsd: number
     cacheReadTokens?: number
     cacheCreationTokens?: number
+    /** Cumulative provider usage from the request ledger. */
+    full?: PiUsage
     /** Model's context window size in tokens (from SDK modelUsage) */
     contextWindow?: number
   }
@@ -1981,6 +1983,9 @@ export class SessionManager implements ISessionManager {
             workingDirectory: meta.workingDirectory ?? wsDefaultWorkingDir,
           })
 
+          // List/profile statistics must use the ledger before messages are opened.
+          this.applyDurableUsageProjection(managed)
+
           // Migration: clear orphaned llmConnection references (e.g., after connection was deleted)
           if (managed.llmConnection) {
             const conn = resolveSessionConnection(managed.llmConnection, undefined)
@@ -2721,8 +2726,9 @@ export class SessionManager implements ISessionManager {
       inputTokens: usage.inputTokens,
       outputTokens: usage.outputTokens,
       totalTokens: usage.totalTokens,
-      contextTokens: usage.inputTokens,
+      contextTokens: managed.tokenUsage?.contextTokens ?? usage.contextTokens,
       costUsd: usage.costUsd,
+      full: usage.full,
       cacheReadTokens: usage.cacheReadTokens,
       cacheCreationTokens: usage.cacheCreationTokens,
       contextWindow: managed.tokenUsage?.contextWindow,
@@ -3954,6 +3960,11 @@ export class SessionManager implements ISessionManager {
         },
         completeDurableUtilityRun: (runOperationId, reason) => {
           this.durableRuntime.completeRun(managed.workspace.rootPath, runOperationId, reason)
+          this.applyDurableUsageProjection(managed)
+          if (managed.tokenUsage) {
+            this.sendEvent({ type: 'usage_update', sessionId: managed.id, tokenUsage: managed.tokenUsage }, managed.workspace.id)
+          }
+          this.persistSession(managed)
         },
         envOverrides,
         // Shared backend runtime options
@@ -7307,6 +7318,9 @@ export class SessionManager implements ISessionManager {
       }
     }
 
+    // Refresh even on errors/interruptions, which may have no text or complete event.
+    this.applyDurableUsageProjection(managed)
+
     // 1. Cleanup state
     this.setProcessing(managed, false)
     managed.stopRequested = false  // Reset for next turn
@@ -8770,10 +8784,7 @@ export class SessionManager implements ISessionManager {
             this.sendEvent({
               type: 'usage_update',
               sessionId,
-              tokenUsage: {
-                inputTokens: managed.tokenUsage.inputTokens,
-                contextWindow: managed.tokenUsage.contextWindow,
-              },
+              tokenUsage: managed.tokenUsage,
             }, workspaceId)
           }
         }
@@ -9131,33 +9142,13 @@ export class SessionManager implements ISessionManager {
       }
 
       case 'complete':
-        // Complete event from CraftAgent - accumulate usage from this turn
-        // Actual 'complete' sent to renderer comes from the finally block in sendMessage
-        if (event.fullUsage) {
-          managed.lastFullUsage = event.fullUsage
-        }
-        if (event.usage) {
-          // Initialize tokenUsage if not set
-          if (!managed.tokenUsage) {
-            managed.tokenUsage = {
-              inputTokens: 0,
-              outputTokens: 0,
-              totalTokens: 0,
-              contextTokens: 0,
-              costUsd: 0,
-            }
+        // Ledger facts are already committed before model events reach us.
+        // Re-project; never add the terminal request/turn to these totals again.
+        this.applyDurableUsageProjection(managed)
+        if (event.usage && managed.tokenUsage) {
+          if (event.usage.contextTokens !== undefined) {
+            managed.tokenUsage.contextTokens = event.usage.contextTokens
           }
-          // inputTokens = current context size (full conversation sent this turn), NOT accumulated
-          // Each API call sends the full conversation history, so we use the latest value
-          managed.tokenUsage.inputTokens = event.usage.inputTokens
-          // outputTokens and costUsd are accumulated across all turns (total session usage)
-          managed.tokenUsage.outputTokens += event.usage.outputTokens
-          managed.tokenUsage.totalTokens = managed.tokenUsage.inputTokens + managed.tokenUsage.outputTokens
-          managed.tokenUsage.costUsd += event.usage.costUsd ?? 0
-          // Cache tokens reflect current state, not accumulated
-          managed.tokenUsage.cacheReadTokens = event.usage.cacheReadTokens ?? 0
-          managed.tokenUsage.cacheCreationTokens = event.usage.cacheCreationTokens ?? 0
-          // Update context window (use latest value - may change if model switches)
           if (event.usage.contextWindow) {
             managed.tokenUsage.contextWindow = event.usage.contextWindow
           }
@@ -9165,34 +9156,21 @@ export class SessionManager implements ISessionManager {
         break
 
       case 'usage_update':
-        // Real-time usage update for context display during processing
-        // Update managed session's tokenUsage with latest context size
-        if (event.usage) {
-          if (!managed.tokenUsage) {
-            managed.tokenUsage = {
-              inputTokens: 0,
-              outputTokens: 0,
-              totalTokens: 0,
-              contextTokens: 0,
-              costUsd: 0,
-            }
-          }
-          // Update only inputTokens (current context size) - other fields accumulate on complete
-          managed.tokenUsage.inputTokens = event.usage.inputTokens
-          if (event.usage.contextWindow) {
-            managed.tokenUsage.contextWindow = event.usage.contextWindow
-          }
-
-          // Send to renderer for immediate UI update
-          this.sendEvent({
-            type: 'usage_update',
-            sessionId: managed.id,
-            tokenUsage: {
-              inputTokens: event.usage.inputTokens,
-              contextWindow: event.usage.contextWindow,
-            },
-          }, workspaceId)
+        this.applyDurableUsageProjection(managed)
+        managed.tokenUsage ??= { ...DEFAULT_TOKEN_USAGE }
+        // The backend's inputTokens field on this context-only event is a
+        // legacy wire name. It must never overwrite cumulative inputTokens.
+        managed.tokenUsage.contextTokens = event.usage.inputTokens
+        if (event.usage.contextWindow) {
+          managed.tokenUsage.contextWindow = event.usage.contextWindow
         }
+        if (event.full) managed.lastFullUsage = event.full
+        this.sendEvent({
+          type: 'usage_update',
+          sessionId: managed.id,
+          tokenUsage: managed.tokenUsage,
+          full: event.full,
+        }, workspaceId)
         break
 
       case 'steer_undelivered':
