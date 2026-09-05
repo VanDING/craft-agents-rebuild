@@ -5,7 +5,7 @@
   "description": "Open-source desktop and server agent workspace powered by the Pi SDK",
   "type": "module",
   "private": true,
-  "packageManager": "bun@1.4.0",
+  "packageManager": "bun@1.4.2",
   "trustedDependencies": [
     "@sentry/cli",
     "@vscode/ripgrep",

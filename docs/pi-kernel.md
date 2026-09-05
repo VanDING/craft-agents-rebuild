@@ -5,7 +5,7 @@
 ## 当前基线
 
 - 内核：`@earendil-works/pi-ai`、`pi-agent-core`、`pi-coding-agent` **0.85.1**。
-- 包管理器与打包运行时：Bun **1.4.0**；版本由 `package.json`、CI 和打包脚本共同固定。
+- 包管理器与打包运行时：Bun **1.4.2**；版本由 `package.json`、CI 和打包脚本共同固定。
 - 后台：只有 `PiAgent`。仓库不直接依赖 Claude Agent SDK，也不打包 Claude 原生二进制。
 - Anthropic/Claude 模型、OAuth 连接名以及 `CLAUDE.md` 项目上下文属于提供商或文件格式兼容，不代表存在第二套 agent 后台。
 
