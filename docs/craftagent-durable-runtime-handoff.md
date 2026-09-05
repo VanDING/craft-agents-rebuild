@@ -246,7 +246,7 @@ Runtime Host / runtime.db      唯一 durable execution authority
 相关文件：
 
 - `packages/server-core/src/durable-runtime/coordinator.ts`
-- `packages/server-core/src/durable-runtime/dispatcher.ts`
+- `packages/server-core/src/durable-runtime/tool-identity.ts` — shared identity functions; production execution boundaries live in `coordinator.ts`.
 - `packages/pi-agent-server/src/index.ts`
 - `packages/shared/src/agent/pi-agent.ts`
 - `packages/shared/src/agent/backend/types.ts`

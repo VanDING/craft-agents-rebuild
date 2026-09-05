@@ -22,7 +22,7 @@ import {
   type ToolOutcome,
   type ToolRecoveryMode,
 } from '@craft-agent/shared/durable-runtime'
-import { canonicalToolArgsHash, durableToolOperationId } from './dispatcher.js'
+import { canonicalToolArgsHash, durableToolOperationId } from './tool-identity.js'
 import { redactDurablePayload } from './sensitive-payload.js'
 import { createHash } from 'node:crypto'
 import { copyFileSync, existsSync, renameSync } from 'node:fs'
