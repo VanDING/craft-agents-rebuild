@@ -36,7 +36,6 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync } from '
 import { hostname, userInfo, homedir } from 'os';
 import { join, dirname } from 'path';
 
-import type { CredentialBackend } from './types.ts';
 import type { CredentialId, StoredCredential } from '../types.ts';
 import { credentialIdToAccount, accountToCredentialId } from '../types.ts';
 import { createLogger } from '../../utils/debug.ts';
@@ -111,9 +110,7 @@ interface CredentialStore {
   };
 }
 
-export class SecureStorageBackend implements CredentialBackend {
-  readonly name = 'secure-storage';
-  readonly priority = 100;
+export class SecureStorageBackend {
 
   private cachedStore: CredentialStore | null = null;
   private encryptionKey: Buffer | null = null;
@@ -123,11 +120,6 @@ export class SecureStorageBackend implements CredentialBackend {
 
   constructor(credentialsFile: string = CREDENTIALS_FILE) {
     this.credentialsFile = credentialsFile;
-  }
-
-  async isAvailable(): Promise<boolean> {
-    // File backend is always available - we can always write to filesystem
-    return true;
   }
 
   async get(id: CredentialId): Promise<StoredCredential | null> {

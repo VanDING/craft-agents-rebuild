@@ -5,213 +5,52 @@
  * for cross-platform compatibility without OS keychain prompts.
  */
 
-import type { CredentialBackend } from './backends/types.ts';
 import type { CredentialId, CredentialType, StoredCredential, CredentialHealthStatus, CredentialHealthIssue } from './types.ts';
 import type { LlmAuthType, LlmProviderType } from '../config/llm-connections.ts';
 import { SecureStorageBackend } from './backends/secure-storage.ts';
 import { debug } from '../utils/debug.ts';
 
 export class CredentialManager {
-  private backends: CredentialBackend[] = [];
-  private writeBackend: CredentialBackend | null = null;
-  private initialized = false;
-  private initPromise: Promise<void> | null = null;
+  private readonly backend = new SecureStorageBackend();
 
-  /**
-   * Explicitly initialize the credential manager.
-   * This is optional - methods auto-initialize via ensureInitialized().
-   * Use this for eager initialization at app startup if desired.
-   */
-  async initialize(): Promise<void> {
-    await this.ensureInitialized();
-  }
-
-  /**
-   * Internal: ensure initialization has completed.
-   * Called automatically by all public methods.
-   */
-  private async ensureInitialized(): Promise<void> {
-    if (this.initialized) {
-      return;
-    }
-    // Prevent race condition with concurrent initialization
-    if (this.initPromise) {
-      return this.initPromise;
-    }
-
-    // Clear promise on failure so initialization can be retried
-    this.initPromise = this._doInitialize().catch((err) => {
-      this.initPromise = null;
-      throw err;
-    });
-    await this.initPromise;
-  }
-
-  private ensureInitializedSync(): void {
-    if (this.initialized) {
-      return;
-    }
-
-    // SecureStorageBackend is always available and is currently the only
-    // credential backend. This sync path exists for sync callers such as
-    // saveSourceConfig(), where fire-and-forget cleanup can race immediate reloads.
-    const backend = new SecureStorageBackend();
-    this.backends = [backend];
-    this.writeBackend = backend;
-    this.initialized = true;
-    this.initPromise = null;
-    debug(`[CredentialManager] Backend available: ${backend.name} (priority ${backend.priority})`);
-    debug(`[CredentialManager] Using backend: ${backend.name}`);
-  }
-
-  private async _doInitialize(): Promise<void> {
-    const potentialBackends: CredentialBackend[] = [
-      new SecureStorageBackend(),
-    ];
-    const availableBackends: CredentialBackend[] = [];
-
-    // Check which backends are available
-    for (const backend of potentialBackends) {
-      if (await backend.isAvailable()) {
-        availableBackends.push(backend);
-        debug(`[CredentialManager] Backend available: ${backend.name} (priority ${backend.priority})`);
-      }
-    }
-
-    // A synchronous caller may have initialized the singleton while the async
-    // availability checks above were in flight. In that case, keep the sync state
-    // instead of appending duplicate backends.
-    if (this.initialized) return;
-
-    // Sort by priority (highest first)
-    availableBackends.sort((a, b) => b.priority - a.priority);
-    this.backends = availableBackends;
-
-    // Use the first available backend for writing
-    this.writeBackend = this.backends[0] || null;
-
-    if (this.writeBackend) {
-      debug(`[CredentialManager] Using backend: ${this.writeBackend.name}`);
-    } else {
-      debug(`[CredentialManager] WARNING: No backend available.`);
-    }
-
-    this.initialized = true;
-  }
-
-  /** Get the name of the active write backend */
-  getActiveBackendName(): string | null {
-    return this.writeBackend?.name || null;
-  }
-
-  /**
-   * Get a credential by ID, trying all backends.
-   * Automatically initializes if needed.
-   */
   async get(id: CredentialId): Promise<StoredCredential | null> {
-    await this.ensureInitialized();
-
-    for (const backend of this.backends) {
-      try {
-        const cred = await backend.get(id);
-        if (cred) {
-          debug(`[CredentialManager] Found ${id.type} in ${backend.name}`);
-          return cred;
-        }
-      } catch (err) {
-        debug(`[CredentialManager] Error reading from ${backend.name}:`, err);
-      }
+    try {
+      return await this.backend.get(id);
+    } catch (err) {
+      debug('[CredentialManager] Error reading credentials:', err);
+      return null;
     }
-
-    return null;
   }
 
-  /**
-   * Set a credential using the write backend.
-   * Automatically initializes if needed.
-   */
   async set(id: CredentialId, credential: StoredCredential): Promise<void> {
-    await this.ensureInitialized();
-
-    if (!this.writeBackend) {
-      throw new Error('No writable credential backend available');
-    }
-
-    await this.writeBackend.set(id, credential);
-    debug(`[CredentialManager] Saved ${id.type} to ${this.writeBackend.name}`);
+    await this.backend.set(id, credential);
   }
 
-  /**
-   * Delete a credential from all backends.
-   * Automatically initializes if needed.
-   */
   async delete(id: CredentialId): Promise<boolean> {
-    await this.ensureInitialized();
-
-    let deleted = false;
-    for (const backend of this.backends) {
-      try {
-        if (await backend.delete(id)) {
-          deleted = true;
-          debug(`[CredentialManager] Deleted ${id.type} from ${backend.name}`);
-        }
-      } catch (err) {
-        debug(`[CredentialManager] Error deleting from ${backend.name}:`, err);
-      }
+    try {
+      return await this.backend.delete(id);
+    } catch (err) {
+      debug('[CredentialManager] Error deleting credentials:', err);
+      return false;
     }
-
-    return deleted;
   }
 
   deleteSync(id: CredentialId): boolean {
-    this.ensureInitializedSync();
-
-    let deleted = false;
-    for (const backend of this.backends) {
-      if (!backend.deleteSync) {
-        debug(`[CredentialManager] Backend ${backend.name} does not support synchronous delete`);
-        continue;
-      }
-
-      try {
-        if (backend.deleteSync(id)) {
-          deleted = true;
-          debug(`[CredentialManager] Deleted ${id.type} from ${backend.name}`);
-        }
-      } catch (err) {
-        debug(`[CredentialManager] Error deleting from ${backend.name}:`, err);
-      }
+    try {
+      return this.backend.deleteSync(id);
+    } catch (err) {
+      debug('[CredentialManager] Error deleting credentials:', err);
+      return false;
     }
-
-    return deleted;
   }
 
-  /**
-   * List credentials matching a filter.
-   * Automatically initializes if needed.
-   */
   async list(filter?: Partial<CredentialId>): Promise<CredentialId[]> {
-    await this.ensureInitialized();
-
-    const seen = new Set<string>();
-    const results: CredentialId[] = [];
-
-    for (const backend of this.backends) {
-      try {
-        const ids = await backend.list(filter);
-        for (const id of ids) {
-          const key = JSON.stringify(id);
-          if (!seen.has(key)) {
-            seen.add(key);
-            results.push(id);
-          }
-        }
-      } catch (err) {
-        debug(`[CredentialManager] Error listing from ${backend.name}:`, err);
-      }
+    try {
+      return await this.backend.list(filter);
+    } catch (err) {
+      debug('[CredentialManager] Error listing credentials:', err);
+      return [];
     }
-
-    return results;
   }
 
   // ============================================================
@@ -630,8 +469,6 @@ export class CredentialManager {
     const issues: CredentialHealthIssue[] = [];
 
     try {
-      await this.ensureInitialized();
-
       // 1. Try to list credentials - this triggers decryption
       // If file is corrupted or can't be decrypted, this will throw
       await this.list({});
