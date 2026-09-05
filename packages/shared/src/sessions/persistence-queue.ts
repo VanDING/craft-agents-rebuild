@@ -77,7 +77,8 @@ class SessionPersistenceQueue {
     }
 
     const timer = setTimeout(() => {
-      void this.write(session.id)
+      // performWrite logs the failure; retain it for an explicit flush to observe.
+      void this.write(session.id).catch(() => {})
     }, this.debounceMs)
 
     this.pending.set(session.id, { data: session, timer })
@@ -97,17 +98,20 @@ class SessionPersistenceQueue {
     if (!entry) return Promise.resolve()
 
     this.pending.delete(sessionId)
+    clearTimeout(entry.timer)
 
     const prev = this.writeInProgress.get(sessionId) ?? Promise.resolve()
-    const writePromise = prev.then(() => this.performWrite(sessionId, entry))
+    const perform = () => this.performWrite(sessionId, entry)
+    // A failed snapshot must not prevent a newer snapshot from being saved.
+    const writePromise = prev.then(perform, perform)
     this.writeInProgress.set(sessionId, writePromise)
-    void writePromise.finally(() => {
+    void writePromise.then(() => {
       // Only clear the slot if this is still the latest write for the session —
       // flush() may have started a newer write while this one was in flight.
       if (this.writeInProgress.get(sessionId) === writePromise) {
         this.writeInProgress.delete(sessionId)
       }
-    })
+    }, () => { /* Keep the failed write visible to flush()/flushAll(). */ })
     return writePromise
   }
 
@@ -165,14 +169,6 @@ class SessionPersistenceQueue {
       // Atomic write: write to .tmp then rename over the real file.
       // If the process crashes mid-write, only the .tmp is corrupted —
       // the original session.jsonl remains intact.
-      //
-      // Update signature BEFORE the write so that fs.watch events fired
-      // during unlink/rename are correctly identified as self-writes.
-      // Without this, onSessionMetadataChange sees the stale signature
-      // and reverts in-memory metadata on idle sessions.
-      const finalSignature = getHeaderMetadataSignature(header)
-      this.lastWrittenHeaderSignature.set(sessionId, finalSignature)
-
       const tmpFile = filePath + '.tmp'
       // M-23: session transcripts are private — owner read/write only.
       const tempHandle = await open(tmpFile, 'w', 0o600)
@@ -185,7 +181,16 @@ class SessionPersistenceQueue {
       // Atomic replacement: never unlink the last good snapshot first. If a
       // platform cannot replace the target atomically, fail closed and leave
       // the fsynced .tmp available for startup recovery.
-      await rename(tmpFile, filePath)
+      // Publish the signature just before replacement so watcher events recognize
+      // self-writes. A failed replacement must not become the next merge baseline.
+      this.lastWrittenHeaderSignature.set(sessionId, getHeaderMetadataSignature(header))
+      try {
+        await rename(tmpFile, filePath)
+      } catch (error) {
+        if (previousSig === undefined) this.lastWrittenHeaderSignature.delete(sessionId)
+        else this.lastWrittenHeaderSignature.set(sessionId, previousSig)
+        throw error
+      }
       // Windows does not support fsync on directory handles (EPERM). The file
       // itself was fsynced and rename is atomic on the same volume, so only
       // suppress that documented platform limitation; every other failure is
@@ -221,15 +226,11 @@ class SessionPersistenceQueue {
       clearTimeout(entry.timer)
     }
 
-    // Wait for any in-progress write to complete first
-    const inProgress = this.writeInProgress.get(sessionId)
-    if (inProgress) {
-      await inProgress
-    }
-
-    // If something was pending, start the write now (write() tracks itself).
+    // write() serializes a newer snapshot even if the preceding write failed.
     if (this.pending.has(sessionId)) {
       await this.write(sessionId)
+    } else {
+      await this.writeInProgress.get(sessionId)
     }
   }
 
@@ -243,6 +244,11 @@ class SessionPersistenceQueue {
       this.pending.delete(sessionId)
       debug(`[PersistenceQueue] Cancelled pending write for session ${sessionId}`)
     }
+    const inProgress = this.writeInProgress.get(sessionId)
+    // Forget a cancelled failure, while still tracking any write that is running.
+    void inProgress?.catch(() => {
+      if (this.writeInProgress.get(sessionId) === inProgress) this.writeInProgress.delete(sessionId)
+    })
     this.lastWrittenHeaderSignature.delete(sessionId)
   }
 

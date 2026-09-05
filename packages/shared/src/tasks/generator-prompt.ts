@@ -12,6 +12,7 @@ export function buildGeneratorPrompt(goal: string, title?: string): string {
     'Each node becomes a child AI session; a `depends_on` edge passes the upstream node\'s output to the dependent.',
     '',
     'Rules:',
+    '- Use session nodes only. Do not add approval, loop, conditional, or other control-flow settings; the runner rejects unsupported execution settings.',
     '- Output ONLY the YAML — no prose, no code fences, no explanation.',
     '- Prefer the SIMPLEST graph that achieves the goal: few nodes, clear titles, explicit dependencies. A human will read and edit this.',
     '- Make nodes parallel (no `depends_on` between them) ONLY when the steps are genuinely independent.',

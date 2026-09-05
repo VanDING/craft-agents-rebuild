@@ -113,6 +113,22 @@ describe('TaskRunner (Conductor)', () => {
     return new TaskRunner({ host, workspaceId: 'ws', workspaceRoot: root, now: () => '2026-06-07T00:00:00.000Z' });
   }
 
+  it.each([
+    { kind: 'approval' }, { kind: 'loop' }, { kind: 'orchestrator' },
+    { approval: true }, { when: 'false' }, { loop: { until: 'done', max: 2 } },
+    { for_each: 'items' }, { trigger: 'one_success' }, { replicas: 2 },
+    { aggregate: 'concat' }, { max_parallel: 2 }, { timeout: 10 }, { cache: 'pure' },
+    { retry: { limit: 2, backoff: { base: 1 } } }, { retry: { limit: 2, when: 'empty' } },
+  ])('rejects unsupported semantics before creating children, including after restart: %j', (settings) => {
+    saveTaskSpec(root, specOf({ id: 'unsupported', title: 'Unsupported', goal: 'g',
+      nodes: [{ id: 'a', prompt: 'a', ...settings }] }));
+    const runner = makeRunner();
+    expect(() => runner.run('unsupported')).toThrow('unsupported execution settings');
+    expect(() => runner.resume('unsupported', 'previous-run')).toThrow('unsupported execution settings');
+    expect(host.created).toHaveLength(0);
+    expect(host.sent).toHaveLength(0);
+  });
+
   it('runs a dependency chain, feeding each output into the next', async () => {
     saveTaskSpec(
       root,
@@ -662,20 +678,6 @@ describe('TaskRunner (Conductor)', () => {
     host.complete('a', { finalText: 'OK' });
     await tick();
     expect(runner.getRunState('rtok', 'r1')!.status).toBe('completed');
-  });
-
-  it('does not retry on error when retry.when targets a different failure class', async () => {
-    saveTaskSpec(
-      root,
-      specOf({ id: 'rtw', title: 'RtW', goal: 'g', nodes: [{ id: 'a', prompt: 'a', retry: { limit: 3, when: 'empty' } }] }),
-    );
-    const runner = makeRunner();
-    runner.run('rtw', { runId: 'r1' });
-    await tick();
-    host.complete('a', { reason: 'error' });
-    await tick();
-    expect(runner.getRunState('rtw', 'r1')!.status).toBe('failed');
-    expect(host.created.filter((c) => c.options.name === 'a')).toHaveLength(1);
   });
 
   it('completes without verifying when there is no orchestrator', async () => {

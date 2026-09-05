@@ -13,7 +13,7 @@
  *   6. persists an append-only run-log under `tasks/<slug>/runs/<runId>/`.
  *
  * v1 executes `kind: 'session'` nodes wired by `depends_on` + `inputs`. Control-flow
- * kinds (route/loop/approval/…) parse but are not yet executed (P4).
+ * kinds (route/loop/approval/…) remain readable but are rejected before execution.
  *
  * The runner depends on a minimal `ConductorSessionHost` interface (which
  * SessionManager structurally satisfies) so it is unit-testable with a mock.
@@ -179,6 +179,30 @@ interface NodeStateEntry {
   attempt: number;
   /** Reason the previous attempt failed, fed back into the retry prompt (failure-aware retry). */
   lastFailure?: string;
+}
+
+/** Keep legacy YAML readable, but never execute control semantics we do not implement. */
+function assertExecutableTask(spec: TaskSpec): void {
+  const unsupported: string[] = [];
+  if (spec.runner !== 'conduct') unsupported.push('runner');
+  for (const node of spec.nodes) {
+    const prefix = `nodes.${node.id}`;
+    if (node.kind !== 'session') unsupported.push(`${prefix}.kind (${node.kind})`);
+    for (const field of ['when', 'aggregate', 'loop', 'for_each', 'max_parallel', 'timeout'] as const) {
+      if (node[field] !== undefined) unsupported.push(`${prefix}.${field}`);
+    }
+    if (node.approval) unsupported.push(`${prefix}.approval`);
+    if (node.cache && node.cache !== 'off') unsupported.push(`${prefix}.cache`);
+    if (node.replicas !== undefined && node.replicas !== 1) unsupported.push(`${prefix}.replicas`);
+    if (node.trigger && node.trigger !== 'all_success') unsupported.push(`${prefix}.trigger`);
+    if (node.retry?.limit) {
+      if (node.retry.backoff) unsupported.push(`${prefix}.retry.backoff`);
+      if (node.retry.when && node.retry.when !== 'error') unsupported.push(`${prefix}.retry.when`);
+    }
+  }
+  if (unsupported.length) {
+    throw new Error(`Task uses unsupported execution settings: ${unsupported.join(', ')}`);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -992,6 +1016,7 @@ export class TaskRunner {
     if (!loaded.valid) {
       throw new Error(`Refusing to run invalid task "${slug}": ${loaded.errors.map((e) => e.message).join('; ')}`);
     }
+    assertExecutableTask(loaded.spec);
     // One active run per orchestrator: a second concurrent run would race the same parent session's
     // verdict listener (two runs attaching onSessionComplete on the same orchestrator would cross
     // their verifications). Block it. NOTE: this does not guard against a human typing into the
@@ -1040,6 +1065,7 @@ export class TaskRunner {
     if (!loaded?.spec || !loaded.valid) {
       throw new Error(`Cannot resume "${slug}:${runId}": task.yaml is missing or invalid`);
     }
+    assertExecutableTask(loaded.spec);
     const canonicalLog = this.deps.host.listTaskRunFacts?.(this.deps.workspaceRoot, slug, runId) ?? [];
     const log = canonicalLog.length > 0 ? canonicalLog : readRunLog(this.deps.workspaceRoot, slug, runId);
     if (log.length === 0) throw new Error(`Cannot resume "${slug}:${runId}": no run-log found`);

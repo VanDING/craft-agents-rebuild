@@ -12,7 +12,7 @@
  * entry is written. Queue entries survive app restarts.
  */
 
-import { readFile, writeFile, appendFile } from 'fs/promises';
+import { readFile, writeFile, appendFile, rename } from 'fs/promises';
 import { join } from 'path';
 import { createLogger } from '../utils/debug.ts';
 import { executeWebhookRequest, createWebhookHistoryEntry } from './webhook-utils.ts';
@@ -69,6 +69,7 @@ export class RetryScheduler {
   private readonly workspaceRootPath: string;
   private timer: ReturnType<typeof setInterval> | null = null;
   private processing = false;
+  private fileOperations: Promise<unknown> = Promise.resolve();
 
   constructor(options: RetrySchedulerOptions) {
     this.workspaceRootPath = options.workspaceRootPath;
@@ -81,8 +82,6 @@ export class RetryScheduler {
     if (this.timer) return;
     this.timer = setInterval(() => this.tick(), TICK_INTERVAL_MS);
     log.debug('[RetryScheduler] Started');
-    // Run an initial tick after a short delay (don't block startup)
-    setTimeout(() => this.tick(), 5_000);
   }
 
   /**
@@ -118,7 +117,7 @@ export class RetryScheduler {
     };
 
     const queuePath = join(this.workspaceRootPath, AUTOMATIONS_RETRY_QUEUE_FILE);
-    await appendFile(queuePath, JSON.stringify(entry) + '\n', 'utf-8');
+    await this.serializeFileOperation(() => appendFile(queuePath, JSON.stringify(entry) + '\n', { encoding: 'utf-8', mode: 0o600 }));
     log.debug(`[RetryScheduler] Enqueued ${entry.id} — next retry in ${DEFERRED_DELAYS_MS[0]! / 60_000}m`);
   }
 
@@ -126,40 +125,20 @@ export class RetryScheduler {
    * Process the queue: read entries, retry those that are due, rewrite the queue.
    */
   private async tick(): Promise<void> {
-    if (this.processing) return;
+    if (!this.timer || this.processing) return;
     this.processing = true;
 
     try {
       const queuePath = join(this.workspaceRootPath, AUTOMATIONS_RETRY_QUEUE_FILE);
 
-      // Read queue
-      let raw: string;
-      try {
-        raw = await readFile(queuePath, 'utf-8');
-      } catch {
-        // No queue file — nothing to do
-        return;
-      }
-
-      const lines = raw.trim().split('\n').filter(Boolean);
-      if (lines.length === 0) return;
-
-      const entries: RetryQueueEntry[] = [];
-      for (const line of lines) {
-        try {
-          entries.push(JSON.parse(line) as RetryQueueEntry);
-        } catch {
-          // Skip malformed lines
-        }
-      }
-
+      const entries = await this.serializeFileOperation(() => this.readQueue());
       if (entries.length === 0) return;
 
       const now = Date.now();
       const remaining: RetryQueueEntry[] = [];
 
       for (const entry of entries) {
-        if (entry.nextRetryAt > now) {
+        if (!this.timer || entry.nextRetryAt > now) {
           // Not due yet — keep in queue
           remaining.push(entry);
           continue;
@@ -230,18 +209,42 @@ export class RetryScheduler {
         }
       }
 
-      // Rewrite queue file with remaining entries
-      if (remaining.length === 0) {
-        await writeFile(queuePath, '', 'utf-8');
-      } else {
-        const content = remaining.map(e => JSON.stringify(e)).join('\n') + '\n';
-        await writeFile(queuePath, content, 'utf-8');
-      }
+      // Network requests run outside the file queue. Preserve entries enqueued
+      // since this tick took its snapshot before atomically replacing the file.
+      await this.serializeFileOperation(async () => {
+        const processedIds = new Set(entries.map(entry => entry.id));
+        const added = (await this.readQueue()).filter(entry => !processedIds.has(entry.id));
+        const next = [...remaining, ...added];
+        const content = next.map(entry => JSON.stringify(entry)).join('\n');
+        await writeFile(queuePath + '.tmp', content ? content + '\n' : '', { encoding: 'utf-8', mode: 0o600 });
+        await rename(queuePath + '.tmp', queuePath);
+      });
     } catch (err) {
       log.debug(`[RetryScheduler] Tick error: ${err}`);
     } finally {
       this.processing = false;
     }
+  }
+
+  private serializeFileOperation<T>(operation: () => Promise<T>): Promise<T> {
+    const result = this.fileOperations.then(operation, operation);
+    this.fileOperations = result.then(() => {}, () => {});
+    return result;
+  }
+
+  private async readQueue(): Promise<RetryQueueEntry[]> {
+    let raw: string;
+    try {
+      raw = await readFile(join(this.workspaceRootPath, AUTOMATIONS_RETRY_QUEUE_FILE), 'utf-8');
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+      throw error;
+    }
+    const entries: RetryQueueEntry[] = [];
+    for (const line of raw.split('\n').filter(Boolean)) {
+      try { entries.push(JSON.parse(line) as RetryQueueEntry); } catch { /* Ignore malformed lines. */ }
+    }
+    return entries;
   }
 
 }

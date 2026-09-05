@@ -666,7 +666,6 @@ interface ManagedSession {
   /** Set when user requests stop - allows event loop to drain before clearing isProcessing */
   stopRequested?: boolean
   lastMessageAt: number
-  streamingText: string
   // Incremented each time a new message starts processing.
   // Used to detect if a follow-up message has superseded the current one (stale-request guard).
   processingGeneration: number
@@ -958,7 +957,6 @@ export function createManagedSession(
     messages: [],
     isProcessing: false,
     lastMessageAt: (s.lastMessageAt ?? s.lastUsedAt ?? Date.now()) as number,
-    streamingText: '',
     processingGeneration: 0,
     isFlagged: (s.isFlagged ?? false) as boolean,
     messageQueue: [],
@@ -3803,14 +3801,18 @@ export class SessionManager implements ISessionManager {
           sessionLog.info(`SDK session ID captured for ${managed.id}: ${sdkSessionId}`)
         }
         this.persistSession(managed)
-        sessionPersistenceQueue.flush(managed.id)
+        void sessionPersistenceQueue.flush(managed.id).catch(error => {
+          sessionLog.error(`Failed to persist session ${managed.id}:`, error)
+        })
       }
 
       const onSdkSessionIdCleared = () => {
         managed.sdkSessionId = undefined
         sessionLog.info(`SDK session ID cleared for ${managed.id} (resume recovery)`)
         this.persistSession(managed)
-        sessionPersistenceQueue.flush(managed.id)
+        void sessionPersistenceQueue.flush(managed.id).catch(error => {
+          sessionLog.error(`Failed to persist session ${managed.id}:`, error)
+        })
       }
 
       const onBranchForkInvalidated = () => {
@@ -3820,7 +3822,9 @@ export class SessionManager implements ISessionManager {
         managed.branchFromSdkTurnId = undefined
         sessionLog.info(`Branch fork invalidated for ${managed.id}: cleared all fork metadata`)
         this.persistSession(managed)
-        sessionPersistenceQueue.flush(managed.id)
+        void sessionPersistenceQueue.flush(managed.id).catch(error => {
+          sessionLog.error(`Failed to persist session ${managed.id}:`, error)
+        })
       }
 
       const onThinkingLevelStateUpdate = ({ effectiveLevel }: { effectiveLevel: ThinkingLevel }) => {
@@ -6647,7 +6651,6 @@ export class SessionManager implements ISessionManager {
 
     managed.lastMessageAt = Date.now()
     this.setProcessing(managed, true)
-    managed.streamingText = ''
     managed.processingGeneration++
     managed.turnStartFinalMessageId = this.getLastFinalAssistantMessageId(managed.messages)
 
@@ -6920,7 +6923,9 @@ export class SessionManager implements ISessionManager {
             sessionLog.info(`Captured SDK session ID via fallback: ${sdkId}`)
             // Also flush here since we're in fallback mode
             this.persistSession(managed)
-            sessionPersistenceQueue.flush(managed.id)
+            void sessionPersistenceQueue.flush(managed.id).catch(error => {
+              sessionLog.error(`Failed to persist session ${managed.id}:`, error)
+            })
           }
         }
 
@@ -8328,7 +8333,6 @@ export class SessionManager implements ISessionManager {
 
     switch (event.type) {
       case 'text_delta':
-        managed.streamingText += event.text
         // Queue delta for batched sending (performance: reduces IPC from 50+/sec to ~20/sec)
         this.queueDelta(sessionId, workspaceId, event.text, event.turnId)
         break
@@ -8388,7 +8392,6 @@ export class SessionManager implements ISessionManager {
           this.applyDurableUsageProjection(managed)
         }
         managed.messages.push(assistantMessage)
-        managed.streamingText = ''
 
         // Update lastMessageRole and lastFinalMessageId for badge/unread display (only for final messages)
         if (!event.isIntermediate) {

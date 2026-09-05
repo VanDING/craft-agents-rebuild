@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'bun:test'
-import { mkdtempSync, rmSync, existsSync, readFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, rmSync, existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import type { SessionHeader, StoredSession } from '../types'
@@ -211,6 +211,84 @@ describe('SessionPersistenceQueue in-flight write tracking (M-17)', () => {
       queue.cancel(session.id)
       await writePromise
     } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('SessionPersistenceQueue write failures', () => {
+  it('reports a failed write without skipping a newer queued snapshot', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'craft-pq-recover-'))
+    const queue = new SessionPersistenceQueue(60_000)
+    const internal = queue as any
+    const performWrite = internal.performWrite.bind(queue)
+    let fail!: (error: Error) => void
+    const blocked = new Promise<void>((_resolve, reject) => { fail = reject })
+    let attempts = 0
+    internal.performWrite = (...args: unknown[]) => ++attempts === 1 ? blocked : performWrite(...args)
+    try {
+      queue.enqueue(makeStoredSession(root, 's1', 1))
+      const first = queue.flush('s1')
+      const rejected = first.catch(error => error)
+      queue.enqueue(makeStoredSession(root, 's1', 2))
+      const second = queue.flush('s1')
+      fail(new Error('disk unavailable'))
+      expect((await rejected).message).toBe('disk unavailable')
+      await second
+      await queue.flushAll()
+      expect(attempts).toBe(2)
+      expect(readFileSync(getSessionFilePath(root, 's1'), 'utf8').trim().split('\n')).toHaveLength(3)
+    } finally {
+      queue.cancel('s1')
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('does not treat a failed file write as the last saved metadata', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'craft-pq-metadata-fail-'))
+    const queue = new SessionPersistenceQueue(60_000)
+    const session = makeStoredSession(root, 's1', 1)
+    try {
+      queue.enqueue({ ...session, name: 'Original' })
+      await queue.flush('s1')
+      const signature = queue.getLastWrittenSignature('s1')
+      const file = getSessionFilePath(root, 's1')
+      mkdirSync(file + '.tmp') // Force a real write failure without changing the last good snapshot.
+      queue.enqueue({ ...session, name: 'Failed update' })
+      await expect(queue.flush('s1')).rejects.toThrow()
+      expect(queue.getLastWrittenSignature('s1')).toBe(signature)
+      expect(JSON.parse(readFileSync(file, 'utf8').split('\n')[0]!).name).toBe('Original')
+      rmSync(file + '.tmp', { recursive: true })
+      queue.enqueue({ ...session, name: 'Latest update' })
+      await queue.flush('s1')
+      expect(JSON.parse(readFileSync(file, 'utf8').split('\n')[0]!).name).toBe('Latest update')
+    } finally {
+      queue.cancel('s1')
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('keeps a debounce failure observable until a newer write succeeds', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'craft-pq-debounce-fail-'))
+    const queue = new SessionPersistenceQueue(0)
+    const internal = queue as any
+    const performWrite = internal.performWrite.bind(queue)
+    let attempted!: () => void
+    const attempt = new Promise<void>(resolve => { attempted = resolve })
+    internal.performWrite = async () => { attempted(); throw new Error('disk unavailable') }
+    try {
+      queue.enqueue(makeStoredSession(root, 's1', 1))
+      await attempt
+      await expect(queue.flushAll()).rejects.toThrow('disk unavailable')
+      queue.cancel('s1')
+      await Promise.resolve()
+      await queue.flushAll()
+      internal.performWrite = performWrite
+      queue.enqueue(makeStoredSession(root, 's1', 2))
+      await queue.flushAll()
+      expect(readFileSync(getSessionFilePath(root, 's1'), 'utf8').trim().split('\n')).toHaveLength(3)
+    } finally {
+      queue.cancel('s1')
       rmSync(root, { recursive: true, force: true })
     }
   })

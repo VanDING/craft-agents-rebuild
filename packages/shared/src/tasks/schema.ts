@@ -10,8 +10,8 @@
  *   (with `${nodes.<id>.output[.field]}` / `${params.<name>}` references).
  * v1 PARSES BUT DEFERS: every other `kind` and the control-flow fields
  *   (`loop`, `when`, `route`, `for_each`, `aggregate`, `approval`, …). They are
- *   validated so hand-authored yaml round-trips, but the Conductor ignores them
- *   until P4. See sessions/.../tasks-architecture.md §5–§5a for the full design.
+ *   retained so hand-authored YAML remains readable, but the Conductor rejects
+ *   them before execution. See sessions/.../tasks-architecture.md §5–§5a for the full design.
  *
  * Design note: the architecture draft used BOTH `type:` and `kind:` for a
  * node's role. We consolidate on a single `kind` discriminant (cleaner, avoids
@@ -29,9 +29,8 @@ import type { PermissionMode } from '../agent/mode-types.ts';
 export const PERMISSION_MODES = ['safe', 'ask', 'allow-all'] as const satisfies readonly PermissionMode[];
 
 /**
- * Node roles. Only `session` (and the dynamic `orchestrator` escape hatch)
- * carry execution in v1; the rest are pattern/control-flow kinds parsed now,
- * executed in P4.
+ * Node roles retained for reading existing YAML. Only `session` is executable;
+ * the Conductor rejects the other kinds before dispatch.
  */
 export const NODE_KINDS = [
   'session', 'orchestrator',
@@ -153,7 +152,7 @@ const TaskNodeObject = z.object({
   inputs: z.record(z.string(), InputRefSchema).optional(),
   outputs: z.array(OutputDeclSchema).optional(),
 
-  // Control-flow (parsed now, executed in P4).
+  // Legacy control-flow fields remain readable; unsupported semantics cannot run.
   when: z.string().optional(),
   trigger: z.enum(TRIGGER_RULES).optional(),
   replicas: z.number().int().positive().optional(),
