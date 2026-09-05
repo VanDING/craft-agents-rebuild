@@ -16,6 +16,7 @@ const INTERCEPTOR_OUTPUT = join(DIST_DIR, "interceptor.cjs");
 const SESSION_TOOLS_CORE_DIR = join(ROOT_DIR, "packages/session-tools-core");
 const PI_AGENT_SERVER_DIR = join(ROOT_DIR, "packages/pi-agent-server");
 const PI_AGENT_SERVER_OUTPUT = join(PI_AGENT_SERVER_DIR, "dist/index.js");
+const PI_AGENT_SERVER_BUNDLE = join(PI_AGENT_SERVER_DIR, "dist/bundle.js");
 const WA_WORKER_DIR = join(ROOT_DIR, "packages/messaging-whatsapp-worker");
 const WA_WORKER_SOURCE = join(WA_WORKER_DIR, "src/worker.ts");
 const WA_WORKER_OUTPUT = join(WA_WORKER_DIR, "dist/worker.cjs");
@@ -236,6 +237,8 @@ async function buildPiAgentServer(): Promise<void> {
 
   copyFileSync(PI_AGENT_SERVER_OUTPUT, join(resourcesDest, "index.js"));
   console.log("  → Copied to resources/pi-agent-server/index.js");
+  copyFileSync(PI_AGENT_SERVER_BUNDLE, join(resourcesDest, "bundle.js"));
+  console.log("  → Copied to resources/pi-agent-server/bundle.js");
 }
 
 // Build the WhatsApp worker (Baileys-backed subprocess spawned by WhatsAppAdapter)

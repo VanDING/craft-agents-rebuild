@@ -72,9 +72,12 @@ RUN bun install --frozen-lockfile
 # Copy source
 COPY . .
 
-# Build Pi agent server subprocess (bundled CJS)
+# Build Pi agent server subprocess (bundled CJS). Bundled into bundle.js with
+# a thin dist/index.js launcher: Pi 0.85+ ships top-level entry guards that
+# throw when the bundle is executed directly (argv[1] === import.meta.url).
 RUN bun build packages/pi-agent-server/src/index.ts \
-      --outfile packages/pi-agent-server/dist/index.js --target node --format cjs
+      --outfile packages/pi-agent-server/dist/bundle.js --target node --format cjs \
+      && bun packages/pi-agent-server/scripts/write-launcher.ts
 
 # Build the WhatsApp worker bundle (CJS, Node target — Bun cannot run it).
 RUN bun run scripts/build-wa-worker.ts

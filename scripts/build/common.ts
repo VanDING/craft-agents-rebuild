@@ -411,16 +411,17 @@ export function copyPiAgentServer(config: BuildConfig): void {
   const piSourceDir = join(rootDir, 'packages', 'pi-agent-server', 'dist');
   const piDestDir = join(electronDir, 'resources', 'pi-agent-server');
 
-  if (!existsSync(join(piSourceDir, 'index.js'))) {
-    console.warn(`Warning: Pi agent server not found at ${piSourceDir}/index.js. Pi SDK sessions will not work.`);
+  if (!existsSync(join(piSourceDir, 'index.js')) || !existsSync(join(piSourceDir, 'bundle.js'))) {
+    console.warn(`Warning: Pi agent server not found at ${piSourceDir}/index.js (launcher) or bundle.js. Pi SDK sessions will not work.`);
     return;
   }
 
   console.log('Copying Pi Agent Server...');
   mkdirSync(piDestDir, { recursive: true });
 
-  // 1. Copy index.js
+  // 1. Copy launcher + SDK bundle (0.85+ entry guards require the split)
   copyFileSync(join(piSourceDir, 'index.js'), join(piDestDir, 'index.js'));
+  copyFileSync(join(piSourceDir, 'bundle.js'), join(piDestDir, 'bundle.js'));
 
   // 2. Copy koffi npm package (external import, resolved via node_modules at runtime)
   const koffiSource = join(rootDir, 'node_modules', 'koffi');
@@ -476,13 +477,11 @@ export function buildMcpServers(config: BuildConfig): void {
   // and inlining its JS breaks the native binary resolution paths.
   // Optional: skip if package directory is missing (e.g., not synced to OSS).
   if (existsSync(join(piDir, 'src'))) {
-    mkdirSync(join(piDir, 'dist'), { recursive: true });
-    execSync(
-      `bun build ${join(piDir, 'src', 'index.ts')} --outdir ${join(piDir, 'dist')} --target bun --format esm --external koffi`,
-      { cwd: rootDir, stdio: 'inherit', shell: true }
-    );
-    if (!existsSync(piOut)) {
-      throw new Error(`Pi agent server output not found at ${piOut}`);
+    // Package build script: bundle.js + thin dist/index.js launcher (Pi 0.85+
+    // entry guards throw when a single-file bundle is executed directly).
+    execSync('bun run build', { cwd: piDir, stdio: 'inherit', shell: true });
+    if (!existsSync(piOut) || !existsSync(join(piDir, 'dist', 'bundle.js'))) {
+      throw new Error(`Pi agent server output not found at ${piOut} or dist/bundle.js`);
     }
   } else {
     console.warn('Warning: Pi agent server package not found. Pi SDK sessions will not work.');

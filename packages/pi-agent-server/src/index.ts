@@ -939,10 +939,13 @@ async function ensureSession(): Promise<AgentSession> {
   // prefix baked in (same contract as the proxy tools built below); otherwise
   // the tools appear in the model's list as mcp__session__web_search but the
   // registry lookup misses (registered bare) → "Tool … not found" on every call.
-  const webTools = [searchTool, webFetchTool].map((tool) => ({
+  // 0.85.0: ToolDefinition.renderCall takes contravariant `unknown` args, so
+  // spreading typed tools yields anonymous types that fail that check.
+  // Renaming doesn't alter structure — assert back to the contract type.
+  const webTools: ToolDefinition<any, any>[] = [searchTool, webFetchTool].map((tool) => ({
     ...tool,
     name: `mcp__session__${tool.name}`,
-  }));
+  }) as ToolDefinition<any, any>);
 
   // Pi SDK 0.70.0 registration contract:
   //   - `customTools` accepts ToolDefinition[] — our hook-wrapped objects go here

@@ -229,8 +229,12 @@ Write-Host "Building Pi agent server..."
 
 Push-Location "$RootDir\packages\pi-agent-server"
 try {
-    & bun build src/index.ts --outdir=dist --target=bun --format=esm --external koffi
+    # Bundle + thin launcher: Pi 0.85+ ships top-level entry guards that throw
+    # when the bundle runs as the direct entry (argv[1] === import.meta.url).
+    & bun build src/index.ts --outfile=dist/bundle.js --target=bun --format=esm --external koffi
     if ($LASTEXITCODE -ne 0) { throw "Pi agent server build failed" }
+    & bun scripts/write-launcher.ts
+    if ($LASTEXITCODE -ne 0) { throw "Pi agent server launcher failed" }
 } finally {
     Pop-Location
 }
