@@ -183,19 +183,11 @@ async function buildPiAgentServer(): Promise<void> {
     mkdirSync(distDir, { recursive: true });
   }
 
-  // Use --target=bun --format=esm because the Pi SDK (@earendil-works/pi-coding-agent)
-  // is ESM-only. --target=node --format=cjs leaves ESM deps as external require()
-  // calls that fail at runtime since there are no node_modules relative to dist/.
+  // Package build script emits dist/bundle.js (SDK) + thin dist/index.js
+  // launcher. Direct single-file bundles trip Pi 0.85+ entry guards.
   const proc = spawn({
-    cmd: [
-      "bun", "build",
-      join(PI_AGENT_SERVER_DIR, "src/index.ts"),
-      "--outfile", PI_AGENT_SERVER_OUTPUT,
-      "--target", "bun",
-      "--format", "esm",
-      "--external", "koffi",
-    ],
-    cwd: ROOT_DIR,
+    cmd: ["bun", "run", "build"],
+    cwd: PI_AGENT_SERVER_DIR,
     stdout: "inherit",
     stderr: "inherit",
   });
@@ -207,9 +199,9 @@ async function buildPiAgentServer(): Promise<void> {
     process.exit(exitCode);
   }
 
-  // Verify output exists
-  if (!existsSync(PI_AGENT_SERVER_OUTPUT)) {
-    console.error("❌ Pi agent server output not found at", PI_AGENT_SERVER_OUTPUT);
+  // Verify outputs exist (launcher + bundle)
+  if (!existsSync(PI_AGENT_SERVER_OUTPUT) || !existsSync(PI_AGENT_SERVER_BUNDLE)) {
+    console.error("❌ Pi agent server output not found at", PI_AGENT_SERVER_OUTPUT, "or", PI_AGENT_SERVER_BUNDLE);
     process.exit(1);
   }
 
