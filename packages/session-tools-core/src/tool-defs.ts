@@ -56,7 +56,6 @@ import {
   handleArtifactCreate,
   handleArtifactApply,
   handleArtifactInspect,
-  handleArtifactRender,
   handleArtifactSubmit,
 } from './handlers/artifact.ts';
 import { handleImageGenerate } from './handlers/image-generate.ts';
@@ -282,10 +281,6 @@ export const ArtifactApplySchema = z.object({
 
 export const ArtifactInspectSchema = z.object({
   artifactId: z.string().describe('Artifact to validate'),
-});
-
-export const ArtifactRenderSchema = z.object({
-  artifactId: z.string().describe('Artifact whose preview metadata should be refreshed'),
 });
 
 export const ArtifactSubmitSchema = z.object({
@@ -664,11 +659,9 @@ Pass the exact expectedRevision from the previous artifact result. Stale revisio
 
   artifact_inspect: `Validate an Artifact's active revision and emit an updated card event.
 
-For managed binary checkouts, this also snapshots external tool edits. It never accepts the result or overwrites the final sourcePath.`,
+For managed binary checkouts, this also snapshots external tool edits and refreshes the local Markdown preview for standard Office files. It never accepts the result or overwrites the final sourcePath.`,
 
-  artifact_render: `Refresh and return the engine-independent preview/validation projection for an Artifact.
-
-The native-file engine previews text, JSON, image and PDF sources directly. Standard Office drafts receive a local Markdown preview bound to the active revision; engine adapters may add richer previews.`,
+  artifact_render: `Compatibility alias for artifact_inspect. Use artifact_inspect directly; calling both repeats the same work.`,
 
   artifact_submit: `Validate an Artifact draft and mark it ready for explicit user review.
 
@@ -815,7 +808,7 @@ export const SESSION_TOOL_DEFS: SessionToolDef[] = [
   { name: 'artifact_create', description: TOOL_DESCRIPTIONS.artifact_create, inputSchema: ArtifactCreateSchema, executionMode: 'registry', safeMode: 'block', handler: handleArtifactCreate },
   { name: 'artifact_apply', description: TOOL_DESCRIPTIONS.artifact_apply, inputSchema: ArtifactApplySchema, executionMode: 'registry', safeMode: 'block', handler: handleArtifactApply },
   { name: 'artifact_inspect', description: TOOL_DESCRIPTIONS.artifact_inspect, inputSchema: ArtifactInspectSchema, executionMode: 'registry', safeMode: 'allow', handler: handleArtifactInspect },
-  { name: 'artifact_render', description: TOOL_DESCRIPTIONS.artifact_render, inputSchema: ArtifactRenderSchema, executionMode: 'registry', safeMode: 'allow', handler: handleArtifactRender },
+  { name: 'artifact_render', description: TOOL_DESCRIPTIONS.artifact_render, inputSchema: ArtifactInspectSchema, executionMode: 'registry', safeMode: 'allow', handler: handleArtifactInspect },
   { name: 'artifact_submit', description: TOOL_DESCRIPTIONS.artifact_submit, inputSchema: ArtifactSubmitSchema, executionMode: 'registry', safeMode: 'block', handler: handleArtifactSubmit },
   { name: 'image_generate', description: TOOL_DESCRIPTIONS.image_generate, inputSchema: ImageGenerateSchema, executionMode: 'registry', safeMode: 'block', handler: handleImageGenerate },
   // Pages tools (registry — use the grouped ctx.pages callbacks from SessionManager)

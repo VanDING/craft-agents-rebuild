@@ -21,8 +21,6 @@ export interface ArtifactInspectArgs {
   artifactId: string;
 }
 
-export type ArtifactRenderArgs = ArtifactInspectArgs;
-
 export interface ArtifactSubmitArgs {
   artifactId: string;
   expectedRevision?: string;
@@ -71,12 +69,6 @@ export function handleArtifactApply(ctx: SessionToolContext, args: ArtifactApply
 export function handleArtifactInspect(ctx: SessionToolContext, args: ArtifactInspectArgs): Promise<ToolResult> {
   return invoke('artifact_inspect', ctx.artifactInspect
     ? () => ctx.artifactInspect!(args.artifactId)
-    : undefined);
-}
-
-export function handleArtifactRender(ctx: SessionToolContext, args: ArtifactRenderArgs): Promise<ToolResult> {
-  return invoke('artifact_render', ctx.artifactRender
-    ? () => ctx.artifactRender!(args.artifactId)
     : undefined);
 }
 

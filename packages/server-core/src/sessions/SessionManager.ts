@@ -4773,17 +4773,6 @@ export class SessionManager implements ISessionManager {
           this.broadcastArtifactsChanged(managed.workspace.id)
           return artifactEventResult(rendered)
         },
-        artifactRenderFn: async (artifactId) => {
-          const leaseId = ensureAgentArtifactLease(artifactId)
-          const scope = sessionArtifactScope()
-          const inspected = inspectArtifact(scope, artifactId, {
-            sessionId: managed.id,
-            leaseId,
-          })
-          const rendered = await renderOfficeArtifactPreview(scope, inspected)
-          this.broadcastArtifactsChanged(managed.workspace.id)
-          return artifactEventResult(rendered)
-        },
         artifactSubmitFn: async (artifactId, expectedRevision) => {
           const leaseId = ensureAgentArtifactLease(artifactId)
           const scope = sessionArtifactScope()

@@ -42,6 +42,14 @@ describe('Artifact file format registry', () => {
     });
   });
 
+  it.each(['xlsx', 'xlsm', 'xls', 'ods', 'docx', 'doc', 'odt', 'pptx', 'ppt', 'odp'])(
+    'uses Office preview policy for %s by extension or canonical MIME', (extension) => {
+      const format = resolveFileFormat(`/work/REPORT.${extension.toUpperCase()}`);
+      expect(format.preview).toBe('office-markdown');
+      expect(resolveFileFormat('/work/no-extension', format.mimeType).preview).toBe('office-markdown');
+    },
+  );
+
   it('supports compound and dotfile suffixes and has no duplicate extension owners', () => {
     expect(getRegisteredExtension('/work/.env.local')).toBe('env.local');
     const registered = registeredFileExtensions();

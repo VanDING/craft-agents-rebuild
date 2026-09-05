@@ -1,10 +1,10 @@
+import { SESSION_TOOL_REGISTRY } from '../tool-defs.ts';
 import { describe, expect, it } from 'bun:test';
 import type { ArtifactToolResult, SessionToolContext } from '../context.ts';
 import {
   handleArtifactApply,
   handleArtifactCreate,
   handleArtifactInspect,
-  handleArtifactRender,
   handleArtifactStatus,
   handleArtifactSubmit,
 } from './artifact.ts';
@@ -22,7 +22,6 @@ describe('Artifact canonical handlers', () => {
       artifactCreate: async (input: unknown) => { calls.push(['create', input]); return success; },
       artifactApply: async (id: string, input: unknown) => { calls.push(['apply', id, input]); return success; },
       artifactInspect: async (id: string) => { calls.push(['inspect', id]); return success; },
-      artifactRender: async (id: string) => { calls.push(['render', id]); return success; },
       artifactSubmit: async (id: string, revision?: string) => { calls.push(['submit', id, revision]); return success; },
     } as unknown as SessionToolContext;
 
@@ -35,7 +34,7 @@ describe('Artifact canonical handlers', () => {
         operation: { type: 'set_json', value: { ok: true } },
       }),
       handleArtifactInspect(ctx, { artifactId: 'a' }),
-      handleArtifactRender(ctx, { artifactId: 'a' }),
+      SESSION_TOOL_REGISTRY.get('artifact_render')!.handler!(ctx, { artifactId: 'a' }),
       handleArtifactSubmit(ctx, { artifactId: 'a', expectedRevision: 'r3' }),
     ]);
 
@@ -48,6 +47,7 @@ describe('Artifact canonical handlers', () => {
       operation: { type: 'set_json', value: { ok: true } },
     }]);
     expect(calls[3]).toEqual(['inspect', 'a']);
+    expect(calls[4]).toEqual(['inspect', 'a']);
   });
 
   it('fails closed when the backend callback is unavailable', async () => {

@@ -85,7 +85,6 @@ export {
   handleArtifactCreate,
   handleArtifactApply,
   handleArtifactInspect,
-  handleArtifactRender,
   handleArtifactSubmit,
 } from './artifact.ts';
 
@@ -97,7 +96,6 @@ export type {
   ArtifactCreateArgs,
   ArtifactApplyArgs,
   ArtifactInspectArgs,
-  ArtifactRenderArgs,
   ArtifactSubmitArgs,
 } from './artifact.ts';
 

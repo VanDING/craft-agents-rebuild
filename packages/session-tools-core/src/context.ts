@@ -360,7 +360,6 @@ export interface SessionToolContext {
   artifactInspect?(artifactId: string): Promise<ArtifactToolResult>;
 
   /** Refresh the engine-independent preview metadata for an artifact. */
-  artifactRender?(artifactId: string): Promise<ArtifactToolResult>;
 
   /** Validate and move a draft to ready-for-user-review. */
   artifactSubmit?(artifactId: string, expectedRevision?: string): Promise<ArtifactToolResult>;

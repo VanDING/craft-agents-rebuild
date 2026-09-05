@@ -962,24 +962,30 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
   }, [navigate])
 
   const acceptArtifact = useCallback(async (artifactId: string) => {
-    const result = await artifactStore.accept(artifactId)
-    if (!result) {
-      toast.error(artifactStore.error ?? t('artifact.actionFailed'))
-      return
+    try {
+      const result = await artifactStore.accept(artifactId)
+      if (result.accepted) toast.success(t('artifact.accepted'))
+      else toast.error(t('artifact.conflictDetected'))
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : t('artifact.actionFailed'))
     }
-    if (result.accepted) toast.success(t('artifact.accepted'))
-    else toast.error(t('artifact.conflictDetected'))
   }, [artifactStore, t])
 
   const discardArtifact = useCallback(async (artifactId: string) => {
     if (!window.confirm(t('artifact.discardConfirm'))) return
-    const result = await artifactStore.discard(artifactId)
-    if (!result) toast.error(artifactStore.error ?? t('artifact.actionFailed'))
+    try {
+      await artifactStore.discard(artifactId)
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : t('artifact.actionFailed'))
+    }
   }, [artifactStore, t])
 
   const reviseArtifact = useCallback(async (artifactId: string) => {
-    const result = await artifactStore.revise(artifactId)
-    if (!result) toast.error(artifactStore.error ?? t('artifact.actionFailed'))
+    try {
+      await artifactStore.revise(artifactId)
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : t('artifact.actionFailed'))
+    }
   }, [artifactStore, t])
 
   // Push a preview entry for the current session and open/focus the Preview

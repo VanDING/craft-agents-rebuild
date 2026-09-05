@@ -190,7 +190,6 @@ export {
   handleArtifactCreate,
   handleArtifactApply,
   handleArtifactInspect,
-  handleArtifactRender,
   handleArtifactSubmit,
   handleImageGenerate,
   // Pages
@@ -222,7 +221,6 @@ export type {
   ArtifactCreateArgs,
   ArtifactApplyArgs,
   ArtifactInspectArgs,
-  ArtifactRenderArgs,
   ArtifactSubmitArgs,
   ImageGenerateArgs,
   ListPagesArgs,
@@ -252,7 +250,6 @@ export {
   ArtifactCreateSchema,
   ArtifactApplySchema,
   ArtifactInspectSchema,
-  ArtifactRenderSchema,
   ArtifactSubmitSchema,
   ImageGenerateSchema,
   // Browser tool schema

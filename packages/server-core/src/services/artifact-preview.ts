@@ -1,16 +1,10 @@
 import { MarkItDown } from 'markitdown-js'
-import { extname } from 'node:path'
 import {
   putArtifactTextPreview,
+  resolveFileFormat,
   type ArtifactStorageScope,
   type ResolvedArtifact,
 } from '@craft-agent/shared/artifacts'
-
-const OFFICE_EXTENSIONS = new Set([
-  '.xlsx', '.xls', '.xlsm', '.ods',
-  '.docx', '.doc', '.odt',
-  '.pptx', '.ppt', '.odp',
-])
 
 /**
  * Create a distributable, dependency-local human preview for standard Office
@@ -21,8 +15,7 @@ export async function renderOfficeArtifactPreview(
   scope: ArtifactStorageScope,
   resolved: ResolvedArtifact,
 ): Promise<ResolvedArtifact> {
-  const isOfficeBinary = resolved.artifact.mimeType.includes('officedocument')
-    || OFFICE_EXTENSIONS.has(extname(resolved.artifact.sourcePath).toLowerCase())
+  const isOfficeBinary = resolveFileFormat(resolved.artifact.sourcePath, resolved.artifact.mimeType).preview === 'office-markdown'
   if (!isOfficeBinary) return resolved
   const revision = resolved.artifact.draftRevision ?? resolved.artifact.currentRevision
   if (!revision || !resolved.activePath) {

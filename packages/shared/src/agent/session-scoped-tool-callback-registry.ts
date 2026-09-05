@@ -95,7 +95,6 @@ export interface SessionScopedToolCallbacks {
     input: import('@craft-agent/session-tools-core').ArtifactApplyInput,
   ) => Promise<import('@craft-agent/session-tools-core').ArtifactToolResult>;
   artifactInspectFn?: (artifactId: string) => Promise<import('@craft-agent/session-tools-core').ArtifactToolResult>;
-  artifactRenderFn?: (artifactId: string) => Promise<import('@craft-agent/session-tools-core').ArtifactToolResult>;
   artifactSubmitFn?: (
     artifactId: string,
     expectedRevision?: string,

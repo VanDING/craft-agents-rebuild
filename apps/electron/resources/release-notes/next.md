@@ -33,6 +33,8 @@ This file accumulates release notes for the next unreleased version. PRs that ad
 
 ## Bug Fixes
 
+- **Artifact review and workspace terminal reliability** — Artifact actions report the current failure and retain the editor when saving, submitting, or discarding fails. Artifact inspection now supplies the Office preview without a separate render call. Switching sessions preserves the workspace terminal; switching workspaces isolates pending connections and recovers from connection errors, while replaced exited terminals release their retained records.
+
 - **Workbench navigation and Run selection** — Context and Preview shortcuts now describe their consolidated Run and Files destinations, while existing links and restored tabs continue to work. Selected trajectory rows now retain their highlight on hover.
 
 - **Retired custom Responses setup** — new custom endpoints can use OpenAI Compatible or Anthropic Compatible protocols; the incomplete custom Responses option is rejected while official and internal Responses providers remain supported. Existing custom Responses connections remain readable and migrate when edited.

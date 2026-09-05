@@ -89,6 +89,7 @@ export class TerminalManager {
       cwd: options.cwd,
       env: { ...process.env, TERM: 'xterm-256color', COLORTERM: 'truecolor' } as Record<string, string>,
     })
+    if (existing) this.destroy(existing.id)
     const id = randomUUID()
     const terminal: ManagedTerminal = { id, workspaceId: options.workspaceId, cwd: options.cwd, shell, running: true, pty, output: '' }
     this.terminals.set(id, terminal)

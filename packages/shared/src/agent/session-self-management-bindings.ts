@@ -174,14 +174,6 @@ export function attachSessionSelfManagementBindings(
     enumerable: true,
   });
 
-  Object.defineProperty(context, 'artifactRender', {
-    get() {
-      return getSessionScopedToolCallbacks(sessionId)?.artifactRenderFn;
-    },
-    configurable: true,
-    enumerable: true,
-  });
-
   Object.defineProperty(context, 'artifactSubmit', {
     get() {
       return getSessionScopedToolCallbacks(sessionId)?.artifactSubmitFn;

@@ -3,8 +3,6 @@ import type {
   AcceptArtifactResult,
   ApplyArtifactDraftInput,
   ArtifactListFilter,
-  CreateArtifactDraftInput,
-  RegisterCurrentArtifactInput,
   ResolvedArtifact,
 } from '@craft-agent/shared/artifacts/browser'
 
@@ -51,88 +49,45 @@ export function useArtifacts(workspaceId: string | null, sessionId?: string) {
 
   const run = useCallback(async (
     operation: () => Promise<ResolvedArtifact>,
-    label: string,
-  ): Promise<ResolvedArtifact | null> => {
-    try {
-      const result = await operation()
-      setArtifacts((previous) => upsertArtifact(previous, result))
-      setError(null)
-      return result
-    } catch (cause) {
-      console.error(`[useArtifacts] ${label}:`, cause)
-      setError(cause instanceof Error ? cause.message : label)
-      return null
-    }
+  ): Promise<ResolvedArtifact> => {
+    const result = await operation()
+    setArtifacts((previous) => upsertArtifact(previous, result))
+    return result
   }, [])
 
-  const create = useCallback((input: CreateArtifactDraftInput) => {
-    if (!workspaceId) return Promise.resolve(null)
-    return run(() => window.electronAPI.createArtifact(workspaceId, input), 'Failed to create artifact')
-  }, [run, workspaceId])
-
-  const registerCurrent = useCallback((input: RegisterCurrentArtifactInput) => {
-    if (!workspaceId) return Promise.resolve(null)
-    return run(
-      () => window.electronAPI.registerCurrentArtifact(workspaceId, input),
-      'Failed to register artifact preview',
-    )
-  }, [run, workspaceId])
-
   const apply = useCallback((artifactId: string, input: ApplyArtifactDraftInput) => {
-    if (!workspaceId) return Promise.resolve(null)
-    return run(() => window.electronAPI.applyArtifact(workspaceId, artifactId, input), 'Failed to update artifact')
-  }, [run, workspaceId])
-
-  const inspect = useCallback((artifactId: string, leaseId?: string) => {
-    if (!workspaceId) return Promise.resolve(null)
-    return run(() => window.electronAPI.inspectArtifact(workspaceId, artifactId, leaseId), 'Failed to inspect artifact')
+    if (!workspaceId) return Promise.reject(new Error('No active workspace'))
+    return run(() => window.electronAPI.applyArtifact(workspaceId, artifactId, input))
   }, [run, workspaceId])
 
   const submit = useCallback((artifactId: string, expectedRevision?: string, leaseId?: string) => {
-    if (!workspaceId) return Promise.resolve(null)
+    if (!workspaceId) return Promise.reject(new Error('No active workspace'))
     return run(
       () => window.electronAPI.submitArtifact(workspaceId, artifactId, expectedRevision, leaseId),
-      'Failed to submit artifact',
     )
   }, [run, workspaceId])
 
   const revise = useCallback((artifactId: string) => {
-    if (!workspaceId) return Promise.resolve(null)
-    return run(() => window.electronAPI.reviseArtifact(workspaceId, artifactId), 'Failed to revise artifact')
+    if (!workspaceId) return Promise.reject(new Error('No active workspace'))
+    return run(() => window.electronAPI.reviseArtifact(workspaceId, artifactId))
   }, [run, workspaceId])
 
-  const accept = useCallback(async (artifactId: string): Promise<AcceptArtifactResult | null> => {
-    if (!workspaceId) return null
-    try {
-      const result = await window.electronAPI.acceptArtifact(workspaceId, artifactId)
-      setArtifacts((previous) => upsertArtifact(previous, result.artifact))
-      setError(null)
-      return result
-    } catch (cause) {
-      console.error('[useArtifacts] Failed to accept artifact:', cause)
-      setError(cause instanceof Error ? cause.message : 'Failed to accept artifact')
-      return null
-    }
+  const accept = useCallback(async (artifactId: string): Promise<AcceptArtifactResult> => {
+    if (!workspaceId) throw new Error('No active workspace')
+    const result = await window.electronAPI.acceptArtifact(workspaceId, artifactId)
+    setArtifacts((previous) => upsertArtifact(previous, result.artifact))
+    return result
   }, [workspaceId])
 
   const discard = useCallback((artifactId: string) => {
-    if (!workspaceId) return Promise.resolve(null)
-    return run(() => window.electronAPI.discardArtifact(workspaceId, artifactId), 'Failed to discard artifact')
+    if (!workspaceId) return Promise.reject(new Error('No active workspace'))
+    return run(() => window.electronAPI.discardArtifact(workspaceId, artifactId))
   }, [run, workspaceId])
 
   const acquireLease = useCallback((artifactId: string, durationMs?: number) => {
-    if (!workspaceId) return Promise.resolve(null)
+    if (!workspaceId) return Promise.reject(new Error('No active workspace'))
     return run(
       () => window.electronAPI.acquireArtifactLease(workspaceId, artifactId, 'user', durationMs),
-      'Failed to acquire artifact edit lease',
-    )
-  }, [run, workspaceId])
-
-  const releaseLease = useCallback((artifactId: string, leaseId: string) => {
-    if (!workspaceId) return Promise.resolve(null)
-    return run(
-      () => window.electronAPI.releaseArtifactLease(workspaceId, artifactId, leaseId),
-      'Failed to release artifact edit lease',
     )
   }, [run, workspaceId])
 
@@ -141,15 +96,11 @@ export function useArtifacts(workspaceId: string | null, sessionId?: string) {
     isLoading,
     error,
     refresh,
-    create,
-    registerCurrent,
     apply,
-    inspect,
     submit,
     revise,
     accept,
     discard,
     acquireLease,
-    releaseLease,
   }
 }

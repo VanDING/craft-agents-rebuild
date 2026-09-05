@@ -48,12 +48,11 @@ export function ArtifactWorkbench({ artifactId }: { artifactId: string }) {
     setBusy(true)
     try {
       const leased = await artifactStore.acquireLease(artifactId)
-      const leaseId = leased?.artifact.lease?.id
-      if (!leased || !leaseId || !leased.editablePath) {
-        toast.error(artifactStore.error ?? t('artifact.editLeaseFailed'))
-        return
+      const leaseId = leased.artifact.lease?.id
+      leaseIdRef.current = leaseId ?? null
+      if (!leaseId || !leased.editablePath) {
+        throw new Error(t('artifact.editLeaseFailed'))
       }
-      leaseIdRef.current = leaseId
       draftRevisionRef.current = leased.artifact.draftRevision
       setDraftText(await window.electronAPI.readFile(leased.editablePath))
       setEditing(true)
@@ -66,7 +65,7 @@ export function ArtifactWorkbench({ artifactId }: { artifactId: string }) {
   }
 
   const saveDraft = async () => {
-    if (!draftRevisionRef.current || !leaseIdRef.current) return null
+    if (!draftRevisionRef.current || !leaseIdRef.current) throw new Error(t('artifact.editLeaseFailed'))
     const saved = await artifactStore.apply(artifactId, {
       expectedRevision: draftRevisionRef.current,
       leaseId: leaseIdRef.current,
@@ -79,8 +78,9 @@ export function ArtifactWorkbench({ artifactId }: { artifactId: string }) {
   const save = async () => {
     setBusy(true)
     try {
-      const saved = await saveDraft()
-      if (!saved) toast.error(artifactStore.error ?? t('artifact.actionFailed'))
+      await saveDraft()
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : t('artifact.actionFailed'))
     } finally {
       setBusy(false)
     }
@@ -97,21 +97,18 @@ export function ArtifactWorkbench({ artifactId }: { artifactId: string }) {
     try {
       const saved = editing ? await saveDraft() : resolved
       if (!saved?.artifact.draftRevision) {
-        toast.error(artifactStore.error ?? t('artifact.submitFailed'))
-        return
+        throw new Error(t('artifact.submitFailed'))
       }
-      const submitted = await artifactStore.submit(
+      await artifactStore.submit(
         artifactId,
         saved.artifact.draftRevision,
         leaseIdRef.current ?? undefined,
       )
-      if (!submitted) {
-        toast.error(artifactStore.error ?? t('artifact.submitFailed'))
-        return
-      }
       leaseIdRef.current = null
       setEditing(false)
       toast.success(t('artifact.readyForReview'))
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : t('artifact.actionFailed'))
     } finally {
       setBusy(false)
     }
@@ -121,9 +118,10 @@ export function ArtifactWorkbench({ artifactId }: { artifactId: string }) {
     setBusy(true)
     try {
       const result = await artifactStore.accept(artifactId)
-      if (!result) return
       if (!result.accepted) toast.error(t('artifact.conflictDetected'))
       else toast.success(t('artifact.accepted'))
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : t('artifact.actionFailed'))
     } finally {
       setBusy(false)
     }
@@ -136,6 +134,8 @@ export function ArtifactWorkbench({ artifactId }: { artifactId: string }) {
       await artifactStore.discard(artifactId)
       leaseIdRef.current = null
       setEditing(false)
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : t('artifact.actionFailed'))
     } finally {
       setBusy(false)
     }
@@ -144,8 +144,9 @@ export function ArtifactWorkbench({ artifactId }: { artifactId: string }) {
   const revise = async () => {
     setBusy(true)
     try {
-      const revised = await artifactStore.revise(artifactId)
-      if (!revised) toast.error(artifactStore.error ?? t('artifact.actionFailed'))
+      await artifactStore.revise(artifactId)
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : t('artifact.actionFailed'))
     } finally {
       setBusy(false)
     }
