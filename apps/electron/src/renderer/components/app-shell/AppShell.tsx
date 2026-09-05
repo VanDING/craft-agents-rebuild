@@ -2090,9 +2090,7 @@ function AppShellContent({
       return
     }
 
-    if (kind === 'files' || kind === 'context' || kind === 'preview' || kind === 'trajectory' || kind === 'terminal') {
-      lastWorkbenchKindRef.current = kind
-    }
+    lastWorkbenchKindRef.current = kind
     store.set(openWorkbenchItemAtom, SURFACE_LAUNCHER_ROUTES[kind])
   }, [store])
 
@@ -2126,8 +2124,11 @@ function AppShellContent({
     store.set(filesPanelViewAtom, 'explorer')
     openSurfaceLauncher('files')
   })
-  useAction('panel.context', () => openSurfaceLauncher('context'))
-  useAction('panel.preview', () => openSurfaceLauncher('preview'))
+  useAction('panel.context', () => openSurfaceLauncher('trajectory'))
+  useAction('panel.preview', () => {
+    store.set(filesPanelViewAtom, 'opened')
+    openSurfaceLauncher('files')
+  })
   useAction('panel.toggle', toggleWorkbench)
 
   // Browser launcher state is derived inside SurfaceLauncherButtons.

@@ -1035,9 +1035,9 @@ export interface ProjectsNavigationState {
  *
  * These panels (Files, Context, Preview, Run, Terminal, Artifact) follow the active
  * session and carry no session id in their route — the route is a single
- * segment constant. Legacy `diff` routes normalize to Files.
+ * segment constant. Legacy Context/Preview/Review entries resolve to Run/Files.
  */
-export type BoundPanelType = 'files' | 'context' | 'preview' | 'trajectory' | 'terminal' | 'artifact'
+export type BoundPanelType = 'files' | 'trajectory' | 'terminal' | 'artifact'
 
 /**
  * Content-workbench panel navigation state.
@@ -1301,8 +1301,9 @@ export const parseNavigationStateKey = (key: string): NavigationState | null => 
       return artifactId ? { navigator: 'other', panel: 'artifact', artifactId } : null
     }
     const [, panel] = key.split(':')
-    if (panel === 'diff') return { navigator: 'other', panel: 'files' }
-    if (panel && ['files', 'context', 'preview', 'trajectory'].includes(panel)) {
+    if (panel === 'diff' || panel === 'preview') return { navigator: 'other', panel: 'files' }
+    if (panel === 'context') return { navigator: 'other', panel: 'trajectory' }
+    if (panel && ['files', 'trajectory', 'terminal'].includes(panel)) {
       return { navigator: 'other', panel: panel as BoundPanelType }
     }
   }

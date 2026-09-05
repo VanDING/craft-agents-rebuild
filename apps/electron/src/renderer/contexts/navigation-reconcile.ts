@@ -16,7 +16,9 @@ export function normalizePanelRouteForReconcile(
   resolveAutoSelection: AutoSelectionResolver,
 ): ViewRoute {
   const navState = parseRouteToNavigationState(route)
-  if (!navState) return route
+  // Workbench aliases carry subview and binding information. Let the
+  // Workbench consume the original route before canonicalizing it.
+  if (!navState || navState.navigator === 'other') return route
 
   // Preserve explicit detail routes exactly as encoded in URL.
   // Reconciliation should only auto-select for filter/list routes.

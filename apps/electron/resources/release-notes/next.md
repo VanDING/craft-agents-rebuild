@@ -31,6 +31,8 @@ This file accumulates release notes for the next unreleased version. PRs that ad
 
 ## Bug Fixes
 
+- **Workbench navigation and Run selection** — Context and Preview shortcuts now describe their consolidated Run and Files destinations, while existing links and restored tabs continue to work. Selected trajectory rows now retain their highlight on hover.
+
 - **Retired custom Responses setup** — new custom endpoints can use OpenAI Compatible or Anthropic Compatible protocols; the incomplete custom Responses option is rejected while official and internal Responses providers remain supported. Existing custom Responses connections remain readable and migrate when edited.
 - **Default composer surface restored** — the default theme again uses the original canvas-colored composer instead of the darker generic form-input token; named themes can still provide a dedicated composer surface.
 - **New Session panel spacing restored** — the session panel once again keeps a fixed inset below the 48 px title bar, preventing its upper edge from touching the window chrome.

@@ -241,7 +241,7 @@ export function NavigationProvider({
   const isPopstateSwitchRef = useRef(false)
 
   // Queue navigation if not ready yet
-  const pendingNavigationRef = useRef<ParsedRoute | null>(null)
+  const pendingNavigationRef = useRef<{ route: Route; options?: NavigateOptions } | null>(null)
 
   // Suppress auto-select for one cycle (used by skipAutoSelect to prevent the effect from re-selecting)
   const suppressAutoSelectRef = useRef(false)
@@ -876,7 +876,7 @@ export function NavigationProvider({
       }
 
       if (!isReady) {
-        pendingNavigationRef.current = parsed
+        pendingNavigationRef.current = { route, options }
         return
       }
 
@@ -897,6 +897,11 @@ export function NavigationProvider({
         suppressAutoSelectRef.current = true
       }
 
+      if (newNavState?.navigator === 'other') {
+        store.set(openWorkbenchItemAtom, route as ViewRoute)
+        return
+      }
+
       if (newNavState) {
         // Resolve auto-selection (pure — no side effects)
         const resolvedState = resolveAutoSelection(newNavState, options)
@@ -907,11 +912,7 @@ export function NavigationProvider({
           storage.set(storage.KEYS.lastSelectedSessionId, resolvedState.details.sessionId, workspaceId)
         }
 
-        if (resolvedState.navigator === 'other') {
-          store.set(openWorkbenchItemAtom, finalRoute)
-        } else {
-          store.set(setPrimarySurfaceRouteAtom, finalRoute)
-        }
+        store.set(setPrimarySurfaceRouteAtom, finalRoute)
       }
     },
     [isReady, handleActionNavigation, resolveAutoSelection, store, workspaceId]
@@ -1087,21 +1088,11 @@ export function NavigationProvider({
       const pending = pendingNavigationRef.current
       pendingNavigationRef.current = null
 
-      if (pending.type === 'action') {
-        handleActionNavigation(pending)
-        return
-      }
-
-      const routeStr = `${pending.name}${pending.id ? `/${pending.id}` : ''}`
-      const navState = parseRouteToNavigationState(routeStr)
-      if (navState) {
-        const resolved = resolveAutoSelection(navState)
-        const finalRoute = buildRouteFromNavigationState(resolved) as ViewRoute
-        if (resolved.navigator === 'other') store.set(openWorkbenchItemAtom, finalRoute)
-        else store.set(setPrimarySurfaceRouteAtom, finalRoute)
-      }
+      // Replay the original request through the normal path. Reconstructing
+      // a route from ParsedRoute would lose aliases, encoding, and options.
+      void navigate(pending.route, pending.options)
     }
-  }, [isReady, handleActionNavigation, resolveAutoSelection, store])
+  }, [isReady, navigate])
 
   // =========================================================================
   // DEEP LINK LISTENER

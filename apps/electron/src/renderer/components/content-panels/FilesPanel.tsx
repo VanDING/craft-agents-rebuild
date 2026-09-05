@@ -7,7 +7,6 @@ import { Eye, FileDiff, FilePenLine, FileText, FolderOpen, FolderTree, Paperclip
 import { Spinner } from '@craft-agent/ui'
 import { Input } from '@/components/ui/input'
 import { PanelEmptyState } from './PanelEmptyState'
-import { PanelRow } from './PanelSection'
 import { ChangedFilesView } from './ChangedFilesView'
 import { PreviewPanel } from './PreviewPanel'
 import { SessionFilesSection } from '../right-sidebar/SessionFilesSection'
@@ -192,7 +191,18 @@ export function FilesPanel({ sessionId }: { sessionId?: string }) {
             <div className="h-full overflow-y-auto bg-foreground/[0.012] p-2.5">
               <div className="overflow-hidden border-y border-border/55 bg-background/70 p-1">
                 {attachments.map(attachment => (
-                  <PanelRow key={attachment.id} icon={attachment.name ? <FileText className="h-3.5 w-3.5" /> : <Paperclip className="h-3.5 w-3.5" />} title={attachment.name} titleAttribute={attachment.name} onClick={() => onOpenFile?.(attachment.storedPath, activeSessionId)} />
+                  <button
+                    key={attachment.id}
+                    type="button"
+                    title={attachment.name}
+                    onClick={() => onOpenFile?.(attachment.storedPath, activeSessionId)}
+                    className="flex min-h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-[13px] text-foreground/85 outline-none transition-[background-color,transform] hover:bg-foreground/[0.045] active:scale-[0.99] focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <span className="shrink-0 text-muted-foreground/75">
+                      {attachment.name ? <FileText className="h-3.5 w-3.5" /> : <Paperclip className="h-3.5 w-3.5" />}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate">{attachment.name}</span>
+                  </button>
                 ))}
               </div>
             </div>

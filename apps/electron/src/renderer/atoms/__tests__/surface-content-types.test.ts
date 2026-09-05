@@ -9,19 +9,14 @@ import {
   workbenchStateAtom,
 } from '../workbench'
 import { buildRouteFromNavigationState, parseRouteToNavigationState } from '../../../shared/route-parser'
-import type { BoundPanelType, NavigationState } from '../../../shared/types'
 import { surfaceLauncherKindForRoute } from '../../lib/surface-launchers'
-
-function isSessionNavigation(state: NavigationState | null): boolean {
-  return state?.navigator === 'sessions'
-}
 
 describe('Surface content types', () => {
   it('maps every bound route to its Context Workbench type', () => {
     expect(getSurfacePanelTypeFromRoute('diff')).toBe('files')
     expect(getSurfacePanelTypeFromRoute('files')).toBe('files')
-    expect(getSurfacePanelTypeFromRoute('context')).toBe('context')
-    expect(getSurfacePanelTypeFromRoute('preview')).toBe('preview')
+    expect(getSurfacePanelTypeFromRoute('context')).toBe('trajectory')
+    expect(getSurfacePanelTypeFromRoute('preview')).toBe('files')
     expect(getSurfacePanelTypeFromRoute('trajectory')).toBe('trajectory')
   })
 
@@ -49,10 +44,12 @@ describe('Surface content types', () => {
 
   it('round-trips bound navigation states without session identity', () => {
     expect(parseRouteToNavigationState('diff')).toEqual({ navigator: 'other', panel: 'files' })
-    expect(buildRouteFromNavigationState({ navigator: 'other', panel: 'preview' })).toBe('preview')
-    const boundRoutes: BoundPanelType[] = ['files', 'context', 'preview', 'trajectory']
+    expect(buildRouteFromNavigationState({ navigator: 'other', panel: 'files' })).toBe('files')
+    const boundRoutes = ['files', 'trajectory', 'terminal', 'artifact/example'] as const
     for (const route of boundRoutes) {
-      expect(isSessionNavigation(parseRouteToNavigationState(route))).toBe(false)
+      const state = parseRouteToNavigationState(route)
+      expect(state?.navigator).toBe('other')
+      expect(buildRouteFromNavigationState(state!)).toBe(route)
     }
   })
 

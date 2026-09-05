@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'bun:test'
-import { createPrimarySurfaceState, createWorkbenchItem, type WorkbenchState } from '../../atoms/workbench'
+import { createPrimarySurfaceState, createWorkbenchItem, hydrateSurfaceStateAtom, workbenchStateAtom, type WorkbenchState } from '../../atoms/workbench'
+import { createStore } from 'jotai'
+import { filesPanelViewAtom } from '../../atoms/content-panel-ui'
+import { normalizePanelRouteForReconcile } from '../navigation-reconcile'
 import {
   legacySidebarToWorkbenchRoute,
   parseSurfaceUrlParams,
@@ -7,7 +10,7 @@ import {
 } from '../surface-url'
 import type { ViewRoute } from '../../../shared/routes'
 
-const normalizeRoute = (route: string) => route as ViewRoute
+const normalizeRoute = (route: string) => normalizePanelRouteForReconcile(route as ViewRoute, state => state)
 
 describe('v2 Surface URL', () => {
   it('round-trips Primary and collapsed Workbench tabs independently', () => {
@@ -34,7 +37,7 @@ describe('v2 Surface URL', () => {
     expect(parsed).toEqual({
       source: 'v2',
       restore: {
-        primaryRoute: 'projects/calendar',
+        primaryRoute: 'calendar',
         foregroundSessionIds: ['s1', 's2'],
         workbenchRoutes: ['files'],
         activeWorkbenchRoute: 'files',
@@ -100,6 +103,29 @@ describe('v2 Surface URL', () => {
 })
 
 describe('legacy panel URL migration', () => {
+  for (const [alias, kind, view] of [
+    ['context', 'trajectory', 'explorer'],
+    ['preview', 'files', 'opened'],
+    ['diff', 'files', 'changed'],
+  ] as const) {
+    it(`preserves ${alias} intent through URL normalization and hydration`, () => {
+      for (const query of [
+        `route=${alias}`,
+        `panels=allSessions,${alias}&fi=1`,
+        `sv=2&route=allSessions&workbench=${alias}&wa=${alias}&wo=1`,
+      ]) {
+        const parsed = parseSurfaceUrlParams(new URLSearchParams(query), {
+          fallbackPrimaryRoute: 'allSessions', normalizeRoute,
+        })
+        expect(parsed).not.toBeNull()
+        const store = createStore()
+        store.set(hydrateSurfaceStateAtom, parsed!.restore)
+        expect(store.get(workbenchStateAtom).items.map(item => item.kind)).toEqual([kind])
+        expect(store.get(filesPanelViewAtom)).toBe(view)
+      }
+    })
+  }
+
   it('selects the focused legacy Primary and converts bound routes to tabs', () => {
     const params = new URLSearchParams()
     params.set('panels', 'allSessions/session/s1:0.4000,diff:0.3000,projects/board:0.3000')
@@ -113,7 +139,7 @@ describe('legacy panel URL migration', () => {
     expect(parsed).toEqual({
       source: 'legacy-panels',
       restore: {
-        primaryRoute: 'projects/board',
+        primaryRoute: 'kanban',
         workbenchRoutes: ['files'],
         activeWorkbenchRoute: 'files',
         workbenchOpen: true,

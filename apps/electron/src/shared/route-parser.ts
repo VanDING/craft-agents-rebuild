@@ -147,14 +147,17 @@ export function parseCompoundRoute(route: string): ParsedCompoundRoute | null {
 
   // Bound content-workbench panels — standalone single-segment routes that
   // carry no session id (content follows the active session).
-  if (first === 'diff') {
+  if (first === 'diff' || first === 'preview') {
     return {
       navigator: 'other',
       panel: 'files',
       details: null,
     }
   }
-  if (first === 'files' || first === 'context' || first === 'preview' || first === 'trajectory' || first === 'terminal') {
+  if (first === 'context') {
+    return { navigator: 'other', panel: 'trajectory', details: null }
+  }
+  if (first === 'files' || first === 'trajectory' || first === 'terminal') {
     return {
       navigator: 'other',
       panel: first as BoundPanelType,

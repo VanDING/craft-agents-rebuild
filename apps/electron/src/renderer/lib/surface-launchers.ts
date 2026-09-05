@@ -11,17 +11,13 @@ import type { ViewRoute } from '../../shared/routes'
 
 /**
  * Flat top-bar launcher kinds (browser is not a DOM surface — handled separately).
- * Legacy `context` and `preview` stay in the type/route registry so old URLs
- * and trigger APIs remain typed. They canonicalize into Run and Files, so only
- * the consolidated homes appear as top-bar entries.
+ * Legacy URLs are normalized at the navigation boundary into Run and Files.
  */
 export type SurfaceLauncherKind =
   | 'sessions'
   | 'kanban'
   | 'calendar'
   | 'files'
-  | 'context'
-  | 'preview'
   | 'trajectory'
   | 'terminal'
 
@@ -56,8 +52,6 @@ export const SURFACE_LAUNCHER_ROUTES: Record<SurfaceLauncherKind, ViewRoute> = {
   kanban: 'kanban',
   calendar: 'calendar',
   files: 'files',
-  context: 'context',
-  preview: 'preview',
   trajectory: 'trajectory',
   terminal: 'terminal',
 }

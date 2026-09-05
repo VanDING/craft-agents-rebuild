@@ -125,7 +125,7 @@ export const TrajectoryTable = memo(function TrajectoryTable({
       onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
     >
       {visibleWindow.top > 0 && <div style={{ height: visibleWindow.top }} aria-hidden="true" />}
-      <table className={css.table} data-scroll-ready="true" role="table" aria-rowcount={rows.length}>
+      <table className={css.table} role="table" aria-rowcount={rows.length}>
         <colgroup>
           <col className={css.eventColumn} />
           <col className={css.contentColumn} />

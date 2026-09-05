@@ -18,7 +18,7 @@ import { useTranslation } from 'react-i18next'
 import { useAtomValue } from 'jotai'
 import {
   MessageSquare, Columns3, CalendarDays,
-  FolderTree, ListFilter, FileText, Globe, Activity,
+  FolderTree, Globe, Activity,
   SquareTerminal,
   type LucideIcon,
 } from 'lucide-react'
@@ -60,8 +60,6 @@ export const SURFACE_LAUNCHER_ICONS: Record<SurfaceLauncherKind, LucideIcon> = {
   kanban: Columns3,
   calendar: CalendarDays,
   files: FolderTree,
-  context: ListFilter,
-  preview: FileText,
   trajectory: Activity,
   terminal: SquareTerminal,
 }
