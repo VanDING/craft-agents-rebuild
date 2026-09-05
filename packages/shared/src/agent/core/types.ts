@@ -43,30 +43,8 @@ export interface RecoveryMessage {
  * Configuration for PermissionManager
  */
 export interface PermissionManagerConfig {
-  /** Workspace ID for permission context */
-  workspaceId: string;
   /** Session ID for mode state */
   sessionId: string;
-  /** Working directory for the session */
-  workingDirectory?: string;
-  /** Plans folder path (writes to this folder are allowed in Explore mode) */
-  plansFolderPath?: string;
-  /** Data folder path (writes to this folder are allowed in Explore mode for transform_data output) */
-  dataFolderPath?: string;
-}
-
-/**
- * Result of a tool permission check with detailed information
- */
-export interface ToolPermissionResult {
-  /** Whether the tool is allowed */
-  allowed: boolean;
-  /** If not allowed, the reason why */
-  reason?: string;
-  /** If allowed but requires user confirmation */
-  requiresPermission?: boolean;
-  /** Description for permission prompt */
-  description?: string;
 }
 
 /**

@@ -5,7 +5,7 @@
  * These modules are provider-agnostic and can be composed into any agent implementation.
  *
  * Modules:
- * - PermissionManager: Tool permission evaluation and mode management
+ * - PermissionManager: Session permission mode and remembered approvals
  * - SourceManager: External data source state tracking
  * - PromptBuilder: System prompt and context building
  * - PathProcessor: Path expansion and normalization
@@ -21,7 +21,6 @@ export type {
   // Core types
   RecoveryMessage,
   PermissionManagerConfig,
-  ToolPermissionResult,
   SourceManagerConfig,
   PromptBuilderConfig,
   ContextBlockOptions,

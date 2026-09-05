@@ -22,12 +22,7 @@ describe('PermissionManager', () => {
     initializeModeState(TEST_SESSION_ID, 'ask');
 
     // Create a fresh PermissionManager
-    permissionManager = new PermissionManager({
-      workspaceId: 'test-workspace',
-      sessionId: TEST_SESSION_ID,
-      workingDirectory: '/test/workspace',
-      plansFolderPath: '/test/workspace/plans',
-    });
+    permissionManager = new PermissionManager({ sessionId: TEST_SESSION_ID });
   });
 
   describe('Permission Mode Management', () => {
@@ -134,66 +129,5 @@ describe('PermissionManager', () => {
       expect(permissionManager.isDomainWhitelisted('example.com')).toBe(false);
     });
 
-    it('should return copies of whitelisted sets for debugging', () => {
-      permissionManager.whitelistCommand('ls');
-      permissionManager.whitelistDomain('example.com');
-
-      const commands = permissionManager.getWhitelistedCommands();
-      const domains = permissionManager.getWhitelistedDomains();
-
-      expect(commands.has('ls')).toBe(true);
-      expect(domains.has('example.com')).toBe(true);
-
-      // Verify they are copies (modifying shouldn't affect internal state)
-      commands.delete('ls');
-      expect(permissionManager.isCommandWhitelisted('ls')).toBe(true);
-    });
-  });
-
-  describe('Bash Permission Requirements', () => {
-    it('should not require permission in execute mode', () => {
-      permissionManager.setPermissionMode('allow-all');
-      expect(permissionManager.requiresBashPermission('rm -rf /')).toBe(false);
-    });
-
-    it('should not require permission in explore mode (blocks instead)', () => {
-      permissionManager.setPermissionMode('safe');
-      expect(permissionManager.requiresBashPermission('rm -rf /')).toBe(false);
-    });
-
-    it('should require permission for dangerous commands in ask mode', () => {
-      permissionManager.setPermissionMode('ask');
-      expect(permissionManager.requiresBashPermission('rm file.txt')).toBe(true);
-      expect(permissionManager.requiresBashPermission('sudo rm -rf /')).toBe(true); // extracts 'rm' after sudo
-      expect(permissionManager.requiresBashPermission('curl https://example.com')).toBe(true);
-      expect(permissionManager.requiresBashPermission('wget http://example.com/file')).toBe(true);
-    });
-
-    it('should not require permission for safe commands in ask mode', () => {
-      permissionManager.setPermissionMode('ask');
-      // Note: this depends on the actual implementation's behavior
-      // The test verifies the expected behavior based on isDangerousCommand
-      expect(permissionManager.isDangerousCommand('ls')).toBe(false);
-      expect(permissionManager.isDangerousCommand('cat')).toBe(false);
-    });
-  });
-
-  describe('Context Management', () => {
-    it('should update working directory', () => {
-      permissionManager.updateWorkingDirectory('/new/path');
-      // Verify internally by checking the permissions context is updated
-      const context = permissionManager.getPermissionsContext();
-      expect(context.workspaceRootPath).toBe('/new/path');
-    });
-
-    it('should update plans folder path', () => {
-      permissionManager.updatePlansFolderPath('/new/plans/path');
-      // The plans folder path is used internally for permission checks
-      // No direct getter, but we can verify no errors occur
-    });
-
-    it('should return the session ID', () => {
-      expect(permissionManager.getSessionId()).toBe(TEST_SESSION_ID);
-    });
   });
 });

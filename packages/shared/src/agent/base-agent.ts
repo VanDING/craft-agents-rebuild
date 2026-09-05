@@ -276,14 +276,8 @@ export abstract class BaseAgent implements AgentBackend {
     this._thinkingLevel = normalizeThinkingLevel(config.thinkingLevel) ?? DEFAULT_THINKING_LEVEL;
 
     // Initialize core modules
-    // PermissionManager: handles permission evaluation, mode management, and command whitelisting
-    this.permissionManager = new PermissionManager({
-      workspaceId: config.workspace.id,
-      sessionId: this._sessionId,
-      workingDirectory: this.workingDirectory,
-      plansFolderPath: getSessionPlansPath(config.workspace.rootPath, this._sessionId),
-      dataFolderPath: getSessionDataPath(config.workspace.rootPath, this._sessionId),
-    });
+    // PermissionManager: holds session mode and remembered approvals
+    this.permissionManager = new PermissionManager({ sessionId: this._sessionId });
 
     // SourceManager: tracks active/inactive sources and formats state for context injection
     this.sourceManager = new SourceManager({
@@ -559,7 +553,7 @@ export abstract class BaseAgent implements AgentBackend {
 
   /**
    * Update the working directory.
-   * Also updates PermissionManager and persists to session config.
+   * Also persists to session config.
    */
   updateWorkingDirectory(path: string): void {
     this.workingDirectory = path;
@@ -567,7 +561,6 @@ export abstract class BaseAgent implements AgentBackend {
     if (this.config.session) {
       this.config.session.workingDirectory = path;
     }
-    this.permissionManager.updateWorkingDirectory(path);
     this.debug(`Working directory updated: ${path}`);
   }
 
