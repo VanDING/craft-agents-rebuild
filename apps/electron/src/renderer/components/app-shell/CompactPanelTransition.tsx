@@ -64,6 +64,7 @@ export function CompactPanelTransition({
         pointerEvents: isOffscreen ? 'none' : 'auto',
       }}
       aria-hidden={isOffscreen || undefined}
+      inert={isOffscreen}
       initial={false}
       animate={{ x: reduceMotion ? '0%' : (isOffscreen ? offscreenX : '0%'), opacity: isOffscreen ? 0 : 1 }}
       transition={transition}

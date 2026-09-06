@@ -22,6 +22,8 @@ import {
   setPrimarySurfaceRouteAtom,
   setWorkbenchItemBindingAtom,
   workbenchStateAtom,
+  workbenchFullWidthAtom,
+  setExpandedWorkbenchItemAtom,
 } from '../workbench'
 import { filesPanelViewAtom } from '../content-panel-ui'
 
@@ -278,5 +280,74 @@ describe('legacy peer-panel migration', () => {
 
     expect(store.get(workbenchStateAtom).items[0]?.binding).toEqual({ type: 'session', sessionId: 's1' })
     expect(store.get(renderedSurfaceEntriesAtom).at(-1)?.sessionId).toBe('s1')
+  })
+})
+
+describe('content-area expansion and management navigation', () => {
+  for (const route of ['kanban', 'calendar', 'settings', 'projects', 'skills', 'sources', 'automations', 'pages'] as const) {
+    it(`suspends the session dock in ${route}, opens tools full width, and restores the session dock`, () => {
+      const store = createStore()
+      store.set(setPrimarySurfaceRouteAtom, 'allSessions/session/s1')
+      const files = store.set(openWorkbenchItemAtom, 'files')!
+      store.set(setCompanionPrimaryWidthAtom, 480)
+      store.set(setPrimarySurfaceRouteAtom, route)
+      expect(store.get(renderedSurfaceEntriesAtom).map(entry => entry.surfaceRole)).toEqual(['primary'])
+      const trajectory = store.set(openWorkbenchItemAtom, 'trajectory')!
+      expect(store.get(primarySurfaceAtom).route).toBe(route)
+      expect(store.get(workbenchFullWidthAtom)).toBe(true)
+      store.set(setExpandedWorkbenchItemAtom, null)
+      expect(store.get(primarySurfaceAtom).route).toBe(route)
+      expect(store.get(workbenchStateAtom).open).toBe(false)
+      store.set(setPrimarySurfaceRouteAtom, 'allSessions/session/s1')
+      expect(store.get(workbenchStateAtom)).toMatchObject({ open: true, activeItemId: files, primaryWidth: 480, expandedItemId: null })
+      expect(store.get(workbenchStateAtom).items.map(item => item.id)).toEqual([files, trajectory])
+    })
+  }
+
+  it('does not open a previously closed session dock after using management tools', () => {
+    const store = createStore()
+    store.set(setPrimarySurfaceRouteAtom, 'kanban')
+    store.set(openWorkbenchItemAtom, 'files')
+    store.set(setPrimarySurfaceRouteAtom, 'calendar')
+    expect(store.get(workbenchStateAtom).open).toBe(false)
+    store.set(setPrimarySurfaceRouteAtom, 'allSessions')
+    expect(store.get(workbenchStateAtom).open).toBe(false)
+  })
+
+  it('keeps expansion on tab switches and restores the same dock without losing ids', () => {
+    const store = createStore()
+    const files = store.set(openWorkbenchItemAtom, 'files')!
+    store.set(setExpandedWorkbenchItemAtom, files)
+    const trajectory = store.set(openWorkbenchItemAtom, 'trajectory')!
+    expect(store.get(workbenchStateAtom).expandedItemId).toBe(trajectory)
+    store.set(activateWorkbenchItemAtom, files)
+    expect(store.get(workbenchStateAtom).expandedItemId).toBe(files)
+    store.set(focusNextSurfaceAtom)
+    expect(store.get(focusedSurfaceAtom)).toBe('workbench')
+    store.set(setExpandedWorkbenchItemAtom, null)
+    expect(store.get(workbenchStateAtom)).toMatchObject({ open: true, activeItemId: files, expandedItemId: null })
+  })
+
+  it('returns to management when its active tool closes, without reviving a closed session tab', () => {
+    const store = createStore()
+    const files = store.set(openWorkbenchItemAtom, 'files')!
+    store.set(setPrimarySurfaceRouteAtom, 'kanban')
+    store.set(openWorkbenchItemAtom, 'files')
+    store.set(closeWorkbenchItemAtom, files)
+    expect(store.get(workbenchFullWidthAtom)).toBe(false)
+    store.set(setPrimarySurfaceRouteAtom, 'allSessions')
+    expect(store.get(workbenchStateAtom).open).toBe(false)
+  })
+
+  it('hides legacy management docks but restores explicitly expanded tools from history', () => {
+    const store = createStore()
+    const restore = { primaryRoute: 'calendar' as const, workbenchRoutes: ['files' as const], activeWorkbenchRoute: 'files' as const, workbenchOpen: true }
+    store.set(hydrateSurfaceStateAtom, restore)
+    expect(store.get(workbenchStateAtom).open).toBe(false)
+    store.set(hydrateSurfaceStateAtom, { ...restore, workbenchExpanded: true })
+    expect(store.get(workbenchFullWidthAtom)).toBe(true)
+    store.set(setExpandedWorkbenchItemAtom, null)
+    expect(store.get(primarySurfaceAtom).route).toBe('calendar')
+    expect(store.get(workbenchStateAtom).open).toBe(false)
   })
 })

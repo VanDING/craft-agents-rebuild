@@ -93,6 +93,10 @@ export function parseSurfaceUrlParams(
       .map(normalizeRoute)
     const foregroundSessionIds = (params.get('fg') ?? '').split('|').filter(Boolean)
     const workbenchBindings = parseWorkbenchBindings(params.get('wb'))
+    const sessionDock = params.has('sdo') ? {
+      open: params.get('sdo') === '1',
+      activeRoute: params.get('sda') ? normalizeRoute(params.get('sda')!) : null,
+    } : undefined
     return {
       source: 'v2',
       restore: {
@@ -103,8 +107,10 @@ export function parseSurfaceUrlParams(
           ? normalizeRoute(params.get('wa')!)
           : workbenchRoutes.at(-1) ?? null,
         workbenchOpen: params.get('wo') !== '0' && workbenchRoutes.length > 0,
+        ...(params.get('we') === '1' ? { workbenchExpanded: true } : {}),
         companionPrimaryWidth: params.get('pw') ? Number(params.get('pw')) : undefined,
         ...(workbenchBindings ? { workbenchBindings } : {}),
+        ...(sessionDock ? { sessionDock } : {}),
       },
     }
   }
@@ -139,10 +145,22 @@ export function writeSurfaceUrlParams(
   primary: PrimarySurfaceState,
   workbench: WorkbenchState,
   foregroundSessionIds: readonly string[] = [],
+  sessionDock?: Pick<WorkbenchState, 'open' | 'activeItemId'> | null,
 ): void {
+  if (primary.kind !== 'session' && sessionDock) {
+    params.set('sdo', sessionDock.open ? '1' : '0')
+    const sessionActive = workbench.items.find(item => item.id === sessionDock.activeItemId)
+    if (sessionActive) params.set('sda', sessionActive.route)
+    else params.delete('sda')
+  } else {
+    params.delete('sdo')
+    params.delete('sda')
+  }
   params.set('sv', SURFACE_URL_VERSION)
   params.set('route', primary.route)
   params.set('pw', String(workbench.primaryWidth))
+  if (workbench.open && workbench.expandedItemId) params.set('we', '1')
+  else params.delete('we')
   if (foregroundSessionIds.length > 1) params.set('fg', foregroundSessionIds.join('|'))
   else params.delete('fg')
 

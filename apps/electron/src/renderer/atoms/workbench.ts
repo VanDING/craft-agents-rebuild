@@ -78,6 +78,8 @@ export interface SurfaceRestoreState {
   workbenchRoutes: ViewRoute[]
   activeWorkbenchRoute: ViewRoute | null
   workbenchOpen: boolean
+  workbenchExpanded?: boolean
+  sessionDock?: { open: boolean; activeRoute: ViewRoute | null }
   /** In-memory migration hint for legacy `diff` / `preview` aliases. */
   filesView?: FilesPanelView
   companionPrimaryWidth?: number
@@ -242,6 +244,12 @@ export const workbenchStateAtom = atom<WorkbenchState>({
   expandedItemId: null,
 })
 
+// Session dock presentation survives temporary visits to management pages.
+export const sessionWorkbenchPresentationAtom = atom<Pick<WorkbenchState, 'open' | 'activeItemId'> | null>(null)
+
+/** Explicit navigation intent, before navigator roots auto-select a detail. */
+export const navigatorRevealRequestAtom = atom(0)
+
 export const focusedSurfaceAtom = atom<SurfaceFocus>('primary')
 
 export const activeWorkbenchItemAtom = atom<WorkbenchItem | null>((get) => {
@@ -254,6 +262,11 @@ export const renderedWorkbenchItemAtom = atom<WorkbenchItem | null>((get) => {
   const state = get(workbenchStateAtom)
   if (!state.open) return null
   return get(activeWorkbenchItemAtom)
+})
+
+export const workbenchFullWidthAtom = atom((get) => {
+  const item = get(renderedWorkbenchItemAtom)
+  return !!item && (get(primarySurfaceAtom).kind !== 'session' || get(workbenchStateAtom).expandedItemId === item.id)
 })
 
 export const renderedSurfaceEntriesAtom = atom<SurfaceRenderEntry[]>((get) => {
@@ -402,6 +415,7 @@ export const removeForegroundSessionAtom = atom(
 export const focusNextSurfaceAtom = atom(
   null,
   (get, set) => {
+    if (get(workbenchFullWidthAtom)) return
     if (get(renderedWorkbenchItemAtom)) {
       set(focusedSurfaceAtom, get(focusedSurfaceAtom) === 'primary' ? 'workbench' : 'primary')
       return
@@ -418,6 +432,7 @@ export const focusNextSurfaceAtom = atom(
 export const focusPreviousSurfaceAtom = atom(
   null,
   (get, set) => {
+    if (get(workbenchFullWidthAtom)) return
     if (get(renderedWorkbenchItemAtom)) {
       set(focusedSurfaceAtom, get(focusedSurfaceAtom) === 'primary' ? 'workbench' : 'primary')
       return
@@ -455,6 +470,26 @@ export const setPrimarySurfaceRouteAtom = atom(
     } else {
       set(foregroundSessionIdsAtom, [])
     }
+    const previous = get(primarySurfaceAtom)
+    const workbench = get(workbenchStateAtom)
+    let presentation = { open: workbench.open, activeItemId: workbench.activeItemId }
+    if (previous.kind === 'session' && next.kind !== 'session') {
+      set(sessionWorkbenchPresentationAtom, presentation)
+    }
+    if (next.kind !== 'session') {
+      presentation = { ...presentation, open: false }
+    } else if (previous.kind !== 'session') {
+      const saved = get(sessionWorkbenchPresentationAtom)
+      if (saved) {
+        presentation = {
+          open: saved.open && workbench.items.length > 0,
+          activeItemId: workbench.items.some(item => item.id === saved.activeItemId)
+            ? saved.activeItemId : workbench.activeItemId,
+        }
+      }
+      set(sessionWorkbenchPresentationAtom, null)
+    }
+    set(workbenchStateAtom, { ...workbench, ...presentation, expandedItemId: null })
     set(primarySurfaceAtom, next)
     set(focusedSurfaceAtom, 'primary')
     return true
@@ -480,6 +515,7 @@ export const openWorkbenchItemAtom = atom(
       ...current,
       open: true,
       activeItemId: item.id,
+      expandedItemId: current.expandedItemId || get(primarySurfaceAtom).kind !== 'session' ? item.id : null,
       items: existing ? current.items : [...current.items, item],
     })
     set(focusedSurfaceAtom, 'workbench')
@@ -492,7 +528,10 @@ export const activateWorkbenchItemAtom = atom(
   (get, set, id: string) => {
     const current = get(workbenchStateAtom)
     if (!current.items.some((item) => item.id === id)) return false
-    set(workbenchStateAtom, { ...current, open: true, activeItemId: id })
+    set(workbenchStateAtom, {
+      ...current, open: true, activeItemId: id,
+      expandedItemId: current.expandedItemId || get(primarySurfaceAtom).kind !== 'session' ? id : null,
+    })
     set(focusedSurfaceAtom, 'workbench')
     return true
   },
@@ -525,7 +564,7 @@ export const closeWorkbenchItemAtom = atom(
     const nextActive = wasActive
       ? items[Math.min(index, items.length - 1)]?.id ?? null
       : current.activeItemId
-    const open = current.open && items.length > 0
+    const open = current.open && items.length > 0 && !(wasActive && get(primarySurfaceAtom).kind !== 'session')
 
     set(workbenchStateAtom, {
       ...current,
@@ -559,7 +598,7 @@ export const toggleWorkbenchAtom = atom(
       return false
     }
     if (!current.activeItemId || current.items.length === 0) return false
-    set(workbenchStateAtom, { ...current, open: true })
+    set(workbenchStateAtom, { ...current, open: true, expandedItemId: get(primarySurfaceAtom).kind !== 'session' ? current.activeItemId : null })
     set(focusedSurfaceAtom, 'workbench')
     return true
   },
@@ -581,6 +620,9 @@ export const setExpandedWorkbenchItemAtom = atom(
   (get, set, id: string | null) => {
     const current = get(workbenchStateAtom)
     if (id !== null && !current.items.some((item) => item.id === id)) return false
+    if (id === null && get(primarySurfaceAtom).kind !== 'session') {
+      return set(collapseWorkbenchAtom)
+    }
     set(workbenchStateAtom, {
       ...current,
       expandedItemId: id,
@@ -646,7 +688,16 @@ export const hydrateSurfaceStateAtom = atom(
         === workbenchIdentity(canonicalActiveRoute, activeClassification.kind))
       : null
     const activeItemId = activeItem?.id ?? items.at(-1)?.id ?? null
-    const open = restore.workbenchOpen && activeItemId !== null
+    // Historical management + dock combinations restore as a single page.
+    const requestedOpen = restore.workbenchOpen && activeItemId !== null
+    const open = requestedOpen && (primary.kind === 'session' || restore.workbenchExpanded === true)
+    const sessionActive = restore.sessionDock?.activeRoute
+      ? items.find(item => item.route === canonicalWorkbenchRoute(restore.sessionDock!.activeRoute!))
+      : null
+    set(sessionWorkbenchPresentationAtom, primary.kind === 'session' ? null : {
+      open: restore.sessionDock?.open === true && items.length > 0,
+      activeItemId: sessionActive?.id ?? activeItemId,
+    })
 
     set(primarySurfaceAtom, primary)
     const restoredSessionId = parseSessionIdFromSurfaceRoute(primary.route)
@@ -661,9 +712,9 @@ export const hydrateSurfaceStateAtom = atom(
       activeItemId,
       items,
       primaryWidth: clampCompanionPrimaryWidth(restore.companionPrimaryWidth ?? current.primaryWidth),
-      expandedItemId: null,
+      expandedItemId: open && restore.workbenchExpanded ? activeItemId : null,
     })
-    set(focusedSurfaceAtom, 'primary')
+    set(focusedSurfaceAtom, open && restore.workbenchExpanded ? 'workbench' : 'primary')
     return true
   },
 )

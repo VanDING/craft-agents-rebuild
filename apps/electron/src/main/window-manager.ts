@@ -1,4 +1,4 @@
-import { BrowserWindow, shell, nativeTheme, Menu, app } from 'electron'
+import { BrowserWindow, shell, nativeTheme, Menu, app, screen } from 'electron'
 import { windowLog } from './logger'
 import { join, resolve, sep } from 'path'
 import { existsSync } from 'fs'
@@ -7,7 +7,8 @@ import { fileURLToPath } from 'url'
 import { getWorkspaceByNameOrId } from '@craft-agent/shared/config'
 import { classifyExternalUrl, formatBlockedUrlError } from '@craft-agent/shared/utils/url-safety'
 import { RPC_CHANNELS, type WindowCloseRequestSource } from '../shared/types'
-import type { SavedWindow } from './window-state'
+import type { SavedWindow, WindowBounds } from './window-state'
+import { defaultWindowBounds, fitWindowBounds } from './window-geometry'
 
 // Vite dev server URL for hot reload
 const VITE_DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL
@@ -51,6 +52,8 @@ export interface CreateWindowOptions {
   initialDeepLink?: string
   /** Full URL to restore from saved state (preserves route/query params) */
   restoreUrl?: string
+  bounds?: WindowBounds
+  maximized?: boolean
 }
 
 export class WindowManager {
@@ -215,9 +218,14 @@ export class WindowManager {
       windowLog.warn('App icon not found at:', iconPath)
     }
 
-    // Use smaller window size for focused mode (single session view)
-    const windowWidth = focused ? 900 : 1400
-    const windowHeight = focused ? 700 : 900
+    const savedBounds = options.bounds
+    const validBounds = savedBounds && [savedBounds.x, savedBounds.y, savedBounds.width, savedBounds.height].every(Number.isFinite)
+    const display = validBounds
+      ? screen.getDisplayMatching(savedBounds)
+      : screen.getDisplayNearestPoint(screen.getCursorScreenPoint())
+    const bounds = validBounds
+      ? fitWindowBounds(savedBounds, display.workArea)
+      : defaultWindowBounds(display.workArea, focused)
 
     // Platform-specific window options
     const isMac = process.platform === 'darwin'
@@ -227,10 +235,9 @@ export class WindowManager {
     const initialTitleBarSymbolColor = nativeTheme.shouldUseDarkColors ? '#f5f5f7' : '#1a1625'
 
     const window = new BrowserWindow({
-      width: windowWidth,
-      height: windowHeight,
-      minWidth: 800,
-      minHeight: 600,
+      ...bounds,
+      minWidth: Math.min(800, display.workArea.width),
+      minHeight: Math.min(600, display.workArea.height),
       show: false, // Don't show until ready-to-show event (faster perceived startup)
       title: '',
       icon: iconExists ? iconPath : undefined,
@@ -272,6 +279,7 @@ export class WindowManager {
 
     // Show window when first paint is ready (faster perceived startup)
     window.once('ready-to-show', () => {
+      if (options.maximized) window.maximize()
       window.show()
     })
 
@@ -701,7 +709,8 @@ export class WindowManager {
       return {
         type: 'main' as const,
         workspaceId: managed.workspaceId,
-        bounds: managed.window.getBounds(),
+        bounds: managed.window.getNormalBounds(),
+        maximized: managed.window.isMaximized(),
         ...(isFocused && { focused: true }),
         ...(url && { url }),
       }

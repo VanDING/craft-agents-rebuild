@@ -67,6 +67,7 @@ interface TopBarProps {
   onOpenBrowser?: () => void
   /** Toggle the navigator (session list) column visibility — decision #7 */
   onToggleSessionList?: () => void
+  isNavigatorVisible?: boolean
 }
 
 export function TopBar({
@@ -95,6 +96,7 @@ export function TopBar({
   onOpenLauncher,
   onOpenBrowser,
   onToggleSessionList,
+  isNavigatorVisible,
 }: TopBarProps) {
   const { t } = useTranslation()
   const [maxVisibleBrowserBadges, setMaxVisibleBrowserBadges] = useState(3)
@@ -179,12 +181,14 @@ export function TopBar({
               <TooltipTrigger asChild>
                 <TopBarButton
                   onClick={onToggleSessionList}
-                  aria-label={t('contentPanel.title.sessionsList')}
+                  aria-label={t(isNavigatorVisible ? 'contentPanel.hideNavigator' : 'contentPanel.showNavigator')}
+                  aria-expanded={isNavigatorVisible}
+                  isActive={isNavigatorVisible}
                 >
                   <Icons.List className="h-[18px] w-[18px] text-foreground/70" strokeWidth={1.5} />
                 </TopBarButton>
               </TooltipTrigger>
-              <TooltipContent side="bottom">{t('contentPanel.title.sessionsList')}</TooltipContent>
+              <TooltipContent side="bottom">{t(isNavigatorVisible ? 'contentPanel.hideNavigator' : 'contentPanel.showNavigator')}</TooltipContent>
             </Tooltip>
           )}
         </>

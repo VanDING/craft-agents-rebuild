@@ -10,7 +10,7 @@
 
 import { useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useAtomValue, useSetAtom } from 'jotai'
+import { useSetAtom } from 'jotai'
 import { motion, useReducedMotion } from 'motion/react'
 import { motionTween } from '@craft-agent/ui/motion'
 import { cn } from '@/lib/utils'
@@ -22,7 +22,6 @@ import {
   removeForegroundSessionAtom,
   type SurfaceRenderEntry,
 } from '@/atoms/workbench'
-import { expandedWorkbenchItemIdAtom } from '@/atoms/overlay'
 import { useAppShellContext, AppShellProvider } from '@/context/AppShellContext'
 import { PanelHeaderCenterButton } from '@/components/ui/PanelHeaderCenterButton'
 import { MainContentPanel } from './MainContentPanel'
@@ -51,6 +50,7 @@ interface SurfaceSlotProps {
   sash?: React.ReactNode
   /** Compact (mobile) mode — shows back button in panel header */
   isCompact?: boolean
+  hidden?: boolean
   /** Compact replacement-mode back behavior. */
   onCompactBack?: () => void
 }
@@ -68,6 +68,7 @@ export function SurfaceSlot({
   topSlot,
   sash,
   isCompact,
+  hidden = false,
   onCompactBack,
 }: SurfaceSlotProps) {
   const { t } = useTranslation()
@@ -75,10 +76,8 @@ export function SurfaceSlot({
   const removeForegroundSession = useSetAtom(removeForegroundSessionAtom)
   const setFocusedSurface = useSetAtom(focusedSurfaceEntryIdAtom)
   const parentContext = useAppShellContext()
-  const expandedWorkbenchItemId = useAtomValue(expandedWorkbenchItemIdAtom)
   const reduceMotion = useReducedMotion()
   const navState = parseRouteToNavigationState(entry.route)
-  const isExpanded = expandedWorkbenchItemId === entry.id
   const isWorkbench = entry.surfaceRole === 'workbench'
 
   // Build close button for PanelHeader (via context override)
@@ -118,11 +117,11 @@ export function SurfaceSlot({
   }), [parentContext, closeButton, backButton, isFocusedPanel])
 
   const handlePointerDown = useCallback(() => {
-    if (entry.sessionId) activateForegroundSession(entry.sessionId)
+    if (entry.surfaceRole === 'primary' && entry.sessionId) activateForegroundSession(entry.sessionId)
     if (!isFocusedPanel) {
       setFocusedSurface(entry.id)
     }
-  }, [activateForegroundSession, entry.id, entry.sessionId, isFocusedPanel, setFocusedSurface])
+  }, [activateForegroundSession, entry.id, entry.sessionId, entry.surfaceRole, isFocusedPanel, setFocusedSurface])
 
   return (
     <>
@@ -130,6 +129,9 @@ export function SurfaceSlot({
       <div
         onPointerDown={handlePointerDown}
         data-panel-role="content"
+        data-surface-id={entry.id}
+        inert={hidden}
+        aria-hidden={hidden || undefined}
         data-compact={isCompact || undefined}
         data-active-conversation={isConversationGroup ? isFocusedPanel : undefined}
         className={cn(
@@ -140,9 +142,8 @@ export function SurfaceSlot({
           'bg-paper',
         )}
         style={{
-          // Expanded into the fullscreen overlay: hide the slot (keep DOM state
-          // mounted) while ExpandedWorkbenchOverlay renders the same content.
-          display: isExpanded ? 'none' : undefined,
+          // Keep Primary mounted while a tool temporarily fills the content area.
+          display: hidden ? 'none' : undefined,
           // The unfocused surface overrides --background so all
           // bg-background children render at the elevated (dimmed) background.
           ...(!isFocusedPanel && !isOnly
@@ -159,7 +160,7 @@ export function SurfaceSlot({
           borderBottomLeftRadius: isCompact ? 0 : (isAtLeftEdge ? RADIUS_EDGE : RADIUS_INNER),
           borderTopRightRadius: RADIUS_INNER,
           borderBottomRightRadius: isCompact ? 0 : (isAtRightEdge ? RADIUS_EDGE : RADIUS_INNER),
-          ...(isCompact
+          ...(isCompact || isOnly
             ? { flexGrow: 1, minWidth: 0 }
             : isWorkbench
               ? {

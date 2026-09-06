@@ -38,7 +38,6 @@ import {
 // SessionStatusIcons no longer used - icons come from dynamic sessionStatuses
 import { SourceAvatar } from "@/components/ui/source-avatar"
 import { TopBar } from "./TopBar"
-import { ExpandedWorkbenchOverlay } from "./ExpandedWorkbenchOverlay"
 import { SquarePenRounded } from "../icons/SquarePenRounded"
 import { McpIcon } from "../icons/McpIcon"
 import { cn } from "@/lib/utils"
@@ -95,7 +94,6 @@ import { sessionMetaMapAtom, sendToWorkspaceAtom, type SessionMeta } from "@/ato
 import { sourcesAtom } from "@/atoms/sources"
 import { skillsAtom } from "@/atoms/skills"
 import { activeSessionIdAtom } from "@/atoms/active-session"
-import { expandedWorkbenchItemIdAtom } from "@/atoms/overlay"
 import { filesPanelViewAtom } from "@/atoms/content-panel-ui"
 import {
   addForegroundSessionAtom,
@@ -108,6 +106,9 @@ import {
   primarySessionIdAtom,
   renderedSurfaceCountAtom,
   workbenchStateAtom,
+  workbenchFullWidthAtom,
+  navigatorRevealRequestAtom,
+  setExpandedWorkbenchItemAtom,
 } from "@/atoms/workbench"
 import { browserInstancesAtom, activeBrowserInstanceIdAtom, filterInstancesForWorkspace } from "@/atoms/browser-pane"
 import { SURFACE_LAUNCHER_ROUTES, type SurfaceLauncherKind } from "@/lib/surface-launchers"
@@ -125,6 +126,7 @@ import { resolveEntityColor } from "@craft-agent/shared/colors"
 import * as storage from "@/lib/local-storage"
 import { toast } from "sonner"
 import { navigate, routes } from "@/lib/navigate"
+import { buildNavigatorRootRoute, hasNavigator } from "@/lib/nav-helpers"
 import {
   useNavigation,
   useNavigationState,
@@ -563,6 +565,7 @@ function AppShellContent({
   const [isNavigatorVisible, setIsNavigatorVisible] = React.useState(() => {
     return storage.get(storage.KEYS.navigatorVisible, true)
   })
+  const [isManagementNavigatorVisible, setIsManagementNavigatorVisible] = useState(true)
   const [sidebarWidth, setSidebarWidth] = React.useState(() => {
     return storage.get(storage.KEYS.sidebarWidth, 220)
   })
@@ -611,7 +614,8 @@ function AppShellContent({
   const store = useStore()
   const surfaceCount = useAtomValue(renderedSurfaceCountAtom)
   const primarySessionId = useAtomValue(primarySessionIdAtom)
-  const expandedWorkbenchItemId = useAtomValue(expandedWorkbenchItemIdAtom)
+  const isWorkbenchFullWidth = useAtomValue(workbenchFullWidthAtom)
+  const navigatorRevealRequest = useAtomValue(navigatorRevealRequestAtom)
 
   const isSessionsListVisible = isSessionsNavigation(navState)
 
@@ -634,6 +638,35 @@ function AppShellContent({
   // Pages behaves the same way: both the library grid and an open page render
   // full-width in the content area — there is no pages navigator list.
   const isPagesView = isPagesNavigation(navState)
+  const isCurrentNavigatorVisible = isSessionsListVisible ? isNavigatorVisible : isManagementNavigatorVisible
+  const navigatorRoot = buildNavigatorRootRoute(navState)
+  const previousNavigator = useRef({ root: navigatorRoot, kind: navState.navigator })
+  const previousRevealRequest = useRef(navigatorRevealRequest)
+
+  // Route restoration and history navigation also reveal management navigation.
+  useEffect(() => {
+    const previous = previousNavigator.current
+    if (previous.root !== navigatorRoot && hasNavigator(navState)) {
+      if (!isSessionsListVisible) {
+        setIsManagementNavigatorVisible(true)
+        setIsSidebarAndNavigatorHidden(false)
+      } else if (previous.kind === 'sessions') {
+        setIsNavigatorVisible(true)
+        setIsSidebarAndNavigatorHidden(false)
+      }
+    }
+    previousNavigator.current = { root: navigatorRoot, kind: navState.navigator }
+  }, [navigatorRoot, navState, isSessionsListVisible])
+
+  // Explicit roots may resolve to the same selected detail, so route changes
+  // alone cannot capture a second click on a hidden list's launcher.
+  useEffect(() => {
+    if (previousRevealRequest.current === navigatorRevealRequest) return
+    previousRevealRequest.current = navigatorRevealRequest
+    if (isSessionsListVisible) setIsNavigatorVisible(true)
+    else setIsManagementNavigatorVisible(true)
+    setIsSidebarAndNavigatorHidden(false)
+  }, [navigatorRevealRequest, isSessionsListVisible])
 
   // Derive source filter from navigation state (only when in sources navigator)
   const sourceFilter: SourceFilter | null = isSourcesNavigation(navState) ? navState.filter ?? null : null
@@ -1178,9 +1211,26 @@ function AppShellContent({
   // Actions are defined in @/actions/definitions.ts
 
   // Zone navigation - explicit keyboard intent, always move DOM focus
-  useAction('nav.focusSidebar', () => focusZone('sidebar', { intent: 'keyboard' }))
-  useAction('nav.focusNavigator', () => focusZone('navigator', { intent: 'keyboard' }))
-  useAction('nav.focusChat', () => focusZone('chat', { intent: 'keyboard' }))
+  useAction('nav.focusSidebar', () => {
+    setIsSidebarAndNavigatorHidden(false)
+    setIsSidebarVisible(true)
+    requestAnimationFrame(() => focusZone('sidebar', { intent: 'keyboard' }))
+  }, { enabled: () => !isAutoCompact })
+  useAction('nav.focusNavigator', () => {
+    if (!hasNavigator(navState)) return
+    store.set(setExpandedWorkbenchItemAtom, null)
+    setIsSidebarAndNavigatorHidden(false)
+    if (isSessionsListVisible) setIsNavigatorVisible(true)
+    else setIsManagementNavigatorVisible(true)
+    requestAnimationFrame(() => focusZone('navigator', { intent: 'keyboard' }))
+  }, { enabled: () => !isAutoCompact })
+  useAction('nav.focusChat', () => {
+    if (isWorkbenchFullWidth) {
+      shellRef.current?.querySelector<HTMLElement>('[data-panel-role="content"]:not([inert]) button')?.focus()
+    } else {
+      focusZone('chat', { intent: 'keyboard' })
+    }
+  })
 
   // Tab navigation between zones
   useAction('nav.nextZone', () => {
@@ -1218,6 +1268,7 @@ function AppShellContent({
   const handleToggleSidebar = useCallback(() => {
     if (isSidebarAndNavigatorHidden) {
       setIsSidebarAndNavigatorHidden(false)
+      setIsSidebarVisible(true)
       return
     }
     setIsSidebarVisible(v => !v)
@@ -1738,8 +1789,8 @@ function AppShellContent({
 
   // Persist focus mode state to localStorage
   React.useEffect(() => {
-    storage.set(storage.KEYS.focusModeEnabled, isSidebarAndNavigatorHidden)
-  }, [isSidebarAndNavigatorHidden])
+    if (!isFocusedMode) storage.set(storage.KEYS.focusModeEnabled, isSidebarAndNavigatorHidden)
+  }, [isSidebarAndNavigatorHidden, isFocusedMode])
 
   // Listen for focus mode toggle from menu (View → Focus Mode)
   React.useEffect(() => {
@@ -2094,15 +2145,13 @@ function AppShellContent({
     store.set(openWorkbenchItemAtom, SURFACE_LAUNCHER_ROUTES[kind])
   }, [store])
 
-  // Session-list toggle (decision #7): independent of the rail. Revealing the
-  // navigator also guarantees Primary is the Sessions surface.
+  // Toggle the current navigator without changing routes or other pages' preferences.
   const handleToggleSessionList = useCallback(() => {
-    const next = !isNavigatorVisible
-    setIsNavigatorVisible(next)
-    if (next) {
-      openSurfaceLauncher('sessions')
-    }
-  }, [isNavigatorVisible, openSurfaceLauncher])
+    const next = isSidebarAndNavigatorHidden || !isCurrentNavigatorVisible
+    setIsSidebarAndNavigatorHidden(false)
+    if (isSessionsListVisible) setIsNavigatorVisible(next)
+    else setIsManagementNavigatorVisible(next)
+  }, [isSidebarAndNavigatorHidden, isCurrentNavigatorVisible, isSessionsListVisible])
 
   // panel.toggle collapses the dock without destroying its tabs; when closed,
   // it activates the last bound kind.
@@ -2427,9 +2476,7 @@ function AppShellContent({
   return (
     <AppShellProvider value={appShellContextValue}>
         {/* === TOP BAR === */}
-        {/* Hidden while a panel is expanded fullscreen: the fixed drag region would
-            swallow clicks on the overlay's restore button (top-2). Esc still works. */}
-        {!expandedWorkbenchItemId && <TopBar
+        <TopBar
           workspaces={workspaces}
           activeWorkspaceId={activeWorkspaceId}
           onSelectWorkspace={onSelectWorkspace}
@@ -2454,8 +2501,9 @@ function AppShellContent({
           isCompact={isAutoCompact}
           onOpenLauncher={openSurfaceLauncher}
           onOpenBrowser={() => { void handleFocusOrCreateBrowser() }}
-          onToggleSessionList={handleToggleSessionList}
-        />}
+          onToggleSessionList={!isFullWidthView && !isPagesView && !isWorkbenchFullWidth ? handleToggleSessionList : undefined}
+          isNavigatorVisible={isCurrentNavigatorVisible && !effectiveSidebarAndNavigatorHidden}
+        />
 
       {/* === OUTER LAYOUT: Unified Panel Stack | Right Sidebar === */}
       <div
@@ -3698,7 +3746,7 @@ function AppShellContent({
             )}
             </div>
           }
-          navigatorWidth={isAutoCompact ? sessionListWidth : (effectiveSidebarAndNavigatorHidden || isFullWidthView || isPagesView || !isNavigatorVisible ? 0 : sessionListWidth)}
+          navigatorWidth={isAutoCompact ? sessionListWidth : (effectiveSidebarAndNavigatorHidden || isFullWidthView || isPagesView || isWorkbenchFullWidth || !isCurrentNavigatorVisible ? 0 : sessionListWidth)}
           isSidebarAndNavigatorHidden={effectiveSidebarAndNavigatorHidden}
           isCompact={isAutoCompact}
           isResizing={!!isResizing}
@@ -3738,7 +3786,7 @@ function AppShellContent({
         )}
 
         {/* Navigator resize handle (hidden in focused/full-width views and when the navigator is hidden). */}
-        {!effectiveSidebarAndNavigatorHidden && !isFullWidthView && !isPagesView && isNavigatorVisible && (
+        {!effectiveSidebarAndNavigatorHidden && !isFullWidthView && !isPagesView && !isWorkbenchFullWidth && isCurrentNavigatorVisible && (
         <div
           ref={sessionListHandleRef}
           onMouseDown={(e) => { e.preventDefault(); setIsResizing('session-list') }}
@@ -3994,10 +4042,7 @@ function AppShellContent({
           Mounted here so they survive context-menu / dropdown close. */}
       <MessagingDialogHost />
 
-      {/* Fullscreen rendering of an expanded Workbench item — inside
-          AppShellProvider so bound content and defensive fallbacks keep their
-          context (close/expand buttons, onOpenFile, navigation). */}
-      <ExpandedWorkbenchOverlay />
+
 
     </AppShellProvider>
   )

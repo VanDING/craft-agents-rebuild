@@ -388,12 +388,13 @@ async function createInitialWindows(): Promise<void> {
 
       // Restore main window with focused mode if it was saved
       mainLog.info(`Restoring window: workspaceId=${saved.workspaceId}, focused=${saved.focused ?? false}, url=${saved.url ?? 'none'}`)
-      const win = windowManager.createWindow({
+      windowManager.createWindow({
         workspaceId: saved.workspaceId,
         focused: saved.focused,
         restoreUrl: saved.url,
+        bounds: saved.bounds,
+        maximized: saved.maximized,
       })
-      win.setBounds(saved.bounds)
 
       restoredCount++
     }

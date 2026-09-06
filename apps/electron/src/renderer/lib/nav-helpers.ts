@@ -67,3 +67,14 @@ export function buildNavigatorRootRoute(navState: NavigationState): ViewRoute | 
       return null
   }
 }
+
+/** Full-width libraries/projections have no middle navigation column. */
+export function hasNavigator(navState: NavigationState | null): boolean {
+  if (!navState || navState.navigator === 'other' || navState.navigator === 'pages') return false
+  return navState.navigator !== 'projects' || navState.view === 'overview'
+}
+
+/** Opening a list is explicit intent; opening a session preserves its list preference. */
+export function shouldRevealNavigator(navState: NavigationState | null): boolean {
+  return hasNavigator(navState) && (navState?.navigator !== 'sessions' || !navState.details)
+}

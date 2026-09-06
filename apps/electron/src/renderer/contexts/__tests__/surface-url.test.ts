@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { createPrimarySurfaceState, createWorkbenchItem, hydrateSurfaceStateAtom, workbenchStateAtom, type WorkbenchState } from '../../atoms/workbench'
+import { createPrimarySurfaceState, createWorkbenchItem, hydrateSurfaceStateAtom, workbenchStateAtom, primarySurfaceAtom, openWorkbenchItemAtom, setPrimarySurfaceRouteAtom, sessionWorkbenchPresentationAtom, type WorkbenchState } from '../../atoms/workbench'
 import { createStore } from 'jotai'
 import { filesPanelViewAtom } from '../../atoms/content-panel-ui'
 import { normalizePanelRouteForReconcile } from '../navigation-reconcile'
@@ -172,4 +172,32 @@ describe('legacy right-sidebar migration', () => {
     expect(legacySidebarToWorkbenchRoute('unknown')).toBeNull()
     expect(legacySidebarToWorkbenchRoute('files-unknown')).toBeNull()
   })
+})
+
+it('round-trips explicit content-area expansion for management history', () => {
+  const files = createWorkbenchItem('files')!
+  const params = new URLSearchParams()
+  writeSurfaceUrlParams(params, createPrimarySurfaceState('calendar'), {
+    open: true, activeItemId: files.id, items: [files], primaryWidth: 480, expandedItemId: files.id,
+  })
+  const parsed = parseSurfaceUrlParams(params, { fallbackPrimaryRoute: 'allSessions', normalizeRoute })!
+  expect(parsed.restore.workbenchExpanded).toBe(true)
+  const store = createStore()
+  store.set(hydrateSurfaceStateAtom, parsed.restore)
+  expect(store.get(workbenchStateAtom).expandedItemId).toBe(store.get(workbenchStateAtom).activeItemId)
+  writeSurfaceUrlParams(params, createPrimarySurfaceState('calendar'), { ...store.get(workbenchStateAtom), open: false, expandedItemId: null })
+  expect(params.has('we')).toBe(false)
+})
+
+it('preserves the suspended session dock across management history hydration', () => {
+  const store = createStore()
+  const files = store.set(openWorkbenchItemAtom, 'files')!
+  store.set(setPrimarySurfaceRouteAtom, 'kanban')
+  store.set(openWorkbenchItemAtom, 'trajectory')
+  const params = new URLSearchParams()
+  writeSurfaceUrlParams(params, store.get(primarySurfaceAtom), store.get(workbenchStateAtom), [], store.get(sessionWorkbenchPresentationAtom))
+  const parsed = parseSurfaceUrlParams(params, { fallbackPrimaryRoute: 'allSessions', normalizeRoute })!
+  store.set(hydrateSurfaceStateAtom, parsed.restore)
+  store.set(setPrimarySurfaceRouteAtom, 'allSessions')
+  expect(store.get(workbenchStateAtom)).toMatchObject({ open: true, activeItemId: files, expandedItemId: null })
 })

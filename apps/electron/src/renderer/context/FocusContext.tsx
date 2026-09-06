@@ -34,6 +34,11 @@ interface FocusZone {
   focusFirst?: () => void // Optional: custom focus behavior
 }
 
+function isVisibleZone(zone: FocusZone): boolean {
+  const element = zone.ref.current
+  return !!element && !element.closest('[inert], [aria-hidden="true"]') && element.getClientRects().length > 0
+}
+
 /**
  * Focus state - tracks both the active zone and the intent behind the change
  */
@@ -82,7 +87,7 @@ export function FocusProvider({ children }: { children: React.ReactNode }) {
 
   const focusZone = useCallback((id: FocusZoneId, options?: FocusZoneOptions) => {
     const zone = zonesRef.current.get(id)
-    if (!zone) return
+    if (!zone || !isVisibleZone(zone)) return
 
     const intent = options?.intent ?? 'programmatic'
     // Default behavior: keyboard navigation moves focus, clicks don't
@@ -113,19 +118,21 @@ export function FocusProvider({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
-  const focusNextZone = useCallback(() => {
-    const currentIndex = focusState.zone ? ZONE_ORDER.indexOf(focusState.zone) : -1
-    const nextIndex = (currentIndex + 1) % ZONE_ORDER.length
-    // Tab navigation is explicit keyboard intent - always move focus
-    focusZone(ZONE_ORDER[nextIndex], { intent: 'keyboard', moveFocus: true })
+  const cycleZone = useCallback((direction: 1 | -1) => {
+    const currentIndex = focusState.zone ? ZONE_ORDER.indexOf(focusState.zone) : (direction === 1 ? -1 : 0)
+    for (let step = 1; step <= ZONE_ORDER.length; step++) {
+      const index = (currentIndex + direction * step + ZONE_ORDER.length) % ZONE_ORDER.length
+      const id = ZONE_ORDER[index]
+      const zone = zonesRef.current.get(id)
+      if (zone && isVisibleZone(zone)) {
+        focusZone(id, { intent: 'keyboard', moveFocus: true })
+        return
+      }
+    }
   }, [focusState.zone, focusZone])
 
-  const focusPreviousZone = useCallback(() => {
-    const currentIndex = focusState.zone ? ZONE_ORDER.indexOf(focusState.zone) : 0
-    const prevIndex = (currentIndex - 1 + ZONE_ORDER.length) % ZONE_ORDER.length
-    // Shift+Tab navigation is explicit keyboard intent - always move focus
-    focusZone(ZONE_ORDER[prevIndex], { intent: 'keyboard', moveFocus: true })
-  }, [focusState.zone, focusZone])
+  const focusNextZone = useCallback(() => cycleZone(1), [cycleZone])
+  const focusPreviousZone = useCallback(() => cycleZone(-1), [cycleZone])
 
   const isZoneFocused = useCallback((id: FocusZoneId) => {
     return focusState.zone === id

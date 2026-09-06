@@ -48,3 +48,17 @@ describe('hasOpenOverlay', () => {
     expect(hasOpenOverlay()).toBe(false)
   })
 })
+
+it('lets expansion own Escape before chat interruption while detecting inner layers independently', () => {
+  ;(globalThis as unknown as { document: { querySelector: (selector: string) => object | null } }).document = {
+    querySelector: selector => selector.includes('[data-workbench-full-width="true"]') ? {} : null,
+  }
+  expect(hasOpenOverlay()).toBe(true)
+  expect(hasOpenOverlay({ ignoreWorkbenchExpansion: true })).toBe(false)
+  setDismissibleLayerBridge({
+    registerLayer: () => () => {}, hasOpenLayers: () => true,
+    getTopLayer: () => ({ id: 'dialog', type: 'island', priority: 200 }),
+    closeTop: () => true, handleEscape: () => true,
+  })
+  expect(hasOpenOverlay({ ignoreWorkbenchExpansion: true })).toBe(true)
+})

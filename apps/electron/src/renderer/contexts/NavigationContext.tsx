@@ -1,3 +1,4 @@
+import { shouldRevealNavigator } from '@/lib/nav-helpers'
 /**
  * NavigationContext
  *
@@ -87,6 +88,8 @@ import {
   foregroundSessionIdsAtom,
   hydrateSurfaceStateAtom,
   openWorkbenchItemAtom,
+  navigatorRevealRequestAtom,
+  sessionWorkbenchPresentationAtom,
   primarySurfaceAtom,
   primarySessionIdAtom,
   parseSessionIdFromSurfaceRoute,
@@ -276,7 +279,7 @@ export function NavigationProvider({
         )),
       ],
       focusedPanelIndex: focusedIdx,
-      sidebarParam: '',
+      sidebarParam: workbench.expandedItemId ? 'expanded' : '',
     })
   }, [store, workspaceSlug])
 
@@ -303,7 +306,7 @@ export function NavigationProvider({
       url.searchParams.set('ws', workspaceSlug)
     }
 
-    writeSurfaceUrlParams(url.searchParams, primary, workbench, foregroundIds)
+    writeSurfaceUrlParams(url.searchParams, primary, workbench, foregroundIds, store.get(sessionWorkbenchPresentationAtom))
 
     // v1 right-sidebar state is migrated into Workbench tabs on restore.
     url.searchParams.delete('sidebar')
@@ -378,6 +381,7 @@ export function NavigationProvider({
       )).join('|'),
       state.activeItemId ?? '',
       state.open ? '1' : '0',
+      state.expandedItemId ? 'expanded' : '',
     ].join('::')
     let previousKey = semanticKey(store.get(workbenchStateAtom))
     const unsub = store.sub(workbenchStateAtom, () => {
@@ -903,6 +907,9 @@ export function NavigationProvider({
       }
 
       if (newNavState) {
+        if (shouldRevealNavigator(newNavState)) {
+          store.set(navigatorRevealRequestAtom, value => value + 1)
+        }
         // Resolve auto-selection (pure — no side effects)
         const resolvedState = resolveAutoSelection(newNavState, options)
         const finalRoute = buildRouteFromNavigationState(resolvedState) as ViewRoute

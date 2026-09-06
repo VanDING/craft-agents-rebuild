@@ -39,9 +39,8 @@ const OVERLAY_SELECTORS = [
   // Inline menus (@mention, /slash, #label autocomplete)
   '[data-inline-menu]',
 
-  // Fullscreen expanded panel — its own Esc handler restores the panel; without
-  // this entry the chat interrupt Esc fires first (double side effect).
-  '[data-expanded-panel-overlay]',
+  // Content-area expansion owns Escape before the background chat interrupt.
+  '[data-workbench-full-width="true"]',
 
   // Dialog-mode islands (from @craft-agent/ui Island primitive)
   '[data-ca-island-dialog="true"][data-state="open"]',
@@ -54,12 +53,14 @@ const OVERLAY_SELECTORS = [
  * This is used by the Escape key handler to determine whether
  * the escape should trigger chat interrupt or be handled by the overlay.
  */
-export function hasOpenOverlay(): boolean {
+export function hasOpenOverlay(options?: { ignoreWorkbenchExpansion?: boolean }): boolean {
   const bridge = getDismissibleLayerBridge()
   if (bridge?.hasOpenLayers()) {
     return true
   }
 
-  const selector = OVERLAY_SELECTORS.join(', ')
+  const selector = OVERLAY_SELECTORS
+    .filter(value => !options?.ignoreWorkbenchExpansion || value !== '[data-workbench-full-width="true"]')
+    .join(', ')
   return document.querySelector(selector) !== null
 }

@@ -7,21 +7,7 @@ import { setExpandedWorkbenchItemAtom, workbenchStateAtom } from './workbench'
  */
 export const fullscreenOverlayOpenAtom = atom(false)
 
-/**
- * Expanded-panel overlay state (decision #6 — one-click fullscreen).
- *
- * When a panel is expanded, its slot is hidden with `display:none` (DOM kept)
- * and an ExpandedWorkbenchOverlay renders the same item fullscreen.
- * The id lives in an atom so the panel stack / overlay stay in sync; per-panel
- * UI state (selection, scroll) is lifted to atoms (content-panel-ui) so the
- * docked and expanded renderings show identical state.
- */
-
-/**
- * Id of the active workbench item expanded into the fullscreen overlay.
- * Kept under the historic export name while callers migrate; the value is now
- * part of WorkbenchState so dock/fullscreen restoration cannot drift.
- */
+/** Compatibility alias for the workbench's content-area expansion state. */
 export const expandedWorkbenchItemIdAtom = atom(
   (get) => get(workbenchStateAtom).expandedItemId,
   (_get, set, id: string | null) => set(setExpandedWorkbenchItemAtom, id),
