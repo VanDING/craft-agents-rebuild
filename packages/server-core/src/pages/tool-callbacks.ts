@@ -14,6 +14,7 @@
  */
 
 import { existsSync, statSync } from 'node:fs'
+import { resolvePageContentInput } from './content-input'
 import type {
   PagesToolCallbacks,
   PageToolSummary,
@@ -165,16 +166,17 @@ export function buildPagesToolCallbacks(deps: PagesToolCallbacksDeps): PagesTool
 
     async createPage(input: CreatePageToolInput): Promise<PageToolDetails> {
       const { createPage } = await import('@craft-agent/shared/pages')
+      const content = await resolvePageContentInput(workspaceRootPath, input)
       const config = createPage(workspaceRootPath, {
         name: input.name.trim(),
         description: input.description,
         kind: assertKind(input.kind),
         projectId: input.projectId,
-        content: input.content,
+        content,
         refresh: input.refresh as PageRefreshSpec | undefined,
       })
       await mutated(config.slug)
-      if (input.content !== undefined) deps.onContentChanged?.(config.slug)
+      if (content !== undefined) deps.onContentChanged?.(config.slug)
       deps.log?.(`pages tool: created page ${config.slug} in workspace ${workspaceId}`)
       const details = await loadDetails(config.slug)
       if (!details) throw new Error(`Created page ${config.slug} but failed to reload it`)
@@ -185,6 +187,9 @@ export function buildPagesToolCallbacks(deps: PagesToolCallbacksDeps): PagesTool
       const { updatePage, savePageContent, loadPage } = await import('@craft-agent/shared/pages')
       const existing = loadPage(workspaceRootPath, slug)
       if (!existing) throw new Error(`Page not found: ${slug}`)
+
+      // Validate/read the artifact before any metadata mutation.
+      const content = await resolvePageContentInput(workspaceRootPath, patch)
 
       // Config patch: only include provided keys. Explicit null passes
       // through — "null clears" is normalized once, inside shared updatePage,
@@ -199,12 +204,12 @@ export function buildPagesToolCallbacks(deps: PagesToolCallbacksDeps): PagesTool
       if (Object.keys(configPatch).length > 0) {
         updatePage(workspaceRootPath, existing.config.slug, configPatch)
       }
-      if (patch.content !== undefined) {
-        savePageContent(workspaceRootPath, existing.config.slug, patch.content)
+      if (content !== undefined) {
+        savePageContent(workspaceRootPath, existing.config.slug, content)
       }
 
       await mutated(existing.config.slug)
-      if (patch.content !== undefined) deps.onContentChanged?.(existing.config.slug)
+      if (content !== undefined) deps.onContentChanged?.(existing.config.slug)
       const details = await loadDetails(existing.config.slug)
       if (!details) throw new Error(`Updated page ${slug} but failed to reload it`)
       return details

@@ -59,9 +59,63 @@ Series are ascending by `t`, capped at the newest 1000 points per series. The st
 
 Rules that make pages work everywhere (local sandbox AND published copies):
 
-1. **One full standalone HTML document.** Inline ALL CSS and JS. No external requests of any kind — published copies are served with `connect-src 'none'` (all network egress blocked), so CDN scripts, fonts, or fetch() calls would break them. Render charts with inline SVG/canvas you draw yourself.
+1. **One full standalone HTML document.** Inline ALL CSS and JS. No external requests of any kind — published copies are served with `connect-src 'none'` (all network egress blocked), so CDN scripts, fonts, or fetch() calls would break them. You may use React, shadcn/ui, charting libraries and Tailwind CSS 4: compile and bundle all dependencies and styles into the document before importing it (workflow below).
 2. **Data arrives via the bridge, not fetch.** The host injects the data snapshot through `postMessage`; `live` pages get replacement snapshots automatically whenever the data changes.
 3. **The iframe is opaque-origin** (`sandbox` without `allow-same-origin`): no cookies, no localStorage, no parent DOM access. Keep state in JS variables.
+
+### React + shadcn/ui + Tailwind CSS 4
+
+Use the bundled scaffold for component-based pages. It creates a normal source project with React 19, TypeScript, Tailwind 4, a shadcn-compatible Button, `components.json`, the `@/` alias, and a Pages snapshot hook. Its Vite build bundles React and every dependency into one script and inlines generated CSS/assets into `dist/index.html`. No CDN, browser-side JSX compiler, dev server, or host-module access is needed.
+
+Keep authoring projects **outside the managed `pages/` directory but inside the workspace**, for example `page-projects/build-health/`. File tools may edit this source project; continue using Pages tools for the managed page itself.
+
+From the workspace root:
+
+```sh
+bun ~/.craft-agent/docs/pages-scaffold.mjs page-projects/build-health
+cd page-projects/build-health
+bun install
+bun run typecheck
+bun run build
+```
+
+The scaffold refuses to overwrite an existing directory. It only writes source files; `bun install` explicitly installs dependencies. Keep the generated `bun.lock` with the source project, and use `bun install --frozen-lockfile` for repeat builds. The build script uses Node.js (22.12+ or a supported newer release); with a Bun-only environment, run `bun build.mjs` instead.
+
+Import the artifact without reading/pasting its bundled JS into the conversation:
+
+```js
+create_page({
+  name: "Build Health",
+  kind: "live",
+  contentFile: "page-projects/build-health/dist/index.html"
+})
+// After editing src/ and rebuilding:
+update_page({
+  slug: "build-health",
+  contentFile: "page-projects/build-health/dist/index.html"
+})
+```
+
+`contentFile` accepts a workspace-relative or absolute path inside the workspace (including its symlink target), to a UTF-8 `.html`/`.htm` file up to 5 MiB. It is mutually exclusive with inline `content`. Importing copies the HTML into managed storage and triggers the usual digest, stale-grant, watcher and thumbnail flow. It does not watch source files, install packages, run a build, publish, or auto-refresh the page on source edits. A failed build removes the previous `dist/index.html` to prevent importing stale output.
+
+Edit `src/App.tsx` and use ordinary imports, for example:
+
+```tsx
+import { Button } from '@/components/ui/button'
+import { usePageSnapshot } from '@/hooks/use-page'
+```
+
+`usePageSnapshot()` returns `null` until data arrives, then the current snapshot; `live` pages re-render on subsequent `data` messages. The listener registers before React renders so it can receive the initial handshake. Use `postPageMessage()` for the nonce-bearing messages documented below; source actions still require grants and user gestures. This helper is not an action-result or grant state manager: add listeners for those responses as needed.
+
+To add more shadcn components, run `bunx shadcn@latest add dialog` (or the desired components) **inside the source project**, review the generated source/dependency changes, and rebuild. The included Button is a small editable shadcn-compatible starter; there is no hidden host component library. Additional npm browser libraries work the same way. Prefer these existing components over hand-writing equivalents. Set the page title/language in the source project's `page.json` (this is build metadata, distinct from managed `pages/{slug}/page.json`).
+
+Constraints:
+
+- Choose `interactive` or `live` for React. `static` disables scripts, so client-rendered React would be blank.
+- Import local images/fonts from `src/` for inlining. The builder rejects extra emitted assets, external module imports and remaining CSS file URLs/imports. Do not use `public/` paths, remote fonts, workers, or runtime chunk URLs.
+- The artifact checks are not a security boundary or a detector for arbitrary `fetch()` / JSX URL strings. All runtime network access must still follow the bridge rules. Browser-only components must work without localStorage, cookies, parent DOM access or a backend server. Use in-memory UI state and snapshot data; use hash or memory routing if routing is needed.
+- Tailwind needs complete class names visible in source. Use a map of full classes rather than concatenating names like `bg-${color}-500`.
+- Build/typecheck and exercise the final HTML in an opaque iframe, including interactions and snapshot updates. A normal browser tab or Vite dev server alone does not validate Pages compatibility. Keep the bundle below the 5 MiB publish/import limit.
 
 ### Bridge snippet (copy-paste)
 

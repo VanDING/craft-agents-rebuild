@@ -115,7 +115,7 @@ export async function handleUpdatePage(
   const { slug, ...patch } = args;
   const hasChanges = Object.keys(patch).some(key => (patch as Record<string, unknown>)[key] !== undefined);
   if (!hasChanges) {
-    return errorResponse('Nothing to update — provide at least one of name, description, kind, projectId, content, refresh.');
+    return errorResponse('Nothing to update — provide at least one of name, description, kind, projectId, content, contentFile, refresh.');
   }
 
   try {

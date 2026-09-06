@@ -12,6 +12,8 @@ This file accumulates release notes for the next unreleased version. PRs that ad
 
 ## Improvements
 
+- **React component projects for Pages** — agents can scaffold React, shadcn-compatible components and Tailwind CSS 4, build a self-contained HTML page, and import the artifact by file path. A snapshot hook connects React to live page data; content imports preserve digest checks, grant invalidation and thumbnail updates.
+
 - **Durable execution authority** — workspace-local SQLite/WAL facts now place model, tool, task, usage, recovery, and projection state behind explicit T1/T2 boundaries. Unknown effects fail closed and require evidence-backed reconciliation instead of being automatically replayed or displayed as completed.
 - **Workbench surfaces organized around evidence** — Review, Files, Preview, Artifact, Context, Run, browser, and explicit multi-session panels now share consistent headers, navigation, fullscreen behavior, and cross-surface evidence links.
 - **Provider-owned model catalogs** — API-key setup now keeps the complete discovered model catalog synchronized and asks for one clear default model instead of the misleading Best, Balanced, and Fast tiers. Legacy three-tier connections migrate on their next catalog refresh.

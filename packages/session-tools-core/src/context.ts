@@ -662,6 +662,8 @@ export interface CreatePageToolInput {
   projectId?: string;
   /** Full self-contained HTML document for index.html */
   content?: string;
+  /** Built HTML file inside the workspace; mutually exclusive with content. */
+  contentFile?: string;
   refresh?: PageToolRefreshSpec;
 }
 
@@ -673,6 +675,8 @@ export interface UpdatePageToolPatch {
   projectId?: string | null;
   /** Replaces index.html entirely (re-digests; existing grants go stale by design) */
   content?: string;
+  /** Built HTML file inside the workspace; mutually exclusive with content. */
+  contentFile?: string;
   refresh?: PageToolRefreshSpec | null;
 }
 

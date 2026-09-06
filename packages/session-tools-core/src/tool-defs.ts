@@ -327,6 +327,7 @@ export const CreatePageSchema = z.object({
     .describe('Runtime capability class: static = no JS, interactive = JS allowed, live = JS + receives data snapshot updates while open. Default: interactive.'),
   projectId: z.string().optional().describe('Stable Project ID to bind the page to'),
   content: z.string().optional().describe('Full self-contained HTML document for index.html (inline CSS/JS, no external requests). Read ~/.craft-agent/docs/pages.md for the authoring guide and data-bridge snippet BEFORE writing page HTML.'),
+  contentFile: z.string().optional().describe('Path to a built UTF-8 HTML file inside the workspace (absolute or workspace-relative, max 5 MiB). Use for React/shadcn/Tailwind build output. Mutually exclusive with content.'),
   refresh: PageRefreshSpecInputSchema.optional().describe('Scheduled data refresh: cron + workspace-relative Bun script that updates the page data store'),
 });
 
@@ -337,6 +338,7 @@ export const UpdatePageSchema = z.object({
   kind: z.enum(['static', 'interactive', 'live']).optional().describe('New runtime capability class'),
   projectId: z.string().nullable().optional().describe('New Project ID. Pass null to unbind from its project.'),
   content: z.string().optional().describe('Replacement index.html (full document). Re-digests the content — existing source-action grants become stale by design and need re-approval.'),
+  contentFile: z.string().optional().describe('Replacement HTML artifact inside the workspace (absolute or workspace-relative, max 5 MiB). Mutually exclusive with content. Uses the same digest, grant invalidation and thumbnail flow as content.'),
   refresh: PageRefreshSpecInputSchema.nullable().optional().describe('New refresh spec. Pass null to remove scheduled refresh.'),
 });
 
@@ -683,9 +685,11 @@ The response includes absolute paths (contentPath, data.snapshotPath) — Read t
 
 IMPORTANT — read ~/.craft-agent/docs/pages.md BEFORE authoring page HTML. Key rules: provide a FULL standalone HTML document with ALL CSS/JS inline (no external requests — shared copies get network egress blocked); to display data from the page's data store, listen for the 'craft-pages/v1' bridge messages (init/data) documented there; kind 'live' pages receive replacement data snapshots automatically while open.
 
+For React/shadcn/Tailwind pages, use the scaffold/build workflow in pages.md, then pass contentFile pointing to dist/index.html; do not paste compiled bundles into tool arguments.
+
 Use Pages (instead of chat previews) when the user wants something persistent: a dashboard that an automation refreshes, a report they'll revisit or share, a tracker fed by write_page_data. Returns the created page details including the slug.`,
 
-  update_page: `Update an existing Page: metadata (name, description, kind, projectId), the scheduled refresh spec, and/or replace its HTML content.
+  update_page: `Update an existing Page: metadata (name, description, kind, projectId), the scheduled refresh spec, and/or replace its HTML content (inline content or a workspace contentFile build artifact).
 
 Only provided fields change; pass null to clear description/projectId/refresh. Replacing content re-computes the content digest, so existing source-action grants go stale by design (the user must re-approve them). The slug never changes.`,
 

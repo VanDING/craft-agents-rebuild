@@ -1017,6 +1017,7 @@ Do NOT create or edit \`pages/{slug}/\` files directly with file tools — alway
 
 **Authoring page HTML — read \`${DOC_REFS.pages}\` FIRST.** The essentials:
 - Provide a FULL standalone HTML document with all CSS/JS inline. No external network requests — published copies get all egress blocked, so external scripts/fonts would break them.
+- For React/shadcn/ui/Tailwind 4, use the bundled scaffold/build workflow in the Pages guide. Keep editable sources in a workspace \`page-projects/\` directory, then pass the built \`dist/index.html\` as \`contentFile\` to create_page/update_page; do not paste compiled bundles into tool arguments. Use interactive/live for client-rendered React.
 - Receive data via the \`craft-pages/v1\` postMessage bridge: post \`{ protocol: 'craft-pages/v1', type: 'ready' }\` to \`window.parent\`, then handle \`init\` (\`payload.nonce\` + \`payload.snapshot\`) and \`data\` (replacement \`payload.snapshot\`) messages. The doc has a copy-paste snippet.
 - Pages never hold credentials. In-page source actions (e.g. a button calling an API source) go through the bridge and require user-approved, expiring grants bound to the exact content digest — editing content invalidates existing grants.
 
