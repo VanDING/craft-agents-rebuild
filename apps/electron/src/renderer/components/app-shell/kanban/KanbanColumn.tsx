@@ -92,8 +92,8 @@ export function KanbanColumn({
   return (
     <div className="flex min-w-[260px] flex-1 flex-col">
       <div className="flex items-center gap-2 px-0.5 pb-2">
-        {/* A small color mark identifies the column; a neutral count keeps
-            project and task colors from competing with the header. The trailing space is a reserved WIP slot. */}
+        {/* Colored header pill carries the column identity; the count rides along
+            in a translucent chip. The trailing space is a reserved WIP slot. */}
         <ColumnHeader
           label={label}
           count={tasks.length}
@@ -112,7 +112,7 @@ export function KanbanColumn({
         ref={setNodeRef}
         className="flex flex-1 flex-col gap-2 overflow-y-auto rounded-lg p-2 transition-shadow"
         style={{
-          backgroundColor: 'var(--foreground-2)',
+          backgroundColor: color?.tint,
           outline: isOver && color ? `2px solid ${color.solid}` : undefined,
         }}
       >
@@ -178,10 +178,9 @@ function ColumnHeader({
   const { t } = useTranslation()
   const [open, setOpen] = React.useState(false)
 
-  const pillStyle = { color: 'var(--foreground)' }
+  const pillStyle = color ? { backgroundColor: color.solid, color: color.onAccent } : undefined
   const inner = (
     <>
-      {!dropStatus && color && <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: color.solid }} />}
       {dropStatus && (
         <span className="shrink-0 flex items-center" style={getStatusIconStyle(dropStatus)}>
           {dropStatus.icon}
@@ -190,7 +189,7 @@ function ColumnHeader({
       {label}
       <span
         className="inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full px-1 text-[10px] font-semibold tabular-nums"
-        style={{ backgroundColor: 'var(--foreground-5)', color: 'var(--muted-foreground)' }}
+        style={{ backgroundColor: 'rgba(255, 255, 255, 0.25)' }}
       >
         {count}
       </span>
@@ -201,7 +200,7 @@ function ColumnHeader({
   if (!onSelectDropStatus && !editable) {
     return (
       <span
-        className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[12px] font-medium"
+        className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider"
         style={pillStyle}
       >
         {inner}
@@ -216,7 +215,7 @@ function ColumnHeader({
         data-no-dnd="true"
         onPointerDown={e => e.stopPropagation()}
         title={editable ? t('kanban.column.edit') : t('kanban.column.setDropStatus')}
-        className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[12px] font-medium transition-shadow hover:ring-2 hover:ring-foreground/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 data-[state=open]:ring-2 data-[state=open]:ring-foreground/20"
+        className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider transition-shadow hover:ring-2 hover:ring-foreground/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 data-[state=open]:ring-2 data-[state=open]:ring-foreground/20"
         style={pillStyle}
       >
         {inner}

@@ -10,7 +10,7 @@ import { trajectoryRecordId } from './trajectory-layout'
 
 export const CONTENT_ROW_HEIGHT = 30
 export const COLLAPSED_SUMMARY_HEIGHT = 24
-export const REQUEST_BOUNDARY_HEIGHT = 16
+export const REQUEST_BOUNDARY_HEIGHT = 26
 
 /** One virtualizer item. */
 export interface TrajectoryVirtualRow {
