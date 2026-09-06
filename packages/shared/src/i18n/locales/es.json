@@ -2044,6 +2044,7 @@
   "trajectory.map.branch": "Branch",
   "trajectory.map.collapse": "Collapse child sessions",
   "trajectory.map.current": "Current",
+  "trajectory.map.details": "Detalles de la sesión",
   "trajectory.map.errors": "{{count}} errors",
   "trajectory.map.expand": "Expand child sessions",
   "trajectory.map.fit": "Fit map",

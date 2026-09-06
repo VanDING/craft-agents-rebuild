@@ -290,17 +290,13 @@ export function BrowserControls({
     <AnimatePresence>
       {loading && (
         <motion.div
-          className="pointer-events-none absolute left-0 right-0 bottom-0 h-[2px] bg-gradient-to-r from-transparent via-accent to-transparent"
+          className="motion-browser-progress pointer-events-none absolute left-0 right-0 bottom-0 h-[2px] bg-gradient-to-r from-transparent via-accent to-transparent"
           style={{ backgroundSize: '220% 100%' }}
           initial={{ opacity: 0 }}
-          animate={{
-            opacity: 0.9,
-            backgroundPosition: ['0% 50%', '100% 50%', '0% 50%'],
-          }}
+          animate={{ opacity: 0.9 }}
           exit={{ opacity: 0 }}
           transition={{
             opacity: { duration: MOTION_DURATION.emphasis, ease: MOTION_EASE.enter },
-            backgroundPosition: { duration: 1.6, repeat: Infinity, ease: MOTION_EASE.move },
           }}
         />
       )}

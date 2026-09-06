@@ -24,6 +24,18 @@ export function BrowserEmptyStateCard({
   onPromptSelect,
 }: BrowserEmptyStateCardProps) {
   const { t } = useTranslation()
+  const renderPrompt = (sample: BrowserEmptyPromptSample, index: number) => (
+    <button
+      key={sample.short}
+      type="button"
+      title={sample.full}
+      onClick={() => onPromptSelect?.(sample)}
+      className="motion-interactive flex min-h-8 w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left transition-colors hover:bg-foreground/[0.035] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      <span className="w-4 shrink-0 text-[11px] text-muted-foreground tabular-nums">{index + 1}.</span>
+      <span className="text-[12px] text-foreground/80">{sample.short}</span>
+    </button>
+  )
   return (
     <div className="w-full h-full flex items-center justify-center p-8">
       <div className="w-full max-w-[700px] bg-background shadow-minimal rounded-[8px] overflow-hidden border border-border/30">
@@ -40,18 +52,13 @@ export function BrowserEmptyStateCard({
 
           {showExamplePrompts && prompts.length > 0 && (
             <div className="mt-3.5 space-y-1.5">
-              {prompts.map((sample, index) => (
-                <button
-                  key={sample.short}
-                  type="button"
-                  title={sample.full}
-                  onClick={() => onPromptSelect?.(sample)}
-                  className="w-fit max-w-full flex items-center gap-1 h-8 px-2.5 rounded-[6px] bg-background shadow-minimal hover:bg-foreground/[0.03] transition-colors text-left cursor-pointer"
-                >
-                  <span className="w-4 shrink-0 text-[11px] text-foreground/40 tabular-nums">{index + 1}.</span>
-                  <span className="truncate text-[12px] text-foreground/70">{sample.short}</span>
-                </button>
-              ))}
+              {prompts.slice(0, 3).map(renderPrompt)}
+              {prompts.length > 3 && (
+                <details>
+                  <summary className="cursor-pointer rounded-md px-2.5 py-2 text-[12px] text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('common.more')}</summary>
+                  <div className="motion-view-enter">{prompts.slice(3).map((sample, index) => renderPrompt(sample, index + 3))}</div>
+                </details>
+              )}
             </div>
           )}
         </div>

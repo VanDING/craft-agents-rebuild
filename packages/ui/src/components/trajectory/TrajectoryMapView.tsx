@@ -1,21 +1,16 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ChevronDown, ChevronRight, GitBranch, LocateFixed, Maximize2, Minus, Plus } from 'lucide-react'
+import { ChevronDown, ChevronRight, GitBranch, LocateFixed, Maximize2, Minus, Plus, PanelRight, X } from 'lucide-react'
 import type { TrajectoryTurnModel } from './trajectory-layout'
 import { buildTrajectorySessionMapLayout, type TrajectoryMapEdge, type TrajectoryMapNode, type TrajectorySessionMap } from './trajectory-session-map'
 import styles from './TrajectoryMapView.module.css'
+import { resizeMapViewport, type MapViewportTransform } from './trajectory-map-viewport'
 
 export interface TrajectoryMapViewProps {
   turns: readonly TrajectoryTurnModel[]
   sessionMap: TrajectorySessionMap
   onSelectRecord?: (index: number) => void
   onOpenSession?: (sessionId: string) => void
-}
-
-interface ViewportTransform {
-  x: number
-  y: number
-  scale: number
 }
 
 interface TurnSummary {
@@ -79,13 +74,19 @@ function summarizeTurns(turns: readonly TrajectoryTurnModel[]): readonly TurnSum
 
 export function TrajectoryMapView({ turns, sessionMap, onSelectRecord, onOpenSession }: TrajectoryMapViewProps) {
   const { t } = useTranslation()
+  const rootRef = useRef<HTMLDivElement>(null)
   const viewportRef = useRef<HTMLDivElement>(null)
+  const inspectorCloseRef = useRef<HTMLButtonElement>(null)
+  const inspectorTriggerRef = useRef<HTMLElement | null>(null)
+  const [inspectorOpen, setInspectorOpen] = useState(false)
+  const [isCompact, setIsCompact] = useState(true)
+  const [animateViewport, setAnimateViewport] = useState(false)
   const fittedRef = useRef(false)
   const lastViewportSizeRef = useRef({ width: 0, height: 0 })
   const previousCurrentPositionRef = useRef<{ x: number, y: number } | null>(null)
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
   const [selectedId, setSelectedId] = useState(`session:${sessionMap.currentSessionId}`)
-  const [transform, setTransform] = useState<ViewportTransform>({ x: 28, y: 28, scale: 0.9 })
+  const [transform, setTransform] = useState<MapViewportTransform>({ x: 28, y: 28, scale: 0.9 })
   const dragRef = useRef<{ pointerId: number, x: number, y: number, originX: number, originY: number } | null>(null)
 
   const layout = useMemo(
@@ -95,21 +96,45 @@ export function TrajectoryMapView({ turns, sessionMap, onSelectRecord, onOpenSes
   const nodes = useMemo(() => new Map(layout.nodes.map(node => [node.id, node])), [layout.nodes])
   const turnSummaries = useMemo(() => summarizeTurns(turns), [turns])
   const selectedNode = nodes.get(selectedId) ?? nodes.get(`session:${sessionMap.currentSessionId}`)
-  const rendersAtNativeScale = Math.abs(transform.scale - 1) < 0.001
+  const selectedNodeRef = useRef(selectedNode)
+  selectedNodeRef.current = selectedNode
+
+  const openInspector = (trigger: HTMLElement, nodeId = selectedId) => {
+    inspectorTriggerRef.current = trigger
+    setSelectedId(nodeId)
+    setInspectorOpen(true)
+  }
+  const closeInspector = () => {
+    setInspectorOpen(false)
+    requestAnimationFrame(() => inspectorTriggerRef.current?.focus({ preventScroll: true }))
+  }
+
+  useEffect(() => {
+    if (inspectorOpen) inspectorCloseRef.current?.focus({ preventScroll: true })
+  }, [inspectorOpen])
+
+  useEffect(() => {
+    const root = rootRef.current
+    if (!root) return
+    const observer = new ResizeObserver(() => setIsCompact(root.clientWidth <= 760))
+    observer.observe(root)
+    return () => observer.disconnect()
+  }, [])
 
   useEffect(() => {
     setSelectedId(`session:${sessionMap.currentSessionId}`)
   }, [sessionMap.currentSessionId])
 
-  const fit = useCallback(() => {
+  const fit = useCallback((minimumScale = MIN_SCALE) => {
     const viewport = viewportRef.current
     if (!viewport || viewport.clientWidth <= 0 || viewport.clientHeight <= 0) return false
-    const padding = 48
+    const padding = 32
     const scale = clampScale(Math.min(
       (viewport.clientWidth - padding * 2) / layout.width,
       (viewport.clientHeight - padding * 2) / layout.height,
       1,
     ))
+    if (scale < minimumScale) return false
     setTransform({
       scale,
       x: (viewport.clientWidth - layout.width * scale) / 2,
@@ -125,20 +150,22 @@ export function TrajectoryMapView({ turns, sessionMap, onSelectRecord, onOpenSes
     const current = nodes.get(`session:${sessionMap.currentSessionId}`)
     if (!viewport || !current) return
     setSelectedId(current.id)
-    setTransform(previous => {
-      const scale = Math.max(previous.scale, 0.82)
-      return {
-        scale,
-        x: viewport.clientWidth / 2 - (current.x + current.width / 2) * scale,
-        y: viewport.clientHeight / 2 - (current.y + current.height / 2) * scale,
-      }
+    // Start with a readable current node. Fitting the entire family is an
+    // explicit action, especially when the workspace is a narrow split pane.
+    const scale = clampScale(Math.min(1, (viewport.clientWidth - 48) / current.width))
+    setTransform({
+      scale,
+      x: viewport.clientWidth / 2 - (current.x + current.width / 2) * scale,
+      y: viewport.clientHeight / 2 - (current.y + current.height / 2) * scale,
     })
   }, [nodes, sessionMap.currentSessionId])
 
   useLayoutEffect(() => {
     if (fittedRef.current) return
-    fittedRef.current = fit()
-  }, [fit])
+    if (!viewportRef.current?.clientWidth) return
+    if (!fit(0.82)) locateCurrent()
+    fittedRef.current = true
+  }, [fit, locateCurrent])
 
   useLayoutEffect(() => {
     const current = nodes.get(`session:${sessionMap.currentSessionId}`)
@@ -162,6 +189,8 @@ export function TrajectoryMapView({ turns, sessionMap, onSelectRecord, onOpenSes
       if (!entry) return
       const width = entry.contentRect.width
       const height = entry.contentRect.height
+      // Hidden Run tabs retain their viewport, rather than fitting a zero box.
+      if (width <= 0 || height <= 0) return
       const previous = lastViewportSizeRef.current
       lastViewportSizeRef.current = { width, height }
       if (!fittedRef.current) {
@@ -169,9 +198,8 @@ export function TrajectoryMapView({ turns, sessionMap, onSelectRecord, onOpenSes
         return
       }
       if (previous.width === 0 || previous.height === 0) return
-      const widthDelta = Math.abs(width - previous.width) / previous.width
-      const heightDelta = Math.abs(height - previous.height) / previous.height
-      if (widthDelta > 0.03 || heightDelta > 0.03) fitRef.current()
+      setAnimateViewport(false)
+      setTransform(value => resizeMapViewport(value, previous, { width, height }, selectedNodeRef.current))
     })
     observer.observe(viewport)
     return () => observer.disconnect()
@@ -180,6 +208,7 @@ export function TrajectoryMapView({ turns, sessionMap, onSelectRecord, onOpenSes
   const zoom = (factor: number) => {
     const viewport = viewportRef.current
     if (!viewport) return
+    setAnimateViewport(true)
     setTransform(previous => {
       const nextScale = clampScale(previous.scale * factor)
       const cx = viewport.clientWidth / 2
@@ -201,7 +230,13 @@ export function TrajectoryMapView({ turns, sessionMap, onSelectRecord, onOpenSes
   }
 
   return (
-    <div className={styles.root}>
+    <div ref={rootRef} className={styles.root} onKeyDown={event => {
+      if (event.key === 'Escape' && inspectorOpen) {
+        event.preventDefault()
+        event.stopPropagation()
+        closeInspector()
+      }
+    }}>
       <div className={styles.toolbar}>
         <div className={styles.legend} aria-label={t('trajectory.map.legend')}>
           <span><i className={styles.currentDot} />{t('trajectory.map.current')}</span>
@@ -213,8 +248,9 @@ export function TrajectoryMapView({ turns, sessionMap, onSelectRecord, onOpenSes
           <span className={styles.scale}>{Math.round(transform.scale * 100)}%</span>
           <button type="button" onClick={() => zoom(1.19)} aria-label={t('trajectory.map.zoomIn')}><Plus /></button>
           <span className={styles.separator} />
-          <button type="button" onClick={locateCurrent} aria-label={t('trajectory.map.locate')}><LocateFixed /></button>
-          <button type="button" onClick={fit} aria-label={t('trajectory.map.fit')}><Maximize2 /></button>
+          <button type="button" onClick={() => { setAnimateViewport(true); locateCurrent() }} aria-label={t('trajectory.map.locate')}><LocateFixed /></button>
+          <button type="button" onClick={() => { setAnimateViewport(true); fit() }} aria-label={t('trajectory.map.fit')}><Maximize2 /></button>
+          <button type="button" aria-expanded={inspectorOpen} onClick={event => inspectorOpen ? closeInspector() : openInspector(event.currentTarget)} aria-label={t('trajectory.map.details')}><PanelRight /></button>
         </div>
       </div>
 
@@ -222,8 +258,10 @@ export function TrajectoryMapView({ turns, sessionMap, onSelectRecord, onOpenSes
         <div
           ref={viewportRef}
           className={styles.viewport}
+          inert={isCompact && inspectorOpen}
           onWheel={(event) => {
             event.preventDefault()
+            setAnimateViewport(false)
             const rect = event.currentTarget.getBoundingClientRect()
             const cx = event.clientX - rect.left
             const cy = event.clientY - rect.top
@@ -235,6 +273,7 @@ export function TrajectoryMapView({ turns, sessionMap, onSelectRecord, onOpenSes
           }}
           onPointerDown={(event) => {
             if (event.button !== 0 || (event.target as HTMLElement).closest('button')) return
+            setAnimateViewport(false)
             event.currentTarget.setPointerCapture(event.pointerId)
             dragRef.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, originX: transform.x, originY: transform.y }
             event.currentTarget.dataset.dragging = 'true'
@@ -249,10 +288,9 @@ export function TrajectoryMapView({ turns, sessionMap, onSelectRecord, onOpenSes
         >
           <div
             className={styles.canvas}
+            data-animated={animateViewport}
             data-compact={transform.scale < 0.62 ? 'true' : 'false'}
-            style={rendersAtNativeScale
-              ? { width: layout.width, height: layout.height, left: Math.round(transform.x), top: Math.round(transform.y), transform: 'none' }
-              : { width: layout.width, height: layout.height, transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})` }}
+            style={{ width: layout.width, height: layout.height, transform: `translate(${Math.round(transform.x)}px, ${Math.round(transform.y)}px) scale(${transform.scale})` }}
           >
             <svg className={styles.edges} width={layout.width} height={layout.height} aria-hidden="true">
               {layout.edges.map(edge => {
@@ -280,7 +318,8 @@ export function TrajectoryMapView({ turns, sessionMap, onSelectRecord, onOpenSes
                 <button
                   type="button"
                   className={styles.sessionOpen}
-                  onClick={() => setSelectedId(node.id)}
+                  aria-pressed={selectedId === node.id}
+                  onClick={(event) => openInspector(event.currentTarget, node.id)}
                   onDoubleClick={() => node.session.id !== sessionMap.currentSessionId && onOpenSession?.(node.session.id)}
                   onKeyDown={(event) => {
                     if (event.key === 'Enter' && node.session.id !== sessionMap.currentSessionId) onOpenSession?.(node.session.id)
@@ -320,12 +359,17 @@ export function TrajectoryMapView({ turns, sessionMap, onSelectRecord, onOpenSes
           </div>
         </div>
 
-        {selectedNode && (
+        {selectedNode && inspectorOpen && (
           <aside className={styles.inspector} aria-label={selectedNode.session.title}>
             <div className={styles.inspectorHeader}>
-              <span className={styles.cardEyebrow}>
-                <GitBranch />{t(`trajectory.map.relation.${selectedNode.relation}`)}
-              </span>
+              <div className={styles.inspectorTop}>
+                <span className={styles.cardEyebrow}>
+                  <GitBranch />{t(`trajectory.map.relation.${selectedNode.relation}`)}
+                </span>
+                <div className={styles.actions}>
+                  <button ref={inspectorCloseRef} type="button" onClick={closeInspector} aria-label={t('common.close')}><X /></button>
+                </div>
+              </div>
               <h3>{selectedNode.session.title}</h3>
               <p>{selectedNode.session.preview || t('trajectory.map.noPreview')}</p>
               <div className={styles.inspectorMeta}>

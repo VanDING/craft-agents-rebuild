@@ -31,14 +31,13 @@ export function PanelEmptyState({ title, hint, icon }: PanelEmptyStateProps) {
       transition={motionTween(reduceMotion, 'standard', 'enter')}
     >
       {icon && (
-        <div className="relative mb-4 flex h-12 w-12 items-center justify-center rounded-2xl border border-border/60 bg-gradient-to-b from-background to-foreground/[0.035] text-muted-foreground shadow-minimal">
-          <div className="absolute inset-1 rounded-xl border border-white/[0.08]" />
+        <div className="relative mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-foreground/[0.035] text-muted-foreground">
           <span className="relative">{icon}</span>
         </div>
       )}
       <p className="text-[13px] font-medium text-foreground/80">{title}</p>
       {hint && (
-        <p className="mt-1.5 max-w-[34ch] text-xs leading-relaxed text-muted-foreground/70">{hint}</p>
+        <p className="mt-1.5 max-w-[34ch] text-xs leading-relaxed text-muted-foreground">{hint}</p>
       )}
     </motion.div>
   )

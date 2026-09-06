@@ -64,7 +64,7 @@ export function ProjectManagementSurface({ state }: ProjectManagementSurfaceProp
 
   return (
     <div className="@container/panel relative h-full min-h-0 overflow-hidden">
-      <div className="h-full min-h-0">{content}</div>
+      <div key={state.view} className="motion-view-enter h-full min-h-0">{content}</div>
     </div>
   )
 }

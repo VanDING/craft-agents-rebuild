@@ -418,6 +418,10 @@ html[data-font="system"] {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-accent: var(--accent);
+  /* Compatibility for controls using shadcn primary names. */
+  --color-primary: var(--foreground);
+  --color-primary-foreground: var(--background);
+  --color-border-strong: color-mix(in srgb, var(--foreground) 15%, transparent);
   --color-info: var(--info);
   --color-success: var(--success);
   --color-destructive: var(--destructive);
@@ -926,6 +930,15 @@ html.dark[data-scenic] .fullscreen-overlay-background {
 [data-radix-alert-dialog-overlay],
 [data-radix-alert-dialog-content] {
   animation: none !important;
+}
+
+/* Opt in shared dialog/popover primitives only. High-frequency menus stay
+   instant, and historical zoom/slide classes remain disabled. */
+.craft-float-motion[data-state="open"] {
+  animation: craft-content-enter var(--motion-duration-standard) var(--motion-ease-enter) !important;
+}
+.craft-float-motion[data-state="closed"] {
+  animation: craft-content-exit var(--motion-duration-fast) var(--motion-ease-exit) !important;
 }
 
 /* Fix ScrollArea internal div preventing content shrink

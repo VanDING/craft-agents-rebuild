@@ -74,7 +74,7 @@ export function TrajectoryOverview({
     })),
     ...(slowestTool && !errorRecords.includes(slowestTool) ? [{
       icon: Clock3,
-      tone: 'text-amber-600 dark:text-amber-400',
+      tone: 'text-[color:var(--info-text)]',
       label: t('trajectory.overview.slowestTool', { name: recordDisplayText(slowestTool.cell) }),
       meta: slowestTool.cell.timeSeconds === null ? '—' : formatDurationMillis(slowestTool.cell.timeSeconds * 1000),
       index: slowestTool.cell.index,
@@ -85,7 +85,7 @@ export function TrajectoryOverview({
     <div className="h-full overflow-y-auto bg-foreground/[0.012] px-3 py-3 pb-8">
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-4">
         <div className="flex min-w-0 items-center gap-2 border-b border-border/50 pb-3">
-          <span className={`h-2 w-2 shrink-0 rounded-full ${isProcessing ? 'animate-pulse bg-accent' : errorRecords.length > 0 ? 'bg-destructive' : 'bg-emerald-500'}`} />
+          <span className={`h-2 w-2 shrink-0 rounded-full ${isProcessing ? 'animate-pulse bg-accent' : errorRecords.length > 0 ? 'bg-destructive' : 'bg-success'}`} />
           <span className="text-[13px] font-semibold">
             {isProcessing
               ? t('trajectory.overview.processing')
@@ -107,8 +107,8 @@ export function TrajectoryOverview({
           ].map(([Icon, label, value]) => {
             const StatIcon = Icon as typeof Activity
             return (
-              <div key={String(label)} className="min-w-0 rounded-xl border border-border/55 bg-background/70 px-3 py-2.5 shadow-minimal">
-                <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground/65">
+              <div key={String(label)} className="min-w-0 rounded-lg bg-foreground/[0.025] px-3 py-2.5">
+                <div className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
                   <StatIcon className="h-3.5 w-3.5" />{String(label)}
                 </div>
                 <div className="mt-1 truncate text-[16px] font-semibold tabular-nums">{String(value)}</div>
@@ -136,7 +136,7 @@ export function TrajectoryOverview({
                 [t('contentPanel.context.tokenTotal'), contextSummary.totalTokens?.toLocaleString()],
                 [t('trajectory.overview.contextTokens'), contextSummary.contextTokens?.toLocaleString()],
                 [t('contentPanel.context.cost'), contextSummary.costUsd === undefined ? undefined : formatCost(contextSummary.costUsd)],
-              ].map(([label, value]) => (
+              ].filter(([, value]) => value !== undefined && value !== null && value !== '').map(([label, value]) => (
                 <div key={label} className="flex min-w-0 items-center gap-3">
                   <span className="shrink-0 text-muted-foreground">{label}</span>
                   <span className="ml-auto min-w-0 truncate text-right font-medium" title={value}>{value ?? '—'}</span>
@@ -162,7 +162,7 @@ export function TrajectoryOverview({
             {contentRecords.slice(0, 18).map((record, index) => (
               <span
                 key={`${record.cell.index}-${index}`}
-                className={`h-2 min-w-1 flex-1 rounded-sm ${record.cell.isError ? 'bg-destructive' : record.cell.kind === 'tool' || record.cell.kind === 'subtool' ? 'bg-amber-500/75' : 'bg-accent/65'}`}
+                className={`h-2 min-w-1 flex-1 rounded-sm ${record.cell.isError ? 'bg-destructive' : record.cell.kind === 'tool' || record.cell.kind === 'subtool' ? 'bg-info/65' : 'bg-accent/65'}`}
               />
             ))}
           </button>
@@ -172,12 +172,12 @@ export function TrajectoryOverview({
           <section>
             <div className="mb-2 flex items-center gap-2">
               <h3 className="text-[12px] font-semibold">{t('trajectory.overview.contextGrowth')}</h3>
-              <span className="text-[10px] text-muted-foreground">{t('trajectory.overview.contextGrowthHint')}</span>
+              <span className="text-[11px] text-muted-foreground">{t('trajectory.overview.contextGrowthHint')}</span>
               <button type="button" className="ml-auto text-[11px] font-medium text-accent hover:underline" onClick={() => onOpenContext()}>
                 {t('trajectory.overview.openContext')}
               </button>
             </div>
-            <div className="flex h-28 min-w-0 items-end gap-px overflow-hidden rounded-xl border border-border/55 bg-background/70 px-3 pb-3 pt-5 shadow-minimal">
+            <div className="flex h-28 min-w-0 items-end gap-px overflow-hidden rounded-xl border border-border/55 bg-background/70 px-3 pb-3 pt-5">
               {contextGrowth.map((context, index) => {
                 const sequence = context.startSeq === context.endSeq
                   ? String(context.endSeq)
@@ -209,8 +209,8 @@ export function TrajectoryOverview({
               [t('trajectory.overview.workPerformed'), toolNames.length ? toolNames.slice(0, 5).join(', ') : t('trajectory.overview.noTools')],
               [t('trajectory.overview.outcome'), errorRecords.length ? t('trajectory.overview.issueSummary', { count: errorRecords.length }) : t('trajectory.overview.noIssues')],
             ].map(([label, value]) => (
-              <div key={label} className="min-w-0 rounded-xl border border-border/55 bg-background/70 px-3 py-2.5">
-                <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/70">{label}</div>
+              <div key={label} className="min-w-0 border-l border-border px-3 py-1">
+                <div className="text-[11px] font-medium text-muted-foreground">{label}</div>
                 <div className="mt-1 line-clamp-3 text-[11px] leading-4">{value}</div>
               </div>
             ))}
@@ -224,7 +224,7 @@ export function TrajectoryOverview({
               {t('trajectory.overview.viewTrajectory')}
             </button>
           </div>
-          <div className="overflow-hidden rounded-xl border border-border/55 bg-background/70">
+          <div className={findings.length > 0 ? "overflow-hidden rounded-lg border border-border/55 bg-background/70" : ""}>
             {findings.length > 0 ? findings.map(({ icon: Icon, tone, label, meta, index }) => (
               <button
                 key={`${index}-${label}`}
@@ -237,7 +237,7 @@ export function TrajectoryOverview({
                 <span className="tabular-nums text-muted-foreground">{meta}</span>
               </button>
             )) : (
-              <div className="px-3 py-5 text-center text-[12px] text-muted-foreground">{t('trajectory.overview.noIssues')}</div>
+              <div className="px-3 py-2.5 text-[12px] text-muted-foreground">{t('trajectory.overview.noIssues')}</div>
             )}
           </div>
         </section>

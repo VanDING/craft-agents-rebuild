@@ -233,6 +233,10 @@ html[data-font="inter"] {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-accent: var(--accent);
+  /* Compatibility for controls using shadcn primary names. */
+  --color-primary: var(--foreground);
+  --color-primary-foreground: var(--background);
+  --color-border-strong: color-mix(in srgb, var(--foreground) 15%, transparent);
   --color-info: var(--info);
   --color-success: var(--success);
   --color-destructive: var(--destructive);

@@ -131,8 +131,8 @@ export function WorkItemListView() {
       )}
 
       <div className="min-h-0 flex-1 overflow-auto">
-        <div className="min-w-[760px]">
-          <div className="grid grid-cols-[40px_minmax(220px,2fr)_minmax(120px,1fr)_130px_120px_100px] items-center border-b border-border/60 bg-foreground/[0.015] px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-foreground/45">
+        <div className="min-w-0">
+          <div className="grid grid-cols-[32px_minmax(0,1fr)_100px] @min-[760px]/panel:grid-cols-[40px_minmax(220px,2fr)_minmax(120px,1fr)_130px_120px_100px] items-center border-b border-border/60 bg-foreground/[0.015] px-3 py-2 text-[11px] font-medium text-muted-foreground">
             <button
               type="button"
               onClick={() => setSelectedIds(allVisibleSelected ? [] : visibleItems.map((item) => item.id))}
@@ -141,10 +141,10 @@ export function WorkItemListView() {
               {allVisibleSelected ? <CheckSquare className="h-4 w-4" /> : <Square className="h-4 w-4" />}
             </button>
             <span>{t('kanban.workItemTitle')}</span>
-            <span>{t('kanban.workItemProject')}</span>
+            <span className="@max-[760px]/panel:hidden">{t('kanban.workItemProject')}</span>
             <span>{t('kanban.workItemStatus')}</span>
-            <span>{t('kanban.workItemDue')}</span>
-            <span>{t('kanban.workItemProgress')}</span>
+            <span className="@max-[760px]/panel:hidden">{t('kanban.workItemDue')}</span>
+            <span className="@max-[760px]/panel:hidden">{t('kanban.workItemProgress')}</span>
           </div>
           {visibleItems.map((item) => {
             const selected = selectedIds.includes(item.id)
@@ -161,7 +161,7 @@ export function WorkItemListView() {
                   event.preventDefault()
                   openDetail(item.id)
                 }}
-                className="grid w-full grid-cols-[40px_minmax(220px,2fr)_minmax(120px,1fr)_130px_120px_100px] items-center border-b border-border/45 px-3 py-2.5 text-left text-xs hover:bg-foreground/[0.025]"
+                className="grid w-full grid-cols-[32px_minmax(0,1fr)_100px] @min-[760px]/panel:grid-cols-[40px_minmax(220px,2fr)_minmax(120px,1fr)_130px_120px_100px] items-center border-b border-border/45 px-3 py-2.5 text-left text-xs hover:bg-foreground/[0.025]"
               >
                 <button
                   type="button"
@@ -178,16 +178,19 @@ export function WorkItemListView() {
                   {selected ? <CheckSquare className="h-4 w-4 text-primary" /> : <Square className="h-4 w-4 text-foreground/35" />}
                 </button>
                 <span className="min-w-0 pr-3">
-                  <span className="block truncate font-semibold text-foreground">{item.title}</span>
-                  <span className="mt-0.5 flex items-center gap-1 truncate text-[11px] text-foreground/40">
+                  <span className="block truncate font-medium text-foreground">{item.title}</span>
+                  <span className="mt-0.5 flex items-center gap-1 truncate text-[11px] text-muted-foreground">
                     {item.sessionIds.length > 0 && <Link2 className="h-3 w-3" />}
                     {item.description || t('kanban.workItemNoDescription')}
                   </span>
+                  <span className="mt-1 block truncate text-[11px] text-muted-foreground @min-[760px]/panel:hidden">
+                    {[project?.name, item.dueAt?.slice(0, 10), item.progress === undefined ? undefined : `${item.progress}%`].filter(Boolean).join(' · ')}
+                  </span>
                 </span>
-                <span className="truncate text-foreground/60">{project?.name ?? t('kanban.workItemNoProject')}</span>
-                <span className="truncate text-foreground/60">{status?.label ?? item.statusId}</span>
-                <span className="tabular-nums text-foreground/60">{item.dueAt?.slice(0, 10) ?? '—'}</span>
-                <span className="tabular-nums text-foreground/60">{item.progress === undefined ? '—' : `${item.progress}%`}</span>
+                <span className="truncate text-foreground/60 @max-[760px]/panel:hidden">{project?.name ?? t('kanban.workItemNoProject')}</span>
+                <span className="truncate pl-2 text-foreground/60">{status?.label ?? item.statusId}</span>
+                <span className="tabular-nums text-foreground/60 @max-[760px]/panel:hidden">{item.dueAt?.slice(0, 10) ?? '—'}</span>
+                <span className="tabular-nums text-foreground/60 @max-[760px]/panel:hidden">{item.progress === undefined ? '—' : `${item.progress}%`}</span>
               </div>
             )
           })}

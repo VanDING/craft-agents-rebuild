@@ -92,8 +92,8 @@ export function KanbanColumn({
   return (
     <div className="flex min-w-[260px] flex-1 flex-col">
       <div className="flex items-center gap-2 px-0.5 pb-2">
-        {/* Colored header pill carries the column identity; the count rides along
-            in a translucent chip. The trailing space is a reserved WIP slot. */}
+        {/* A small color mark identifies the column; a neutral count keeps
+            project and task colors from competing with the header. The trailing space is a reserved WIP slot. */}
         <ColumnHeader
           label={label}
           count={tasks.length}
@@ -112,7 +112,7 @@ export function KanbanColumn({
         ref={setNodeRef}
         className="flex flex-1 flex-col gap-2 overflow-y-auto rounded-lg p-2 transition-shadow"
         style={{
-          backgroundColor: color?.tint,
+          backgroundColor: 'var(--foreground-2)',
           outline: isOver && color ? `2px solid ${color.solid}` : undefined,
         }}
       >
@@ -178,9 +178,10 @@ function ColumnHeader({
   const { t } = useTranslation()
   const [open, setOpen] = React.useState(false)
 
-  const pillStyle = color ? { backgroundColor: color.solid, color: color.onAccent } : undefined
+  const pillStyle = { color: 'var(--foreground)' }
   const inner = (
     <>
+      {!dropStatus && color && <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: color.solid }} />}
       {dropStatus && (
         <span className="shrink-0 flex items-center" style={getStatusIconStyle(dropStatus)}>
           {dropStatus.icon}
@@ -189,7 +190,7 @@ function ColumnHeader({
       {label}
       <span
         className="inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full px-1 text-[10px] font-semibold tabular-nums"
-        style={{ backgroundColor: 'rgba(255, 255, 255, 0.25)' }}
+        style={{ backgroundColor: 'var(--foreground-5)', color: 'var(--muted-foreground)' }}
       >
         {count}
       </span>
@@ -200,7 +201,7 @@ function ColumnHeader({
   if (!onSelectDropStatus && !editable) {
     return (
       <span
-        className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider"
+        className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[12px] font-medium"
         style={pillStyle}
       >
         {inner}
@@ -215,7 +216,7 @@ function ColumnHeader({
         data-no-dnd="true"
         onPointerDown={e => e.stopPropagation()}
         title={editable ? t('kanban.column.edit') : t('kanban.column.setDropStatus')}
-        className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider transition-shadow hover:ring-2 hover:ring-foreground/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 data-[state=open]:ring-2 data-[state=open]:ring-foreground/20"
+        className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[12px] font-medium transition-shadow hover:ring-2 hover:ring-foreground/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 data-[state=open]:ring-2 data-[state=open]:ring-foreground/20"
         style={pillStyle}
       >
         {inner}
@@ -260,8 +261,7 @@ function ColumnHeader({
       <PopoverContent
         align="start"
         sideOffset={4}
-        className="dark w-64 space-y-3 border-border/50 bg-background/80 p-3 shadow-modal-small backdrop-blur-xl backdrop-saturate-150"
-        style={{ borderRadius: '8px' }}
+        className="w-64 space-y-3 p-3"
         data-no-dnd="true"
       >
         {onRename && (
@@ -330,7 +330,7 @@ function ColumnHeader({
               onRemove()
               setOpen(false)
             }}
-            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs font-medium text-red-500 transition-colors hover:bg-red-500/10"
+            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs font-medium text-destructive transition-colors hover:bg-destructive/10"
           >
             <Trash2 className="h-3.5 w-3.5" />
             {t('kanban.column.remove')}

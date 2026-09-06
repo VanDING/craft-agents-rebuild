@@ -38,6 +38,32 @@
     transition-duration: var(--motion-duration-emphasis);
     transition-timing-function: var(--motion-ease-enter);
   }
+
+  /* Same-level navigation preserves geometry and only softens replacement. */
+  .motion-view-enter {
+    animation: craft-content-enter var(--motion-duration-standard) var(--motion-ease-enter);
+  }
+
+  /* CSS responds immediately when the OS preference changes during loading. */
+  .motion-browser-progress {
+    background-position: 50% 50%;
+    animation: craft-progress-sweep 1.6s var(--motion-ease-move) infinite;
+  }
+}
+
+@keyframes craft-progress-sweep {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+@keyframes craft-content-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes craft-content-exit {
+  from { opacity: 1; }
+  to { opacity: 0; }
 }
 
 /*
@@ -46,6 +72,8 @@
  * stop. The tiny non-zero duration preserves animationend-driven libraries.
  */
 @media (prefers-reduced-motion: reduce) {
+  .motion-browser-progress { animation: none !important; }
+
   :root {
     --motion-duration-instant: 1ms;
     --motion-duration-fast: 1ms;

@@ -17,7 +17,7 @@
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { AnimatePresence, motion, type Variants } from 'motion/react'
+import { AnimatePresence, motion, useReducedMotion, type Variants } from 'motion/react'
 import { File, Folder, FolderOpen, FileText, Image, FileCode, ChevronRight, ExternalLink, Copy } from 'lucide-react'
 import {
   ContextMenu,
@@ -26,6 +26,7 @@ import {
   StyledContextMenuItem,
 } from '@/components/ui/styled-context-menu'
 import type { SessionFile, SessionFileScope } from '../../../shared/types'
+import { MOTION_DURATION, MOTION_EASE, motionTween } from '@craft-agent/ui/motion'
 import { cn } from '@/lib/utils'
 import * as storage from '@/lib/local-storage'
 import { toast } from 'sonner'
@@ -35,21 +36,21 @@ import { restoreSessionFileWatch } from './session-files-watch'
 
 /**
  * Stagger animation variants for child items - matches LeftSidebar pattern
- * Creates a pleasing "cascade" effect when expanding folders
+ * Rows reveal together so large folders do not accumulate entry delays
  */
 const containerVariants: Variants = {
   hidden: { opacity: 0 },
   visible: {
     opacity: 1,
     transition: {
-      staggerChildren: 0.025,
-      delayChildren: 0.01,
+      staggerChildren: 0,
+      delayChildren: 0,
     },
   },
   exit: {
     opacity: 0,
     transition: {
-      staggerChildren: 0.015,
+      staggerChildren: 0,
       staggerDirection: -1,
     },
   },
@@ -60,12 +61,12 @@ const itemVariants: Variants = {
   visible: {
     opacity: 1,
     x: 0,
-    transition: { duration: 0.15, ease: 'easeOut' },
+    transition: { duration: MOTION_DURATION.standard, ease: MOTION_EASE.enter },
   },
   exit: {
     opacity: 0,
     x: -8,
-    transition: { duration: 0.1, ease: 'easeIn' },
+    transition: { duration: MOTION_DURATION.fast, ease: MOTION_EASE.exit },
   },
 }
 
@@ -203,6 +204,7 @@ function FileTreeItem({
   isNested,
 }: FileTreeItemProps) {
   const { t } = useTranslation()
+  const reduceMotion = useReducedMotion()
   const isDirectory = file.type === 'directory'
   const isExpanded = expandedPaths.has(file.path)
   const hasChildren = isDirectory && file.children && file.children.length > 0
@@ -332,7 +334,7 @@ function FileTreeItem({
               initial={{ height: 0, opacity: 0, marginTop: 0, marginBottom: 0 }}
               animate={{ height: 'auto', opacity: 1, marginTop: 2, marginBottom: 8 }}
               exit={{ height: 0, opacity: 0, marginTop: 0, marginBottom: 0 }}
-              transition={{ duration: 0.2, ease: 'easeInOut' }}
+              transition={motionTween(reduceMotion, 'standard', 'move')}
               className="overflow-hidden"
             >
               {/* Wrapper div matches LeftSidebar recursive structure - min-w-0 allows shrinking */}

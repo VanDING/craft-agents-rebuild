@@ -50,7 +50,7 @@ interface TabItem {
 
 function EmptyHint({ label }: { label: string }) {
   return (
-    <div className="px-3 py-6 text-center text-[12px] text-muted-foreground/50">
+    <div className="px-3 py-6 text-center text-[12px] text-muted-foreground">
       {label}
     </div>
   )
@@ -59,7 +59,7 @@ function EmptyHint({ label }: { label: string }) {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="px-3 py-2">
-      <h4 className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/60">
+      <h4 className="mb-1 text-[11px] font-medium text-muted-foreground">
         {title}
       </h4>
       <div className="text-[12px] leading-5">{children}</div>
@@ -71,7 +71,7 @@ function KeyValue({ k, v }: { k: string; v: string | number | undefined | null }
   if (v === undefined || v === null || v === '') return null
   return (
     <div className="flex justify-between gap-3 py-0.5">
-      <span className="shrink-0 text-muted-foreground/60">{k}</span>
+      <span className="shrink-0 text-muted-foreground">{k}</span>
       <span className="min-w-0 truncate text-right tabular-nums">{v}</span>
     </div>
   )
@@ -86,7 +86,7 @@ function SourceBlocksView({ blocks }: { blocks: readonly TrajectorySourceBlock[]
     <div className="space-y-2">
       {blocks.map((block, i) => (
         <div key={i} className="rounded border border-border/60 bg-foreground/[0.02] px-2 py-1.5">
-          <div className="text-[10px] uppercase tracking-wide text-muted-foreground/50">{block.type}</div>
+          <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{block.type}</div>
           {block.imageSrc !== undefined ? (
             <img src={block.imageSrc} alt={block.imageAlt ?? 'image'} className="mt-1 max-h-40 rounded" />
           ) : null}
@@ -94,7 +94,7 @@ function SourceBlocksView({ blocks }: { blocks: readonly TrajectorySourceBlock[]
             <div className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap text-[12px]">{block.content}</div>
           ) : null}
           {block.callId !== undefined ? (
-            <div className="mt-1 text-[11px] text-muted-foreground/60">{block.toolName ?? 'call'} {block.callId}</div>
+            <div className="mt-1 text-[11px] text-muted-foreground">{block.toolName ?? 'call'} {block.callId}</div>
           ) : null}
         </div>
       ))}
@@ -148,7 +148,7 @@ function AssistantTimingPanel({ metrics }: { metrics: AssistantMetricDetail }) {
     <Section title="Timing">
       {metrics.timingRecorded
         ? items.map(([k, v]) => <KeyValue key={k} k={k} v={v} />)
-        : <p className="text-muted-foreground/50">No wall-clock timing recorded for this record (historical session).</p>}
+        : <p className="text-muted-foreground">No wall-clock timing recorded for this record (historical session).</p>}
       {metrics.stepStartTime !== null && metrics.completedTime !== null ? (
         <div className="mt-1 border-t border-border/50 pt-1">
           <KeyValue k="Started" v={new Date(metrics.stepStartTime).toLocaleTimeString()} />
@@ -234,7 +234,7 @@ export function RecordInspector({ cell, previousPrompt, sessionTotal, onOpenChat
 
   return (
     <aside
-      className="relative flex h-full w-80 min-w-[300px] max-w-[70%] shrink-0 flex-col border-l border-border/60 bg-background/95 shadow-strong @max-[760px]/trajectory:absolute @max-[760px]/trajectory:inset-0 @max-[760px]/trajectory:z-20 @max-[760px]/trajectory:!w-full @max-[760px]/trajectory:min-w-0 @max-[760px]/trajectory:max-w-none @max-[760px]/trajectory:border-l-0"
+      className="motion-view-enter relative flex h-full w-80 min-w-[300px] max-w-[70%] shrink-0 flex-col border-l border-border/60 bg-background @max-[760px]/trajectory:absolute @max-[760px]/trajectory:inset-0 @max-[760px]/trajectory:z-20 @max-[760px]/trajectory:!w-full @max-[760px]/trajectory:min-w-0 @max-[760px]/trajectory:max-w-none @max-[760px]/trajectory:border-l-0"
       aria-label="Event details"
       style={detailsWidth === null ? undefined : { width: detailsWidth }}
     >
@@ -277,25 +277,25 @@ export function RecordInspector({ cell, previousPrompt, sessionTotal, onOpenChat
       <div className="flex min-h-12 items-center justify-between border-b border-border/50 bg-foreground/[0.018] px-3 py-2">
         <div className="min-w-0">
           <div className="truncate text-[12px] font-semibold">#{cell.index} {cell.kind}</div>
-          <div className="truncate text-[11px] text-muted-foreground/60">{cell.text}</div>
+          <div className="truncate text-[11px] text-muted-foreground">{cell.text}</div>
         </div>
         <div className="ml-2 flex shrink-0 items-center gap-0.5">
           {onOpenChat && sourceMessageId && (
-            <button type="button" aria-label={t('trajectory.inspector.openChat')} title={t('trajectory.inspector.openChat')} className="rounded-md p-1 text-muted-foreground/60 outline-none transition-colors hover:bg-accent/50 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring" onClick={() => onOpenChat(sourceMessageId)}>
+            <button type="button" aria-label={t('trajectory.inspector.openChat')} title={t('trajectory.inspector.openChat')} className="rounded-md p-1 text-muted-foreground outline-none transition-colors hover:bg-accent/50 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring" onClick={() => onOpenChat(sourceMessageId)}>
               <MessageSquare className="h-3.5 w-3.5" />
             </button>
           )}
           {onOpenReview && cell.callId && (
-            <button type="button" aria-label={t('trajectory.inspector.openReview')} title={t('trajectory.inspector.openReview')} className="rounded-md p-1 text-muted-foreground/60 outline-none transition-colors hover:bg-accent/50 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring" onClick={() => onOpenReview(cell.callId!)}>
+            <button type="button" aria-label={t('trajectory.inspector.openReview')} title={t('trajectory.inspector.openReview')} className="rounded-md p-1 text-muted-foreground outline-none transition-colors hover:bg-accent/50 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring" onClick={() => onOpenReview(cell.callId!)}>
               <GitCompareArrows className="h-3.5 w-3.5" />
             </button>
           )}
           {onOpenFile && filePath && (
-            <button type="button" aria-label={t('trajectory.inspector.openFile')} title={t('trajectory.inspector.openFile')} className="rounded-md p-1 text-muted-foreground/60 outline-none transition-colors hover:bg-accent/50 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring" onClick={() => onOpenFile(filePath)}>
+            <button type="button" aria-label={t('trajectory.inspector.openFile')} title={t('trajectory.inspector.openFile')} className="rounded-md p-1 text-muted-foreground outline-none transition-colors hover:bg-accent/50 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring" onClick={() => onOpenFile(filePath)}>
               <FolderOpen className="h-3.5 w-3.5" />
             </button>
           )}
-          <button type="button" aria-label={t('trajectory.inspector.close')} className="rounded-md p-1 text-muted-foreground/60 outline-none transition-colors hover:bg-accent/50 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring" onClick={onClose}>
+          <button type="button" aria-label={t('trajectory.inspector.close')} className="rounded-md p-1 text-muted-foreground outline-none transition-colors hover:bg-accent/50 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring" onClick={onClose}>
             <X className="h-3.5 w-3.5" />
           </button>
         </div>
@@ -311,7 +311,7 @@ export function RecordInspector({ cell, previousPrompt, sessionTotal, onOpenChat
             aria-selected={tab === id}
             className={cn(
               'relative isolate shrink-0 rounded-md px-2 py-1 text-[11px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring',
-              tab === id ? 'text-foreground' : 'text-muted-foreground/70 hover:bg-accent/40',
+              tab === id ? 'text-foreground' : 'text-muted-foreground hover:bg-accent/40',
             )}
             onClick={() => setTab(id)}
           >

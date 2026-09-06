@@ -6,7 +6,8 @@
  */
 
 import * as React from 'react'
-import { motion, AnimatePresence } from 'motion/react'
+import { motion, AnimatePresence, useReducedMotion } from 'motion/react'
+import { motionTween } from '@craft-agent/ui/motion'
 import { cn } from '@/lib/utils'
 import { settingsUI } from './SettingsUIConstants'
 
@@ -136,6 +137,7 @@ export function SettingsRadioCard({
   inCard,
 }: SettingsRadioCardProps) {
   const context = useRadioGroupContext()
+  const reduceMotion = useReducedMotion()
   // Support both context-based and standalone usage
   const isSelected = context ? context.value === value : (selected ?? false)
   const handleClick = context ? () => context.onValueChange(value) : onClick
@@ -205,7 +207,7 @@ export function SettingsRadioCard({
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            transition={{ type: 'spring', stiffness: 500, damping: 40 }}
+            transition={motionTween(reduceMotion, 'standard', 'move')}
             className="overflow-hidden"
           >
             <div className="px-4 pb-4 pt-0">
@@ -248,6 +250,7 @@ export function SettingsRadioOption({
   className,
 }: SettingsRadioOptionProps) {
   const context = useRadioGroupContext()
+  const reduceMotion = useReducedMotion()
   if (!context) {
     throw new Error('SettingsRadioOption must be used within SettingsRadioGroup')
   }

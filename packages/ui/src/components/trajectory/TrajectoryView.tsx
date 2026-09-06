@@ -4,7 +4,9 @@
  * record inspector. Ported from the VanDSH view over the Craft snapshot.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { LayoutGroup, motion, useReducedMotion } from 'motion/react'
+import { motionTween } from '../../lib/motion'
 import { useTranslation } from 'react-i18next'
 import type { PiUsage } from '@craft-agent/core/types'
 import type { TrajectorySnapshot, WorkbenchFocus } from './trajectory-contract'
@@ -23,6 +25,7 @@ import './trajectory-theme.css'
 
 const DURATION_PREFERENCE_KEY = 'craft.trajectory.duration'
 const VIEW_PREFERENCE_KEY = 'craft.trajectory.view'
+const RUN_VIEWS = ['overview', 'trajectory', 'context', 'map'] as const
 
 export type TrajectoryRunView = 'overview' | 'trajectory' | 'context' | 'map'
 
@@ -89,6 +92,9 @@ function assistantRecordId(cell: TrajectoryCellProps): string {
 export function TrajectoryView({ snapshot, sessionTotal, isProcessing, contextSummary, sessionMap, onOpenChat, onOpenReview, onOpenFile, onOpenSession, focus, onFocusChange }: TrajectoryViewProps) {
   const { t } = useTranslation()
   const [runView, setRunView] = useState<TrajectoryRunView>(readViewPreference)
+  const [visitedViews, setVisitedViews] = useState(() => new Set<TrajectoryRunView>([runView]))
+  const viewId = useId()
+  const reduceMotion = useReducedMotion()
   const [searchQuery, setSearchQuery] = useState('')
   const [eventFilter, setEventFilter] = useState<'all' | 'conversation' | 'tools' | 'errors'>('all')
   const [collapsedTurns, setCollapsedTurns] = useState<ReadonlySet<number>>(new Set())
@@ -227,7 +233,7 @@ export function TrajectoryView({ snapshot, sessionTotal, isProcessing, contextSu
   }
 
   const selectRunView = (view: TrajectoryRunView) => {
-    if (view !== 'trajectory') setTimelineRange(null)
+    setVisitedViews(current => current.has(view) ? current : new Set([...current, view]))
     setRunView(view)
     try {
       localStorage.setItem(VIEW_PREFERENCE_KEY, view)
@@ -316,72 +322,96 @@ export function TrajectoryView({ snapshot, sessionTotal, isProcessing, contextSu
 
   return (
     <div className="trajectory-root flex h-full min-h-0 flex-col @container/trajectory">
-      <div className="flex h-10 shrink-0 items-end gap-5 overflow-x-auto border-b border-border/50 bg-background/80 px-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="tablist" aria-label={t('trajectory.views.label')}>
-        {(['overview', 'trajectory', 'context', 'map'] as const).map(view => (
-          <button
-            key={view}
-            type="button"
-            role="tab"
-            aria-selected={runView === view}
-            onClick={() => selectRunView(view)}
-            className={`relative h-10 shrink-0 px-0.5 text-[12px] font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring ${runView === view ? 'text-foreground after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:rounded-t after:bg-accent' : 'text-muted-foreground hover:text-foreground'}`}
-          >
-            {t(`trajectory.views.${view}`)}
-          </button>
-        ))}
-      </div>
-
-      <div className="min-h-0 flex-1">
-        {runView === 'overview' && (
-          <TrajectoryOverview
-            snapshot={snapshot}
-            turns={turns}
-            records={flatRecords}
-            isProcessing={isProcessing}
-            contextSummary={contextSummary}
-            onOpenTrajectory={openTrajectory}
-            onOpenContext={(requestSeq) => {
-              if (requestSeq !== undefined) onFocusChange?.({ source: 'run', requestSeq })
-              selectRunView('context')
-            }}
-          />
-        )}
-        {runView === 'trajectory' && (
-          <div className="flex h-full min-h-0 flex-col">
-            {toolbar(true, true)}
-            <TrajectoryStrip
-              turns={turns}
-              mode={timelineMode}
-              range={timelineRange}
-              selectedIndex={selectedIndex}
-              onRangeChange={(range) => {
-                setTimelineRange(range)
-                if (range) onFocusChange?.({ source: 'run', timelineRange: { ...range, mode: timelineMode } })
+      <LayoutGroup id={viewId}>
+        <div className="flex h-10 shrink-0 items-end gap-5 overflow-x-auto border-b border-border/50 bg-background/80 px-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="tablist" aria-label={t('trajectory.views.label')}>
+          {RUN_VIEWS.map((view, index) => (
+            <button
+              key={view}
+              type="button"
+              role="tab"
+              id={`${viewId}-tab-${view}`}
+              aria-controls={`${viewId}-panel-${view}`}
+              tabIndex={runView === view ? 0 : -1}
+              aria-selected={runView === view}
+              onKeyDown={event => {
+                const next = event.key === 'ArrowRight' ? (index + 1) % RUN_VIEWS.length
+                  : event.key === 'ArrowLeft' ? (index + RUN_VIEWS.length - 1) % RUN_VIEWS.length
+                    : event.key === 'Home' ? 0 : event.key === 'End' ? RUN_VIEWS.length - 1 : null
+                if (next === null) return
+                event.preventDefault()
+                const target = RUN_VIEWS[next]!
+                selectRunView(target)
+                document.getElementById(`${viewId}-tab-${target}`)?.focus()
               }}
-              onRecordSelect={onSelectIndex}
+              onClick={() => selectRunView(view)}
+              className={`relative h-10 shrink-0 px-0.5 text-[12px] font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring ${runView === view ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+            >
+              {t(`trajectory.views.${view}`)}
+              {runView === view && <motion.span layoutId="run-active-view" className="absolute inset-x-0 bottom-0 h-0.5 rounded-t bg-accent" transition={motionTween(reduceMotion, 'standard', 'move')} />}
+            </button>
+          ))}
+        </div>
+
+      </LayoutGroup>
+      <div className="min-h-0 flex-1">
+        {visitedViews.has('overview') && (
+          <section id={`${viewId}-panel-overview`} role="tabpanel" aria-labelledby={`${viewId}-tab-overview`} hidden={runView !== 'overview'} className="h-full min-h-0 motion-view-enter">
+            <TrajectoryOverview
+              snapshot={snapshot}
+              turns={turns}
+              records={flatRecords}
+              isProcessing={isProcessing}
+              contextSummary={contextSummary}
+              onOpenTrajectory={openTrajectory}
+              onOpenContext={(requestSeq) => {
+                if (requestSeq !== undefined) onFocusChange?.({ source: 'run', requestSeq })
+                selectRunView('context')
+              }}
             />
-            {ledger}
-          </div>
+          </section>
         )}
-        {runView === 'context' && (
-          <TrajectoryContextView
-            snapshot={snapshot}
-            focusedRequestSeq={focus?.requestSeq}
-            onRequestFocus={(requestSeq) => onFocusChange?.({ source: 'run', requestSeq })}
-            onOpenChat={onOpenChat}
-            onOpenFile={onOpenFile}
-          />
+        {visitedViews.has('trajectory') && (
+          <section id={`${viewId}-panel-trajectory`} role="tabpanel" aria-labelledby={`${viewId}-tab-trajectory`} hidden={runView !== 'trajectory'} className="h-full min-h-0 motion-view-enter">
+            <div className="flex h-full min-h-0 flex-col">
+              {toolbar(true, true)}
+              <TrajectoryStrip
+                turns={turns}
+                mode={timelineMode}
+                range={timelineRange}
+                selectedIndex={selectedIndex}
+                onRangeChange={(range) => {
+                  setTimelineRange(range)
+                  if (range) onFocusChange?.({ source: 'run', timelineRange: { ...range, mode: timelineMode } })
+                }}
+                onRecordSelect={onSelectIndex}
+              />
+              {ledger}
+            </div>
+          </section>
         )}
-        {runView === 'map' && sessionMap && (
-          <TrajectoryMapView
-            turns={turns}
-            sessionMap={sessionMap}
-            onSelectRecord={(index) => {
-              onSelectIndex(index)
-              selectRunView('trajectory')
-            }}
-            onOpenSession={onOpenSession}
-          />
+        {visitedViews.has('context') && (
+          <section id={`${viewId}-panel-context`} role="tabpanel" aria-labelledby={`${viewId}-tab-context`} hidden={runView !== 'context'} className="h-full min-h-0 motion-view-enter">
+            <TrajectoryContextView
+              snapshot={snapshot}
+              focusedRequestSeq={focus?.requestSeq}
+              onRequestFocus={(requestSeq) => onFocusChange?.({ source: 'run', requestSeq })}
+              onOpenChat={onOpenChat}
+              onOpenFile={onOpenFile}
+            />
+          </section>
+        )}
+        {visitedViews.has('map') && sessionMap && (
+          <section id={`${viewId}-panel-map`} role="tabpanel" aria-labelledby={`${viewId}-tab-map`} hidden={runView !== 'map'} className="h-full min-h-0 motion-view-enter">
+            <TrajectoryMapView
+              turns={turns}
+              sessionMap={sessionMap}
+              onSelectRecord={(index) => {
+                onSelectIndex(index)
+                selectRunView('trajectory')
+              }}
+              onOpenSession={onOpenSession}
+            />
+          </section>
         )}
       </div>
     </div>
