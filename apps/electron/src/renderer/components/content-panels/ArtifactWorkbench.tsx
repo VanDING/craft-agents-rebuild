@@ -7,21 +7,24 @@ import { useArtifacts } from '@/hooks/useArtifacts'
 import { Button } from '@/components/ui/button'
 import { PanelHeader } from '../app-shell/PanelHeader'
 import { PanelEmptyState } from './PanelEmptyState'
+import { resolveFileFormat } from '@craft-agent/shared/artifacts/browser'
 import { FilePreviewContent } from './FilePreviewContent'
 
 export function ArtifactWorkbench({ artifactId }: { artifactId: string }) {
   const { t } = useTranslation()
-  const { activeWorkspaceId, onOpenFile } = useAppShellContext()
+  const { activeWorkspaceId, onOpenFile, onOpenUrl } = useAppShellContext()
   const artifactStore = useArtifacts(activeWorkspaceId ?? null)
   const resolved = artifactStore.artifacts.find(({ artifact }) => artifact.id === artifactId)
   const artifact = resolved?.artifact
   const activeRevision = artifact?.draftRevision ?? artifact?.currentRevision
   const activeRevisionSize = artifact?.revisions.find((revision) => revision.id === activeRevision)?.size
-  const renderedPreviewPath = artifact?.previews.find((preview) => (
+  const sourceFormat = artifact && resolveFileFormat(artifact.sourcePath, artifact.mimeType)
+  const nativePreview = sourceFormat && (sourceFormat.preview !== 'external' || ['audio', 'video'].includes(sourceFormat.artifactKind))
+  const renderedPreviewPath = !nativePreview ? artifact?.previews.find((preview) => (
     preview.revision === activeRevision
     && preview.path
     && (preview.kind === 'markdown' || preview.kind === 'html' || preview.kind === 'text')
-  ))?.path
+  ))?.path : undefined
   const [editing, setEditing] = React.useState(false)
   const [draftText, setDraftText] = React.useState('')
   const [busy, setBusy] = React.useState(false)
@@ -239,7 +242,9 @@ export function ArtifactWorkbench({ artifactId }: { artifactId: string }) {
         ) : (renderedPreviewPath || resolved.activePath) ? (
           <FilePreviewContent
             filePath={renderedPreviewPath ?? resolved.activePath!}
+            sourcePath={artifact.sourcePath}
             onFileClick={onOpenFile}
+            onOpenUrl={onOpenUrl}
             mimeType={renderedPreviewPath ? undefined : artifact.mimeType}
             fileSize={renderedPreviewPath ? undefined : activeRevisionSize}
           />

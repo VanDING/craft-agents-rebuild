@@ -40,13 +40,15 @@ function resolveBareFilePath(target: string): string | null {
   const withoutLocation = stripSourceLocation(target)
   const windowsDrivePath = /^[A-Za-z]:[\\/]/.test(withoutLocation)
 
-  let classificationTarget = withoutLocation
+  // Explicit filesystem roots are independent of language and extension.
+  if (windowsDrivePath || /^(?:\/|~\/|\.\.?\/|\\\\)/.test(withoutLocation)) {
+    return decodeFilePath(withoutLocation)
+  }
+  if (/^[A-Za-z][A-Za-z0-9+.-]*:/.test(withoutLocation)) return null
+
+  const classificationTarget = decodeFilePath(withoutLocation)
     .replace(/\\/g, '/')
     .replace(/ /g, '%20')
-
-  // The shared classifier does not include `:` in its generic relative-path
-  // branch. Treat the drive root as a POSIX root for classification only.
-  if (windowsDrivePath) classificationTarget = classificationTarget.slice(2)
 
   if (!isFilePathTarget(classificationTarget)) return null
   return decodeFilePath(withoutLocation)

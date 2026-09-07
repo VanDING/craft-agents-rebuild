@@ -225,7 +225,8 @@ function createComponents(
     a: ({ href, children }) => {
       const trimmedHref = href?.trim() ?? ''
       const sanitized = trimmedHref ? defaultUrlTransform(trimmedHref) : ''
-      const safeHref = sanitized ? sanitized : undefined
+      const isFileLink = resolveMarkdownLinkTarget(trimmedHref).kind === 'file'
+      const safeHref = isFileLink ? '#' : sanitized || undefined
 
       const handleClick = (e: React.MouseEvent) => {
         e.preventDefault()
@@ -252,6 +253,7 @@ function createComponents(
         <a
           href={safeHref}
           onClick={handleClick}
+          onAuxClick={(event) => { if (event.button === 1) handleClick(event) }}
           className="text-accent hover:underline cursor-pointer"
         >
           {children}

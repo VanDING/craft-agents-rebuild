@@ -88,9 +88,11 @@ export function registerArtifactHandlers(server: RpcServer, deps: HandlerDeps): 
     await deps.sessionManager.waitForInit()
     const scope = scopeForSession(deps, workspaceId, input.sessionId)
     const registered = registerCurrentArtifact(scope, input)
-    const artifact = await renderOfficeArtifactPreview(scope, registered)
+    // Opening an existing file must not depend on semantic conversion.
+    // The renderer previews the original bytes; inspect/submit still produce
+    // revision-bound semantic previews for agent review.
     broadcastChanged(server, workspaceId)
-    return artifact
+    return registered
   })
 
   server.handle(RPC_CHANNELS.artifacts.CREATE, async (_ctx, workspaceId: string, input: CreateArtifactDraftInput) => {

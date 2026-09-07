@@ -95,6 +95,7 @@ export const CHANNEL_MAP = {
   setTitleBarOverlay: invoke(RPC_CHANNELS.window.SET_TITLE_BAR_OVERLAY),
 
   // File operations
+  resolveFileTarget: invoke(RPC_CHANNELS.file.RESOLVE),
   readFile: invoke(RPC_CHANNELS.file.READ),
   readFileDataUrl: invoke(RPC_CHANNELS.file.READ_DATA_URL),
   readFilePreviewDataUrl: invoke(RPC_CHANNELS.file.READ_PREVIEW_DATA_URL),

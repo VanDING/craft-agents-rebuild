@@ -274,3 +274,14 @@ describe('isFilePathTarget', () => {
     expect(isFilePathTarget('not a link at all')).toBe(false)
   })
 })
+
+describe('Unicode filesystem auto-links', () => {
+  it('links rooted Chinese paths with unknown suffixes', () => {
+    expect(detectLinks('输出： /tmp/报告.customext')).toEqual(expect.arrayContaining([
+      expect.objectContaining({ text: '/tmp/报告.customext', type: 'file' }),
+    ]))
+  })
+  it('links relative Unicode paths without absorbing punctuation', () => {
+    expect(preprocessLinks('See ./资料/报告.docx!')).toContain('[./资料/报告.docx](./资料/报告.docx)!')
+  })
+})

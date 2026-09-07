@@ -1,3 +1,7 @@
+import { resolveFileFormat } from '@craft-agent/shared/artifacts/browser'
+import { FileText } from 'lucide-react'
+import { FilePreviewContent } from '@/components/content-panels/FilePreviewContent'
+import { PreviewOverlay } from '@craft-agent/ui'
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useTheme } from '@/context/ThemeContext'
@@ -15,7 +19,7 @@ import { OnboardingWizard, ReauthScreen } from '@/components/onboarding'
 import { WorkspacePicker } from '@/components/workspace'
 import { ResetConfirmationDialog } from '@/components/ResetConfirmationDialog'
 import { SplashScreen } from '@/components/SplashScreen'
-import { TooltipProvider, classifyFile } from '@craft-agent/ui'
+import { TooltipProvider } from '@craft-agent/ui'
 import { FocusProvider } from '@/context/FocusContext'
 import { ModalProvider } from '@/context/ModalContext'
 import { DismissibleLayerProvider } from '@/context/DismissibleLayerContext'
@@ -66,11 +70,6 @@ import { getDefaultStore } from 'jotai'
 import {
   ShikiThemeProvider,
   PlatformProvider,
-  ImagePreviewOverlay,
-  PDFPreviewOverlay,
-  CodePreviewOverlay,
-  DocumentFormattedMarkdownOverlay,
-  JSONPreviewOverlay,
 } from '@craft-agent/ui'
 import { useLinkInterceptor, type FilePreviewState } from '@/hooks/useLinkInterceptor'
 import { useTransportConnectionState } from '@/hooks/useTransportConnectionState'
@@ -81,7 +80,6 @@ import {
   markLiveBackgroundTasksOrphaned,
 } from '@/components/app-shell/background-task-chip-state'
 import { getFileManagerName } from '@/lib/platform'
-import { getFileType } from '@craft-agent/shared/utils'
 import { rendererLog } from '@/lib/logger'
 import { ActionRegistryProvider } from '@/actions'
 import { toast } from 'sonner'
@@ -1706,13 +1704,10 @@ export default function App() {
     }
   }, [])
 
-  // Centralized link interceptor: classifies file types and decides whether to
-  // show an in-app preview overlay or open externally. Replaces the old
-  // handleOpenFile/handleOpenUrl that always opened in external apps.
+  // Shared fallback panel state and explicit external-open actions.
   const linkInterceptor = useLinkInterceptor({
     openFileExternal: async (path) => {
       try {
-        // eslint-disable-next-line craft-links/no-direct-file-open -- this callback is the explicit external-open path selected by the interceptor
         await window.electronAPI.openFile(path)
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown error'
@@ -1739,20 +1734,7 @@ export default function App() {
         })
       }
     },
-    showInFolder: async (path) => {
-      try {
-        await window.electronAPI.showInFolder(path)
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unknown error'
-        console.error('Failed to show in folder:', error)
-        toast.error(t("toast.failedToReveal", { fileManager: getFileManagerName() }), {
-          description: message,
-        })
-      }
-    },
-    readFile: (path) => window.electronAPI.readFile(path),
-    readFileDataUrl: (path) => window.electronAPI.readFileDataUrl(path),
-    readFileBinary: (path) => window.electronAPI.readFileBinary(path),
+
   })
 
   const connectionState = useTransportConnectionState()
@@ -1770,26 +1752,43 @@ export default function App() {
   // panel; ordinary files no longer accumulate an unbounded sibling tab stack.
   const activeSessionId = useAtomValue(activeSessionIdAtom)
 
+  const fileOpenRequest = useRef(0)
   const handleOpenFile = useCallback((path: string, sessionId?: string) => {
+    const request = ++fileOpenRequest.current
     const targetSessionId = sessionId ?? activeSessionId
-    const classification = classifyFile(path)
-    const hasArtifactPreview = (classification.canPreview && classification.type)
-      || getFileType(path) === 'office'
-    if (hasArtifactPreview && targetSessionId && windowWorkspaceId) {
-      void window.electronAPI.registerCurrentArtifact(windowWorkspaceId, {
-        sessionId: targetSessionId,
-        sourcePath: path,
-      }).then((artifact) => {
-        navigate(routes.view.artifact(artifact.artifact.id))
-      }).catch((error) => {
-        console.error('Failed to register file preview as an Artifact:', error)
-        linkInterceptor.handleOpenFile(path)
-      })
-      return
-    }
-    // External open (non-previewable) or global overlay fallback (no session)
-    linkInterceptor.handleOpenFile(path)
-  }, [activeSessionId, linkInterceptor, windowWorkspaceId])
+    void (async () => {
+      try {
+        const target = await window.electronAPI.resolveFileTarget(path, targetSessionId ?? undefined)
+        if (request !== fileOpenRequest.current) return
+        if (target.type === 'directory') {
+          linkInterceptor.openFileExternal(target.path)
+          return
+        }
+        const format = resolveFileFormat(target.path, target.mimeType)
+        const previewable = format.preview !== 'external' || ['audio', 'video'].includes(format.artifactKind)
+        // Do not snapshot arbitrarily large binaries just to open a metadata view.
+        if (previewable && target.size <= 50 * 1024 * 1024 && targetSessionId && windowWorkspaceId) {
+          try {
+            const artifact = await window.electronAPI.registerCurrentArtifact(windowWorkspaceId, {
+              sessionId: targetSessionId, sourcePath: target.path,
+            })
+            if (request === fileOpenRequest.current) {
+              linkInterceptor.closePreview()
+              navigate(routes.view.artifact(artifact.artifact.id))
+            }
+            return
+          } catch (error) {
+            console.warn('Artifact registration unavailable; opening validated file directly:', error)
+          }
+        }
+        if (request === fileOpenRequest.current) linkInterceptor.handleOpenFile(target.path, target.mimeType, target.size)
+      } catch (error) {
+        if (request === fileOpenRequest.current) {
+          toast.error(t('toast.failedToOpenFile'), { description: error instanceof Error ? error.message : String(error) })
+        }
+      }
+    })()
+  }, [activeSessionId, linkInterceptor, windowWorkspaceId, t])
 
   const handleOpenUrl = linkInterceptor.handleOpenUrl
 
@@ -2182,9 +2181,9 @@ export default function App() {
             <FilePreviewRenderer
               state={linkInterceptor.previewState}
               onClose={linkInterceptor.closePreview}
-              loadDataUrl={linkInterceptor.readFileDataUrl}
-              loadPdfData={linkInterceptor.readFileBinary}
               isDark={isDark}
+              onOpenFile={handleOpenFile}
+              onOpenUrl={handleOpenUrl}
             />
           )}
         </NavigationProvider>
@@ -2207,138 +2206,19 @@ function WindowCloseHandler() {
   return null
 }
 
-/**
- * FilePreviewRenderer - Routes file preview state to the correct overlay component.
- *
- * Handles all preview types from the link interceptor:
- * - image → ImagePreviewOverlay (binary, loaded via data URL)
- * - pdf → PDFPreviewOverlay (binary, embedded via Chromium viewer)
- * - code/text → CodePreviewOverlay (syntax highlighted)
- * - markdown → DocumentFormattedMarkdownOverlay
- * - json → JSONPreviewOverlay
- *
- * File path badges with "Open" / "Reveal in {file manager}" menus are provided
- * automatically by PlatformContext — no per-overlay callback props needed.
- */
-function FilePreviewRenderer({
-  state,
-  onClose,
-  loadDataUrl,
-  loadPdfData,
-  isDark,
-}: {
+/** Global fallback uses exactly the same renderer and actions as Workbench. */
+function FilePreviewRenderer({ state, onClose, isDark, onOpenFile, onOpenUrl }: {
   state: FilePreviewState
   onClose: () => void
-  loadDataUrl: (path: string) => Promise<string>
-  loadPdfData: (path: string) => Promise<Uint8Array>
   isDark: boolean
+  onOpenFile: (path: string) => void
+  onOpenUrl: (url: string) => void
 }) {
-  const theme = isDark ? 'dark' : 'light' as const
-
-  switch (state.type) {
-    case 'image':
-      return (
-        <ImagePreviewOverlay
-          isOpen
-          onClose={onClose}
-          filePath={state.filePath}
-          loadDataUrl={loadDataUrl}
-          theme={theme}
-        />
-      )
-
-    case 'pdf':
-      return (
-        <PDFPreviewOverlay
-          isOpen
-          onClose={onClose}
-          filePath={state.filePath}
-          loadPdfData={loadPdfData}
-          theme={theme}
-        />
-      )
-
-    case 'code':
-    case 'text':
-      return (
-        <CodePreviewOverlay
-          isOpen
-          onClose={onClose}
-          filePath={state.filePath}
-          content={state.content ?? ''}
-          language={state.type === 'code' ? state.language : 'plaintext'}
-          mode="read"
-          theme={theme}
-          error={state.error}
-        />
-      )
-
-    case 'markdown': {
-      // Show PLAN header for .md files in plans folder (handles both absolute and relative paths)
-      const isPlanFile =
-        (state.filePath.includes('/plans/') || state.filePath.startsWith('plans/')) &&
-        state.filePath.endsWith('.md')
-      return (
-        <DocumentFormattedMarkdownOverlay
-          isOpen
-          onClose={onClose}
-          content={state.content ?? ''}
-          filePath={state.filePath}
-          variant={isPlanFile ? 'plan' : 'response'}
-        />
-      )
-    }
-
-    case 'json': {
-      // JSONPreviewOverlay expects parsed data, not a raw string.
-      // @uiw/react-json-view crashes on null value, so guard against it.
-      let parsedData: unknown = null
-      try {
-        if (state.content) parsedData = JSON.parse(state.content)
-      } catch {
-        // If parsing fails, fall back to showing as code
-        return (
-          <CodePreviewOverlay
-            isOpen
-            onClose={onClose}
-            filePath={state.filePath}
-            content={state.content ?? ''}
-            language="json"
-            mode="read"
-            theme={theme}
-            error={state.error}
-          />
-        )
-      }
-      // If read failed and content is empty, show raw code overlay with the read error.
-      if ((!state.content || !state.content.trim()) && state.error) {
-        return (
-          <CodePreviewOverlay
-            isOpen
-            onClose={onClose}
-            filePath={state.filePath}
-            content={state.content ?? ''}
-            language="json"
-            mode="read"
-            theme={theme}
-            error={state.error}
-          />
-        )
-      }
-      return (
-        <JSONPreviewOverlay
-          isOpen
-          onClose={onClose}
-          filePath={state.filePath}
-          title={state.filePath.split('/').pop() ?? 'JSON'}
-          data={parsedData}
-          theme={theme}
-          error={state.error}
-        />
-      )
-    }
-
-    default:
-      return null
-  }
+  const { t } = useTranslation()
+  return (
+    <PreviewOverlay isOpen onClose={onClose} filePath={state.filePath} theme={isDark ? 'dark' : 'light'}
+      typeBadge={{ icon: FileText, label: t('filePreview.preview'), variant: 'default' }}>
+      <FilePreviewContent {...state} onFileClick={onOpenFile} onOpenUrl={onOpenUrl} />
+    </PreviewOverlay>
+  )
 }

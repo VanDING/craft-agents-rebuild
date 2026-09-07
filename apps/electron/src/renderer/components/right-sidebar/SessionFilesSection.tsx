@@ -530,9 +530,9 @@ export function SessionFilesSection({
       window.electronAPI.openFile(file.path)
     } else {
       setSelectedPath(file.path)
-      onOpenFile(file.path)
+      onOpenFile(file.path, sessionId)
     }
-  }, [onOpenFile])
+  }, [onOpenFile, sessionId])
 
   // Handle double-click — open in the system default app (distinct from the
   // in-app preview on single click; directories go to the file manager).

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, mock } from 'bun:test'
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import * as XLSX from 'xlsx'
@@ -73,6 +73,17 @@ describe('artifact RPC handlers', () => {
   afterEach(() => {
     rmSync(workspaceRoot, { recursive: true, force: true })
     rmSync(contentRoot, { recursive: true, force: true })
+  })
+
+  it('opens an Office file even when its content cannot be converted', async () => {
+    const harness = createHarness()
+    writeFileSync(join(contentRoot, 'broken.docx'), 'not a valid Office ZIP')
+    const registered = await harness.handler(RPC_CHANNELS.artifacts.REGISTER_CURRENT)(context, workspaceFixture.id, {
+      sessionId: 'session-1', sourcePath: 'broken.docx',
+    })
+    expect(registered.artifact.sourcePath).toBe(realpathSync(join(contentRoot, 'broken.docx')))
+    expect(registered.activePath).toBeTruthy()
+    expect(harness.pushes.length).toBe(1)
   })
 
   it('runs the renderer draft/review transaction and broadcasts every mutation', async () => {

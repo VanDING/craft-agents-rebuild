@@ -14,9 +14,12 @@ const linkify = new LinkifyIt()
 // File path regex - detects absolute/home/explicit-relative/bare-relative paths with common extensions
 // Examples: /Users/foo.ts, ~/src/app.tsx, ./README.md, ../guide.md, apps/electron/src/main.ts
 // Extensions derived from file-classification.ts to stay in sync with preview support
-const FILE_PATH_REGEX_SOURCE = `(?:^|[\\s([\\{<])((?:/|~/|\\./|\\.\\./|[A-Za-z0-9_][\\w\\-./@%]*)[\\w\\-./@%]*\\.(?:${FILE_EXTENSIONS_PATTERN}))(?=[\\s)\\]}\\.,:;!?>]|$)`
-const FILE_PATH_REGEX = new RegExp(FILE_PATH_REGEX_SOURCE, 'gi')
-const FILE_PATH_PRETEST_REGEX = new RegExp(FILE_PATH_REGEX_SOURCE, 'i')
+const PATH_CHARS = String.raw`[\p{L}\p{N}\p{M}_./@%+\\~-]`
+const ROOTED_FILE = String.raw`(?:/|~/|\.\.?/|[A-Za-z]:[\\/]|\\\\)${PATH_CHARS}+\.[\p{L}\p{N}_-]+`
+const RELATIVE_FILE = String.raw`[\p{L}\p{N}_]${PATH_CHARS}*\.(?:${FILE_EXTENSIONS_PATTERN})`
+const FILE_PATH_REGEX_SOURCE = String.raw`(?:^|[\s([{<])(${ROOTED_FILE}|${RELATIVE_FILE})(?=[\s)\]}.,:;!?*>]|$)`
+const FILE_PATH_REGEX = new RegExp(FILE_PATH_REGEX_SOURCE, 'giu')
+const FILE_PATH_PRETEST_REGEX = new RegExp(FILE_PATH_REGEX_SOURCE, 'iu')
 
 // Bare-domain detection (linkify-it v6 dropped bare/`www.` domains — a
 // regression from the v5→v6 upgrade; restore the behavior with a bounded
@@ -30,8 +33,8 @@ const BARE_DOMAIN_PRETEST_REGEX = new RegExp(BARE_DOMAIN_REGEX_SOURCE, 'i')
 // File-path regex for markdown anchor targets (entire href/text value)
 // Used by Markdown.tsx click handler to route file links to onFileClick.
 const FILE_PATH_TARGET_REGEX = new RegExp(
-  `^(?!https?://|mailto:|ftp://|data:)(?:/|~/|\./|\.\./|[A-Za-z0-9_][\\w\\-./@%]*)[\\w\\-./@%]*\\.(?:${FILE_EXTENSIONS_PATTERN})$`,
-  'i'
+  String.raw`^(?![a-z][a-z0-9+.-]*://|mailto:|data:)(?:${ROOTED_FILE}|${RELATIVE_FILE})$`,
+  'iu'
 )
 
 interface DetectedLink {

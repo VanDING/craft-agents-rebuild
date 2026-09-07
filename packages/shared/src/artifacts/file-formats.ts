@@ -67,6 +67,7 @@ export const FILE_FORMAT_REGISTRY: readonly FileFormatDefinition[] = [
     'astro', 'prisma', 'dockerfile', 'makefile', 'gitignore', 'gitattributes', 'editorconfig',
     'npmrc', 'nvmrc', 'env', 'env.local', 'env.development', 'env.production',
   ], 'text/plain', 'text', 'text', 'text', true),
+  format('mermaid', ['mmd', 'mermaid'], 'text/vnd.mermaid', 'document', 'text', 'text', true),
   format('html', ['html', 'htm'], 'text/html', 'html', 'html', 'text', true),
   format('json', ['json'], 'application/json', 'data', 'json', 'json', true),
   format('json-compatible', ['jsonc', 'json5'], 'application/json', 'data', 'text', 'text', true),

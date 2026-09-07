@@ -98,6 +98,7 @@ export const RPC_CHANNELS = {
     GET_FOCUS_STATE: 'window:getFocusState',
   },
   file: {
+    RESOLVE: 'file:resolve',
     READ: 'file:read',
     READ_DATA_URL: 'file:readDataUrl',
     READ_PREVIEW_DATA_URL: 'file:readPreviewDataUrl',

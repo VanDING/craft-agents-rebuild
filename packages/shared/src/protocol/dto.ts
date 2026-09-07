@@ -924,3 +924,12 @@ export interface TerminalCreateOptions {
 export interface TerminalDataEvent { id: string; data: string }
 export interface TerminalExitEvent { id: string; exitCode: number; signal?: number }
 export interface TerminalReadResult { terminalId: string; cwd: string; running: boolean; text: string; truncated: boolean }
+
+
+/** Canonical, permission-checked target for every file-open entry point. */
+export interface ResolvedFileTarget {
+  path: string
+  type: 'file' | 'directory'
+  size: number
+  mimeType: string
+}

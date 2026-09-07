@@ -169,3 +169,27 @@ describe('classifyMarkdownLinkTarget', () => {
     expect(classifyMarkdownLinkTarget('mailto:test@example.com')).toBe('url')
   })
 })
+
+
+describe('Unicode and explicit filesystem links', () => {
+  it.each([
+    '/Users/van/项目/季度报告.docx',
+    '/tmp/未知文件.custom',
+    './输出/报告.pdf',
+    '../输出/报告.xlsx',
+    'C:\\Users\\测试\\报告.pptx',
+  ])('routes %s to the file opener', target => {
+    expect(resolveMarkdownLinkTarget(target)).toEqual({ kind: 'file', path: target })
+  })
+  it.each(['https://example.com/报告.pdf', 'sandbox:/mnt/data/report.docx', 'javascript:alert(1)', 'data:text/plain,report.txt'])('does not reinterpret schemes: %s', target => {
+    expect(resolveMarkdownLinkTarget(target).kind).toBe('url')
+  })
+})
+
+ it('resolves bare Unicode filenames as files', () => {
+  expect(resolveMarkdownLinkTarget('报告.docx')).toEqual({ kind: 'file', path: '报告.docx' })
+ })
+
+it('resolves percent-encoded bare Unicode filenames', () => {
+  expect(resolveMarkdownLinkTarget('%E6%8A%A5%E5%91%8A.docx')).toEqual({ kind: 'file', path: '报告.docx' })
+})

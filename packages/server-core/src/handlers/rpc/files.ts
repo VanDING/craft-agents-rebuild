@@ -1,3 +1,4 @@
+import { resolveFileTarget } from '../../services/file-target'
 import { readFile, writeFile, unlink, mkdir, readdir, stat } from 'fs/promises'
 import { isAbsolute, join, resolve, dirname, parse as parsePath } from 'path'
 import { homedir } from 'os'
@@ -16,6 +17,7 @@ import type { HandlerDeps } from '../handler-deps'
 import { requestClientOpenFileDialog } from '@craft-agent/server-core/transport'
 
 export const HANDLED_CHANNELS = [
+  RPC_CHANNELS.file.RESOLVE,
   RPC_CHANNELS.file.READ,
   RPC_CHANNELS.file.READ_DATA_URL,
   RPC_CHANNELS.file.READ_PREVIEW_DATA_URL,
@@ -44,6 +46,22 @@ async function assertReadableSize(safePath: string): Promise<void> {
   }
 }
 export function registerFilesHandlers(server: RpcServer, deps: HandlerDeps): void {
+  server.handle(RPC_CHANNELS.file.RESOLVE, async (ctx, path: string, sessionId?: string, relativeTo?: string) => {
+    const workspaceId = ctx.workspaceId ?? deps.windowManager?.getWorkspaceForWindow(ctx.webContentsId!)
+    const allowedDirectories = getWorkspaceAllowedDirs(workspaceId)
+    let baseDirectory = allowedDirectories.at(-1)
+    if (sessionId) {
+      await deps.sessionManager.waitForInit()
+      const session = deps.sessionManager.getSessions(workspaceId ?? undefined).find(candidate => candidate.id === sessionId && candidate.workspaceId === workspaceId)
+      if (!session) throw new Error('File session not found in the current workspace')
+      if (session.workingDirectory) {
+        baseDirectory = session.workingDirectory
+        allowedDirectories.push(session.workingDirectory)
+      }
+    }
+    return resolveFileTarget(path, { baseDirectory, allowedDirectories, relativeTo })
+  })
+
   // Read a file (with path validation to prevent traversal attacks)
   server.handle(RPC_CHANNELS.file.READ, async (ctx, path: string) => {
     try {

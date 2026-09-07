@@ -351,6 +351,7 @@ export interface ElectronAPI {
   onUnreadSummaryChanged(callback: (summary: UnreadSummary) => void): () => void
 
   // File operations
+  resolveFileTarget(path: string, sessionId?: string, relativeTo?: string): Promise<import('@craft-agent/shared/protocol').ResolvedFileTarget>
   readFile(path: string): Promise<string>
   /** Read a file as binary data (Uint8Array) */
   readFileBinary(path: string): Promise<Uint8Array>
