@@ -12,9 +12,12 @@ import {
   cpSync,
   lstatSync,
   readdirSync,
+  readFileSync,
+  writeFileSync,
 } from 'fs';
 import { join, dirname } from 'path';
 import { createHash } from 'crypto';
+import rootPackage from '../../package.json';
 
 export type Platform = 'darwin' | 'win32' | 'linux';
 export type Arch = 'x64' | 'arm64';
@@ -34,13 +37,13 @@ export interface BuildConfig {
  * Update this when upgrading Bun. Check latest at: https://github.com/oven-sh/bun/releases
  * This should match or be close to the version used in CI (setup-bun action).
  */
-export const BUN_VERSION = 'bun-v1.4.2';
+export const BUN_VERSION = `bun-v${rootPackage.packageManager.split('@')[1]}`;
 
 /**
  * uv version to bundle with the app.
  * Update this when upgrading uv. Check latest at: https://github.com/astral-sh/uv/releases
  */
-export const UV_VERSION = '0.10.6';
+export const UV_VERSION = '0.12.10';
 
 /**
  * Get platform key for resources/bin folder naming.
@@ -203,8 +206,9 @@ export async function downloadUv(config: BuildConfig): Promise<void> {
   const targetDir = join(electronDir, 'resources', 'bin', platformKey);
   const targetPath = join(targetDir, uvBinaryName);
 
-  // Skip when already provisioned
-  if (existsSync(targetPath)) {
+  // A version stamp also works for cross-architecture binaries we cannot execute.
+  const versionPath = `${targetPath}.version`;
+  if (existsSync(targetPath) && existsSync(versionPath) && readFileSync(versionPath, 'utf8').trim() === UV_VERSION) {
     console.log(`uv already present at ${targetPath}`);
     return;
   }
@@ -212,7 +216,7 @@ export async function downloadUv(config: BuildConfig): Promise<void> {
   console.log(`Downloading uv ${UV_VERSION} for ${platformKey}...`);
 
   mkdirSync(targetDir, { recursive: true });
-  const tempDir = join(electronDir, '.uv-download-temp');
+  const tempDir = join(electronDir, `.uv-download-temp-${platformKey}`);
   rmSync(tempDir, { recursive: true, force: true });
   mkdirSync(tempDir, { recursive: true });
 
@@ -262,6 +266,7 @@ export async function downloadUv(config: BuildConfig): Promise<void> {
       await $`chmod +x ${targetPath}`.quiet();
     }
 
+    writeFileSync(versionPath, `${UV_VERSION}\n`);
     console.log(`  uv installed to ${targetPath} ✓`);
   } finally {
     rmSync(tempDir, { recursive: true, force: true });
@@ -302,10 +307,10 @@ export async function installDependencies(config: BuildConfig): Promise<void> {
     // ("Access is denied" errors with junction points)
     // Hoisted mode creates flat npm-style node_modules without .bun
     console.log('Installing dependencies (Windows hoisted mode)...');
-    await $`cd ${rootDir} && bun install --linker=hoisted`.quiet();
+    await $`cd ${rootDir} && bun install --frozen-lockfile --linker=hoisted`.quiet();
   } else {
     console.log('Installing dependencies...');
-    await $`cd ${rootDir} && bun install`.quiet();
+    await $`cd ${rootDir} && bun install --frozen-lockfile`.quiet();
   }
 }
 
@@ -450,7 +455,9 @@ export function copyPiAgentServer(config: BuildConfig): void {
   if (existsSync(nativeSrc)) {
     mkdirSync(nativeDest, { recursive: true });
     cpSync(nativeSrc, nativeDest, { recursive: true });
-    const size = lstatSync(join(nativeSrc, readdirSync(nativeSrc)[0])).size;
+    const nativeBinary = readdirSync(nativeSrc).find((name) => name.endsWith('.node'));
+    if (!nativeBinary) throw new Error(`koffi native binary missing in ${nativeSrc}`);
+    const size = lstatSync(join(nativeSrc, nativeBinary)).size;
     console.log(`  Copied index.js + koffi/${targetDir} (${(size / 1024 / 1024).toFixed(1)}MB)`);
   } else {
     console.warn(`  Warning: koffi native binary not found for ${targetDir}`);
@@ -479,7 +486,7 @@ export function buildMcpServers(config: BuildConfig): void {
   if (existsSync(join(piDir, 'src'))) {
     // Package build script: bundle.js + thin dist/index.js launcher (Pi 0.85+
     // entry guards throw when a single-file bundle is executed directly).
-    execSync('bun run build', { cwd: piDir, stdio: 'inherit', shell: true });
+    execSync('bun run build', { cwd: piDir, stdio: 'inherit' });
     if (!existsSync(piOut) || !existsSync(join(piDir, 'dist', 'bundle.js'))) {
       throw new Error(`Pi agent server output not found at ${piOut} or dist/bundle.js`);
     }
@@ -499,7 +506,7 @@ export function buildWhatsAppWorker(config: BuildConfig): void {
 
   console.log('Building WhatsApp worker...');
 
-  execSync('bun run build:wa-worker', { cwd: rootDir, stdio: 'inherit', shell: true });
+  execSync('bun run build:wa-worker', { cwd: rootDir, stdio: 'inherit' });
 
   if (!existsSync(workerOut)) {
     throw new Error(`WhatsApp worker output not found at ${workerOut}`);

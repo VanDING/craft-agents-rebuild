@@ -92,8 +92,8 @@ else
   # Fallback: basic connectivity check with a WebSocket ping
   echo "  CLI not available, running basic connectivity check..."
 
-  # Use node/bun to test WebSocket connectivity
-  node -e "
+  # Use Bun to test WebSocket connectivity
+  bun -e "
     const ws = new (require('ws'))('${SERVER_URL}', {
       headers: { 'x-craft-token': '${TOKEN}' }
     });

@@ -1,5 +1,5 @@
 /** Optional browser smoke test for an unmodified Pages starter build.
- * node scripts/test-pages-react-browser.mjs /absolute/path/to/dist/index.html
+ * bun run scripts/test-pages-react-browser.mjs /absolute/path/to/dist/index.html
  * Requires the repository's Playwright Chromium installation.
  */
 import assert from 'node:assert/strict'

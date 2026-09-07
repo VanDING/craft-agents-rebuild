@@ -8,7 +8,8 @@ $ElectronDir = Split-Path -Parent $ScriptDir
 $RootDir = Split-Path -Parent (Split-Path -Parent $ElectronDir)
 
 # Configuration
-$BunVersion = "bun-v1.4.0"  # Pinned version for reproducible builds
+$PackageManager = (Get-Content (Join-Path $RootDir "package.json") -Raw | ConvertFrom-Json).packageManager
+$BunVersion = "bun-v" + $PackageManager.Split("@")[1]
 
 Write-Host "=== Building Craft Agents Windows Installer using electron-builder ===" -ForegroundColor Cyan
 
@@ -110,11 +111,15 @@ $BunDownload = "bun-windows-x64-baseline"
 $needBunDownload = $true
 if (Test-Path $BunExePath) {
     $existingSize = (Get-Item $BunExePath).Length
+    $existingVersion = ""
     if ($existingSize -gt 30000000) {
-        Write-Host "Reusing cached Bun binary: $BunExePath ($([math]::Round($existingSize / 1MB, 1)) MB)" -ForegroundColor Green
+        try { $existingVersion = (& $BunExePath --version).Trim() } catch { }
+    }
+    if ($existingVersion -eq $PackageManager.Split("@")[1]) {
+        Write-Host "Reusing Bun $existingVersion at $BunExePath" -ForegroundColor Green
         $needBunDownload = $false
     } else {
-        Write-Host "Cached bun.exe looks truncated ($existingSize bytes), re-downloading..." -ForegroundColor Yellow
+        Write-Host "Cached Bun version does not match $BunVersion; downloading..." -ForegroundColor Yellow
     }
 }
 
@@ -255,7 +260,7 @@ try {
     if (Test-Path $RendererDir) { Remove-Item -Recurse -Force $RendererDir }
 
     # Run vite build
-    npx vite build --config apps/electron/vite.config.ts
+    bun run vite build --config apps/electron/vite.config.ts
     if ($LASTEXITCODE -ne 0) { throw "Renderer build failed" }
 
     # Verify renderer was built
@@ -273,7 +278,7 @@ try {
 Write-Host "  Copying resources and bundled assets..."
 Push-Location $ElectronDir
 try {
-    bun scripts/copy-assets.ts
+    bun run scripts/copy-assets.ts
     if ($LASTEXITCODE -ne 0) { throw "Asset copy failed" }
     Write-Host "  Assets copied" -ForegroundColor Green
 } finally {
@@ -381,7 +386,7 @@ while (-not $builderSuccess -and $builderRetry -lt $maxBuilderRetries) {
         Start-Sleep -Seconds 1
     }
 
-    npx electron-builder --win --x64 2>&1 | Tee-Object -Variable builderOutput
+    bun run electron-builder --win --x64 2>&1 | Tee-Object -Variable builderOutput
 
     if ($LASTEXITCODE -eq 0) {
         $builderSuccess = $true

@@ -78,7 +78,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Configuration
-BUN_VERSION="bun-v1.4.0"  # Pinned version for reproducible builds
+BUN_VERSION="bun-v$(bun -p "require('$ROOT_DIR/package.json').packageManager.split('@')[1]")"
 # Download base for Bun. Override with a mirror when GitHub is slow or
 # unreachable, e.g. BUN_DOWNLOAD_BASE=https://registry.npmmirror.com/-/binary/bun
 BUN_DOWNLOAD_BASE="${BUN_DOWNLOAD_BASE:-https://github.com/oven-sh/bun/releases/download}"
@@ -98,7 +98,7 @@ rm -rf "$ELECTRON_DIR/release"
 # 2. Install dependencies
 echo "Installing dependencies..."
 cd "$ROOT_DIR"
-bun install
+bun install --frozen-lockfile
 
 # 3. Download Bun binary with checksum verification
 echo "Downloading Bun ${BUN_VERSION} for darwin-${ARCH}..."
@@ -135,17 +135,15 @@ RG_PLATFORM_PKG="@vscode/ripgrep-darwin-${ARCH}"
 RG_PLATFORM_SOURCE="$ROOT_DIR/node_modules/${RG_PLATFORM_PKG}"
 if [ ! -d "$RG_PLATFORM_SOURCE" ]; then
     echo "Cross-arch build: ${RG_PLATFORM_PKG} not in node_modules — fetching from npm..."
-    RG_VERSION=$(node -p "require('$RG_SOURCE/package.json').version")
+    RG_VERSION=$(bun -p "require('$RG_SOURCE/package.json').version")
     RG_PKG_TMP=$(mktemp -d)
-    trap "rm -rf $RG_PKG_TMP" RETURN
     (
+        trap 'rm -rf "$RG_PKG_TMP"' EXIT
         cd "$RG_PKG_TMP"
-        npm pack "${RG_PLATFORM_PKG}@${RG_VERSION}" >/dev/null
-        TARBALL=$(ls vscode-ripgrep-*.tgz | head -1)
-        tar -xzf "$TARBALL"
+        bun install --ignore-scripts --no-save --os darwin --cpu "$ARCH" "${RG_PLATFORM_PKG}@${RG_VERSION}"
+        mkdir -p "$RG_PLATFORM_SOURCE"
+        cp -r "$RG_PKG_TMP/node_modules/$RG_PLATFORM_PKG/." "$RG_PLATFORM_SOURCE/"
     )
-    mkdir -p "$RG_PLATFORM_SOURCE"
-    cp -r "$RG_PKG_TMP/package/." "$RG_PLATFORM_SOURCE/"
 fi
 RG_BIN="$RG_SOURCE/bin/rg"
 if [ ! -f "$RG_BIN" ] && [ -d "$RG_PLATFORM_SOURCE" ]; then
@@ -224,7 +222,7 @@ if [ -n "$APPLE_ID" ] && [ -n "$APPLE_TEAM_ID" ] && [ -n "$APPLE_APP_SPECIFIC_PA
 fi
 
 # Run electron-builder
-npx electron-builder $BUILDER_ARGS
+bun run electron-builder $BUILDER_ARGS
 
 # 8. Verify the DMG was built
 # electron-builder.yml uses artifactName to output: Craft-Agents-${arch}.dmg

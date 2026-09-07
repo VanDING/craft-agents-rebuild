@@ -10,13 +10,13 @@
     "./worker": "./src/worker.ts"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "bun run tsc --noEmit"
   },
   "dependencies": {
-    "@whiskeysockets/baileys": "^6.7.0"
+    "@whiskeysockets/baileys": "^6.17.16"
   },
   "devDependencies": {
-    "@types/node": "25.0.0",
-    "typescript": "7"
+    "@types/node": "26.5.0",
+    "typescript": "7.0.2"
   }
 }

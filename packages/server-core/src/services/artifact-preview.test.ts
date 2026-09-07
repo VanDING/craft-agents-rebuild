@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'bun:test'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import * as XLSX from 'xlsx'
@@ -28,7 +28,7 @@ describe('Office Artifact previews', () => {
       ['Name', 'Score'],
       ['Ada', 98],
     ]), 'Scores')
-    XLSX.writeFile(workbook, sourcePath)
+    writeFileSync(sourcePath, XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }))
 
     const scope: ArtifactStorageScope = {
       workspaceRootPath,

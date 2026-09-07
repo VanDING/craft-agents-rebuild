@@ -191,19 +191,17 @@ async function downloadUvForServer(config: ServerBuildConfig): Promise<void> {
   const platformKey = getPlatformKey(platform, arch);
   const electronUvPath = join(config.electronDir, 'resources', 'bin', platformKey, 'uv');
 
-  if (!existsSync(electronUvPath)) {
-    // Download using the shared helper
-    const buildConfig: BuildConfig = {
-      platform,
-      arch,
-      upload: false,
-      uploadLatest: false,
-      uploadScript: false,
-      rootDir: config.rootDir,
-      electronDir: config.electronDir,
-    };
-    await downloadUv(buildConfig);
-  }
+  // The shared helper checks the pinned version, not just file existence.
+  const buildConfig: BuildConfig = {
+    platform,
+    arch,
+    upload: false,
+    uploadLatest: false,
+    uploadScript: false,
+    rootDir: config.rootDir,
+    electronDir: config.electronDir,
+  };
+  await downloadUv(buildConfig);
 
   if (!existsSync(electronUvPath)) {
     throw new Error(`uv binary not found after download at ${electronUvPath}`);

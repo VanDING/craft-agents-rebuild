@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["bun"],
+    "lib": ["ESNext", "DOM"]
+  },
+  "include": [
+    "apps/electron/vite.config.ts",
+    "apps/viewer/vite.config.ts",
+    "apps/webui/vite.config.ts",
+    "scripts/build/common.ts",
+    "scripts/provision-runtime.ts"
+  ]
+}

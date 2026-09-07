@@ -4,7 +4,10 @@ copyright: Copyright © 2026 Craft Docs Ltd.
 
 artifactName: Craft-Agents-${arch}.${ext}
 
-electronVersion: "43.1.1"
+electronVersion: "44.2.0"
+
+# Fetch the pinned Bun and document-tool runtimes for the target before copying resources.
+beforePack: scripts/beforePack.cjs
 
 # Hook to compile macOS 26+ Liquid Glass icon after packaging
 afterPack: scripts/afterPack.cjs
@@ -66,6 +69,8 @@ extraResources:
   # rg.exe from this sibling package at runtime.
   - from: node_modules/@vscode/ripgrep-win32-${arch}
     to: app/node_modules/@vscode/ripgrep-win32-${arch}
+  - from: node_modules/@vscode/ripgrep-linux-${arch}
+    to: app/node_modules/@vscode/ripgrep-linux-${arch}
   # WhatsApp worker subprocess (self-contained; Baileys bundled in).
   # Runtime resolves it at <resourcesPath>/messaging-whatsapp-worker/worker.cjs
   # (apps/electron/src/main/index.ts), so stage it flat under Resources — the

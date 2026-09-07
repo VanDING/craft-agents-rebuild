@@ -161,7 +161,7 @@ describe('artifact RPC handlers', () => {
       ['Name', 'Score'],
       ['Ada', 98],
     ]), 'Scores')
-    XLSX.writeFile(workbook, stagedPath)
+    writeFileSync(stagedPath, XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }))
 
     const created = await harness.handler(RPC_CHANNELS.artifacts.CREATE)(context, workspaceFixture.id, {
       sessionId: 'session-1',
@@ -190,7 +190,7 @@ describe('artifact RPC handlers', () => {
       created.artifact.id,
     )
     expect(accepted.accepted).toBe(true)
-    const delivered = XLSX.readFile(targetPath)
+    const delivered = XLSX.read(readFileSync(targetPath), { type: 'buffer' })
     expect(XLSX.utils.sheet_to_json(delivered.Sheets.Scores!)).toContainEqual({ Name: 'Ada', Score: 98 })
   })
 

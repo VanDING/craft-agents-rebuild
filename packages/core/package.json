@@ -12,9 +12,7 @@
     "./utils": "./src/utils/index.ts"
   },
   "peerDependencies": {
-    "@modelcontextprotocol/sdk": ">=1.29.0"
+    "@modelcontextprotocol/sdk": ">=1.30.0"
   },
-  "devDependencies": {
-    "@types/uuid": "^11.0.0"
-  }
+  "devDependencies": {}
 }

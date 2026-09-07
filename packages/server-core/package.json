@@ -23,21 +23,21 @@
     "./webui": "./src/webui/index.ts"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "bun run tsc --noEmit"
   },
   "dependencies": {
     "@craft-agent/core": "workspace:*",
     "@craft-agent/shared": "workspace:*",
     "@earendil-works/pi-ai": "0.85.1",
-    "jose": "^6.0.0",
+    "jose": "^6.2.12",
     "markitdown-js": "^0.0.14",
-    "openai": "^6.18.0",
-    "sharp": "0.35.3",
-    "ws": "^8.19.0"
+    "openai": "^7.10.0",
+    "sharp": "0.35.4",
+    "ws": "^8.21.3"
   },
   "devDependencies": {
-    "@types/node": "25.0.0",
-    "typescript": "7",
-    "xlsx": "0.18.5"
+    "@types/node": "26.5.0",
+    "typescript": "7.0.2",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   }
 }

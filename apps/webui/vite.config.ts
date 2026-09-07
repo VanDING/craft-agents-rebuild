@@ -1,17 +1,17 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import babel from '@rolldown/plugin-babel'
 import tailwindcss from '@tailwindcss/vite'
 import { resolve } from 'path'
 
 export default defineConfig({
   plugins: [
-    react({
-      babel: {
-        plugins: [
-          'jotai/babel/plugin-debug-label',
-          ['jotai/babel/plugin-react-refresh', { customAtomNames: ['atomFamily'] }],
-        ],
-      },
+    react(),
+    babel({
+      plugins: [
+        'jotai/babel/plugin-debug-label',
+        ['jotai/babel/plugin-react-refresh', { customAtomNames: ['atomFamily'] }],
+      ],
     }),
     tailwindcss(),
   ],
@@ -19,9 +19,9 @@ export default defineConfig({
   base: './',
   build: {
     outDir: resolve(__dirname, 'dist'),
-    emptyDirBeforeWrite: true,
+    emptyOutDir: true,
     sourcemap: true,
-    rollupOptions: {
+    rolldownOptions: {
       input: {
         main: resolve(__dirname, 'src/index.html'),
         login: resolve(__dirname, 'src/login.html'),
@@ -46,14 +46,18 @@ export default defineConfig({
       'react': resolve(__dirname, '../../node_modules/react'),
       'react-dom': resolve(__dirname, '../../node_modules/react-dom'),
       // Electron-specific modules → empty shims for browser builds
-      'electron-log/renderer': resolve(__dirname, 'src/shims/electron-log.ts'),
-      'electron-log': resolve(__dirname, 'src/shims/electron-log.ts'),
       '@sentry/electron/renderer': resolve(__dirname, 'src/shims/sentry-electron.ts'),
       '@sentry/electron': resolve(__dirname, 'src/shims/sentry-electron.ts'),
       // Node.js 'ws' library → browser uses native WebSocket
       'ws': resolve(__dirname, 'src/shims/ws.ts'),
-      // Node.js builtins → browser-safe shims (shared code imports these
-      // but the codepaths aren't reached in browser — web API adapter intercepts)
+      // Match subpaths before their parent aliases.
+      'electron-log/main': resolve(__dirname, 'src/shims/electron-log.ts'),
+      'electron-log/renderer': resolve(__dirname, 'src/shims/electron-log.ts'),
+      'electron-log': resolve(__dirname, 'src/shims/electron-log.ts'),
+      'fs/promises': resolve(__dirname, 'src/shims/fs-promises.ts'),
+      'node:fs/promises': resolve(__dirname, 'src/shims/fs-promises.ts'),
+      'stream/web': resolve(__dirname, 'src/shims/stream-web.ts'),
+      'node:stream/web': resolve(__dirname, 'src/shims/stream-web.ts'),
       // Node.js builtins → browser-safe shims (shared code imports these
       // but the codepaths aren't reached in browser — web API adapter intercepts)
       ...Object.fromEntries([
@@ -64,9 +68,6 @@ export default defineConfig({
         'node:stream', 'tls', 'node:tls', 'url', 'zlib', 'node:zlib',
         'string_decoder', 'node:string_decoder', 'assert', 'node:assert',
       ].map(m => [m, resolve(__dirname, 'src/shims/node-builtins.ts')])),
-      // fs/promises and node:fs/promises need a separate shim file to avoid path confusion
-      'fs/promises': resolve(__dirname, 'src/shims/fs-promises.ts'),
-      'node:fs/promises': resolve(__dirname, 'src/shims/fs-promises.ts'),
       // 'open' npm package (Node.js shell utility) — no-op in browser
       'open': resolve(__dirname, 'src/shims/open.ts'),
     },
@@ -79,10 +80,6 @@ export default defineConfig({
   optimizeDeps: {
     include: ['react', 'react-dom', 'jotai'],
     exclude: ['@craft-agent/ui'],
-    esbuildOptions: {
-      supported: { 'top-level-await': true },
-      target: 'esnext',
-    },
   },
   server: {
     port: 5175,

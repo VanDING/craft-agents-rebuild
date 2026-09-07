@@ -10,19 +10,19 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "bun run tsc --noEmit"
   },
   "dependencies": {
     "@craft-agent/core": "workspace:*",
     "@craft-agent/messaging-whatsapp-worker": "workspace:*",
     "@craft-agent/server-core": "workspace:*",
     "@craft-agent/shared": "workspace:*",
-    "@larksuiteoapi/node-sdk": "^1.62.1",
-    "@wecom/aibot-node-sdk": "^1.0.6",
-    "grammy": "1.45.1"
+    "@larksuiteoapi/node-sdk": "^1.73.3",
+    "@wecom/aibot-node-sdk": "^1.0.7",
+    "grammy": "1.46.0"
   },
   "devDependencies": {
-    "@types/node": "25.0.0",
-    "typescript": "7"
+    "@types/node": "26.5.0",
+    "typescript": "7.0.2"
   }
 }

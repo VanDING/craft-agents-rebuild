@@ -1,24 +1,14 @@
 import * as React from 'react'
 import type {
-  ColumnDef,
   ColumnFiltersState,
   ColumnSizingState,
   SortingState,
   PaginationState,
   ExpandedState,
-  Column,
-  Row,
-  Table as TableInstance,
 } from '@tanstack/react-table'
-import {
-  flexRender,
-  getCoreRowModel,
-  getFilteredRowModel,
-  getSortedRowModel,
-  getPaginationRowModel,
-  getExpandedRowModel,
-  useReactTable,
-} from '@tanstack/react-table'
+import { flexRender, useTable } from '@tanstack/react-table'
+import { dataTableFeatures } from './data-table-features'
+import type { ColumnDef, Column, Row, TableInstance, RowData } from './data-table-features'
 import { Button } from '@/components/ui/button'
 import {
   Table,
@@ -30,8 +20,8 @@ import {
 } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
 
-interface DataTableProps<TData, TValue> {
-  columns: ColumnDef<TData, TValue>[]
+interface DataTableProps<TData extends RowData> {
+  columns: ColumnDef<TData>[]
   data: TData[]
   /** Global filter value (searches across all columns) */
   globalFilter?: string
@@ -62,7 +52,7 @@ interface DataTableProps<TData, TValue> {
   defaultExpanded?: boolean
 }
 
-export function DataTable<TData, TValue>({
+export function DataTable<TData extends RowData>({
   columns,
   data,
   globalFilter,
@@ -77,7 +67,7 @@ export function DataTable<TData, TValue>({
   pageSize = 50,
   getSubRows,
   defaultExpanded = true,
-}: DataTableProps<TData, TValue>) {
+}: DataTableProps<TData>) {
   const [sorting, setSorting] = React.useState<SortingState>([])
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([])
   const [columnSizing, setColumnSizing] = React.useState<ColumnSizingState>({})
@@ -111,15 +101,13 @@ export function DataTable<TData, TValue>({
     }
   }, [filterValue, filterColumn])
 
-  const table = useReactTable({
+  const table = useTable({
+    features: dataTableFeatures,
     data,
     columns,
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    ...(paginationEnabled && { getPaginationRowModel: getPaginationRowModel() }),
-    // Tree/expand support: only enabled when getSubRows is provided
-    ...(getSubRows && { getExpandedRowModel: getExpandedRowModel(), getSubRows }),
+    manualPagination: !paginationEnabled,
+    manualExpanding: !getSubRows,
+    getSubRows,
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     onColumnSizingChange: setColumnSizing,
@@ -257,7 +245,7 @@ export function DataTable<TData, TValue>({
           Previous
         </Button>
         <span className="text-sm text-muted-foreground">
-          Page {table.getState().pagination.pageIndex + 1} of {table.getPageCount()}
+          Page {table.state.pagination.pageIndex + 1} of {table.getPageCount()}
         </span>
         <Button
           variant="outline"
@@ -294,13 +282,13 @@ export function DataTable<TData, TValue>({
  * Sortable column header component
  * Use in column definitions: header: ({ column }) => <SortableHeader column={column} title="Name" />
  */
-interface SortableHeaderProps<TData, TValue> {
+interface SortableHeaderProps<TData extends RowData, TValue> {
   column: Column<TData, TValue>
   title: string
   className?: string
 }
 
-export function SortableHeader<TData, TValue>({
+export function SortableHeader<TData extends RowData, TValue>({
   column,
   title,
   className,

@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.12"
-# dependencies = ["openpyxl>=3.1,<4", "pillow>=11,<13", "click>=8.3,<9"]
+# dependencies = ["openpyxl==3.1.5", "pillow==12.3.0", "click==8.5.0"]
 # ///
 """Excel (.xlsx) operations tool.
 

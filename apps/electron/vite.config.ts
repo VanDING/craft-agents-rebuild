@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import babel from '@rolldown/plugin-babel'
 import tailwindcss from '@tailwindcss/vite'
 import { resolve } from 'path'
 
@@ -10,16 +11,15 @@ import { resolve } from 'path'
 
 export default defineConfig({
   plugins: [
-    react({
-      babel: {
-        plugins: [
-          // Jotai HMR support: caches atom instances in globalThis.jotaiAtomCache
-          // so that HMR module re-execution returns stable atom references
-          // instead of creating new (empty) atoms that orphan existing data.
-          'jotai/babel/plugin-debug-label',
-          ['jotai/babel/plugin-react-refresh', { customAtomNames: ['atomFamily'] }],
-        ],
-      },
+    react(),
+    babel({
+      plugins: [
+        // Jotai HMR support: caches atom instances in globalThis.jotaiAtomCache
+        // so that HMR module re-execution returns stable atom references
+        // instead of creating new (empty) atoms that orphan existing data.
+        'jotai/babel/plugin-debug-label',
+        ['jotai/babel/plugin-react-refresh', { customAtomNames: ['atomFamily'] }],
+      ],
     }),
     tailwindcss(),
     // Sentry source map upload — intentionally disabled. See CLAUDE.md for re-enabling instructions.
@@ -37,9 +37,9 @@ export default defineConfig({
   base: './',
   build: {
     outDir: resolve(__dirname, 'dist/renderer'),
-    emptyDirBeforeWrite: true,
+    emptyOutDir: true,
     sourcemap: true,  // Source maps generated for debugging. Not uploaded to Sentry (see CLAUDE.md).
-    rollupOptions: {
+    rolldownOptions: {
       input: {
         main: resolve(__dirname, 'src/renderer/index.html'),
         playground: resolve(__dirname, 'src/renderer/playground.html'),
@@ -62,10 +62,6 @@ export default defineConfig({
   optimizeDeps: {
     include: ['react', 'react-dom', 'jotai', 'pdfjs-dist'],
     exclude: ['@craft-agent/ui'],
-    esbuildOptions: {
-      supported: { 'top-level-await': true },
-      target: 'esnext'
-    }
   },
   server: {
     port: 5173,

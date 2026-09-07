@@ -51,15 +51,8 @@ async function ensureBundledUvForCurrentPlatform(): Promise<void> {
   const platform = resolveBuildPlatform();
   const arch = resolveBuildArch();
   const platformKey = `${platform}-${arch}`;
-  const uvBinary = platform === "win32" ? "uv.exe" : "uv";
-  const uvPath = join(ELECTRON_DIR, "resources", "bin", platformKey, uvBinary);
 
-  if (existsSync(uvPath)) {
-    console.log(`✅ Bundled uv present: ${uvPath}`);
-    return;
-  }
-
-  console.log(`⬇️  Bundled uv missing, bootstrapping ${platformKey}...`);
+  console.log(`Checking bundled uv for ${platformKey}...`);
   await downloadUv({
     platform,
     arch,

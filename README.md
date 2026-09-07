@@ -100,14 +100,14 @@ The connection layer supports major hosted providers, OAuth-backed products, clo
 
 ### Requirements
 
-- [Bun 1.4](https://bun.sh/) or the compatible version pinned by `package.json`
+- [Bun](https://bun.sh/) at the version pinned by `package.json` (`1.4.2`)
 - Credentials for at least one supported model provider
 - macOS, Windows, or Linux
 
 ```bash
-git clone https://github.com/VanDING/craft-agents-rebuild.git
+git clone git@github.com:VanDING/craft-agents-rebuild.git
 cd craft-agents-rebuild
-bun install
+bun install --frozen-lockfile
 bun run electron:start
 ```
 
@@ -130,6 +130,12 @@ bun run typecheck:all      # Type-check every workspace package
 bun run validate:dev       # Type checks plus focused runtime/document tests
 bun run validate:ci        # CI validation plus i18n parity and coverage
 ```
+
+Use Bun for this repository's dependency installation and local tools (`bun run eslint`,
+`bun run vite`, `bun run electron-builder`). Commit `bun.lock` with dependency changes;
+do not generate a second lockfile with npm, Yarn, or pnpm. The npm registry remains the
+package source. Node.js is still used by Electron tooling and the WhatsApp worker.
+See [the September dependency upgrade](docs/dependency-upgrade-2026-09.md) for migration details and exceptions.
 
 Start with the [documentation index](docs/README.md), [contribution guide](CONTRIBUTING.md), and [Pi kernel maintenance baseline](docs/pi-kernel.md).
 

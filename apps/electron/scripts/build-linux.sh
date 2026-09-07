@@ -63,7 +63,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Configuration
-BUN_VERSION="bun-v1.4.0"  # Pinned version for reproducible builds
+BUN_VERSION="bun-v$(bun -p "require('$ROOT_DIR/package.json').packageManager.split('@')[1]")"
 
 echo "=== Building Craft Agents AppImage (${ARCH}) using electron-builder ==="
 if [ "$UPLOAD" = true ]; then
@@ -80,7 +80,7 @@ rm -rf "$ELECTRON_DIR/release"
 # 2. Install dependencies
 echo "Installing dependencies..."
 cd "$ROOT_DIR"
-bun install
+bun install --frozen-lockfile
 
 # 3. Download Bun binary with checksum verification
 echo "Downloading Bun ${BUN_VERSION} for linux-${ARCH}..."
@@ -147,7 +147,7 @@ cd "$ELECTRON_DIR"
 
 # Run electron-builder
 # Note: electron-builder may build both archs due to config, but we only use the requested one
-npx electron-builder --linux --${ARCH}
+bun run electron-builder --linux --${ARCH}
 
 # 8. Verify the AppImage was built
 # electron-builder uses Linux-style arch names: x86_64 for x64, aarch64 for arm64
