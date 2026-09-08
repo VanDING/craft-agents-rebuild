@@ -11,7 +11,8 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Camera, LockKeyhole, X } from 'lucide-react'
 import { Spinner } from '@craft-agent/ui'
-import { useAtomValue } from 'jotai'
+import { useAtomValue, useSetAtom } from 'jotai'
+import { personalProfileAtom } from '@/atoms/personal-profile'
 import { CrossfadeAvatar } from '@/components/ui/avatar'
 import { sessionMetaMapAtom } from '@/atoms/sessions'
 import { PanelHeader } from '@/components/app-shell/PanelHeader'
@@ -29,28 +30,11 @@ import {
 import { EditPopover, EditButton, getEditConfig } from '@/components/ui/EditPopover'
 import type { DetailsPageMeta } from '@/lib/navigation-registry'
 import { computeProfileActivity } from './profile-activity'
+import { emptyFormState, parsePreferences, getInitials, type PreferencesFormState } from '@/lib/personal-profile'
 
 export const meta: DetailsPageMeta = {
   navigator: 'settings',
   slug: 'preferences',
-}
-
-interface PreferencesFormState {
-  name: string
-  avatarDataUrl: string
-  timezone: string
-  city: string
-  country: string
-  notes: string
-}
-
-const emptyFormState: PreferencesFormState = {
-  name: '',
-  avatarDataUrl: '',
-  timezone: '',
-  city: '',
-  country: '',
-  notes: '',
 }
 
 const ACTIVITY_LEVEL_CLASSES = [
@@ -60,39 +44,6 @@ const ACTIVITY_LEVEL_CLASSES = [
   'bg-accent/65',
   'bg-accent',
 ] as const
-
-function parsePreferences(json: string): {
-  form: PreferencesFormState
-  document: Record<string, unknown>
-} {
-  try {
-    const parsed = JSON.parse(json)
-    const prefs = parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-      ? parsed as Record<string, unknown>
-      : {}
-    const location = prefs.location && typeof prefs.location === 'object' && !Array.isArray(prefs.location)
-      ? prefs.location as Record<string, unknown>
-      : {}
-
-    return {
-      form: {
-        name: typeof prefs.name === 'string' ? prefs.name : '',
-        avatarDataUrl: prefs.avatar && typeof prefs.avatar === 'object' && !Array.isArray(prefs.avatar)
-          && (prefs.avatar as Record<string, unknown>).kind === 'image'
-          && typeof (prefs.avatar as Record<string, unknown>).dataUrl === 'string'
-          ? (prefs.avatar as Record<string, unknown>).dataUrl as string
-          : '',
-        timezone: typeof prefs.timezone === 'string' ? prefs.timezone : '',
-        city: typeof location.city === 'string' ? location.city : '',
-        country: typeof location.country === 'string' ? location.country : '',
-        notes: typeof prefs.notes === 'string' ? prefs.notes : '',
-      },
-      document: prefs,
-    }
-  } catch {
-    return { form: emptyFormState, document: {} }
-  }
-}
 
 function buildPreferencesDocument(
   state: PreferencesFormState,
@@ -135,18 +86,11 @@ function formatCompactNumber(value: number, locale: string): string {
   }).format(value)
 }
 
-function getInitials(name: string): string {
-  const trimmed = name.trim()
-  if (!trimmed) return 'CA'
-  const parts = trimmed.split(/\s+/)
-  if (parts.length === 1) return [...trimmed].slice(0, 2).join('').toUpperCase()
-  return `${[...parts[0]][0] ?? ''}${[...parts.at(-1)!][0] ?? ''}`.toUpperCase()
-}
-
 export default function PreferencesPage() {
   const { t, i18n } = useTranslation()
   const locale = i18n.resolvedLanguage ?? i18n.language
   const [formState, setFormState] = useState<PreferencesFormState>(emptyFormState)
+  const setPersonalProfile = useSetAtom(personalProfileAtom)
   const sessionMetaMap = useAtomValue(sessionMetaMapAtom)
   const [isLoading, setIsLoading] = useState(true)
   const [preferencesPath, setPreferencesPath] = useState<string | null>(null)
@@ -169,6 +113,7 @@ export default function PreferencesPage() {
       if (preferencesResult.status === 'fulfilled') {
         const parsed = parsePreferences(preferencesResult.value.content)
         setFormState(parsed.form)
+        setPersonalProfile(parsed.form)
         setPreferencesPath(preferencesResult.value.path)
         preferencesDocumentRef.current = parsed.document
         lastSavedRef.current = stablePreferencesJson(parsed.form, parsed.document)
@@ -182,7 +127,7 @@ export default function PreferencesPage() {
       }, 100)
     }
     void load()
-  }, [])
+  }, [setPersonalProfile])
 
   useEffect(() => {
     if (isInitialLoadRef.current || isLoading) return
@@ -197,6 +142,7 @@ export default function PreferencesPage() {
         }
         const result = await window.electronAPI.writePreferences(JSON.stringify(document, null, 2))
         if (result.success) {
+          setPersonalProfile(formState)
           lastSavedRef.current = stableJson
           preferencesDocumentRef.current = document
         } else {
@@ -210,7 +156,7 @@ export default function PreferencesPage() {
     return () => {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
     }
-  }, [formState, isLoading])
+  }, [formState, isLoading, setPersonalProfile])
 
   useEffect(() => () => {
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
@@ -220,11 +166,13 @@ export default function PreferencesPage() {
         ...JSON.parse(stableJson) as Record<string, unknown>,
         updatedAt: Date.now(),
       }
-      window.electronAPI.writePreferences(JSON.stringify(document, null, 2)).catch(error => {
+      window.electronAPI.writePreferences(JSON.stringify(document, null, 2)).then(result => {
+        if (result.success) setPersonalProfile(parsePreferences(JSON.stringify(document)).form)
+      }).catch(error => {
         console.error('Failed to save preferences on unmount:', error)
       })
     }
-  }, [])
+  }, [setPersonalProfile])
 
   const updateField = useCallback(<K extends keyof PreferencesFormState>(
     field: K,

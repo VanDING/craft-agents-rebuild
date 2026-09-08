@@ -6,7 +6,6 @@ import { motion, AnimatePresence } from "motion/react"
 import { MOTION_SPRING } from '@craft-agent/ui/motion'
 import {
   Archive,
-  Settings,
   ChevronRight,
   ChevronDown,
   MoreHorizontal,
@@ -155,6 +154,7 @@ import { SendToWorkspaceDialog } from "./SendToWorkspaceDialog"
 import { CreateProjectDialog } from "../projects/CreateProjectDialog"
 import { MessagingDialogHost } from "@/components/messaging/MessagingDialogHost"
 import { EditPopover, getEditConfig, type EditContextKey } from "@/components/ui/EditPopover"
+import { SidebarProfile } from './SidebarProfile'
 import SettingsNavigator from "@/pages/settings/SettingsNavigator"
 import {
   PANEL_GAP,
@@ -1906,6 +1906,7 @@ function AppShellContent({
 
   // Handler for settings view. With no arg → bare `settings` route (navigator-only
   // in compact mode, App fallback on desktop). With an arg → `settings/<subpage>`.
+  const [profileCardOpen, setProfileCardOpen] = React.useState(false)
   const handleSettingsClick = useCallback((subpage?: SettingsSubpage) => {
     navigate(routes.view.settings(subpage))
   }, [])
@@ -2252,6 +2253,7 @@ function AppShellContent({
     result.push({ id: 'nav:projects', type: 'nav', action: handleProjectsClick })
     result.push({ id: 'nav:pages', type: 'nav', action: handlePagesClick })
     result.push({ id: 'nav:automations', type: 'nav', action: handleAutomationsClick })
+    result.push({ id: 'nav:profile', type: 'nav', action: () => setProfileCardOpen(open => !open) })
     result.push({ id: 'nav:settings', type: 'nav', action: () => handleSettingsClick() })
 
     return result
@@ -2827,23 +2829,16 @@ function AppShellContent({
                 </div>
               </div>
 
-              {/* Sidebar Bottom Section: Settings (pinned, always visible) */}
+              {/* Personal identity and settings, pinned to the sidebar footer. */}
               <div className="shrink-0 border-t border-border/50 px-2 py-2">
-                <button
-                  {...getSidebarItemProps('nav:settings')}
-                  onClick={() => handleSettingsClick()}
-                  className={cn(
-                    "group flex w-full items-center gap-2 rounded-md text-[13px] select-none outline-none",
-                    "focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring",
-                    "py-[5px] px-2",
-                    isSettingsNavigation(navState)
-                      ? "bg-foreground/[0.07]"
-                      : "hover:bg-sidebar-hover",
-                  )}
-                >
-                  <Settings className="h-3.5 w-3.5 shrink-0" />
-                  <span>{t("sidebar.settings")}</span>
-                </button>
+                <SidebarProfile
+                  open={profileCardOpen}
+                  onOpenChange={setProfileCardOpen}
+                  onOpenProfile={() => handleSettingsClick('preferences')}
+                  onOpenSettings={() => handleSettingsClick()}
+                  profileButtonProps={getSidebarItemProps('nav:profile')}
+                  settingsButtonProps={getSidebarItemProps('nav:settings')}
+                />
               </div>
             </div>
           </div>

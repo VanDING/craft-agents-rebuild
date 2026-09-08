@@ -1683,6 +1683,8 @@
   "sidebar.scheduled": "定时任务",
   "sidebar.search": "搜索",
   "sidebar.searchStatusesLabels": "搜索状态和标签...",
+  "sidebar.profile.setup": "设置个人资料",
+  "sidebar.profile.view": "查看个人资料",
   "sidebar.settings": "设置",
   "sidebar.skills": "技能",
   "sidebar.sources": "数据源",
