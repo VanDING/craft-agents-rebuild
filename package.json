@@ -1,6 +1,6 @@
 {
   "name": "craft-agent",
-  "version": "0.13.0",
+  "version": "0.13.3",
   "license": "Apache-2.0",
   "description": "Open-source desktop and server agent workspace powered by the Pi SDK",
   "type": "module",
