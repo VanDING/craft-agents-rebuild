@@ -161,7 +161,6 @@ export function CompactModelSelector({
   const handlePickFlatModel = React.useCallback(
     (modelId: string) => {
       onModelChange(modelId, effectiveConnection)
-      setOpen(false)
     },
     [onModelChange, effectiveConnection],
   )
@@ -169,7 +168,7 @@ export function CompactModelSelector({
   const handlePickSwitcherModel = React.useCallback(
     (connSlug: string, modelId: string) => {
       onModelChange(modelId, connSlug)
-      setOpen(false)
+      setExpandedConnection(null)
     },
     [onModelChange],
   )
@@ -302,7 +301,7 @@ export function CompactModelSelector({
                             const showVision = isCompatProvider(conn.providerType)
                             const visionOn = showVision && modelSupportsImages(conn, modelId)
                             return (
-                              <DrawerClose asChild key={modelId}>
+                              <React.Fragment key={modelId}>
                                 <button
                                   type="button"
                                   onClick={() => handlePickSwitcherModel(conn.slug, modelId)}
@@ -330,7 +329,7 @@ export function CompactModelSelector({
                                     )}
                                   </div>
                                 </button>
-                              </DrawerClose>
+                              </React.Fragment>
                             )
                           })}
                         </div>
@@ -363,7 +362,7 @@ export function CompactModelSelector({
               const visionOn =
                 showVision && modelSupportsImages(effectiveConnectionDetails!, modelId)
               return (
-                <DrawerClose asChild key={modelId}>
+                <React.Fragment key={modelId}>
                   <button
                     type="button"
                     onClick={() => handlePickFlatModel(modelId)}
@@ -400,7 +399,7 @@ export function CompactModelSelector({
                       )}
                     </div>
                   </button>
-                </DrawerClose>
+                </React.Fragment>
               )
             })
           )}
@@ -455,6 +454,9 @@ export function CompactModelSelector({
                   {t('chat.tokensUsed', {
                     displayCount: formatTokenCount(contextStatus.inputTokens),
                   })}
+                        {contextStatus.contextWindow != null && contextStatus.contextWindow > 0 && (
+                          <span className="opacity-60"> / {formatTokenCount(contextStatus.contextWindow)}</span>
+                        )}
                 </span>
               </div>
             </>

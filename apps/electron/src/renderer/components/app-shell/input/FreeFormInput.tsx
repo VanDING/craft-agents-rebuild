@@ -55,7 +55,7 @@ import { isMac } from '@/lib/platform'
 import { applySmartTypography } from '@/lib/smart-typography'
 import { AttachmentPreview } from '../AttachmentPreview'
 import { ImageSupportWarningBanner } from './ImageSupportWarningBanner'
-import { MODEL_REGISTRY, getModelShortName, getModelDisplayName, getModelContextWindow, type ModelDefinition } from '@config/models'
+import { MODEL_REGISTRY, getModelShortName, getModelDisplayName, type ModelDefinition } from '@config/models'
 import {
   resolveEffectiveConnectionSlug,
   isCompatProvider,
@@ -581,6 +581,7 @@ export function FreeFormInput({
   const [isFocused, setIsFocused] = React.useState(false)
   const [inputMaxHeight, setInputMaxHeight] = React.useState(540)
   const [modelDropdownOpen, setModelDropdownOpen] = React.useState(false)
+  const [modelConnectionSubmenu, setModelConnectionSubmenu] = React.useState<string | null>(null)
 
   // Input settings (loaded from config)
   const [autoCapitalisation, setAutoCapitalisation] = React.useState(true)
@@ -2065,7 +2066,7 @@ export function FreeFormInput({
           <div className="flex items-center shrink-0">
           {/* 5. Model/Connection Selector - Hidden in compact mode (EditPopover embedding) */}
           {!compactMode && (
-          <DropdownMenu open={modelDropdownOpen} onOpenChange={setModelDropdownOpen}>
+          <DropdownMenu open={modelDropdownOpen} onOpenChange={(open) => { setModelDropdownOpen(open); if (!open) setModelConnectionSubmenu(null) }}>
             <Tooltip>
               <TooltipTrigger asChild>
                 <DropdownMenuTrigger asChild>
@@ -2099,6 +2100,7 @@ export function FreeFormInput({
               </TooltipContent>
             </Tooltip>
             <StyledDropdownMenuContent side="top" align="end" sideOffset={8} className="min-w-[260px]">
+              <div className="max-h-[min(360px,45vh)] overflow-y-auto overscroll-contain">
               {/* Connection unavailable message */}
               {pickerMode === 'unavailable' ? (
                 <div className="flex flex-col items-center justify-center py-6 px-4 text-center">
@@ -2180,7 +2182,7 @@ export function FreeFormInput({
                       const isCurrentConnection = effectiveConnection === conn.slug
                       const isAuthenticated = conn.isAuthenticated
                       return (
-                        <DropdownMenuSub key={conn.slug}>
+                        <DropdownMenuSub key={conn.slug} open={modelConnectionSubmenu === conn.slug} onOpenChange={(open) => setModelConnectionSubmenu(open ? conn.slug : null)}>
                           <StyledDropdownMenuSubTrigger
                             disabled={!isAuthenticated}
                             className={cn(
@@ -2200,7 +2202,7 @@ export function FreeFormInput({
                             </div>
                           </StyledDropdownMenuSubTrigger>
                           {isAuthenticated && (
-                            <StyledDropdownMenuSubContent className="min-w-[220px]">
+                            <StyledDropdownMenuSubContent className="min-w-[220px] max-w-[min(360px,calc(100vw-24px))] overflow-y-auto overscroll-contain" style={{ maxHeight: "min(420px, calc(100vh - 32px), var(--radix-dropdown-menu-content-available-height))" }}>
                               {/* Show models for this connection - use provider-specific models as fallback */}
                               {(conn.models || MODEL_REGISTRY).map((model) => {
                                 const modelId = typeof model === 'string' ? model : model.id
@@ -2213,13 +2215,15 @@ export function FreeFormInput({
                                 return (
                                   <StyledDropdownMenuItem
                                     key={modelId}
-                                    onSelect={() => {
+                                    onSelect={(event) => {
+                                      event.preventDefault()
+                                      setModelConnectionSubmenu(null)
                                       // Model + connection are persisted atomically by the backend.
                                       onModelChange(modelId, conn.slug)
                                     }}
                                     className="flex items-center justify-between px-2 py-2 rounded-lg cursor-pointer"
                                   >
-                                    <div className="font-medium text-sm">{modelName}</div>
+                                    <div className="font-medium text-sm truncate min-w-0">{modelName}</div>
                                     <div className="flex items-center gap-1 ml-3 shrink-0">
                                       {showVisionToggle && (
                                         <Tooltip>
@@ -2301,11 +2305,11 @@ export function FreeFormInput({
                     return (
                       <StyledDropdownMenuItem
                         key={modelId}
-                        onSelect={() => onModelChange(modelId, effectiveConnection)}
+                        onSelect={(event) => { event.preventDefault(); onModelChange(modelId, effectiveConnection) }}
                         className="flex items-center justify-between px-2 py-2 rounded-lg cursor-pointer"
                       >
                         <div className="text-left">
-                          <div className="font-medium text-sm">{modelName}</div>
+                          <div className="font-medium text-sm truncate min-w-0">{modelName}</div>
                           {description && (
                             <div className="text-xs text-muted-foreground">{description}</div>
                           )}
@@ -2357,6 +2361,7 @@ export function FreeFormInput({
                 </>
               )}
 
+              </div>
               {/* Thinking level selector — only shown when thinking levels are available
                   (Claude supports extended thinking, OpenAI backends may not) */}
               {availableThinkingLevels.length > 0 && (
@@ -2406,6 +2411,9 @@ export function FreeFormInput({
                           <Spinner className="h-3 w-3" />
                         )}
                         {t('chat.tokensUsed', { displayCount: formatTokenCount(contextStatus.inputTokens) })}
+                        {contextStatus.contextWindow != null && contextStatus.contextWindow > 0 && (
+                          <span className="opacity-60"> / {formatTokenCount(contextStatus.contextWindow)}</span>
+                        )}
                       </span>
                     </div>
                   </div>
@@ -2414,57 +2422,6 @@ export function FreeFormInput({
             </StyledDropdownMenuContent>
           </DropdownMenu>
           )}
-
-          {/* 5.5 Context Usage Warning Badge - shows when approaching auto-compaction threshold */}
-          {(() => {
-            // Calculate usage percentage based on compaction threshold (~77.5% of context window),
-            // not the full context window - this gives users meaningful warnings before compaction kicks in.
-            // SDK triggers compaction at ~155k tokens for a 200k context window.
-            // Falls back to known per-model context window when SDK hasn't reported usage yet.
-            const effectiveContextWindow = contextStatus?.contextWindow || getModelContextWindow(currentModel)
-            const compactionThreshold = effectiveContextWindow
-              ? Math.round(effectiveContextWindow * 0.775)
-              : null
-            const usagePercent = contextStatus?.inputTokens && compactionThreshold
-              ? Math.min(99, Math.round((contextStatus.inputTokens / compactionThreshold) * 100))
-              : null
-            // Show badge when >= 80% of compaction threshold AND not currently compacting
-            // Hide for Codex and Copilot models which don't support context compaction
-            const showWarning = usagePercent !== null && usagePercent >= 80 && !contextStatus?.isCompacting
-
-            if (!showWarning) return null
-
-            const handleCompactClick = () => {
-              if (!isProcessing) {
-                onSubmit('/compact', [])
-              }
-            }
-
-            return (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    onClick={handleCompactClick}
-                    disabled={isProcessing}
-                    className="inline-flex items-center h-6 px-2 text-[12px] font-medium bg-info/10 rounded-[6px] shadow-tinted select-none cursor-pointer hover:bg-info/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    style={{
-                      '--shadow-color': 'var(--info)',
-                      color: 'color-mix(in oklab, var(--info) 30%, var(--foreground))',
-                    } as React.CSSProperties}
-                  >
-                    {usagePercent}%
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="top">
-                  {isProcessing
-                    ? `${usagePercent}% context used — wait for current operation`
-                    : `${usagePercent}% context used — click to compact`
-                  }
-                </TooltipContent>
-              </Tooltip>
-            )
-          })()}
 
           {/* 6. Send/Stop Button - Always show stop when processing */}
           {isProcessing ? (
