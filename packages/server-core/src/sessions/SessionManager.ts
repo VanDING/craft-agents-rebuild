@@ -86,6 +86,7 @@ import {
   updatePrimaryWorkItemForSession,
   type UpdateWorkItemInput,
 } from '@craft-agent/shared/work-items'
+import { isSessionWorkItemEligible } from './work-item-eligibility'
 import {
   acquireArtifactLease,
   applyArtifactDraft,
@@ -1759,7 +1760,7 @@ export class SessionManager implements ISessionManager {
   }
 
   private ensurePrimaryWorkItem(managed: ManagedSession): void {
-    if (managed.parentSessionId || managed.taskDraft || managed.hidden || managed.isArchived) return
+    if (!isSessionWorkItemEligible(managed)) return
     try {
       const result = ensureWorkItemForSession(managed.workspace.rootPath, {
         id: managed.id,
@@ -6637,6 +6638,9 @@ export class SessionManager implements ISessionManager {
         this.generateTitle(managed, message)
       }
     }
+
+    // Register only after the chat has content; empty placeholders never reach Kanban.
+    this.ensurePrimaryWorkItem(managed)
 
     // Evaluate auto-label rules against the user message (common path for both
     // fresh and queued messages). Scans regex patterns configured on labels,

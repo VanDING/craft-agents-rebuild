@@ -25,6 +25,7 @@ interface SessionFixture {
   id: string
   name?: string
   preview?: string
+  messageCount?: number
   projectId?: string
   sessionStatus?: string
   kanbanColumn?: string
@@ -137,6 +138,32 @@ describe('work item RPC handlers', () => {
     expect(second).toHaveLength(2)
     expect(second.some((item: { primarySessionId?: string }) => item.primarySessionId === 'later')).toBe(true)
     expect(harness.pushes.filter(({ channel }) => channel === RPC_CHANNELS.workItems.CHANGED)).toHaveLength(2)
+  })
+
+  it('never persists abandoned empty chats, including after migration', async () => {
+    const harness = createHarness({ sessions: [{ id: 'empty', messageCount: 0 }] })
+    const list = harness.handler(RPC_CHANNELS.workItems.LIST)
+    expect(await list(context, workspaceFixture.id)).toEqual([])
+    harness.sessions.splice(0)
+    expect(await list(context, workspaceFixture.id)).toEqual([])
+    harness.sessions.push({ id: 'next-empty' })
+    expect(await list(context, workspaceFixture.id)).toEqual([])
+    harness.sessions.splice(0)
+    expect(listWorkItems(workspaceRoot)).toEqual([])
+  })
+
+  it('registers a conversation once it gains content and preserves standalone tasks', async () => {
+    const harness = createHarness({ sessions: [{ id: 'chat' }] })
+    const list = harness.handler(RPC_CHANNELS.workItems.LIST)
+    const create = harness.handler(RPC_CHANNELS.workItems.CREATE)
+    const standalone = await create(context, workspaceFixture.id, { title: 'Untitled task' })
+    expect(await list(context, workspaceFixture.id)).toEqual([standalone])
+    harness.sessions[0]!.messageCount = 1
+    harness.sessions[0]!.preview = 'First message'
+    const items = await list(context, workspaceFixture.id)
+    expect(items).toHaveLength(2)
+    expect(items.some((item: { primarySessionId?: string }) => item.primarySessionId === 'chat')).toBe(true)
+    expect(await list(context, workspaceFixture.id)).toHaveLength(2)
   })
 
   it('keeps the WorkItem durable when the compatibility Session mirror fails', async () => {

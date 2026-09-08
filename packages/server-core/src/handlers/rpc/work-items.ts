@@ -14,6 +14,7 @@ import {
 import { getWorkspaceByNameOrId } from '@craft-agent/shared/config'
 import { pushTyped, type RpcServer } from '@craft-agent/server-core/transport'
 import type { HandlerDeps } from '../handler-deps'
+import { isSessionWorkItemEligible } from '../../sessions/work-item-eligibility'
 
 export const HANDLED_CHANNELS = [
   RPC_CHANNELS.workItems.LIST,
@@ -78,7 +79,7 @@ export function registerWorkItemHandlers(server: RpcServer, deps: HandlerDeps): 
     const rootPath = workspaceRoot(workspaceId)
     const legacySources = deps.sessionManager
       .getSessions(workspaceId)
-      .filter((session) => !session.parentSessionId && !session.isArchived && !session.hidden && !session.taskDraft)
+      .filter(isSessionWorkItemEligible)
       .map((session) => ({
         id: session.id,
         title: session.name?.trim() || session.preview?.trim() || 'Untitled task',
