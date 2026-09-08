@@ -55,40 +55,45 @@ export function ConnectionIcon({ connection, size = 16, className = '', showTool
     connection.brandId,
   )
 
-  const [endpointIcon, setEndpointIcon] = useState<string | null>(null)
+  // Remote brand icons use the same durable cache as custom endpoint icons.
+  const remoteProviderIcon = providerIcon?.startsWith('https://') ? providerIcon : null
+  const serviceUrl = remoteProviderIcon
+    ? new URL(remoteProviderIcon).searchParams.get('url') ?? connection.baseUrl
+    : connection.baseUrl
+  const cacheKey = `${serviceUrl ?? ''}:`
+  const [endpointIcon, setEndpointIcon] = useState<{ key: string; value: string } | null>(null)
 
   useEffect(() => {
     let cancelled = false
-    setEndpointIcon(null)
 
     if (
-      providerIcon
-      || !connection.baseUrl
+      (providerIcon && !remoteProviderIcon)
+      || !serviceUrl
       || typeof window === 'undefined'
       || !window.electronAPI?.getLogoUrl
     ) return
 
-    const cacheKey = `${connection.baseUrl}:`
     const cached = logoUrlCache.get(cacheKey)
-    if (cached !== undefined) {
-      setEndpointIcon(cached)
+    if (cached) {
+      setEndpointIcon({ key: cacheKey, value: cached })
       return
     }
 
-    void window.electronAPI.getLogoUrl(connection.baseUrl).then((logoUrl) => {
+    void window.electronAPI.getLogoUrl(serviceUrl).then((logoUrl) => {
+      if (logoUrl) logoUrlCache.set(cacheKey, logoUrl)
       if (cancelled) return
-      logoUrlCache.set(cacheKey, logoUrl)
-      setEndpointIcon(logoUrl)
+      if (logoUrl) setEndpointIcon({ key: cacheKey, value: logoUrl })
     }).catch(() => {
       if (cancelled) return
-      logoUrlCache.set(cacheKey, null)
       setEndpointIcon(null)
     })
 
     return () => { cancelled = true }
-  }, [connection.baseUrl, providerIcon])
+  }, [serviceUrl, providerIcon, remoteProviderIcon, cacheKey])
 
-  const resolvedIcon = providerIcon ?? endpointIcon
+  const resolvedIcon = (remoteProviderIcon ? null : providerIcon)
+    ?? logoUrlCache.get(cacheKey)
+    ?? (endpointIcon?.key === cacheKey ? endpointIcon.value : null)
   const fallbackInitial = connectionFallbackInitial(connection.name)
   const fallbackToneClass = useMemo(() => fallbackTone(connection.name), [connection.name])
   const fallbackGlyph = fallbackInitial ? (

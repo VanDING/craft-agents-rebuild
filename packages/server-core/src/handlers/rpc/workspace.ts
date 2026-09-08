@@ -446,8 +446,8 @@ export function registerWorkspaceCoreHandlers(server: RpcServer, deps: HandlerDe
 
   // Logo URL resolution (uses Node.js filesystem cache for provider domains)
   server.handle(RPC_CHANNELS.logo.GET_URL, async (_ctx, serviceUrl: string, provider?: string) => {
-    const { getLogoUrl } = await import('@craft-agent/shared/utils/logo')
-    const result = getLogoUrl(serviceUrl, provider)
+    const { getCachedLogo } = await import('@craft-agent/shared/utils/logo-cache')
+    const result = await getCachedLogo(serviceUrl, provider)
     return result
   })
 }
