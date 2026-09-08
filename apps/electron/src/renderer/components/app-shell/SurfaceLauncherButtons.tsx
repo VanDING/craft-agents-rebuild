@@ -31,6 +31,8 @@ import { browserInstancesAtom, filterInstancesForWorkspace } from '@/atoms/brows
 import { useAppShellContext } from '@/context/AppShellContext'
 import {
   SURFACE_LAUNCHER_KINDS,
+  PRIMARY_SURFACE_LAUNCHER_KINDS,
+  CONTEXT_WORKBENCH_LAUNCHER_KINDS,
   isContextWorkbenchKind,
   surfaceLauncherLabelKey,
   surfaceLauncherKindForRoute,
@@ -42,7 +44,13 @@ export type SurfaceLauncherState = 'closed' | 'open' | 'focused' | 'background'
 /** Top-bar button order (left → right): New Session, surface/tool launchers,
  * and the browser (focus-or-create; Shift/Alt = new window). All entries are
  * always rendered tiled — no width truncation. */
-const TOP_BAR_BUTTON_ORDER = ['newSession', ...SURFACE_LAUNCHER_KINDS, 'browser'] as const
+const TOP_BAR_BUTTON_ORDER = [
+  'newSession',
+  ...PRIMARY_SURFACE_LAUNCHER_KINDS,
+  'separator',
+  ...CONTEXT_WORKBENCH_LAUNCHER_KINDS,
+  'browser',
+] as const
 
 interface SurfaceLauncherButtonsProps {
   /** Navigate a Primary launcher or activate/create a Workbench item. */
@@ -120,6 +128,10 @@ export function SurfaceLauncherButtons({
   return (
     <div className="inline-flex items-center gap-0.5">
       {allButtons.map((kind) => {
+        if (kind === 'separator') {
+          return <span key="separator" aria-hidden="true" className="mx-1 h-3.5 w-px shrink-0 bg-foreground/10" />
+        }
+
         if (kind === 'newSession') {
           return (
             <Tooltip key="newSession">

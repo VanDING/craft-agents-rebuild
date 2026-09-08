@@ -111,6 +111,23 @@ export async function downloadBun(config: BuildConfig): Promise<void> {
   const bunDownload = getBunDownloadName(platform, arch);
   const vendorDir = join(electronDir, 'vendor', 'bun');
 
+  // Skip download when the pinned version is already installed — mirrors the
+  // version-stamp skip in downloadUv and avoids re-downloading the ~90 MB
+  // binary on every pack (GitHub releases are flaky on some networks).
+  const installedPath = join(vendorDir, platform === 'win32' ? 'bun.exe' : 'bun');
+  const wantVersion = BUN_VERSION.replace(/^bun-v/, '');
+  if (existsSync(installedPath)) {
+    try {
+      const installedVersion = (await $`${installedPath} --version`.text()).trim();
+      if (installedVersion === wantVersion) {
+        console.log(`Bun ${installedVersion} already present at ${installedPath}`);
+        return;
+      }
+    } catch {
+      // Fall through to download when the cached binary cannot be executed.
+    }
+  }
+
   console.log(`Downloading Bun ${BUN_VERSION} for ${platform}-${arch}...`);
 
   // Create vendor directory

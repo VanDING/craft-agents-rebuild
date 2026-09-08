@@ -183,7 +183,6 @@ export function TopBar({
                   onClick={onToggleSessionList}
                   aria-label={t(isNavigatorVisible ? 'contentPanel.hideNavigator' : 'contentPanel.showNavigator')}
                   aria-expanded={isNavigatorVisible}
-                  isActive={isNavigatorVisible}
                 >
                   <Icons.List className="h-[18px] w-[18px] text-foreground/70" strokeWidth={1.5} />
                 </TopBarButton>
