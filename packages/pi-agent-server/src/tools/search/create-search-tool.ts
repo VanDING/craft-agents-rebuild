@@ -5,7 +5,7 @@
  * so the model doesn't need to know which backend is used.
  */
 
-import { Type } from '@sinclair/typebox';
+import { Type } from '@earendil-works/pi-ai';
 import type { ToolDefinition } from '@earendil-works/pi-coding-agent';
 import {
   PUBLIC_SEARCH_ENGINES,

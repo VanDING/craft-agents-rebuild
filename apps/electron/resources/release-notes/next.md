@@ -1,6 +1,13 @@
 # Pending Release Notes
 
-This file accumulates release notes for the next unreleased version. PRs that add user-visible behavior should append a bullet to the relevant section here. Versioned files (`X.Y.Z.md`) are owned by the release skill — never create them in feature commits.
+This file accumulates release notes for the next unreleased version. PRs that add user-visible behavior should append a bullet to the relevant section here. Versioned files (`X.Y.Z.md`) are owned by the release skill — never create them in feature commits. The in-app loader only reads `X.Y.Z.md` files, so this file is never shown to users.
+
+## Upstream sync (v0.13.1–0.13.3)
+
+- **Automatic recovery with visible progress** — Pi conversations stay open while the SDK retries temporary rate limits, provider outages, and connection drops; backoff and attempt progress show instead of an instant error. Recovered answers reach the conversation, failed partials are discarded rather than merged into the retry, and exhausted retries surface one actionable Connection/Service error.
+- **Isolated Pi settings** — retry and compaction settings are managed in memory; a working directory's `.pi/settings.json` can no longer silently override them.
+- **Bounded utility queries** — `call_llm`, title generation and summaries enforce a real deadline with subprocess cancellation; late results cannot affect another request, and timed-out runs report correctly.
+- **GPT-6 Astra on OpenAI connections** — Pi SDK 0.85.1 catalog now defaults new OpenAI connections to Astra.
 
 ## Features
 

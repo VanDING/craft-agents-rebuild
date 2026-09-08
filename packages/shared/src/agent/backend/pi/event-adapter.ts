@@ -10,7 +10,12 @@
  */
 
 import { sumTokenUsage } from '@craft-agent/core/utils';
-import type { AgentEvent as CraftAgentEvent, PiUsage, TrajectorySourceBlock } from '@craft-agent/core/types';
+import type {
+  AgentEvent as CraftAgentEvent,
+  PiUsage,
+  RequestContextSnapshot,
+  TrajectorySourceBlock,
+} from '@craft-agent/core/types';
 import type {
   AgentEvent as PiAgentEvent,
 } from '@earendil-works/pi-agent-core';
@@ -18,11 +23,46 @@ import type {
   AgentSessionEvent,
 } from '@earendil-works/pi-coding-agent';
 import type { AssistantMessage, AssistantMessageEvent } from '@earendil-works/pi-ai';
-import { isContextOverflow } from '@earendil-works/pi-ai';
+import { isContextOverflow, isRetryableAssistantError } from '@earendil-works/pi-ai';
 import { BaseEventAdapter } from '../base-event-adapter.ts';
 import { PI_TOOL_NAME_MAP } from './constants.ts';
 import { toolMetadataStore } from '../../../interceptor-common.ts';
-import { parseError } from '../../errors.ts';
+import { createAgentError, parseError } from '../../errors.ts';
+
+/**
+ * Pi SDK auto-compaction race signature — the AbortController crash described
+ * in `_runAutoCompaction` (`@earendil-works/pi-coding-agent` agent-session.ts).
+ * When two `_runAutoCompaction` calls overlap, one's `finally` clears the
+ * shared `_autoCompactionAbortController` field while the other is still
+ * suspended on an await; the next `.signal` read crashes. Matched against
+ * `compaction_end.errorMessage` to surface a friendly message instead of the
+ * raw stack until the upstream fix lands. See plans/fix-pi-gpt-compaction.md.
+ */
+const SDK_AUTOCOMPACT_RACE_SIGNATURE = /_autoCompactionAbortController\.signal/;
+
+/** How long to wait after a held overflow `agent_end` for a `compaction_start`
+ *  before giving up and surfacing the original error. The SDK fires
+ *  `_checkCompaction` on the same event-queue tick, so the only delay is event
+ *  serialization — 5 s is well above any plausible jitter. */
+const OVERFLOW_FALLBACK_TIMEOUT_MS = 5_000;
+
+/** How long to wait after an `agent_end { willRetry: true }` for the SDK's
+ *  `auto_retry_start`. `_prepareRetry` emits it synchronously right after the
+ *  agent loop returns, so — as with overflow — only event serialization can
+ *  delay it. */
+const RETRY_START_FALLBACK_TIMEOUT_MS = 5_000;
+
+/** Grace added on top of the backoff the SDK announced in
+ *  `auto_retry_start.delayMs` before we stop waiting for the retried run's
+ *  `agent_start` and surface the parked error instead. */
+const RETRY_RUN_GRACE_MS = 15_000;
+
+/** Retryable provider errors that the shared `parseError` cannot classify are
+ *  split into provider-side incidents (surfaced as `service_error`) and
+ *  transport failures (surfaced as `network_error`). Patterns mirror the
+ *  provider-side group of pi-ai's `RETRYABLE_PROVIDER_ERROR_PATTERN`. */
+const RETRYABLE_PROVIDER_SIDE_PATTERN =
+  /overloaded|provider.?returned.?error|retry your request|request again|resource.?exhausted|retry delay|server.?error|internal.?error|service.?unavailable|exceeded request buffer limit/i;
 
 /**
  * Combined event type the adapter can handle.
@@ -38,12 +78,13 @@ type PiEvent = PiAgentEvent | AgentSessionEvent;
  * - message_end → text_complete
  * - tool_execution_start → tool_start
  * - tool_execution_end → tool_result
- * - agent_settled → complete
+ * - agent_end → complete (deferred while overflow recovery or an auto-retry is in flight)
  * - compaction_start → status (with "Compacting" keyword)
  * - compaction_end → info/error
- * - auto_retry_start → status
- * - auto_retry_end → error (failure only)
- * - queue_update → ignored (no current UI consumer)
+ * - failed message_end → text_discard (only its unfinished text)
+ * - auto_retry_start / retried agent_start → retry (backoff / active)
+ * - auto_retry_end → retry (end) + info on success; releases errors on cancellation
+ * - queue_update / agent_settled / entry_appended / summarization_retry_* → ignored
  */
 export class PiEventAdapter extends BaseEventAdapter {
   // Track tool names from execution_start for proper tool_result correlation
@@ -69,7 +110,6 @@ export class PiEventAdapter extends BaseEventAdapter {
   private miniModel: string | undefined;
 
   private lastUsage: PiUsage | undefined;
-  private turnUsage: PiUsage | undefined;
 
   // Tool wall-clock tracking: toolCallId → start timestamp (epoch ms).
   // Server-forwarded `ts` on tool_execution_start (set by pi-agent-server)
@@ -86,11 +126,63 @@ export class PiEventAdapter extends BaseEventAdapter {
   private pendingStepStart: number | null = null;
   private pendingFirstToken: number | null = null;
 
-  // Pi 0.84.4 emits `agent_settled` only after retry, compaction and queued
-  // continuations are exhausted. Hold an overflow error until that boundary so
-  // successful SDK recovery stays invisible while failed recovery remains useful.
-  private pendingOverflowError: string | null = null;
+  // Model output limits: a length-limited message_end parks this error and the
+  // partial text stays intermediate. A resumed run's next complete response
+  // clears it; if the SDK settles without resuming, the agent_end drains it as
+  // one actionable error.
   private pendingLengthError: string | null = null;
+
+  // ============================================================
+  // Overflow-recovery state machine
+  // ============================================================
+  //
+  // When a Pi-routed assistant message returns a context_length_exceeded
+  // error, the Pi SDK's `_checkCompaction` fires `_runAutoCompaction("overflow",
+  // true)` and, on success, calls `agent.continue()` to retry. That recovered
+  // turn arrives AFTER the original `agent_end`. If we yield `complete` and
+  // call `eventQueue.complete()` on the original `agent_end` (the historic
+  // behavior), the recovered turn lands in a closed iterator. The state
+  // machine below holds the queue open across the SDK's recovery flow so the
+  // recovered response reaches the UI.
+  private overflowState: 'none' | 'held' | 'awaiting' | 'compacting' | 'recovering' = 'none';
+  private heldOverflowError: string | null = null;
+  private fallbackTimerId: ReturnType<typeof setTimeout> | null = null;
+
+  // ============================================================
+  // Auto-retry state machine
+  // ============================================================
+  //
+  // The Pi SDK retries transient provider/transport errors on its own
+  // (`isRetryableAssistantError`: 429/5xx/overloaded, "fetch failed",
+  // "terminated", "socket hang up", …) with exponential backoff. The event
+  // sequence is: message_end(error) → agent_end { willRetry: true } →
+  // auto_retry_start → [backoff] → agent_start … agent_end. Exactly like
+  // overflow recovery, the retried run arrives AFTER an agent_end, so the
+  // adapter must not complete the queue on that agent_end. It also parks the
+  // classified error instead of surfacing it: the user sees a "retrying"
+  // status and either the recovered answer or, if every attempt fails, one
+  // error at the end.
+  //
+  //   none ──message_end(retryable)──► held
+  //   held ──agent_end{willRetry:false}──► none        (release error, complete)
+  //   held ──agent_end{willRetry:true}───► awaitingRetry (5 s fallback)
+  //   awaitingRetry ──auto_retry_start──► backoff      (delayMs + grace fallback)
+  //   backoff ──agent_start────────────► recovering
+  //   recovering ──agent_end───────────► none          (normal complete)
+  //   awaitingRetry|backoff ──auto_retry_end{success:false}──► none (release, complete)
+  private retryState: 'none' | 'held' | 'awaitingRetry' | 'backoff' | 'recovering' = 'none';
+  private heldRetryError: CraftAgentEvent | null = null;
+  private retryFallbackTimerId: ReturnType<typeof setTimeout> | null = null;
+
+  /** Set when the adapter wants the caller to call `eventQueue.complete()`
+   *  on a non-`agent_end` event (e.g. `compaction_end` failure, cancelled
+   *  auto-retry). Consumed by `shouldCompleteQueue()`. */
+  private pendingQueueComplete: boolean = false;
+  /** Caller-supplied callbacks for the asynchronous fallback timer paths —
+   *  the timers fire outside `adaptEvent()` so we can't yield through the
+   *  generator. */
+  private onFallbackEvent: ((event: CraftAgentEvent) => void) | null = null;
+  private onFallbackComplete: (() => void) | null = null;
 
   constructor() {
     super('pi-event');
@@ -103,17 +195,153 @@ export class PiEventAdapter extends BaseEventAdapter {
     this.contextWindow = cw;
   }
 
-  /** Complete only at Pi's fully-settled boundary, never at a single agent loop. */
-  shouldCompleteQueue(isAgentSettled: boolean): boolean {
-    return isAgentSettled;
+  /**
+   * Register handlers invoked when a recovery fallback timer fires — the SDK
+   * didn't emit a `compaction_start` after a held overflow `agent_end`, or no
+   * `auto_retry_start` / retried `agent_start` followed an
+   * `agent_end { willRetry: true }`. The adapter calls `onEvent` to enqueue the
+   * parked error, then `onComplete` to terminate the iterator.
+   */
+  setRecoveryFallbackHandlers(
+    onEvent: (event: CraftAgentEvent) => void,
+    onComplete: () => void,
+  ): void {
+    this.onFallbackEvent = onEvent;
+    this.onFallbackComplete = onComplete;
   }
 
   /**
-   * Reset overflow-recovery state. Call from session disposal so a stale
-   * fallback timer doesn't fire on a torn-down adapter.
+   * Decide whether the caller should call `eventQueue.complete()` after
+   * processing this SDK event. The historical rule was "always on
+   * `agent_end`"; with overflow recovery and auto-retry we defer completion
+   * until the recovered turn finishes (or recovery fails / times out).
    */
-  resetOverflowState(): void {
-    this.pendingOverflowError = null;
+  shouldCompleteQueue(isAgentEnd: boolean): boolean {
+    if (this.pendingQueueComplete) {
+      this.pendingQueueComplete = false;
+      return true;
+    }
+    return isAgentEnd && this.overflowState === 'none' && this.retryState === 'none';
+  }
+
+  /**
+   * Reset overflow-recovery and auto-retry state. Call from session disposal
+   * and hard aborts so a stale fallback timer doesn't fire on a torn-down
+   * adapter and a held turn can't leak into the next one.
+   */
+  resetRecoveryState(): void {
+    this.cancelOverflowFallbackTimer();
+    this.overflowState = 'none';
+    this.heldOverflowError = null;
+    this.cancelRetryFallbackTimer();
+    this.retryState = 'none';
+    this.heldRetryError = null;
+    this.pendingQueueComplete = false;
+  }
+
+  /** Whether an overflow recovery or auto-retry currently holds the turn open. */
+  get isHoldingTurn(): boolean {
+    return this.overflowState !== 'none' || this.retryState !== 'none';
+  }
+
+  /**
+   * Yield the parked retryable error (if any) and leave the retry state
+   * machine. Used when the SDK will not retry (disabled/exhausted) or when a
+   * retry was cancelled.
+   */
+  private *releaseHeldRetryError(): Generator<CraftAgentEvent> {
+    const held = this.heldRetryError;
+    this.heldRetryError = null;
+    this.retryState = 'none';
+    this.cancelRetryFallbackTimer();
+    yield { type: 'retry', phase: 'end' };
+    if (held) yield held;
+  }
+
+  /**
+   * Arm the auto-retry fallback timer. Fires only if the state is unchanged
+   * when the timeout elapses (a late event may already have moved us on).
+   */
+  private armRetryFallbackTimer(timeoutMs: number, reason: string): void {
+    this.cancelRetryFallbackTimer();
+    const armedState = this.retryState;
+    this.retryFallbackTimerId = setTimeout(() => {
+      this.retryFallbackTimerId = null;
+      if (this.retryState !== armedState) return;
+      this.log.warn(`Auto-retry fallback fired — ${reason}`, { timeoutMs, state: armedState });
+      const held: CraftAgentEvent = this.heldRetryError ?? {
+        type: 'error',
+        message: 'The model request failed and the automatic retry did not start. Please try again.',
+      };
+      this.heldRetryError = null;
+      this.retryState = 'none';
+      this.onFallbackEvent?.({ type: 'retry', phase: 'end' });
+      this.onFallbackEvent?.(held);
+      this.onFallbackComplete?.();
+    }, timeoutMs);
+  }
+
+  private cancelRetryFallbackTimer(): void {
+    if (this.retryFallbackTimerId !== null) {
+      clearTimeout(this.retryFallbackTimerId);
+      this.retryFallbackTimerId = null;
+    }
+  }
+
+  /**
+   * Classify a failed assistant message for the UI.
+   *
+   * Auth/billing/rate-limit/5xx errors go through the shared `parseError` so
+   * SessionManager can run its auth-retry pipeline (refresh token + resend).
+   * Transient errors that parser doesn't know but the SDK retries ("terminated",
+   * "socket hang up", "stream ended before message_stop", …) become typed
+   * connection/service errors so the UI offers Retry instead of a raw string.
+   */
+  private classifyAssistantError(message: AssistantMessage, errorMessage: string): CraftAgentEvent {
+    const parsed = parseError(new Error(errorMessage));
+    if (parsed.code !== 'unknown_error') {
+      return { type: 'typed_error', error: parsed };
+    }
+    if (isRetryableAssistantError(message)) {
+      const code = RETRYABLE_PROVIDER_SIDE_PATTERN.test(errorMessage) ? 'service_error' : 'network_error';
+      return { type: 'typed_error', error: createAgentError(code, errorMessage) };
+    }
+    return { type: 'error', message: errorMessage };
+  }
+
+  /** Short human-readable label for the retry status line. */
+  private retryReasonLabel(sdkErrorMessage: string | undefined): string {
+    const held = this.heldRetryError;
+    if (held?.type === 'typed_error') return held.error.title;
+    const raw = (held?.type === 'error' ? held.message : sdkErrorMessage) ?? '';
+    const oneLine = raw.replace(/\s+/g, ' ').trim();
+    if (!oneLine) return 'Temporary model error';
+    return oneLine.length > 80 ? `${oneLine.slice(0, 77)}...` : oneLine;
+  }
+
+  private armOverflowFallbackTimer(): void {
+    this.cancelOverflowFallbackTimer();
+    this.fallbackTimerId = setTimeout(() => {
+      this.fallbackTimerId = null;
+      // Re-check state at fire time — a late `compaction_start` may have
+      // already transitioned us to `compacting`.
+      if (this.overflowState !== 'awaiting') return;
+      const errorMessage = this.heldOverflowError ?? 'Context overflow';
+      this.heldOverflowError = null;
+      this.overflowState = 'none';
+      this.log.warn('Overflow recovery fallback fired — SDK emitted no compaction events', {
+        timeoutMs: OVERFLOW_FALLBACK_TIMEOUT_MS,
+      });
+      this.onFallbackEvent?.({ type: 'error', message: errorMessage });
+      this.onFallbackComplete?.();
+    }, OVERFLOW_FALLBACK_TIMEOUT_MS);
+  }
+
+  private cancelOverflowFallbackTimer(): void {
+    if (this.fallbackTimerId !== null) {
+      clearTimeout(this.fallbackTimerId);
+      this.fallbackTimerId = null;
+    }
   }
 
   /**
@@ -136,12 +364,15 @@ export class PiEventAdapter extends BaseEventAdapter {
 
   protected onTurnStart(): void {
     this.lastUsage = undefined;
-    this.turnUsage = undefined;
+    this.pendingLengthError = null;
     this.toolNames.clear();
     this.hasStreamedDeltas = false;
     this.hasEmittedFinalText = false;
     this.subTurnCounter = 0;
     this.messageSubTurnId = null;
+    // A new Craft turn can only start once the previous queue completed (or
+    // was force-aborted), so any recovery state left here is stale.
+    this.resetRecoveryState();
     this.log.debug('Turn started', { turnIndex: this.turnIndex });
   }
 
@@ -172,60 +403,88 @@ export class PiEventAdapter extends BaseEventAdapter {
       // ============================================================
 
       case 'agent_start':
-        // Internal — agent run has started
-        break;
-
-      case 'agent_end':
-        // One Pi agent loop ended. Retry, compaction or an extension-queued
-        // continuation may still follow, so this is deliberately non-terminal.
-        break;
-
-      case 'agent_settled':
-        // Pi guarantees this event only after automatic retry, compaction and
-        // queued continuations have drained. This is Craft's terminal boundary.
-        {
-          const settled = event as typeof event & {
-            contextUsage?: { tokens: number | null; contextWindow: number };
-          };
-          const settledContextTokens = settled.contextUsage?.tokens;
-          const settledContextWindow = settled.contextUsage?.contextWindow;
-          if (settledContextTokens !== null && settledContextTokens !== undefined) {
-            yield {
-              type: 'usage_update',
-              usage: {
-                inputTokens: settledContextTokens,
-                contextWindow: settledContextWindow,
-              },
-            };
-          }
-          if (this.pendingOverflowError) {
-            yield { type: 'error', message: this.pendingOverflowError };
-            this.pendingOverflowError = null;
-          }
-          if (this.pendingLengthError) {
-            yield { type: 'error', message: this.pendingLengthError };
-            this.pendingLengthError = null;
-          }
-          if (this.turnUsage) {
-            const usage = this.turnUsage;
-            this.turnUsage = undefined;
-            yield {
-              type: 'complete',
-              usage: {
-                inputTokens: usage.input + usage.cacheRead + usage.cacheWrite,
-                outputTokens: usage.output,
-                contextTokens: settledContextTokens ?? this.lastUsage?.totalTokens,
-                cacheReadTokens: usage.cacheRead,
-                cacheCreationTokens: usage.cacheWrite,
-                costUsd: usage.cost.total,
-                contextWindow: settledContextWindow ?? this.contextWindow,
-              },
-            };
-          } else {
-            yield { type: 'complete' };
-          }
+        // After an auto-retry backoff the SDK re-runs the turn via
+        // agent.continue(); this agent_start is the retried run. Stop waiting
+        // for it and let the run flow through normally.
+        if (this.retryState === 'backoff') {
+          this.cancelRetryFallbackTimer();
+          this.retryState = 'recovering';
+          this.heldRetryError = null;
+          yield { type: 'retry', phase: 'active' };
         }
         break;
+
+      case 'agent_end': {
+        // Overflow recovery: hold the queue open while the SDK runs
+        // _runAutoCompaction("overflow") + agent.continue(). The recovered
+        // turn will arrive as a fresh agent_start … agent_end pair.
+        if (this.overflowState === 'held') {
+          this.overflowState = 'awaiting';
+          this.armOverflowFallbackTimer();
+          break;
+        }
+        if (this.overflowState === 'awaiting' || this.overflowState === 'compacting') {
+          // Defensive: an agent_end while still mid-recovery shouldn't happen
+          // in the SDK's normal flow. Keep the queue open and wait for
+          // compaction_end (success → recovering, error → drain).
+          break;
+        }
+        if (this.overflowState === 'recovering') {
+          // Recovered turn just finished — fall through to normal completion.
+          this.overflowState = 'none';
+        }
+
+        // Auto-retry: AgentSession stamps `willRetry` on agent_end
+        // (`_willRetryAfterAgentEnd`). When true, `_prepareRetry` follows with
+        // auto_retry_start, sleeps the backoff and re-runs the turn, so this
+        // agent_end is NOT the end of the Craft turn.
+        const willRetry = (event as { willRetry?: boolean }).willRetry === true;
+        if (willRetry && this.retryState !== 'awaitingRetry' && this.retryState !== 'backoff') {
+          this.retryState = 'awaitingRetry';
+          this.armRetryFallbackTimer(
+            RETRY_START_FALLBACK_TIMEOUT_MS,
+            'no auto_retry_start followed agent_end { willRetry: true }',
+          );
+          break;
+        }
+        if (this.retryState === 'awaitingRetry' || this.retryState === 'backoff') {
+          // Defensive: no agent run is active in these states, so an agent_end
+          // is unexpected. Keep the queue open; the fallback timer drains it.
+          break;
+        }
+        if (this.retryState === 'held') {
+          // Retries disabled or exhausted: surface the parked error, then
+          // complete the turn normally below.
+          yield* this.releaseHeldRetryError();
+        } else if (this.retryState === 'recovering') {
+          // The retried run finished cleanly.
+          this.retryState = 'none';
+        }
+        // Custom output limit: a length-limited stop was not resumed by the
+        // SDK (no later complete message_end cleared this), so surface the
+        // held error once before completing the turn.
+        if (this.pendingLengthError) {
+          yield { type: 'error', message: this.pendingLengthError };
+          this.pendingLengthError = null;
+        }
+        if (this.lastUsage) {
+          const inputTokens = this.lastUsage.input + (this.lastUsage.cacheRead || 0);
+          yield {
+            type: 'complete',
+            usage: {
+              inputTokens,
+              outputTokens: this.lastUsage.output,
+              cacheReadTokens: this.lastUsage.cacheRead,
+              cacheCreationTokens: this.lastUsage.cacheWrite,
+              costUsd: this.lastUsage.cost.total,
+              contextWindow: this.contextWindow,
+            },
+          };
+        } else {
+          yield { type: 'complete' };
+        }
+        break;
+      }
 
       // ============================================================
       // Turn events
@@ -242,7 +501,8 @@ export class PiEventAdapter extends BaseEventAdapter {
         this.currentTurnId = null;
         this.hasStreamedDeltas = false;
         this.hasEmittedFinalText = false;
-        this.subTurnCounter = 0;
+        // Keep sub-turn IDs unique across SDK turns/retries within this Craft
+        // turn. startTurn() is the only place the counter resets.
         this.messageSubTurnId = null;
         break;
 
@@ -285,7 +545,7 @@ export class PiEventAdapter extends BaseEventAdapter {
       case 'message_end': {
         // Pi SDK emits message_end for ALL messages (user, assistant, toolResult).
         // Only process assistant messages — skip user prompts and tool results.
-        const msg = event.message as { role?: string; stopReason?: string; errorMessage?: string; usage?: { input: number; output: number; cacheRead: number; cacheWrite: number; totalTokens: number; cost: { total: number } }; id?: string } | undefined;
+        const msg = event.message as { role?: string; stopReason?: string; errorMessage?: string; usage?: { input: number; output: number; cacheRead: number; cacheWrite: number; totalTokens: number; cost: { total: number } }; id?: string; responseId?: string } | undefined;
         // SDK message id, set by pi-agent-server when forwarding the event.
         // SessionManager uses this to correlate the follow-up `pi_turn_anchor`
         // event to the Craft assistant message created here (#782).
@@ -293,38 +553,57 @@ export class PiEventAdapter extends BaseEventAdapter {
         // provider `responseId` (pi-agent-server forwards the same fallback).
         const sdkMessageId = (event as { sdkMessageId?: string }).sdkMessageId
           ?? msg?.id
-          ?? (msg as { responseId?: string }).responseId;
+          ?? msg?.responseId;
         if (msg?.role !== 'assistant') break;
 
         const messageUsage = msg.usage && typeof msg.usage.input === 'number'
           ? sumTokenUsage([msg.usage as PiUsage])
           : undefined;
-        if (messageUsage) {
-          this.lastUsage = messageUsage;
-          this.turnUsage = sumTokenUsage(this.turnUsage
-            ? [this.turnUsage, this.lastUsage]
-            : [this.lastUsage]);
-        }
+        // Keep provider-reported usage (including failed attempts) as the
+        // terminal complete payload; the ledger consumes per-message
+        // usage_update events for cumulative accounting.
+        if (messageUsage) this.lastUsage = messageUsage;
 
         // Surface API errors — Pi SDK sets stopReason: 'error' and errorMessage on failures
         if (msg.stopReason === 'error' && msg.errorMessage) {
+          // Failed streams never become text_complete. Explicitly discard the
+          // partial before the SDK can retry (or terminate), including any
+          // pending server-side delta batch. Completed messages are untouched.
+          if (this.messageSubTurnId) {
+            yield { type: 'text_discard', turnId: this.messageSubTurnId };
+            this.messageSubTurnId = null;
+            this.hasStreamedDeltas = false;
+          }
           // Context overflow: hand recovery to the SDK's _runAutoCompaction
           // and keep the UI quiet until we know the outcome (recovered turn
           // arrives, or compaction fails). Suppress the raw provider error.
-          if (isContextOverflow(event.message as AssistantMessage, this.contextWindow)) {
-            this.pendingOverflowError = msg.errorMessage;
+          if (
+            this.overflowState === 'none' &&
+            isContextOverflow(event.message as AssistantMessage, this.contextWindow)
+          ) {
+            this.overflowState = 'held';
+            this.heldOverflowError = msg.errorMessage;
             break;
           }
 
-          // Classify the error — auth/billing errors should be typed so SessionManager
-          // can trigger its auth-retry pipeline (refresh token + resend).
-          const parsed = parseError(new Error(msg.errorMessage));
-          const isClassified = parsed.code !== 'unknown_error';
-          if (isClassified) {
-            yield { type: 'typed_error', error: parsed };
-          } else {
-            yield { type: 'error', message: msg.errorMessage };
+          const errorEvent = this.classifyAssistantError(event.message as AssistantMessage, msg.errorMessage);
+
+          // Transient provider/transport errors: the SDK's retry loop uses the
+          // same `isRetryableAssistantError` classifier, so it will retry
+          // unless retries are disabled or exhausted — and the following
+          // agent_end { willRetry } tells us which. Park the error instead of
+          // showing it now; agent_end either releases it or holds the queue
+          // open for the retried run.
+          if (
+            (this.retryState === 'none' || this.retryState === 'recovering') &&
+            isRetryableAssistantError(event.message as AssistantMessage)
+          ) {
+            this.retryState = 'held';
+            this.heldRetryError = errorEvent;
+            break;
           }
+
+          yield errorEvent;
           break;
         }
 
@@ -332,8 +611,7 @@ export class PiEventAdapter extends BaseEventAdapter {
         if (isLengthLimited) {
           this.pendingLengthError = 'Model output reached its token limit before the turn completed. The partial response was preserved; continue the task to resume.';
         } else {
-          // A later complete assistant response means any held provider limit was recovered.
-          this.pendingOverflowError = null;
+          // A later complete assistant response means any held output limit was recovered.
           this.pendingLengthError = null;
         }
 
@@ -385,7 +663,7 @@ export class PiEventAdapter extends BaseEventAdapter {
             usage,
             requestSeq: this.requestSeq,
             promptSnapshot: (event as { promptSnapshot?: unknown }).promptSnapshot as string | undefined,
-            contextSnapshot: (event as { contextSnapshot?: unknown }).contextSnapshot as import('@craft-agent/core/types').RequestContextSnapshot | undefined,
+            contextSnapshot: (event as { contextSnapshot?: unknown }).contextSnapshot as RequestContextSnapshot | undefined,
             assistantMetrics,
             outputBlocks: this.extractSourceBlocks(event.message),
             ...this.durableAttachments(event),
@@ -394,8 +672,9 @@ export class PiEventAdapter extends BaseEventAdapter {
         }
 
         // Emit usage_update if the assistant message includes token usage
-        if (msg.usage && typeof msg.usage.input === 'number') {
-          const inputTokens = this.lastUsage!.totalTokens;
+        // Emit usage_update if the assistant message includes token usage
+        if (messageUsage) {
+          const inputTokens = messageUsage.totalTokens;
           yield {
             type: 'usage_update',
             usage: {
@@ -578,6 +857,13 @@ export class PiEventAdapter extends BaseEventAdapter {
       // ============================================================
 
       case 'compaction_start': {
+        // Cancel the overflow fallback timer — the SDK is now actively
+        // recovering, so we no longer need the "no compaction event arrived"
+        // safety net. State transitions: held|awaiting → compacting.
+        if (this.overflowState === 'held' || this.overflowState === 'awaiting') {
+          this.cancelOverflowFallbackTimer();
+          this.overflowState = 'compacting';
+        }
         const startEvent = event as Extract<AgentSessionEvent, { type: 'compaction_start' }>;
         // Structured event for the trajectory view (Between turns section).
         yield { type: 'compaction_start', reason: startEvent.reason };
@@ -598,35 +884,110 @@ export class PiEventAdapter extends BaseEventAdapter {
           errorMessage: compactionEvent.errorMessage,
         };
         if (compactionEvent.result && !compactionEvent.aborted) {
-          this.pendingOverflowError = null;
+          // Success: stay open and wait for the recovered agent_end. State
+          // transitions: compacting → recovering. Threshold-only compactions
+          // (state was 'none') just emit the info and continue normally.
+          if (this.overflowState === 'compacting') {
+            this.overflowState = 'recovering';
+            this.heldOverflowError = null;
+          }
           // Use "Compacted" keyword so session handler detects statusType: 'compaction_complete'
           yield { type: 'info', message: 'Compacted context to fit within limits' };
         } else if (compactionEvent.errorMessage) {
-          yield {
-            type: 'error',
-            message: `Context compaction failed: ${compactionEvent.errorMessage}`,
-          };
-          // Avoid repeating the provider overflow at agent_settled: the
-          // compaction failure above is the actionable terminal error.
-          this.pendingOverflowError = null;
+          // Defensive handler for the Pi SDK auto-compaction race (cause A
+          // in plans/fix-pi-gpt-compaction.md). The raw stack
+          // `undefined is not an object (evaluating 'this._autoCompactionAbortController.signal')`
+          // is unhelpful to the user; convert it to a friendly retry hint and
+          // log for diagnostics. Remove once the upstream fix ships.
+          if (SDK_AUTOCOMPACT_RACE_SIGNATURE.test(compactionEvent.errorMessage)) {
+            this.log.warn('Pi SDK auto-compaction race; recommend manual /compact', {
+              errorMessage: compactionEvent.errorMessage,
+            });
+            yield {
+              type: 'error',
+              message: 'Auto-compaction hit a transient error. Try /compact manually.',
+            };
+          } else {
+            yield {
+              type: 'error',
+              message: `Context compaction failed: ${compactionEvent.errorMessage}`,
+            };
+          }
+          // If we were holding the queue open for overflow recovery, finalize
+          // the turn now — no recovered agent_end will arrive on the failure
+          // path. pendingQueueComplete signals the caller to terminate the
+          // iterator since this is a non-agent_end event.
+          if (
+            this.overflowState === 'compacting' ||
+            this.overflowState === 'awaiting' ||
+            this.overflowState === 'held'
+          ) {
+            yield { type: 'complete' };
+            this.pendingQueueComplete = true;
+            this.overflowState = 'none';
+            this.heldOverflowError = null;
+            this.cancelOverflowFallbackTimer();
+          }
         }
         break;
       }
 
       case 'auto_retry_start': {
         const retryEvent = event as Extract<AgentSessionEvent, { type: 'auto_retry_start' }>;
+        // The SDK is about to sleep `delayMs` and re-run the turn. Keep the
+        // queue open until the retried run's agent_start arrives (plus grace).
+        const delayMs = typeof retryEvent.delayMs === 'number' ? retryEvent.delayMs : 0;
+        this.cancelRetryFallbackTimer();
+        this.retryState = 'backoff';
+        this.armRetryFallbackTimer(delayMs + RETRY_RUN_GRACE_MS, 'retried run did not start after the announced backoff');
+        const attempt = `attempt ${retryEvent.attempt}/${retryEvent.maxAttempts}`;
+        const wait = delayMs > 0 ? ` in ${Math.max(1, Math.round(delayMs / 1000))}s` : '';
         yield {
-          type: 'status',
-          message: `Retrying (attempt ${retryEvent.attempt}/${retryEvent.maxAttempts})...`,
+          type: 'retry',
+          phase: 'backoff',
+          message: `${this.retryReasonLabel(retryEvent.errorMessage)}. Retrying${wait} (${attempt})...`,
         };
         break;
       }
 
       case 'auto_retry_end': {
         const retryEndEvent = event as Extract<AgentSessionEvent, { type: 'auto_retry_end' }>;
-        if (!retryEndEvent.success && retryEndEvent.finalError) {
-          yield { type: 'error', message: `Retry failed: ${retryEndEvent.finalError}` };
+        if (retryEndEvent.success) {
+          // Emitted on the first successful assistant message after one or
+          // more retries, before that run's agent_end. Nothing is held here.
+          yield { type: 'retry', phase: 'end' };
+          const n = retryEndEvent.attempt;
+          if (n > 0) {
+            yield { type: 'info', message: `Recovered after ${n} ${n === 1 ? 'retry' : 'retries'}` };
+          }
+          break;
         }
+        if (
+          this.retryState === 'held' ||
+          this.retryState === 'awaitingRetry' ||
+          this.retryState === 'backoff'
+        ) {
+          // The retry was cancelled (abort during backoff) or never ran while
+          // we were still holding the turn open. No agent_end follows on this
+          // path, so surface the parked error and finalize the turn here.
+          this.cancelRetryFallbackTimer();
+          if (this.heldRetryError) {
+            yield* this.releaseHeldRetryError();
+          } else {
+            this.retryState = 'none';
+            yield { type: 'retry', phase: 'end' };
+            if (retryEndEvent.finalError) {
+              yield { type: 'error', message: `Retry failed: ${retryEndEvent.finalError}` };
+            }
+          }
+          yield { type: 'complete' };
+          this.pendingQueueComplete = true;
+          break;
+        }
+        // Exhaustion ordering: the final agent_end { willRetry: false } already
+        // released the parked error and completed the turn; this trailing
+        // event describes the same failure. Stay quiet so the user gets one
+        // error, not two.
         break;
       }
 
@@ -634,6 +995,19 @@ export class PiEventAdapter extends BaseEventAdapter {
         // Queue contents are currently reflected by existing session/message state.
         // Ignore the event explicitly so newer Pi SDK sessions don't log noisy
         // "Unknown Pi event" warnings until we add a dedicated UI consumer.
+        break;
+
+      case 'agent_settled':
+      case 'entry_appended':
+      case 'session_info_changed':
+      case 'thinking_level_changed':
+      case 'bash_execution_update':
+      case 'summarization_retry_scheduled':
+      case 'summarization_retry_attempt_start':
+      case 'summarization_retry_finished':
+        // Session bookkeeping and compaction/branch-summary retry telemetry
+        // (Pi SDK 0.84+/0.85). Compaction progress already surfaces through
+        // compaction_start/compaction_end; nothing to show for these.
         break;
 
       default:
@@ -680,6 +1054,56 @@ export class PiEventAdapter extends BaseEventAdapter {
   }
 
   /**
+   * Extract structured content blocks (text / image / tool-call) from a Pi
+   * AgentMessage content array, preserving model order for the trajectory
+   * details panel. Mirrors the VanDSH TrajectorySourceBlock shape.
+   */
+  private extractSourceBlocks(message: unknown): TrajectorySourceBlock[] | undefined {
+    if (!message || typeof message !== 'object') return undefined;
+    const msg = message as { content?: string | Array<Record<string, unknown>> };
+    if (!Array.isArray(msg.content) || msg.content.length === 0) return undefined;
+
+    const blocks: TrajectorySourceBlock[] = [];
+    for (const block of msg.content) {
+      const type = typeof block.type === 'string' ? block.type : 'other';
+      if (type === 'text') {
+        if (typeof block.text === 'string' && block.text.length > 0) {
+          blocks.push({ type: 'text', content: block.text });
+        }
+      } else if (type === 'image') {
+        const source = block.source as { type?: string; data?: string; url?: string; mediaType?: string } | undefined;
+        blocks.push({
+          type: 'image',
+          imageSrc: typeof source?.data === 'string'
+            ? `data:${source.mediaType ?? 'image/png'};base64,${source.data}`
+            : typeof source?.url === 'string' ? source.url : undefined,
+          imageAlt: typeof block.alt === 'string' ? block.alt : undefined,
+        });
+      } else if (type === 'tool_use') {
+        blocks.push({
+          type: 'tool-call',
+          callId: typeof block.id === 'string' ? block.id : undefined,
+          toolName: typeof block.name === 'string' ? block.name : undefined,
+        });
+      } else if (type === 'tool_result') {
+        const content = block.content;
+        const text = Array.isArray(content)
+          ? content
+            .filter((c): c is Record<string, unknown> => typeof c === 'object' && c !== null && typeof c.text === 'string')
+            .map((c) => c.text as string)
+            .join('')
+          : undefined;
+        blocks.push({
+          type: 'tool-result',
+          content: text,
+          callId: typeof block.tool_use_id === 'string' ? block.tool_use_id : undefined,
+        });
+      }
+    }
+    return blocks.length > 0 ? blocks : undefined;
+  }
+
+  /**
    * Extract canonical tool metadata from enriched tool_execution_start events.
    * This is the interceptor-authoritative path emitted by pi-agent-server.
    */
@@ -717,9 +1141,11 @@ export class PiEventAdapter extends BaseEventAdapter {
   }
 
   /**
-   * Normalize Pi SDK tool input field names to Craft's canonical UI schema.
-   * Pi uses camelCase (oldText, newText, path), while the persisted Craft
-   * protocol keeps snake_case fields for backward-compatible rendering.
+   * Normalize Pi SDK tool input field names to Claude Code format.
+   * Pi uses camelCase (oldText, newText, path) while Claude Code uses
+   * snake_case (old_string, new_string, file_path). The UI pipeline expects
+   * Claude Code format for diff computation, overlay rendering, and
+   * document type detection.
    */
   private normalizeToolInput(
     toolName: string,
@@ -812,56 +1238,6 @@ export class PiEventAdapter extends BaseEventAdapter {
     }
 
     return null;
-  }
-
-  /**
-   * Extract structured content blocks (text / image / tool-call) from a Pi
-   * AgentMessage content array, preserving model order for the trajectory
-   * details panel. Mirrors the VanDSH TrajectorySourceBlock shape.
-   */
-  private extractSourceBlocks(message: unknown): TrajectorySourceBlock[] | undefined {
-    if (!message || typeof message !== 'object') return undefined;
-    const msg = message as { content?: string | Array<Record<string, unknown>> };
-    if (!Array.isArray(msg.content) || msg.content.length === 0) return undefined;
-
-    const blocks: TrajectorySourceBlock[] = [];
-    for (const block of msg.content) {
-      const type = typeof block.type === 'string' ? block.type : 'other';
-      if (type === 'text') {
-        if (typeof block.text === 'string' && block.text.length > 0) {
-          blocks.push({ type: 'text', content: block.text });
-        }
-      } else if (type === 'image') {
-        const source = block.source as { type?: string; data?: string; url?: string; mediaType?: string } | undefined;
-        blocks.push({
-          type: 'image',
-          imageSrc: typeof source?.data === 'string'
-            ? `data:${source.mediaType ?? 'image/png'};base64,${source.data}`
-            : typeof source?.url === 'string' ? source.url : undefined,
-          imageAlt: typeof block.alt === 'string' ? block.alt : undefined,
-        });
-      } else if (type === 'tool_use') {
-        blocks.push({
-          type: 'tool-call',
-          callId: typeof block.id === 'string' ? block.id : undefined,
-          toolName: typeof block.name === 'string' ? block.name : undefined,
-        });
-      } else if (type === 'tool_result') {
-        const content = block.content;
-        const text = Array.isArray(content)
-          ? content
-            .filter((c): c is Record<string, unknown> => typeof c === 'object' && c !== null && typeof c.text === 'string')
-            .map((c) => c.text as string)
-            .join('')
-          : undefined;
-        blocks.push({
-          type: 'tool-result',
-          content: text,
-          callId: typeof block.tool_use_id === 'string' ? block.tool_use_id : undefined,
-        });
-      }
-    }
-    return blocks.length > 0 ? blocks : undefined;
   }
 
   /**
