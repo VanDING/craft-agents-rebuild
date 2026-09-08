@@ -2830,7 +2830,7 @@ function AppShellContent({
               </div>
 
               {/* Personal identity and settings, pinned to the sidebar footer. */}
-              <div className="shrink-0 border-t border-border/50 px-2 py-2">
+              <div className="shrink-0 px-2 pt-2">
                 <SidebarProfile
                   open={profileCardOpen}
                   onOpenChange={setProfileCardOpen}

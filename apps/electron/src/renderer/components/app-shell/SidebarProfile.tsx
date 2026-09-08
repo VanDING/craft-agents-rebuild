@@ -56,16 +56,19 @@ export function SidebarProfile({ open, onOpenChange, onOpenProfile, onOpenSettin
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverAnchor asChild>
-        <div className="flex min-w-0 items-center gap-1">
+        <div
+          data-state={open ? 'open' : 'closed'}
+          className="flex min-w-0 items-center gap-1 rounded-md pr-1 transition-colors hover:bg-sidebar-hover focus-within:bg-sidebar-hover data-[state=open]:bg-sidebar-hover"
+        >
           <PopoverTrigger asChild>
             <button
               {...profileButtonProps}
               type="button"
               title={displayName}
-              className="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-2 py-1.5 text-left outline-none transition-colors hover:bg-sidebar-hover data-[state=open]:bg-sidebar-hover focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
+              className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-[5px] text-left text-[13px] font-normal outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
             >
-              {avatar('h-7 w-7 shrink-0 rounded-full text-[10px]')}
-              <span className="truncate text-[13px] font-medium">{displayName}</span>
+              {avatar('h-3.5 w-3.5 shrink-0 rounded-full text-[7px]')}
+              <span className="truncate">{displayName}</span>
             </button>
           </PopoverTrigger>
           <PopoverContent
@@ -75,26 +78,36 @@ export function SidebarProfile({ open, onOpenChange, onOpenProfile, onOpenSettin
             collisionPadding={8}
             aria-label={t('settings.preferences.title')}
             onKeyDown={(event) => event.stopPropagation()}
-            className="isolate w-[var(--radix-popover-trigger-width)] max-w-[calc(100vw-16px)] overflow-hidden rounded-2xl p-0 ring-1 ring-foreground/5"
+            className="isolate w-[var(--radix-popover-trigger-width)] max-w-[calc(100vw-16px)] max-h-[var(--radix-popover-content-available-height)] overflow-x-hidden overflow-y-auto rounded-2xl bg-popover p-0 ring-1 ring-foreground/5"
           >
-            <div aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-36 bg-gradient-to-br from-accent/15 via-accent/5 to-transparent" />
-            <div className="p-5">
-              <div className="mb-5 inline-flex rounded-full bg-background/80 p-1 shadow-minimal ring-1 ring-foreground/5">
-                {avatar('h-16 w-16 rounded-full text-xl')}
-              </div>
+            <div
+              aria-hidden="true"
+              className="pointer-events-none aspect-[4/5] w-full overflow-hidden"
+              style={{ maskImage: 'linear-gradient(to bottom, black 45%, rgba(0,0,0,0.95) 55%, rgba(0,0,0,0.65) 70%, rgba(0,0,0,0.2) 87%, transparent 100%)' }}
+            >
+              <CrossfadeAvatar
+                src={profile.avatarDataUrl || undefined}
+                alt=""
+                fallback={name ? getInitials(name) : <UserRound className="h-16 w-16" strokeWidth={1} />}
+                className="h-full w-full rounded-none text-5xl"
+                fallbackClassName="rounded-none bg-accent/10 text-accent/50 font-medium"
+                imageClassName="object-cover object-center"
+              />
+            </div>
+            <div className="px-5 pb-4 pt-0">
               <h2 className="break-words text-xl font-semibold leading-tight tracking-tight">{displayName}</h2>
               {(location || profile.timezone) && (
-                <div className="mt-4 space-y-2 text-xs leading-relaxed text-muted-foreground">
+                <div className="mt-3 space-y-2 text-xs leading-relaxed text-muted-foreground">
                   {location && <p className="flex items-start gap-2"><MapPin aria-hidden="true" className="mt-0.5 h-3.5 w-3.5 shrink-0 opacity-60" /><span className="break-words">{location}</span></p>}
                   {profile.timezone && <p className="flex items-start gap-2"><Clock3 aria-hidden="true" className="mt-0.5 h-3.5 w-3.5 shrink-0 opacity-60" /><span className="break-words">{profile.timezone}</span></p>}
                 </div>
               )}
             </div>
-            <div className="border-t border-foreground/5 p-2">
+            <div className="px-2 pb-2">
               <button
                 type="button"
                 onClick={() => { onOpenChange(false); onOpenProfile() }}
-                className="flex w-full items-center justify-between rounded-lg px-4 py-2.5 text-xs font-medium text-muted-foreground outline-none transition-colors hover:bg-foreground/5 hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring"
+                className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-xs font-medium text-muted-foreground outline-none transition-colors hover:bg-foreground/5 hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring"
               >
                 {t('sidebar.profile.view')}
                 <ArrowUpRight aria-hidden="true" className="h-3.5 w-3.5" />
@@ -108,9 +121,9 @@ export function SidebarProfile({ open, onOpenChange, onOpenProfile, onOpenSettin
                 type="button"
                 aria-label={t('sidebar.settings')}
                 onClick={() => { onOpenChange(false); onOpenSettings() }}
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground outline-none transition-colors hover:bg-sidebar-hover hover:text-foreground focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-foreground/5 hover:text-foreground focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring"
               >
-                <Settings aria-hidden="true" className="h-4 w-4" strokeWidth={1.5} />
+                <Settings aria-hidden="true" className="h-3.5 w-3.5" strokeWidth={1.5} />
               </button>
             </TooltipTrigger>
             <TooltipContent side="top">{t('sidebar.settings')}</TooltipContent>
