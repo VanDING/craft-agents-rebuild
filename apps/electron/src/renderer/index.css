@@ -31,37 +31,37 @@
 @property --background {
   syntax: "<color>";
   inherits: true;
-  initial-value: oklch(0.98 0.003 265);
+  initial-value: #F6F7F8;
 }
 
 @property --foreground {
   syntax: "<color>";
   inherits: true;
-  initial-value: oklch(0.185 0.01 270);
+  initial-value: #2A2B30;
 }
 
 @property --accent {
   syntax: "<color>";
   inherits: true;
-  initial-value: oklch(0.62 0.13 293);
+  initial-value: #6B568B;
 }
 
 @property --info {
   syntax: "<color>";
   inherits: true;
-  initial-value: oklch(0.75 0.16 70);
+  initial-value: #8C5F20;
 }
 
 @property --success {
   syntax: "<color>";
   inherits: true;
-  initial-value: oklch(0.55 0.17 145);
+  initial-value: #2D7555;
 }
 
 @property --destructive {
   syntax: "<color>";
   inherits: true;
-  initial-value: oklch(0.58 0.24 28);
+  initial-value: #AD484A;
 }
 
 /* =============================================================================
@@ -85,28 +85,23 @@
 /* Light Mode */
 :root {
   /* === 6 BASE COLORS === */
-  --background: oklch(0.98 0.003 265);
-  --background-elevated: color-mix(in srgb, var(--foreground) 1.5%, var(--background));
-  --foreground: oklch(0.185 0.01 270);
-  --foreground-dimmed: color-mix(in srgb, var(--foreground) 80%, var(--background)); /* unfocused panel text */
-  --user-message-bubble: oklch(from var(--foreground) l c h / 0.05);
+  --background: #F6F7F8;
+  --background-elevated: #FAFBFC;
+  --foreground: #2A2B30;
+  --foreground-dimmed: #51535A; /* unfocused panel text */
+  --user-message-bubble: #ECEBF2;
   --user-message-bubble-dimmed: oklch(from var(--foreground) l c h / 0.03);
-  --accent: oklch(0.62 0.13 293);           /* purple - brand, Auto mode */
-  --info: oklch(0.75 0.16 70);              /* amber - warnings, Ask mode */
-  --success: oklch(0.55 0.17 145);          /* green - connected, checkmarks */
-  --destructive: oklch(0.58 0.24 28);       /* red - errors, failed */
+  --accent: #6B568B;           /* purple - brand, Auto mode */
+  --info: #8C5F20;              /* amber - warnings, Ask mode */
+  --success: #2D7555;          /* green - connected, checkmarks */
+  --destructive: #AD484A;       /* red - errors, failed */
 
   /* === SHADOW OPACITY (light mode = subtle, dark mode = stronger) === */
   --shadow-border-opacity: 0.08;            /* Border ring opacity */
   --shadow-blur-opacity: 0.06;              /* Blur/spread shadow opacity */
 
   /* === SHADOW VALUES (reusable across utility classes and component overrides) === */
-  --shadow-minimal:
-    rgba(0, 0, 0, 0) 0px 0px 0px 0px,
-    rgba(0, 0, 0, 0) 0px 0px 0px 0px,
-    color-mix(in srgb, var(--foreground) 6%, transparent) 0px 0px 0px 1px,
-    rgba(0, 0, 0, var(--shadow-blur-opacity)) 0px 1px 1px -0.5px,
-    rgba(0, 0, 0, var(--shadow-blur-opacity)) 0px 3px 3px -1.5px;
+  --shadow-minimal: 0 0 0 var(--theme-border-width) var(--border), 0 1px 2px color-mix(in srgb, var(--theme-shadow-color) 2%, transparent), 0 3px 6px color-mix(in srgb, var(--theme-shadow-color) 2%, transparent);
 
   /* Minimal shadow without blur layers — just the border ring */
   --shadow-minimal-flat:
@@ -114,15 +109,7 @@
     rgba(0, 0, 0, 0) 0px 0px 0px 0px,
     color-mix(in srgb, var(--foreground) 6%, transparent) 0px 0px 0px 1px;
 
-  --shadow-modal-small:
-    rgba(0, 0, 0, 0) 0px 0px 0px 0px,
-    rgba(0, 0, 0, 0) 0px 0px 0px 0px,
-    color-mix(in srgb, var(--foreground) 6%, transparent) 0px 0px 0px 1px,
-    rgba(0, 0, 0, calc(var(--shadow-blur-opacity) * 0.67)) 0px 1px 1px -0.5px,
-    rgba(0, 0, 0, calc(var(--shadow-blur-opacity) * 0.67)) 0px 3px 3px 0px,
-    rgba(0, 0, 0, calc(var(--shadow-blur-opacity) * 0.33)) 0px 6px 6px 0px,
-    rgba(0, 0, 0, calc(var(--shadow-blur-opacity) * 0.33)) 0px 12px 12px 0px,
-    rgba(0, 0, 0, calc(var(--shadow-blur-opacity) * 0.33)) 0px 24px 24px 0px;
+  --shadow-modal-small: 0 0 0 var(--theme-border-width) var(--border), 0 18px 48px color-mix(in srgb, var(--theme-shadow-color) 5%, transparent);
 
   /* Drag-lift elevation — a card genuinely peeled off the surface. Shared by the
      Planner's in-place sortable (`--sortable-shadow-active`) and the Kanban's
@@ -160,21 +147,21 @@
   --destructive-text: color-mix(in oklab, var(--destructive) 50%, var(--foreground));
   --info-text: color-mix(in oklab, var(--info) 50%, var(--foreground));
 
-  /* === SHADCN COMPATIBILITY (derived from 6 base colors) === */
+  /* === SHADCN COMPATIBILITY (Default semantic palette) === */
   /* These variables exist for shadcn/ui component updates */
-  --secondary: oklch(from var(--foreground) l c h / 0.05);
-  --secondary-foreground: var(--foreground);
-  --muted: oklch(from var(--foreground) l c h / 0.05);
-  --muted-foreground: var(--foreground-70);
-  --card: var(--background);
-  --card-foreground: var(--foreground);
-  --paper: var(--background);
+  --secondary: #ECEEF0;
+  --secondary-foreground: #383A40;
+  --muted: #ECEDEF;
+  --muted-foreground: #65676D;
+  --card: #FAFBFC;
+  --card-foreground: #2A2B30;
+  --paper: #FAFBFC;
   --navigator: var(--background);
-  --popover: var(--background);
-  --popover-foreground: var(--foreground);
-  --border: oklch(from var(--foreground) l c h / 0.05);
-  --input: oklch(from var(--foreground) l c h / 0.1);
-  --ring: oklch(from var(--foreground) l c h / 0.25);
+  --popover: #FCFCFD;
+  --popover-foreground: #2A2B30;
+  --border: #DEDFE2;
+  --input: #F9FAFB;
+  --ring: #6B568B;
   --ring-width: 1px;
   --ring-offset: 0px;
 
@@ -192,8 +179,8 @@
   --step-content-gap: 1.5rem;
   --step-actions-margin: 2rem;
 
-  /* Fonts - System fonts as default, Inter via data-font="inter" */
-  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  /* Theme typography; explicit Inter/System preferences override below. */
+  --font-sans: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
   --font-serif: "JetBrains Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
   --font-default: var(--font-sans);
@@ -201,13 +188,13 @@
   /* Layout */
   --font-size-base: 15px;
   --line-height-base: 1.5;
-  --theme-radius: 0.5rem;
+  --theme-radius: 8px;
   --radius: var(--theme-radius);
   --theme-border-width: 1px;
   --theme-border-style: solid;
   --theme-depth: elevated;
-  --theme-shadow-color: black;
-  --theme-shadow-strength: 0.1;
+  --theme-shadow-color: #26232D;
+  --theme-shadow-strength: 0.045;
   --theme-backdrop-blur: 0px;
   --theme-density: comfortable;
   --theme-density-scale: 1;
@@ -215,10 +202,10 @@
   --theme-menu-item-padding-y: 0.375rem;
   --theme-settings-row-padding-y: 0.875rem;
   --theme-activity-row-padding-y: 0.125rem;
-  --icon-stroke-width: 2;
+  --icon-stroke-width: 1.75;
   --icon-stroke-linecap: round;
   --spacing: 0.25rem;
-  --tracking-normal: 0em;
+  --tracking-normal: -0.006em;
 
   /* === Z-INDEX SCALE ===
      Centralized z-index registry for consistent stacking order.
@@ -260,21 +247,26 @@
   --z-island-popover: 410;
   --z-splash: 600;
 
+  --popover-solid: #FCFCFD;
+  --theme-panel-radius: 8px;
+  --shadow-middle: 0 0 0 var(--theme-border-width) var(--border), 0 4px 12px color-mix(in srgb, var(--theme-shadow-color) 5%, transparent);
+  --shadow-strong: 0 0 0 var(--theme-border-width) var(--border), 0 12px 32px color-mix(in srgb, var(--theme-shadow-color) 5%, transparent);
+  --theme-mode: solid;
 }
 
 /* Dark Mode */
 .dark {
   /* === 6 BASE COLORS (must match DEFAULT_THEME.dark in theme.ts) === */
-  --background: oklch(0.145 0.015 270);
-  --background-elevated: color-mix(in srgb, var(--foreground) 1.5%, var(--background));
-  --foreground: oklch(0.95 0.01 270);
-  --foreground-dimmed: color-mix(in srgb, var(--foreground) 80%, var(--background)); /* unfocused panel text */
-  --user-message-bubble: oklch(from var(--foreground) l c h / 0.05);
+  --background: #080A10;
+  --background-elevated: #11131B;
+  --foreground: #DFE1E7;
+  --foreground-dimmed: #AFB3BF; /* unfocused panel text */
+  --user-message-bubble: #171823;
   --user-message-bubble-dimmed: oklch(from var(--foreground) l c h / 0.03);
-  --accent: oklch(0.65 0.22 293);            /* brighter purple in dark */
-  --info: oklch(0.78 0.14 70);               /* amber */
-  --success: oklch(0.60 0.17 145);           /* green */
-  --destructive: oklch(0.65 0.22 28);        /* brighter red in dark */
+  --accent: #9C86BD;            /* brighter purple in dark */
+  --info: #CCA66C;               /* amber */
+  --success: #81B899;           /* green */
+  --destructive: #D68B8D;        /* brighter red in dark */
 
   /* === SHADOW OPACITY (stronger in dark mode for visibility) === */
   --shadow-border-opacity: 0.15;
@@ -302,24 +294,31 @@
   --destructive-text: color-mix(in oklab, var(--destructive) 50%, var(--foreground));
   --info-text: color-mix(in oklab, var(--info) 50%, var(--foreground));
 
-  /* === SHADCN COMPATIBILITY (derived from 6 base colors) === */
-  --secondary: oklch(from var(--foreground) l c h / 0.05);
-  --secondary-foreground: var(--foreground);
-  --muted: oklch(from var(--foreground) l c h / 0.05);
-  --muted-foreground: var(--foreground-70);
-  --card: var(--background);
-  --card-foreground: var(--foreground);
-  --paper: var(--background);
+  /* === SHADCN COMPATIBILITY (Default semantic palette) === */
+  --secondary: #1C1E28;
+  --secondary-foreground: #CDD0D9;
+  --muted: #14161F;
+  --muted-foreground: #9298A7;
+  --card: #0D0F16;
+  --card-foreground: #DFE1E7;
+  --paper: #0D0F16;
   --navigator: var(--background);
-  --popover: var(--background);
-  --popover-foreground: var(--foreground);
-  --border: oklch(from var(--foreground) l c h / 0.05);
-  --input: oklch(from var(--foreground) l c h / 0.1);
-  --ring: oklch(from var(--foreground) l c h / 0.25);
+  --popover: #181A23;
+  --popover-foreground: #DFE1E7;
+  --border: #272A35;
+  --input: #11131B;
+  --ring: #9C86BD;
 
   /* Markdown list markers */
   --md-bullets: var(--foreground-50);
   --md-counters: var(--foreground-50);
+  --popover-solid: #181A23;
+  --theme-shadow-color: #030409;
+  --theme-shadow-strength: 0.18;
+  --shadow-minimal: 0 0 0 var(--theme-border-width) var(--border), 0 1px 2px color-mix(in srgb, var(--theme-shadow-color) 10%, transparent), 0 3px 6px color-mix(in srgb, var(--theme-shadow-color) 10%, transparent);
+  --shadow-middle: 0 0 0 var(--theme-border-width) var(--border), 0 4px 12px color-mix(in srgb, var(--theme-shadow-color) 18%, transparent);
+  --shadow-strong: 0 0 0 var(--theme-border-width) var(--border), 0 12px 32px color-mix(in srgb, var(--theme-shadow-color) 18%, transparent);
+  --shadow-modal-small: 0 0 0 var(--theme-border-width) var(--border), 0 18px 48px color-mix(in srgb, var(--theme-shadow-color) 18%, transparent);
 }
 
 /* Theme Override - Semi-transparent background to allow vibrancy through */
@@ -692,18 +691,6 @@ html[data-font="system"] {
 
   .shadow-panel-focused {
     position: relative;
-    box-shadow:
-      rgba(0, 0, 0, 0) 0px 0px 0px 0px,
-      rgba(0, 0, 0, 0) 0px 0px 0px 0px,
-      rgba(0, 0, 0, 0) 0px 0px 0px 0px,
-      rgba(0, 0, 0, calc(var(--shadow-blur-opacity) * 0.67)) 0px 1px 1px -0.5px,
-      rgba(0, 0, 0, calc(var(--shadow-blur-opacity) * 0.67)) 0px 3px 3px 1px,
-      rgba(0, 0, 0, calc(var(--shadow-blur-opacity) * 0.5)) 0px 6px 6px 2px,
-      rgba(0, 0, 0, calc(var(--shadow-blur-opacity) * 0.5)) 0px 12px 12px 3px,
-      rgba(0, 0, 0, calc(var(--shadow-blur-opacity) * 0.33)) 0px 24px 24px 4px;
-  }
-
-  html[data-theme] .shadow-panel-focused {
     box-shadow: var(--shadow-strong, var(--shadow-modal-small));
   }
 
@@ -850,14 +837,8 @@ html[data-scenic] .fullscreen-overlay-background {
   -webkit-backdrop-filter: blur(24px);
 }
 
-/* The default composer historically uses the canvas surface. Keep that visual
-   contract while allowing named themes to opt into their dedicated input
-   surface token. Generic form controls continue to use --input everywhere. */
+/* The built-in and user themes share the dedicated composer input surface. */
 .theme-composer-surface {
-  background-color: var(--background);
-}
-
-html[data-theme] .theme-composer-surface {
   background-color: var(--input);
 }
 
@@ -939,7 +920,9 @@ html.dark[data-scenic] .fullscreen-overlay-background {
   animation: craft-content-enter var(--motion-duration-standard) var(--motion-ease-enter) !important;
 }
 .craft-float-motion[data-state="closed"] {
-  animation: craft-content-exit var(--motion-duration-fast) var(--motion-ease-exit) !important;
+  /* Hold opacity at zero until Radix Presence unmounts the content. The
+     important shorthand otherwise overrides Radix's inline fill-mode guard. */
+  animation: craft-content-exit var(--motion-duration-fast) var(--motion-ease-exit) forwards !important;
 }
 
 /* Fix ScrollArea internal div preventing content shrink

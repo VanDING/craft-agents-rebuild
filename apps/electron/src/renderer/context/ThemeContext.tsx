@@ -468,7 +468,7 @@ export function ThemeProvider({
     const effectiveThemeFont = isDark
       ? (resolvedTheme.dark?.fontSans ?? resolvedTheme.fontSans)
       : resolvedTheme.fontSans
-    const themeOwnsTypography = loadedTheme.appliedId !== 'default' && Boolean(effectiveThemeFont)
+    const themeOwnsTypography = Boolean(effectiveThemeFont)
 
     if (font === 'theme' && themeOwnsTypography) delete root.dataset.font
     else root.dataset.font = font === 'inter' ? 'inter' : 'system'

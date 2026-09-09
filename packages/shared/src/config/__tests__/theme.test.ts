@@ -153,12 +153,13 @@ describe('theme resolution', () => {
   });
 
   test('keeps Electron startup backgrounds aligned with the Default CSS colors', () => {
-    // Chromium canvas conversion of the canonical OKLCH backgrounds. These
-    // values are used where Electron accepts a hex color but not CSS OKLCH.
-    expect(BACKGROUND_HEX).toEqual({ light: '#f7f8fa', dark: '#080a10' });
+    expect(BACKGROUND_HEX).toEqual({
+      light: DEFAULT_THEME_FILE.background!,
+      dark: DEFAULT_THEME_FILE.dark!.background!,
+    });
   });
 
-  test('keeps static CSS fallbacks synchronized with the canonical base colors', () => {
+  test('keeps static CSS palettes, typography and material tokens synchronized with Default', () => {
     const electronCSS = readFileSync(resolve(
       import.meta.dir,
       '../../../../../apps/electron/src/renderer/index.css'
@@ -168,12 +169,21 @@ describe('theme resolution', () => {
       '../../../../ui/src/styles/index.css'
     ), 'utf-8');
 
+    const declarations = (css: string) => new Map(
+      [...css.matchAll(/(--[\w-]+):\s*([^;]+);/g)].map(match => [match[1]!, match[2]!.trim()])
+    );
     for (const css of [electronCSS, sharedUICSS]) {
-      for (const key of ['background', 'foreground', 'accent', 'info', 'success', 'destructive'] as const) {
-        expect(css).toContain(`--${key}: ${DEFAULT_THEME_FILE[key]};`);
-        expect(css).toContain(`--${key}: ${DEFAULT_THEME_FILE.dark?.[key]};`);
+      const light = declarations(css.match(/:root \{([\s\S]*?)\n\}/)![1]!);
+      const dark = new Map([...light, ...declarations(css.match(/\.dark \{([\s\S]*?)\n\}/)![1]!)]);
+      for (const isDark of [false, true]) {
+        const actual = isDark ? dark : light;
+        for (const [key, value] of declarations(themeToCSS(DEFAULT_THEME_FILE, isDark))) {
+          expect(actual.get(key)).toBe(value);
+        }
       }
     }
+    expect(DEFAULT_THEME_FILE.navigator).toBeUndefined();
+    expect(DEFAULT_THEME_FILE.dark?.navigator).toBeUndefined();
   });
 });
 

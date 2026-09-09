@@ -34,12 +34,12 @@
 
 :root {
   /* === 6 BASE COLORS === */
-  --background: oklch(0.98 0.003 265);
-  --foreground: oklch(0.185 0.01 270);
-  --accent: oklch(0.62 0.13 293);           /* purple - brand, Auto mode */
-  --info: oklch(0.75 0.16 70);              /* amber - warnings, Ask mode */
-  --success: oklch(0.55 0.17 145);          /* green - connected, checkmarks */
-  --destructive: oklch(0.58 0.24 28);       /* red - errors, failed */
+  --background: #F6F7F8;
+  --foreground: #2A2B30;
+  --accent: #6B568B;           /* purple - brand, Auto mode */
+  --info: #8C5F20;              /* amber - warnings, Ask mode */
+  --success: #2D7555;          /* green - connected, checkmarks */
+  --destructive: #AD484A;       /* red - errors, failed */
 
   /* === TEXT VARIANTS (mixed toward foreground for better contrast) === */
   --success-text: color-mix(in oklab, var(--success) 50%, var(--foreground));
@@ -51,27 +51,14 @@
   --shadow-blur-opacity: 0.06;              /* Blur layers opacity */
 
   /* === SHADOW VALUES (reusable across utility classes and component overrides) === */
-  --shadow-minimal:
-    rgba(0, 0, 0, 0) 0px 0px 0px 0px,
-    rgba(0, 0, 0, 0) 0px 0px 0px 0px,
-    color-mix(in srgb, var(--foreground) 6%, transparent) 0px 0px 0px 1px,
-    rgba(0, 0, 0, var(--shadow-blur-opacity)) 0px 1px 1px -0.5px,
-    rgba(0, 0, 0, var(--shadow-blur-opacity)) 0px 3px 3px -1.5px;
+  --shadow-minimal: 0 0 0 var(--theme-border-width) var(--border), 0 1px 2px color-mix(in srgb, var(--theme-shadow-color) 2%, transparent), 0 3px 6px color-mix(in srgb, var(--theme-shadow-color) 2%, transparent);
 
   --shadow-minimal-flat:
     rgba(0, 0, 0, 0) 0px 0px 0px 0px,
     rgba(0, 0, 0, 0) 0px 0px 0px 0px,
     color-mix(in srgb, var(--foreground) 6%, transparent) 0px 0px 0px 1px;
 
-  --shadow-modal-small:
-    rgba(0, 0, 0, 0) 0px 0px 0px 0px,
-    rgba(0, 0, 0, 0) 0px 0px 0px 0px,
-    color-mix(in srgb, var(--foreground) 6%, transparent) 0px 0px 0px 1px,
-    rgba(0, 0, 0, calc(var(--shadow-blur-opacity) * 0.67)) 0px 1px 1px -0.5px,
-    rgba(0, 0, 0, calc(var(--shadow-blur-opacity) * 0.67)) 0px 3px 3px 0px,
-    rgba(0, 0, 0, calc(var(--shadow-blur-opacity) * 0.33)) 0px 6px 6px 0px,
-    rgba(0, 0, 0, calc(var(--shadow-blur-opacity) * 0.33)) 0px 12px 12px 0px,
-    rgba(0, 0, 0, calc(var(--shadow-blur-opacity) * 0.33)) 0px 24px 24px 0px;
+  --shadow-modal-small: 0 0 0 var(--theme-border-width) var(--border), 0 18px 48px color-mix(in srgb, var(--theme-shadow-color) 5%, transparent);
 
   /* === Z-INDEX SCALE === */
   --z-base: 0;
@@ -106,30 +93,30 @@
   --foreground-90: color-mix(in oklch, var(--foreground) 90%, var(--background));
   --foreground-95: color-mix(in oklch, var(--foreground) 95%, var(--background));
 
-  /* === SHADCN COMPATIBILITY (derived from 6 base colors) === */
-  --secondary: oklch(from var(--foreground) l c h / 0.05);
-  --secondary-foreground: var(--foreground);
-  --muted: oklch(from var(--foreground) l c h / 0.05);
-  --muted-foreground: var(--foreground-70);
-  --card: var(--background);
-  --card-foreground: var(--foreground);
-  --popover: var(--background);
-  --popover-foreground: var(--foreground);
-  --border: oklch(from var(--foreground) l c h / 0.05);
-  --input: oklch(from var(--foreground) l c h / 0.1);
-  --ring: oklch(from var(--foreground) l c h / 0.25);
+  /* === SHADCN COMPATIBILITY (Default semantic palette) === */
+  --secondary: #ECEEF0;
+  --secondary-foreground: #383A40;
+  --muted: #ECEDEF;
+  --muted-foreground: #65676D;
+  --card: #FAFBFC;
+  --card-foreground: #2A2B30;
+  --popover: #FCFCFD;
+  --popover-foreground: #2A2B30;
+  --border: #DEDFE2;
+  --input: #F9FAFB;
+  --ring: #6B568B;
   --ring-width: 1px;
   --ring-offset: 0px;
 
   /* === COMPONENT TOKENS === */
-  --user-message-bubble: oklch(from var(--foreground) l c h / 0.05);
+  --user-message-bubble: #ECEBF2;
 
   /* Markdown list markers */
   --md-bullets: var(--foreground-50);
   --md-counters: var(--foreground-50);
 
-  /* Fonts - System fonts for UI, JetBrains Mono for code */
-  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  /* Fonts - Inter with system fallbacks for UI, JetBrains Mono for code */
+  --font-sans: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
   --font-serif: "JetBrains Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
   --font-default: var(--font-sans);
@@ -137,14 +124,14 @@
   /* Layout */
   --font-size-base: 15px;
   --line-height-base: 1.5;
-  --theme-radius: 0.5rem;
-  --theme-panel-radius: 0.5rem;
+  --theme-radius: 8px;
+  --theme-panel-radius: 8px;
   --radius: var(--theme-radius);
   --theme-border-width: 1px;
   --theme-border-style: solid;
   --theme-depth: elevated;
-  --theme-shadow-color: black;
-  --theme-shadow-strength: 0.1;
+  --theme-shadow-color: #26232D;
+  --theme-shadow-strength: 0.045;
   --theme-backdrop-blur: 0px;
   --theme-density: comfortable;
   --theme-density-scale: 1;
@@ -152,10 +139,17 @@
   --theme-menu-item-padding-y: 0.375rem;
   --theme-settings-row-padding-y: 0.875rem;
   --theme-activity-row-padding-y: 0.125rem;
-  --icon-stroke-width: 2;
+  --icon-stroke-width: 1.75;
   --icon-stroke-linecap: round;
   --spacing: 0.25rem;
-  --tracking-normal: 0em;
+  --tracking-normal: -0.006em;
+  --background-elevated: #FAFBFC;
+  --foreground-dimmed: #51535A;
+  --paper: #FAFBFC;
+  --popover-solid: #FCFCFD;
+  --shadow-middle: 0 0 0 var(--theme-border-width) var(--border), 0 4px 12px color-mix(in srgb, var(--theme-shadow-color) 5%, transparent);
+  --shadow-strong: 0 0 0 var(--theme-border-width) var(--border), 0 12px 32px color-mix(in srgb, var(--theme-shadow-color) 5%, transparent);
+  --theme-mode: solid;
 }
 
 /* =============================================================================
@@ -164,12 +158,12 @@
 
 .dark {
   /* === 6 BASE COLORS === */
-  --background: oklch(0.145 0.015 270);
-  --foreground: oklch(0.95 0.01 270);
-  --accent: oklch(0.65 0.22 293);            /* brighter purple in dark */
-  --info: oklch(0.78 0.14 70);               /* amber */
-  --success: oklch(0.60 0.17 145);           /* green */
-  --destructive: oklch(0.65 0.22 28);        /* brighter red in dark */
+  --background: #080A10;
+  --foreground: #DFE1E7;
+  --accent: #9C86BD;            /* brighter purple in dark */
+  --info: #CCA66C;               /* amber */
+  --success: #81B899;           /* green */
+  --destructive: #D68B8D;        /* brighter red in dark */
 
   /* === TEXT VARIANTS (mixed toward foreground for better contrast) === */
   --success-text: color-mix(in oklab, var(--success) 50%, var(--foreground));
@@ -195,25 +189,35 @@
   --foreground-90: color-mix(in oklch, var(--foreground) 90%, var(--background));
   --foreground-95: color-mix(in oklch, var(--foreground) 95%, var(--background));
 
-  /* === SHADCN COMPATIBILITY (derived from 6 base colors) === */
-  --secondary: oklch(from var(--foreground) l c h / 0.05);
-  --secondary-foreground: var(--foreground);
-  --muted: oklch(from var(--foreground) l c h / 0.05);
-  --muted-foreground: var(--foreground-70);
-  --card: var(--background);
-  --card-foreground: var(--foreground);
-  --popover: var(--background);
-  --popover-foreground: var(--foreground);
-  --border: oklch(from var(--foreground) l c h / 0.05);
-  --input: oklch(from var(--foreground) l c h / 0.1);
-  --ring: oklch(from var(--foreground) l c h / 0.25);
+  /* === SHADCN COMPATIBILITY (Default semantic palette) === */
+  --secondary: #1C1E28;
+  --secondary-foreground: #CDD0D9;
+  --muted: #14161F;
+  --muted-foreground: #9298A7;
+  --card: #0D0F16;
+  --card-foreground: #DFE1E7;
+  --popover: #181A23;
+  --popover-foreground: #DFE1E7;
+  --border: #272A35;
+  --input: #11131B;
+  --ring: #9C86BD;
 
   /* === COMPONENT TOKENS === */
-  --user-message-bubble: oklch(from var(--foreground) l c h / 0.05);
+  --user-message-bubble: #171823;
 
   /* Markdown list markers */
   --md-bullets: var(--foreground-50);
   --md-counters: var(--foreground-50);
+  --background-elevated: #11131B;
+  --foreground-dimmed: #AFB3BF;
+  --paper: #0D0F16;
+  --popover-solid: #181A23;
+  --theme-shadow-color: #030409;
+  --theme-shadow-strength: 0.18;
+  --shadow-minimal: 0 0 0 var(--theme-border-width) var(--border), 0 1px 2px color-mix(in srgb, var(--theme-shadow-color) 10%, transparent), 0 3px 6px color-mix(in srgb, var(--theme-shadow-color) 10%, transparent);
+  --shadow-middle: 0 0 0 var(--theme-border-width) var(--border), 0 4px 12px color-mix(in srgb, var(--theme-shadow-color) 18%, transparent);
+  --shadow-strong: 0 0 0 var(--theme-border-width) var(--border), 0 12px 32px color-mix(in srgb, var(--theme-shadow-color) 18%, transparent);
+  --shadow-modal-small: 0 0 0 var(--theme-border-width) var(--border), 0 18px 48px color-mix(in srgb, var(--theme-shadow-color) 18%, transparent);
 }
 
 /* Inter font option (requires loading Inter from Google Fonts or locally)

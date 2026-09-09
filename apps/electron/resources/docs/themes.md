@@ -155,7 +155,7 @@ Craft Agent does not include a visual theme editor. Create or edit these JSON fi
 | `iconStrokeLinecap` | Lucide line cap | `butt`, `round`, `square` |
 | `density` | Semantic row, menu, settings, and activity spacing; structural panel insets remain fixed | `compact`, `comfortable`, `cozy` |
 
-Semantic colors such as `secondary`, `muted`, `card`, `border`, `ring`, and `userMessageBubble` may also be set explicitly. When omitted, the default CSS derivation remains active.
+Semantic colors such as `secondary`, `muted`, `card`, `border`, `ring`, and `userMessageBubble` may also be set explicitly. When omitted, the built-in Default CSS values remain active.
 
 The Appearance font control has explicit precedence: **Theme** uses `fontSans` from the active theme (falling back to the system stack), while **Inter** and **System** override the theme-authored UI font.
 
@@ -209,20 +209,14 @@ Scenic mode benefits from semi-transparent surface colors:
 
 ## Default Theme
 
-The built-in default theme uses OKLCH colors optimized for accessibility:
+The built-in Default uses the Default Refined design and ships with the app. It replaces the previous palette under the same `default` ID, so existing Default selections automatically receive the new design.
 
-**Light Mode:**
-- Background: `oklch(0.98 0.003 265)` - Very light gray with slight purple tint
-- Foreground: `oklch(0.185 0.01 270)` - Near-black for high contrast
-- Accent: `oklch(0.62 0.13 293)` - Restrained purple
-- Info: `oklch(0.75 0.16 70)` - Warm amber
-- Success: `oklch(0.55 0.17 145)` - Clear green
-- Destructive: `oklch(0.58 0.24 28)` - Alert red
+- **Light:** cool off-white canvas (`#F6F7F8`), charcoal text (`#2A2B30`), restrained violet (`#6B568B`), and subtly lighter content surfaces.
+- **Dark:** near-black canvas (`#080A10`), softened cool text (`#DFE1E7`), violet (`#9C86BD`), and independently calibrated dark surface elevations.
+- **Style:** Inter with system fallbacks, 15px base type, 1.5 line height, 8px base radius, comfortable density, and subtle elevated shadows. Explicit font preferences still take precedence.
+- **Native sidebar:** no authored navigator color; platform transparency is preserved.
 
-**Dark Mode:**
-- Background: `oklch(0.145 0.015 270)` - Deep dark with purple tint
-- Foreground: `oklch(0.95 0.01 270)` - Near-white
-- Accent/Info/Success/Destructive: Slightly brighter versions for visibility
+The canonical runtime snapshot, bundled JSON, static CSS and Electron startup backgrounds share this baseline. User-owned theme files are not deleted or overwritten during upgrades.
 
 ## Examples
 

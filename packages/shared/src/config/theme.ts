@@ -60,8 +60,8 @@ export interface ThemeColors {
   success?: CSSColor; // Green
   destructive?: CSSColor; // Red
 
-  // Optional semantic layer overrides. When omitted, index.css derives them
-  // from background + foreground exactly as it does today.
+  // Optional semantic layer overrides. Omitted tokens inherit the static
+  // Default palette in index.css.
   backgroundElevated?: CSSColor;
   foregroundDimmed?: CSSColor;
   secondary?: CSSColor;
@@ -396,9 +396,8 @@ export function themeToCSS(theme: ThemeOverrides, isDark: boolean = false): stri
     if (colors[key]) vars.push(`${cssVar}: ${colors[key]};`);
   }
 
-  // Emit only authored surface overrides. The static Default declarations are
-  // expressions based on --background/--foreground, so omitted surfaces keep
-  // deriving from the active palette instead of being flattened to background.
+  // Emit only authored surface overrides; omitted surfaces keep the static
+  // Default baseline. Navigator remains an explicit opt-in for native sidebars.
   if (colors.paper) vars.push(`--paper: ${colors.paper};`);
   if (colors.navigator) vars.push(`--navigator: ${colors.navigator};`);
   if (colors.input) vars.push(`--input: ${colors.input};`);
@@ -460,13 +459,12 @@ export function themeToCSS(theme: ThemeOverrides, isDark: boolean = false): stri
 }
 
 /**
- * Hex equivalents of background colors for Electron BrowserWindow.
- * The main process cannot use CSS/oklch colors, so we provide hex values
- * that visually match the DEFAULT_THEME oklch colors.
+ * Background colors for Electron BrowserWindow, which requires hex values.
+ * Keep these aligned with the canonical Default palette.
  */
 export const BACKGROUND_HEX = {
-  light: '#f7f8fa', // sRGB rendering of oklch(0.98 0.003 265)
-  dark: '#080a10', // sRGB rendering of oklch(0.145 0.015 270)
+  light: '#F6F7F8', // Matches DEFAULT_THEME.background
+  dark: '#080A10', // Matches DEFAULT_THEME.dark.background
 } as const;
 
 /**
@@ -481,32 +479,68 @@ export function getBackgroundColor(isDark: boolean): string {
  * Default theme values (matches current index.css)
  */
 export const DEFAULT_THEME: ThemeOverrides = {
-  background: 'oklch(0.98 0.003 265)',
-  foreground: 'oklch(0.185 0.01 270)',
-  accent: 'oklch(0.62 0.13 293)',
-  info: 'oklch(0.75 0.16 70)',
-  success: 'oklch(0.55 0.17 145)',
-  destructive: 'oklch(0.58 0.24 28)',
+  mode: 'solid',
+  background: '#F6F7F8',
+  foreground: '#2A2B30',
+  accent: '#6B568B',
+  info: '#8C5F20',
+  success: '#2D7555',
+  destructive: '#AD484A',
+  backgroundElevated: '#FAFBFC',
+  foregroundDimmed: '#51535A',
+  secondary: '#ECEEF0',
+  secondaryForeground: '#383A40',
+  muted: '#ECEDEF',
+  mutedForeground: '#65676D',
+  card: '#FAFBFC',
+  cardForeground: '#2A2B30',
+  popoverForeground: '#2A2B30',
+  border: '#DEDFE2',
+  ring: '#6B568B',
+  userMessageBubble: '#ECEBF2',
+  paper: '#FAFBFC',
+  input: '#F9FAFB',
+  popover: '#FCFCFD',
+  popoverSolid: '#FCFCFD',
   depth: 'elevated',
-  shadowColor: '#17131f',
-  shadowStrength: 0.1,
+  shadowColor: '#26232D',
+  shadowStrength: 0.045,
   radius: '8px',
   borderWidth: '1px',
   borderStyle: 'solid',
+  fontSans: '"Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif',
+  fontSerif: '"JetBrains Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace',
+  fontMono: '"JetBrains Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace',
   fontSize: '15px',
+  letterSpacing: '-0.006em',
   lineHeight: 1.5,
-  letterSpacing: '0em',
-  iconStrokeWidth: 2,
+  iconStrokeWidth: 1.75,
   iconStrokeLinecap: 'round',
   density: 'comfortable',
   dark: {
-    background: 'oklch(0.145 0.015 270)',
-    foreground: 'oklch(0.95 0.01 270)',
-    accent: 'oklch(0.65 0.22 293)',
-    info: 'oklch(0.78 0.14 70)',
-    success: 'oklch(0.60 0.17 145)',
-    destructive: 'oklch(0.65 0.22 28)',
-    shadowColor: '#000000',
+    background: '#080A10',
+    foreground: '#DFE1E7',
+    accent: '#9C86BD',
+    info: '#CCA66C',
+    success: '#81B899',
+    destructive: '#D68B8D',
+    backgroundElevated: '#11131B',
+    foregroundDimmed: '#AFB3BF',
+    secondary: '#1C1E28',
+    secondaryForeground: '#CDD0D9',
+    muted: '#14161F',
+    mutedForeground: '#9298A7',
+    card: '#0D0F16',
+    cardForeground: '#DFE1E7',
+    popoverForeground: '#DFE1E7',
+    border: '#272A35',
+    ring: '#9C86BD',
+    userMessageBubble: '#171823',
+    paper: '#0D0F16',
+    input: '#11131B',
+    popover: '#181A23',
+    popoverSolid: '#181A23',
+    shadowColor: '#030409',
     shadowStrength: 0.18,
   },
 };
@@ -558,7 +592,7 @@ export interface ThemeSummary {
 /** The immutable built-in theme. All other themes come from the user directory. */
 export const DEFAULT_THEME_FILE: ThemeFile = {
   name: 'Default',
-  description: 'Clean purple-tinted neutral theme',
+  description: 'Refined cool-neutral surfaces, native transparent sidebar, near-black dark mode and restrained violet.',
   author: 'Craft Agent',
   license: 'MIT',
   supportedModes: ['light', 'dark'],

@@ -19,6 +19,8 @@ This file accumulates release notes for the next unreleased version. PRs that ad
 
 ## Improvements
 
+- **Refined native Default theme** — Default Refined now replaces the previous built-in Default in packaged apps, with cool off-white light surfaces, near-black dark surfaces, restrained violet, Inter typography and subtle elevation. Native sidebar transparency and explicit font preferences are preserved; existing Default selections update automatically.
+
 - **React component projects for Pages** — agents can scaffold React, shadcn-compatible components and Tailwind CSS 4, build a self-contained HTML page, and import the artifact by file path. A snapshot hook connects React to live page data; content imports preserve digest checks, grant invalidation and thumbnail updates.
 
 - **Durable execution authority** — workspace-local SQLite/WAL facts now place model, tool, task, usage, recovery, and projection state behind explicit T1/T2 boundaries. Unknown effects fail closed and require evidence-backed reconciliation instead of being automatically replayed or displayed as completed.
@@ -41,6 +43,8 @@ This file accumulates release notes for the next unreleased version. PRs that ad
 - **Explicit font precedence** — Appearance now offers Theme, Inter, and System choices. Theme-authored typography is used only for the Theme choice; explicit user font choices always win.
 
 ## Bug Fixes
+
+- **Popover dismissal no longer flashes** — closing the sidebar profile card and other shared animated popovers/dialogs now retains the transparent final animation frame until unmount, preventing a brief reappearance after fading out.
 
 - **Task and persistence reliability** — task runs now reject unsupported control settings before starting or resuming, while existing YAML remains readable. Webhook retries preserve requests enqueued during an in-flight retry, and failed session saves remain observable without blocking later saves.
 
