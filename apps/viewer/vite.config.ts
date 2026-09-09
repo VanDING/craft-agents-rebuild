@@ -2,6 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { resolve } from 'path'
+import { reactPdfAlias } from '../../scripts/build/react-pdf-alias'
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -11,6 +12,7 @@ export default defineConfig({
   base: '/s/',
   resolve: {
     alias: {
+      ...reactPdfAlias(import.meta.url),
       '@': resolve(__dirname, './src'),
       // Ensure all React imports resolve to the hoisted root node_modules
       'react': resolve(__dirname, '../../node_modules/react'),

@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react'
 import babel from '@rolldown/plugin-babel'
 import tailwindcss from '@tailwindcss/vite'
 import { resolve } from 'path'
+import { reactPdfAlias } from '../../scripts/build/react-pdf-alias'
 
 export default defineConfig({
   plugins: [
@@ -36,6 +37,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
+      ...reactPdfAlias(import.meta.url),
       // Reuse the Electron renderer's components, hooks, pages, etc.
       '@': resolve(__dirname, '../electron/src/renderer'),
       // Web-specific overrides

@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react'
 import babel from '@rolldown/plugin-babel'
 import tailwindcss from '@tailwindcss/vite'
 import { resolve } from 'path'
+import { reactPdfAlias } from '../../scripts/build/react-pdf-alias'
 
 // NOTE: Source map upload to Sentry is intentionally disabled.
 // To re-enable, uncomment the sentryVitePlugin below and add SENTRY_AUTH_TOKEN,
@@ -50,6 +51,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
+      ...reactPdfAlias(import.meta.url),
       '@': resolve(__dirname, 'src/renderer'),
       '@config': resolve(__dirname, '../../packages/shared/src/config'),
       // Force all React imports to use the root node_modules React
