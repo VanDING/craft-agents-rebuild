@@ -34,6 +34,23 @@ function stripErrorTags(content: string | undefined): string | undefined {
     .trim()
 }
 
+/**
+ * Whether an activity should render as a row in the turn's activities list.
+ *
+ * Every LLM step (one API request) can produce an intermediate message with
+ * empty text content - e.g. pure tool-call turns (stopReason === 'toolUse')
+ * still emit text_complete to preserve usage/request metadata. Rendering
+ * those rows shows nothing but an icon, so filter them out on the render
+ * layer only: the activity stays in `activities` for metadata, exports and
+ * detail lookup. Running rows stay visible ("Thinking...").
+ */
+export function isVisibleActivity(activity: ActivityItem): boolean {
+  if (activity.type === 'intermediate') {
+    return activity.status === 'running' || !!activity.content?.trim()
+  }
+  return true
+}
+
 // ============================================================================
 // Types
 // ============================================================================

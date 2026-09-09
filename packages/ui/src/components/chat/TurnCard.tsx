@@ -40,7 +40,7 @@ import { Tooltip, TooltipTrigger, TooltipContent } from '../tooltip'
 import { parseDiffFromFile, type FileContents } from '@pierre/diffs'
 import { getDiffStats, getUnifiedDiffStats } from '../code-viewer'
 import { TurnCardActionsMenu } from './TurnCardActionsMenu'
-import { computeLastChildSet, groupActivitiesByParent, isActivityGroup, formatDuration, formatTokens, deriveTurnPhase, shouldShowThinkingIndicator, type ActivityGroup, type AssistantTurn } from './turn-utils'
+import { computeLastChildSet, groupActivitiesByParent, isActivityGroup, formatDuration, formatTokens, deriveTurnPhase, isVisibleActivity, shouldShowThinkingIndicator, type ActivityGroup, type AssistantTurn } from './turn-utils'
 import { extractAnnotationSelectedText } from './follow-up-helpers'
 import { canBranchFromTurn } from './recovery-policy'
 import {
@@ -2937,7 +2937,10 @@ export const TurnCard = React.memo(function TurnCard({
     [allSortedActivities]
   )
   const sortedActivities = useMemo(
-    () => allSortedActivities.filter(a => a.type !== 'plan'),
+    // Hide empty intermediate rows on the render layer only (e.g. pure
+    // tool-call LLM steps that emit text_complete with no text); the
+    // activities stay in data for metadata, exports and detail lookup.
+    () => allSortedActivities.filter(a => a.type !== 'plan' && isVisibleActivity(a)),
     [allSortedActivities]
   )
 
