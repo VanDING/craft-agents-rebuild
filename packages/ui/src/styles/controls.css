@@ -1,0 +1,143 @@
+/* Shared control roles. Theme values remain owned by themeToCSS and the host. */
+@layer components {
+  .craft-control,
+  .craft-focus,
+  .craft-icon-button {
+    --craft-focus-color: var(--accent);
+    outline-offset: 2px;
+  }
+
+  .craft-control:focus-visible,
+  .craft-focus:focus-visible,
+  [data-craft-focus]:focus-visible,
+  .craft-icon-button:focus-visible {
+    outline: 2px solid var(--craft-focus-color, var(--accent));
+    outline-offset: 2px;
+  }
+
+  .craft-icon-button {
+    border-radius: calc(var(--theme-radius, 0.5rem) * 0.75);
+    flex-shrink: 0;
+  }
+
+  .craft-field-input {
+    min-width: 0;
+    background-color: var(--input);
+    border-color: color-mix(in oklab, var(--foreground) 18%, transparent);
+    transition-property: color, background-color, border-color, outline-color;
+    transition-duration: var(--motion-duration-fast);
+    transition-timing-function: var(--motion-ease-enter);
+  }
+
+  .craft-field-input:not(:disabled):not([readonly]):hover {
+    border-color: color-mix(in oklab, var(--foreground) 30%, transparent);
+  }
+
+  .craft-field-input[aria-invalid="true"] {
+    border-color: var(--destructive);
+  }
+
+  .craft-field-input[readonly] { cursor: text; }
+  .craft-field-input::placeholder { color: var(--muted-foreground); opacity: 1; }
+
+  .craft-field-surface {
+    position: relative;
+    min-width: 0;
+    border-radius: calc(var(--theme-radius, 0.5rem) * 0.75);
+    background-color: var(--input);
+    box-shadow: var(--shadow-minimal-flat);
+  }
+
+  .craft-field-surface:has(.craft-field-input:focus-visible) {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  .craft-field-surface:has([aria-invalid="true"]) {
+    box-shadow: inset 0 0 0 1px var(--destructive);
+  }
+
+  .craft-field-surface > .craft-field-input {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+  }
+
+  .craft-field-surface > .craft-field-input:focus-visible { outline: none; }
+
+  .craft-field { display: grid; gap: 0.5rem; min-width: 0; }
+  .craft-field-header { display: grid; gap: 0.25rem; min-width: 0; }
+  .craft-field-label { font-size: 0.875rem; font-weight: 500; line-height: 1.4; }
+  .craft-field-description,
+  .craft-field-error { font-size: 0.8125rem; line-height: 1.5; overflow-wrap: anywhere; }
+  .craft-field-description { color: var(--muted-foreground); }
+  .craft-field-error { color: var(--destructive-text, var(--destructive)); }
+  .craft-settings-padding { padding: var(--theme-settings-row-padding-y) 1rem; }
+  .craft-settings-plain { padding-block: var(--theme-row-padding-y); }
+  .craft-settings-row { gap: 1rem; min-width: 0; }
+  .craft-settings-row > [data-layout="settings-control"] { margin-inline-start: 0; }
+  .craft-settings-card { container-type: inline-size; }
+
+  .craft-menu-item { padding-block: var(--theme-menu-item-padding-y); }
+  .craft-menu-item[data-highlighted],
+  .craft-menu-item:focus-visible { background-color: var(--secondary); }
+  .craft-menu-item[data-state="checked"] { font-weight: 500; }
+
+  .craft-dialog { max-height: calc(100dvh - 2rem); overflow-y: auto; overscroll-behavior: contain; }
+  .craft-popover { max-width: calc(100vw - 1rem); }
+  .craft-tooltip {
+    max-width: min(28rem, calc(100vw - 1rem));
+    background-color: var(--popover-solid, var(--background));
+    color: var(--popover-foreground, var(--foreground));
+    border-radius: var(--theme-radius, 0.5rem);
+    overflow-wrap: anywhere;
+  }
+  .craft-toast { border-radius: var(--theme-radius, 0.5rem); box-shadow: var(--shadow-modal-small); }
+  .craft-composer:has([contenteditable="true"]:focus-visible) {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: calc(var(--theme-radius, 0.5rem) * 2);
+  }
+  .craft-row-focus:focus-visible { outline-offset: -2px; }
+  .craft-row-actions { transition: opacity var(--motion-duration-fast) var(--motion-ease-enter); }
+  .group:focus-within .craft-row-actions { opacity: 1; }
+  .craft-button-label { display: inline-flex; align-items: center; justify-content: center; gap: inherit; }
+  .craft-button-spinner {
+    position: absolute;
+    width: 1em;
+    height: 1em;
+    border: 2px solid currentColor;
+    border-inline-end-color: transparent;
+    border-radius: 50%;
+    animation: craft-control-spin 0.8s linear infinite;
+  }
+
+  @media (pointer: coarse) {
+    .craft-control:not([data-slot="switch"]):not(textarea),
+    .craft-touch-target { min-height: 44px; }
+    .craft-icon-button { min-width: 44px; min-height: 44px; }
+    .craft-row-actions { opacity: 1; }
+    .craft-row-timestamp { visibility: hidden; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .craft-button-spinner { animation: none; }
+  }
+  @media (forced-colors: active) {
+    .craft-control:focus-visible, .craft-focus:focus-visible, .craft-icon-button:focus-visible,
+    .craft-field-surface:has(.craft-field-input:focus-visible) { outline-color: Highlight; }
+    .craft-field-input { border-color: ButtonText; }
+  }
+}
+
+@keyframes craft-control-spin { to { transform: rotate(360deg); } }
+
+/* Responsive structure must override each control's desktop utility layout. */
+@layer utilities {
+  @container (max-width: 440px) {
+    .craft-settings-row:not(:has([data-slot="switch"])) { flex-direction: column; align-items: stretch; }
+    .craft-settings-row:not(:has([data-slot="switch"])) > [data-layout="settings-control"] { width: 100%; }
+    .craft-settings-row [data-layout="settings-control"] > .craft-field-input,
+    .craft-settings-row [data-layout="settings-control"] > .craft-field-surface { width: 100%; }
+  }
+
+}

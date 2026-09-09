@@ -6,6 +6,7 @@
  */
 
 import * as React from 'react'
+import { handleOptionNavigation } from '@/components/ui/option-navigation'
 import { useTranslation } from 'react-i18next'
 import { Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -52,6 +53,7 @@ export function SearchableModelInput({
   className,
 }: SearchableModelInputProps) {
   const { t } = useTranslation()
+  const [fetchError, setFetchError] = React.useState(false)
   const [isOpen, setIsOpen] = React.useState(false)
   const [searchQuery, setSearchQuery] = React.useState('')
   const searchInputRef = React.useRef<HTMLInputElement>(null)
@@ -76,7 +78,8 @@ export function SearchableModelInput({
 
   const handleFetchClick = async () => {
     if (onFetchModels) {
-      await onFetchModels()
+      setFetchError(false)
+      try { await onFetchModels() } catch { setFetchError(true) }
       setIsOpen(true)
       // Focus search input after models load
       setTimeout(() => searchInputRef.current?.focus(), 50)
@@ -96,6 +99,7 @@ export function SearchableModelInput({
   return (
     <div className={cn('relative', className)}>
       <Input
+        aria-label={t("apiSetup.searchModels")}
         placeholder={placeholder}
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -105,6 +109,8 @@ export function SearchableModelInput({
       <Popover open={isOpen} onOpenChange={handleOpenChange}>
         <PopoverTrigger asChild>
           <Button
+            aria-label={t("apiSetup.searchModels")}
+            aria-busy={isLoading || undefined}
             variant="outline"
             size="sm"
             className="absolute right-1 top-1 h-7"
@@ -114,28 +120,31 @@ export function SearchableModelInput({
             {isLoading ? <Spinner className="size-3" /> : '▼'}
           </Button>
         </PopoverTrigger>
-        {models.length > 0 && (
+        {(models.length > 0 || fetchError) && (
           <PopoverContent
             align="end"
+            onKeyDown={handleOptionNavigation}
             sideOffset={4}
             collisionPadding={8}
             className="p-1.5 w-[var(--radix-popover-trigger-width)]"
             style={{ minWidth: 280 }}
           >
+            {fetchError && <p role="status" className="craft-field-error px-2 py-2">{t("common.errorLoadingContent")}</p>}
             {/* Search input */}
             <div className="relative mb-1.5">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
               <input
                 ref={searchInputRef}
                 type="text"
+                aria-label={t("apiSetup.searchModels")}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder={t("apiSetup.searchModels")}
                 className={cn(
-                  'w-full h-8 pl-8 pr-3 text-sm rounded-md',
+                  'craft-control w-full h-8 pl-8 pr-3 text-sm rounded-md',
                   'bg-foreground/5 border-0',
-                  'placeholder:text-muted-foreground/50',
-                  'focus:outline-none focus:ring-1 focus:ring-foreground/20'
+                  'placeholder:text-muted-foreground',
+                  'focus-visible:ring-0'
                 )}
               />
             </div>
@@ -143,15 +152,17 @@ export function SearchableModelInput({
             <div className="max-h-64 overflow-auto space-y-0.5">
               {filteredModels.length === 0 ? (
                 <div className="px-2.5 py-3 text-sm text-muted-foreground text-center">
-                  No models found
+                  {t('chat.noResults')}
                 </div>
               ) : (
                 filteredModels.map((model) => (
                   <button
                     key={model.id}
+                    data-option="true"
+                    aria-pressed={value === model.id}
                     type="button"
                     className={cn(
-                      'w-full px-2.5 py-2 text-left text-sm rounded-lg',
+                      'craft-control craft-menu-item w-full px-2.5 py-[var(--theme-menu-item-padding-y)] text-left text-sm rounded-lg',
                       'hover:bg-foreground/5 transition-colors',
                       value === model.id && 'bg-foreground/3'
                     )}

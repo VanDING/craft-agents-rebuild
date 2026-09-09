@@ -190,7 +190,7 @@ export function PanelHeader({
       <button
         onClick={() => setDropdownOpen(true)}
         className={cn(
-          "flex items-center gap-1 px-2 py-1 rounded-md titlebar-no-drag min-w-0",
+          "craft-focus flex items-center gap-1 px-2 py-1 rounded-md titlebar-no-drag min-w-0",
           "hover:bg-foreground/[0.03] transition-colors",
           "focus:outline-none focus-visible:ring-1 focus-visible:ring-ring",
           dropdownOpen && "bg-foreground/[0.03]"

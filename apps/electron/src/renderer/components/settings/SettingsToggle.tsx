@@ -55,20 +55,21 @@ export function SettingsToggle({
     <div
       data-layout="settings-row"
       className={cn(
-        'flex items-center justify-between',
-        inCard ? 'px-4 py-3.5' : 'py-3',
-        disabled && 'opacity-50',
+        'craft-settings-row flex items-center justify-between',
+        inCard ? 'craft-settings-padding' : 'craft-settings-plain',
+        disabled && 'text-muted-foreground',
         className
       )}
     >
       <label htmlFor={id} className="flex-1 min-w-0 cursor-pointer select-none">
         <div className={settingsUI.label}>{label}</div>
         {description && (
-          <div className={cn(settingsUI.description, settingsUI.labelDescriptionGap)}>{description}</div>
+          <div id={id + '-description'} className={cn(settingsUI.description, settingsUI.labelDescriptionGap)}>{description}</div>
         )}
       </label>
       <Switch
         id={id}
+        aria-describedby={description ? id + '-description' : undefined}
         checked={checked}
         onCheckedChange={onCheckedChange}
         disabled={disabled}

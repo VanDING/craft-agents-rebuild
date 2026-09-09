@@ -23,13 +23,13 @@ const Toaster = ({ ...props }: ToasterProps) => {
         loading: <NoIcon />,
       }}
       toastOptions={{
-        className: "!rounded-xl !backdrop-blur-xl group",
+        className: "craft-toast group",
       }}
       style={
         {
-          "--normal-bg": "transparent",
+          "--normal-bg": "var(--popover-solid, var(--background))",
           "--normal-text": "var(--popover-foreground)",
-          "--normal-border": "transparent",
+          "--normal-border": "var(--border)",
         } as React.CSSProperties
       }
       {...props}

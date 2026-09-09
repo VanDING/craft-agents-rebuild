@@ -123,7 +123,7 @@ export function WorkItemListView() {
               if (!window.confirm(t('kanban.workItemDeleteSelectedConfirm', { count: selectedIds.length }))) return
               void Promise.all(selectedIds.map((id) => remove(id))).then(() => setSelectedIds([]))
             }}
-            className="inline-flex items-center gap-1.5 font-semibold text-destructive"
+            className="craft-focus inline-flex items-center gap-1.5 font-semibold text-destructive"
           >
             <Trash2 className="h-3.5 w-3.5" /> {t('kanban.workItemDeleteSelected')}
           </button>
@@ -133,7 +133,7 @@ export function WorkItemListView() {
       <div className="min-h-0 flex-1 overflow-auto">
         <div className="min-w-0">
           <div className="grid grid-cols-[32px_minmax(0,1fr)_100px] @min-[760px]/panel:grid-cols-[40px_minmax(220px,2fr)_minmax(120px,1fr)_130px_120px_100px] items-center border-b border-border/60 bg-foreground/[0.015] px-3 py-2 text-[11px] font-medium text-muted-foreground">
-            <button
+            <button data-craft-focus="true"
               type="button"
               onClick={() => setSelectedIds(allVisibleSelected ? [] : visibleItems.map((item) => item.id))}
               aria-label={t('kanban.workItemSelectAll')}
@@ -173,7 +173,7 @@ export function WorkItemListView() {
                       ? previous.filter((id) => id !== item.id)
                       : [...previous, item.id])
                   }}
-                  className="justify-self-start"
+                  className="craft-focus justify-self-start"
                 >
                   {selected ? <CheckSquare className="h-4 w-4 text-primary" /> : <Square className="h-4 w-4 text-foreground/35" />}
                 </button>

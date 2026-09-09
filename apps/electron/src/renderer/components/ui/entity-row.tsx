@@ -15,6 +15,7 @@
  */
 
 import * as React from 'react'
+import { useTranslation } from 'react-i18next'
 import { useState } from 'react'
 import { MoreHorizontal } from 'lucide-react'
 import { Separator } from '@/components/ui/separator'
@@ -146,6 +147,7 @@ export function EntityRow({
   className,
   separatorClassName = 'pl-12 pr-4',
 }: EntityRowProps) {
+  const { t } = useTranslation()
   const [menuOpen, setMenuOpen] = useState(false)
   const [contextMenuOpen, setContextMenuOpen] = useState(false)
   const [compactMenuOpen, setCompactMenuOpen] = useState(false)
@@ -277,8 +279,8 @@ export function EntityRow({
       <button
         {...(buttonProps as React.ButtonHTMLAttributes<HTMLButtonElement>)}
         className={cn(
-          "entity-row-btn flex w-full items-start gap-2 pl-2 pr-4 py-[var(--theme-row-padding-y)] text-left text-sm outline-none rounded-[8px]",
-          "transition-[background-color] duration-75",
+          "craft-focus craft-row-focus entity-row-btn flex w-full items-start gap-2 pl-2 pr-4 py-[var(--theme-row-padding-y)] text-left text-sm rounded-lg",
+          "motion-interactive transition-[background-color]",
           (isSelected || isInMultiSelect)
             ? "bg-foreground/3"
             : "hover:bg-foreground/2",
@@ -309,51 +311,14 @@ export function EntityRow({
               {titleSuffix && <div className="shrink-0 flex items-center">{titleSuffix}</div>}
               <div className="shrink-0 ml-auto relative -mr-1">
                 <span className={cn(
+                  (menuContent || useCompactMenu) && 'craft-row-timestamp',
                   menuOpen || contextMenuOpen || compactMenuOpen
                     ? "invisible"
-                    : useCompactMenu ? undefined : "group-hover:invisible",
+                    : useCompactMenu || !menuContent ? undefined : "group-hover:invisible group-focus-within:invisible",
                 )}>
                   {titleTrailing}
                 </span>
-                {(menuContent || useCompactMenu) && !hideMoreButton && (
-                  <div
-                    data-touch-reveal="true"
-                    className={cn(
-                      "absolute inset-0 flex items-center justify-end overflow-visible",
-                      menuOpen || contextMenuOpen || compactMenuOpen
-                        ? "opacity-100"
-                        : useCompactMenu
-                          ? "opacity-100"
-                          : "opacity-0 group-hover:opacity-100",
-                    )}
-                    onMouseDown={(e) => e.stopPropagation()}
-                  >
-                    {useCompactMenu ? (
-                      <button
-                        type="button"
-                        onClick={() => setCompactMenuOpen(true)}
-                        className="p-1 rounded-[6px] hover:bg-foreground/10 data-[state=open]:bg-foreground/10 cursor-pointer"
-                        aria-haspopup="dialog"
-                        aria-expanded={compactMenuOpen}
-                      >
-                        <MoreHorizontal className="h-3.5 w-3.5 text-foreground/40" />
-                      </button>
-                    ) : (
-                      <DropdownMenu modal={true} open={menuOpen} onOpenChange={setMenuOpen}>
-                        <DropdownMenuTrigger asChild>
-                          <div className="p-1 rounded-[6px] hover:bg-foreground/10 data-[state=open]:bg-foreground/10 cursor-pointer">
-                            <MoreHorizontal className="h-3.5 w-3.5 text-muted-foreground" />
-                          </div>
-                        </DropdownMenuTrigger>
-                        <StyledDropdownMenuContent align="end">
-                          <DropdownMenuProvider>
-                            {menuContent}
-                          </DropdownMenuProvider>
-                        </StyledDropdownMenuContent>
-                      </DropdownMenu>
-                    )}
-                  </div>
-                )}
+
               </div>
             </div>
           ) : (
@@ -372,7 +337,7 @@ export function EntityRow({
 
           {/* Subtitle line */}
           {subtitle && (
-            <div className="flex items-start gap-[10px] w-full text-[12px] text-foreground/55 min-w-0 -mt-1">
+            <div className="flex items-start gap-[10px] w-full text-[12px] text-muted-foreground min-w-0 -mt-1">
               {icon && (
                 <div className="shrink-0 flex items-center gap-[10px] [&>*]:w-3 [&>*]:h-3 invisible" aria-hidden="true">
                   {icon}
@@ -420,26 +385,27 @@ export function EntityRow({
       {/* Overlay (e.g. match count badge) */}
       {overlay}
 
-      {/* More menu button — visible on hover or when menu is open (skipped when titleTrailing handles it inline) */}
-      {(menuContent || useCompactMenu) && !hideMoreButton && !titleTrailing && (
+      {/* More menu button — visible on hover, keyboard focus, or while the menu is open */}
+      {(menuContent || useCompactMenu) && !hideMoreButton && (
         <div
           data-touch-reveal="true"
           className={cn(
-            "absolute right-2 top-2 transition-opacity z-10",
+            "craft-row-actions absolute right-2 top-2 z-10",
             menuOpen || contextMenuOpen || compactMenuOpen
               ? "opacity-100"
               : useCompactMenu
                 ? "opacity-100"
-                : "opacity-0 group-hover:opacity-100",
+                : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100",
           )}
           onMouseDown={(e) => e.stopPropagation()}
         >
-          <div className="flex items-center rounded-[8px] overflow-hidden border border-transparent hover:border-border/50">
+          <div className="flex items-center rounded-lg border border-transparent hover:border-border/50">
             {useCompactMenu ? (
               <button
                 type="button"
                 onClick={() => setCompactMenuOpen(true)}
-                className="p-1.5 hover:bg-foreground/10 data-[state=open]:bg-foreground/10 cursor-pointer"
+                className="craft-icon-button inline-flex size-7 items-center justify-center hover:bg-foreground/10 data-[state=open]:bg-foreground/10 cursor-pointer"
+                aria-label={t('common.moreActions')}
                 aria-haspopup="dialog"
                 aria-expanded={compactMenuOpen}
               >
@@ -448,9 +414,9 @@ export function EntityRow({
             ) : (
               <DropdownMenu modal={true} open={menuOpen} onOpenChange={setMenuOpen}>
                 <DropdownMenuTrigger asChild>
-                  <div className="p-1.5 hover:bg-foreground/10 data-[state=open]:bg-foreground/10 cursor-pointer">
+                  <button type="button" aria-label={t('common.moreActions')} className="craft-icon-button inline-flex size-7 items-center justify-center hover:bg-foreground/10 data-[state=open]:bg-foreground/10 cursor-pointer">
                     <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
-                  </div>
+                  </button>
                 </DropdownMenuTrigger>
                 <StyledDropdownMenuContent align="end">
                   <DropdownMenuProvider>

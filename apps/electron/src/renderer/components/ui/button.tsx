@@ -4,7 +4,7 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/lib/utils"
 
 const buttonVariants = cva(
-  "motion-interactive inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-[color,background-color,border-color,box-shadow,opacity,transform] active:scale-[var(--motion-scale-pressed)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 disabled:active:scale-100 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 select-none",
+  "craft-control motion-interactive relative inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-[color,background-color,border-color,box-shadow,opacity,transform] active:scale-[var(--motion-scale-pressed)] disabled:pointer-events-none disabled:opacity-50 disabled:active:scale-100 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 select-none",
   {
     variants: {
       variant: {
@@ -37,10 +37,13 @@ export interface ButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement>,
     VariantProps<typeof buttonVariants> {
   asChild?: boolean
+  /** Keeps the label's width and accessible name while preventing duplicate submission. Not supported with asChild. */
+  loading?: boolean
 }
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, asChild = false, ...props }, ref) => {
+  ({ className, variant, size, asChild = false, loading = false, disabled, children, ...props }, ref) => {
+    if (asChild && loading) throw new Error('Button loading requires a native button; compose loading content in the asChild element instead.')
     const Comp = asChild ? Slot : "button"
     return (
       <Comp
@@ -48,7 +51,14 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         className={cn(buttonVariants({ variant, size, className }))}
         ref={ref}
         {...props}
-      />
+        disabled={disabled || loading}
+        aria-busy={loading || props['aria-busy']}
+      >
+        {asChild || !loading ? children : <>
+          <span className={cn('craft-button-label', loading && 'opacity-0')}>{children}</span>
+          {loading && <span aria-hidden="true" className="craft-button-spinner" />}
+        </>}
+      </Comp>
     )
   }
 )

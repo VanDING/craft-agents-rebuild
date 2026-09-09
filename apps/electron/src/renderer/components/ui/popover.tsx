@@ -30,7 +30,7 @@ function PopoverContent({
         sideOffset={sideOffset}
         collisionPadding={collisionPadding}
         className={cn(
-          "popover-styled craft-float-motion motion-surface z-dropdown w-72 origin-(--radix-popover-content-transform-origin) p-4 outline-hidden",
+          "craft-popover popover-styled craft-float-motion motion-surface z-dropdown w-72 origin-(--radix-popover-content-transform-origin) p-4 outline-hidden",
           className
         )}
         {...props}

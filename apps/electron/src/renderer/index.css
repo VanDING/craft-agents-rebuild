@@ -1,5 +1,6 @@
 @import "tailwindcss" source(none);
 @import "../../../../packages/ui/src/styles/motion.css";
+@import "../../../../packages/ui/src/styles/controls.css";
 @plugin "@tailwindcss/typography";
 
 /* Tell Tailwind where to scan for utility classes */
@@ -164,7 +165,7 @@
   --secondary: oklch(from var(--foreground) l c h / 0.05);
   --secondary-foreground: var(--foreground);
   --muted: oklch(from var(--foreground) l c h / 0.05);
-  --muted-foreground: var(--foreground-50);
+  --muted-foreground: var(--foreground-70);
   --card: var(--background);
   --card-foreground: var(--foreground);
   --paper: var(--background);
@@ -305,7 +306,7 @@
   --secondary: oklch(from var(--foreground) l c h / 0.05);
   --secondary-foreground: var(--foreground);
   --muted: oklch(from var(--foreground) l c h / 0.05);
-  --muted-foreground: var(--foreground-50);
+  --muted-foreground: var(--foreground-70);
   --card: var(--background);
   --card-foreground: var(--foreground);
   --paper: var(--background);

@@ -32,7 +32,7 @@ export function SettingsCard({ children, className, divided = true }: SettingsCa
   return (
     <div
       className={cn(
-        'rounded-xl bg-card text-card-foreground shadow-minimal overflow-hidden',
+        'craft-settings-card rounded-xl bg-card text-card-foreground shadow-minimal overflow-hidden',
         className
       )}
     >
@@ -60,7 +60,7 @@ export function SettingsCardContent({
   children: React.ReactNode
   className?: string
 }) {
-  return <div className={cn('px-4 py-3.5', className)}>{children}</div>
+  return <div className={cn('craft-settings-padding', className)}>{children}</div>
 }
 
 /**

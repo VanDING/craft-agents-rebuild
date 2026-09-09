@@ -27,10 +27,12 @@ import { mobileWebUIComponents } from './mobile-webui'
 import { kanbanComponents } from './kanban'
 import { scheduleViewComponents } from './schedule-views'
 import { taskEditorComponents } from './task-editor'
+import { controlSystemComponents } from './control-system'
 
 export * from './types'
 
 export const componentRegistry: ComponentEntry[] = [
+  ...controlSystemComponents,
   ...mobileWebUIComponents,
   ...apiKeyInputComponents,
   ...onboardingComponents,

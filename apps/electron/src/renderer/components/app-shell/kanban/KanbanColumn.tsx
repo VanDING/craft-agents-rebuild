@@ -215,7 +215,7 @@ function ColumnHeader({
         data-no-dnd="true"
         onPointerDown={e => e.stopPropagation()}
         title={editable ? t('kanban.column.edit') : t('kanban.column.setDropStatus')}
-        className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider transition-shadow hover:ring-2 hover:ring-foreground/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 data-[state=open]:ring-2 data-[state=open]:ring-foreground/20"
+        className="craft-focus inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider transition-shadow hover:ring-2 hover:ring-foreground/15 focus-visible:ring-2 focus-visible:ring-ring/50 data-[state=open]:ring-2 data-[state=open]:ring-foreground/20"
         style={pillStyle}
       >
         {inner}
@@ -299,7 +299,7 @@ function ColumnHeader({
                   type="button"
                   onClick={() => onSetColor(hex)}
                   title={hex}
-                  className="grid h-5 w-5 place-items-center rounded-full ring-1 ring-border/40 transition-transform hover:scale-110"
+                  className="craft-focus grid h-5 w-5 place-items-center rounded-full ring-1 ring-border/40 transition-transform hover:scale-110"
                   style={{ backgroundColor: hex }}
                 >
                   {color?.solid === hex && <Check className="h-3 w-3 text-white" strokeWidth={3} />}
@@ -329,7 +329,7 @@ function ColumnHeader({
               onRemove()
               setOpen(false)
             }}
-            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs font-medium text-destructive transition-colors hover:bg-destructive/10"
+            className="craft-focus flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs font-medium text-destructive transition-colors hover:bg-destructive/10"
           >
             <Trash2 className="h-3.5 w-3.5" />
             {t('kanban.column.remove')}

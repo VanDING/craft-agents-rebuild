@@ -6,6 +6,7 @@
  */
 
 import * as React from 'react'
+import { useRadioGroupNavigation } from '@/components/ui/radio-group-navigation'
 import { cn } from '@/lib/utils'
 
 export interface SettingsSegmentedOption<T extends string = string> {
@@ -28,6 +29,8 @@ export interface SettingsSegmentedControlProps<T extends string = string> {
   size?: 'sm' | 'md'
   /** Additional className */
   className?: string
+  'aria-label'?: string
+  'aria-labelledby'?: string
 }
 
 /**
@@ -50,11 +53,17 @@ export function SettingsSegmentedControl<T extends string = string>({
   options,
   size = 'md',
   className,
+  'aria-label': ariaLabel,
+  'aria-labelledby': ariaLabelledBy,
 }: SettingsSegmentedControlProps<T>) {
+  const navigation = useRadioGroupNavigation(value, options)
   return (
     <div
+      {...navigation}
       role="radiogroup"
-      className={cn('inline-flex gap-1', className)}
+      aria-label={ariaLabel}
+      aria-labelledby={ariaLabelledBy}
+      className={cn('inline-flex flex-wrap gap-1', className)}
     >
       {options.map((option) => {
         const isSelected = option.value === value
@@ -64,10 +73,11 @@ export function SettingsSegmentedControl<T extends string = string>({
             key={option.value}
             type="button"
             role="radio"
+            tabIndex={isSelected ? 0 : -1}
             aria-checked={isSelected}
             onClick={() => onValueChange(option.value)}
             className={cn(
-              'motion-content flex items-center gap-1.5 rounded-lg transition-[color,background-color,box-shadow,opacity,transform]',
+              'craft-control motion-content flex items-center gap-1.5 rounded-lg transition-[color,background-color,box-shadow,opacity,transform]',
               size === 'sm' ? 'px-2 py-1 text-xs' : 'px-3 py-1.5 text-sm',
               isSelected
                 ? 'bg-secondary text-secondary-foreground shadow-minimal'
@@ -116,6 +126,8 @@ export interface SettingsSegmentedControlCardProps<T extends string = string> {
   /** Number of columns */
   columns?: 2 | 3 | 4
   className?: string
+  'aria-label'?: string
+  'aria-labelledby'?: string
 }
 
 export function SettingsSegmentedControlCard<T extends string = string>({
@@ -124,10 +136,16 @@ export function SettingsSegmentedControlCard<T extends string = string>({
   options,
   columns = 3,
   className,
+  'aria-label': ariaLabel,
+  'aria-labelledby': ariaLabelledBy,
 }: SettingsSegmentedControlCardProps<T>) {
+  const navigation = useRadioGroupNavigation(value, options)
   return (
     <div
+      {...navigation}
       role="radiogroup"
+      aria-label={ariaLabel}
+      aria-labelledby={ariaLabelledBy}
       className={cn(
         'grid gap-2',
         columns === 2 && 'grid-cols-2',
@@ -144,10 +162,11 @@ export function SettingsSegmentedControlCard<T extends string = string>({
             key={option.value}
             type="button"
             role="radio"
+            tabIndex={isSelected ? 0 : -1}
             aria-checked={isSelected}
             onClick={() => onValueChange(option.value)}
             className={cn(
-              'flex items-center gap-2 px-3 py-2.5 rounded-xl transition-colors text-left',
+              'craft-control flex items-center gap-2 px-3 py-2.5 rounded-xl transition-colors text-left',
               isSelected ? 'bg-muted' : 'bg-muted/50 hover:bg-muted/70'
             )}
           >

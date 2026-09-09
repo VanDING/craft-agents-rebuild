@@ -59,7 +59,7 @@ export function ColorPicker({
             type="button"
             aria-label={ariaLabel}
             className={cn(
-              'h-7 w-7 rounded-md ring-1 ring-foreground/10 hover:ring-foreground/30 transition-shadow cursor-pointer',
+              'craft-focus h-7 w-7 rounded-md ring-1 ring-foreground/10 hover:ring-foreground/30 transition-shadow cursor-pointer',
               triggerClassName
             )}
             style={{ backgroundColor: value || 'transparent' }}
@@ -99,7 +99,7 @@ export function ColorPicker({
                     type="button"
                     onClick={() => onChange(swatch)}
                     className={cn(
-                      'motion-interactive relative h-5 w-5 rounded-full transition-[color,background-color,box-shadow,opacity,transform] flex items-center justify-center',
+                      'craft-focus motion-interactive relative h-5 w-5 rounded-full transition-[color,background-color,box-shadow,opacity,transform] flex items-center justify-center',
                       isActive
                         ? 'ring-2 ring-offset-2 ring-foreground ring-offset-background'
                         : 'ring-1 ring-foreground/10 hover:ring-foreground/40 hover:scale-110'
@@ -125,7 +125,7 @@ export function ColorPicker({
             <button
               type="button"
               onClick={onClear}
-              className="text-xs text-foreground/50 hover:text-foreground self-start mt-1"
+              className="craft-focus text-xs text-foreground/50 hover:text-foreground self-start mt-1"
             >
               {clearLabel}
             </button>

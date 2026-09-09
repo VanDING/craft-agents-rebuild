@@ -126,7 +126,7 @@ export function ContextWorkbenchTabs({ state }: ContextWorkbenchTabsProps) {
                 tabIndex={active ? 0 : -1}
                 onClick={() => activate(item.id)}
                 onKeyDown={(event) => handleTabKeyDown(event, index)}
-                className="relative z-[1] flex min-w-0 flex-1 items-center gap-1.5 rounded-l-lg py-1 pl-2 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                className="craft-focus relative z-[1] flex min-w-0 flex-1 items-center gap-1.5 rounded-l-lg py-1 pl-2 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
               >
                 <Icon className="h-3.5 w-3.5 shrink-0" strokeWidth={active ? 2.2 : 1.8} />
                 <span className="truncate">{label}</span>
@@ -136,7 +136,7 @@ export function ContextWorkbenchTabs({ state }: ContextWorkbenchTabsProps) {
                 aria-label={`${t('common.close')} ${label}`}
                 onClick={() => handleClose(item.id, index)}
                 className={cn(
-                  'relative z-[1] mr-1 rounded-sm p-0.5 opacity-0 transition-opacity hover:bg-foreground/10 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100',
+                  'craft-focus relative z-[1] mr-1 rounded-sm p-0.5 opacity-0 transition-opacity hover:bg-foreground/10 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100',
                   active && 'opacity-60',
                 )}
               >
@@ -170,7 +170,7 @@ export function ContextWorkbenchTabs({ state }: ContextWorkbenchTabsProps) {
                   : { type: 'session', sessionId: activeSessionId },
               })}
               className={cn(
-                'flex h-7 w-7 shrink-0 items-center justify-center rounded-lg outline-none transition-colors hover:bg-secondary hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring',
+                'craft-focus flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-secondary hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring',
                 isPinned ? 'text-accent' : 'text-muted-foreground',
               )}
               aria-label={t(isPinned ? 'contentPanel.followSession' : 'contentPanel.pinSession')}
@@ -188,7 +188,7 @@ export function ContextWorkbenchTabs({ state }: ContextWorkbenchTabsProps) {
             <button
               type="button"
               onClick={() => setExpandedItemId(expanded ? null : activeItem.id)}
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground outline-none transition-colors hover:bg-secondary hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+              className="craft-focus flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
               aria-label={t(expanded ? 'contentPanel.restore' : 'contentPanel.expand')}
             >
               {expanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
@@ -203,7 +203,7 @@ export function ContextWorkbenchTabs({ state }: ContextWorkbenchTabsProps) {
           <button
             type="button"
             onClick={() => expanded ? setExpandedItemId(null) : collapse()}
-            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground outline-none transition-colors hover:bg-secondary hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+            className="craft-focus flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
             aria-label={t(expanded ? 'contentPanel.restore' : 'contentPanel.collapse')}
           >
             <ChevronRight className="h-4 w-4" />

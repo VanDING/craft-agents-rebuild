@@ -11,6 +11,7 @@ import { useTranslation } from "react-i18next"
 import { Check, ChevronDown, Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { handleOptionNavigation } from '@/components/ui/option-navigation'
 import { settingsUI } from './SettingsUIConstants'
 
 export interface SettingsMenuSelectOption {
@@ -43,6 +44,9 @@ export interface SettingsMenuSelectProps {
   searchable?: boolean
   /** Placeholder for search input */
   searchPlaceholder?: string
+  id?: string
+  ariaLabel?: string
+  describedBy?: string
 }
 
 /**
@@ -63,6 +67,9 @@ export function SettingsMenuSelect({
   onHover,
   searchable,
   searchPlaceholder,
+  id,
+  ariaLabel,
+  describedBy,
 }: SettingsMenuSelectProps) {
   const { t } = useTranslation()
   const effectiveSearchPlaceholder = searchPlaceholder ?? t("common.search")
@@ -112,8 +119,11 @@ export function SettingsMenuSelect({
       <PopoverTrigger asChild disabled={disabled}>
         <button
           type="button"
+          id={id}
+          aria-label={ariaLabel}
+          aria-describedby={describedBy}
           className={cn(
-            'inline-flex items-center h-8 px-3 gap-1 text-sm rounded-lg',
+            'craft-control inline-flex max-w-full items-center h-8 px-3 gap-1 text-sm rounded-lg',
             'bg-input shadow-minimal',
             'hover:bg-input/80 transition-colors',
             'disabled:cursor-not-allowed disabled:opacity-50',
@@ -130,6 +140,7 @@ export function SettingsMenuSelect({
         sideOffset={4}
         collisionPadding={8}
         className="p-1.5"
+        onKeyDown={handleOptionNavigation}
         style={{ width: menuWidth }}
         onMouseLeave={() => onHover?.(null)}
       >
@@ -139,14 +150,15 @@ export function SettingsMenuSelect({
             <input
               ref={searchInputRef}
               type="text"
+              aria-label={effectiveSearchPlaceholder}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder={effectiveSearchPlaceholder}
               className={cn(
-                'w-full h-8 pl-8 pr-3 text-sm rounded-md',
+                'craft-control w-full h-8 pl-8 pr-3 text-sm rounded-md',
                 'bg-foreground/5 border-0',
-                'placeholder:text-muted-foreground/50',
-                'focus:outline-none focus:ring-1 focus:ring-foreground/20'
+                'placeholder:text-muted-foreground',
+                'focus-visible:ring-0'
               )}
             />
           </div>
@@ -154,7 +166,7 @@ export function SettingsMenuSelect({
         <div className="space-y-0.5 max-h-64 overflow-auto">
           {filteredOptions.length === 0 ? (
             <div className="px-2.5 py-3 text-sm text-muted-foreground text-center">
-              No results found
+              {t('chat.noResults')}
             </div>
           ) : (
             filteredOptions.map((option) => {
@@ -162,11 +174,14 @@ export function SettingsMenuSelect({
               return (
                 <button
                   key={option.value}
+                  data-option="true"
+                  aria-pressed={isSelected}
+                  onFocus={() => onHover?.(option.value)}
                   type="button"
                   onClick={() => handleSelect(option.value)}
                   onMouseEnter={() => onHover?.(option.value)}
                   className={cn(
-                    'w-full flex items-center justify-between px-2.5 py-2 rounded-lg',
+                    'craft-control craft-menu-item w-full flex items-center justify-between px-2.5 py-[var(--theme-menu-item-padding-y)] rounded-md',
                     'hover:bg-foreground/5 transition-colors text-left',
                     isSelected && 'bg-foreground/3'
                   )}
@@ -222,6 +237,9 @@ export interface SettingsMenuSelectRowProps {
   searchable?: boolean
   /** Placeholder for search input */
   searchPlaceholder?: string
+  id?: string
+  ariaLabel?: string
+  describedBy?: string
 }
 
 export function SettingsMenuSelectRow({
@@ -238,24 +256,32 @@ export function SettingsMenuSelectRow({
   onHover,
   searchable,
   searchPlaceholder,
+  id,
+  ariaLabel,
+  describedBy,
 }: SettingsMenuSelectRowProps) {
+  const generatedId = React.useId()
+  const controlId = id ?? generatedId
   return (
     <div
       data-layout="settings-row"
       className={cn(
-        'flex items-center justify-between',
-        inCard ? 'px-4 py-3.5' : 'py-3',
+        'craft-settings-row flex items-center justify-between',
+        inCard ? 'craft-settings-padding' : 'craft-settings-plain',
         className
       )}
     >
       <div className="flex-1 min-w-0">
-        <div className={settingsUI.label}>{label}</div>
+        <label htmlFor={controlId} className={settingsUI.label}>{label}</label>
         {description && (
-          <p className={cn(settingsUI.description, settingsUI.labelDescriptionGap)}>{description}</p>
+          <p id={controlId + '-description'} className={cn(settingsUI.description, settingsUI.labelDescriptionGap)}>{description}</p>
         )}
       </div>
       <div data-layout="settings-control" className="ml-4 shrink-0">
         <SettingsMenuSelect
+          id={controlId}
+          ariaLabel={ariaLabel}
+          describedBy={[describedBy, description && controlId + '-description'].filter(Boolean).join(' ') || undefined}
           value={value}
           onValueChange={onValueChange}
           options={options}

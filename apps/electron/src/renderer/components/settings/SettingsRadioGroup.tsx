@@ -6,6 +6,7 @@
  */
 
 import * as React from 'react'
+import { useRadioGroupNavigation } from '@/components/ui/radio-group-navigation'
 import { motion, AnimatePresence, useReducedMotion } from 'motion/react'
 import { motionTween } from '@craft-agent/ui/motion'
 import { cn } from '@/lib/utils'
@@ -39,6 +40,8 @@ export interface SettingsRadioGroupProps<T extends string = string> {
   children: React.ReactNode
   /** Additional className */
   className?: string
+  'aria-label'?: string
+  'aria-labelledby'?: string
 }
 
 /**
@@ -55,7 +58,10 @@ export function SettingsRadioGroup<T extends string = string>({
   onValueChange,
   children,
   className,
+  'aria-label': ariaLabel,
+  'aria-labelledby': ariaLabelledBy,
 }: SettingsRadioGroupProps<T>) {
+  const navigation = useRadioGroupNavigation(value, children)
   const childArray = React.Children.toArray(children).filter(Boolean)
 
   return (
@@ -67,6 +73,9 @@ export function SettingsRadioGroup<T extends string = string>({
     >
       <div
         role="radiogroup"
+      aria-label={ariaLabel}
+      aria-labelledby={ariaLabelledBy}
+        {...navigation}
         className={cn(
           'rounded-xl bg-background shadow-minimal overflow-hidden',
           className
@@ -159,12 +168,13 @@ export function SettingsRadioCard({
       <button
         type="button"
         role="radio"
+            tabIndex={isSelected || !context ? 0 : -1}
         id={id}
         aria-checked={isSelected}
         disabled={disabled}
         onClick={() => !disabled && handleClick?.()}
         className={cn(
-          'w-full px-4 py-3.5 text-left flex items-start gap-3',
+          'craft-control craft-row-focus w-full px-4 py-[var(--theme-settings-row-padding-y)] text-left flex items-start gap-3',
           !disabled && 'cursor-pointer'
         )}
       >
@@ -262,12 +272,13 @@ export function SettingsRadioOption({
     <button
       type="button"
       role="radio"
+            tabIndex={isSelected || !context ? 0 : -1}
       id={id}
       aria-checked={isSelected}
       disabled={disabled}
       onClick={() => !disabled && onValueChange(value)}
       className={cn(
-        'w-full px-4 py-3 text-left flex items-center gap-3',
+        'craft-control craft-row-focus w-full px-4 py-[var(--theme-settings-row-padding-y)] text-left flex items-center gap-3',
         'hover:bg-muted/50 transition-colors',
         disabled && 'opacity-50 cursor-not-allowed',
         !disabled && 'cursor-pointer',

@@ -45,32 +45,34 @@ export function SettingsRow({
   className,
   inCard = true,
 }: SettingsRowProps) {
-  const Component = onClick ? 'button' : 'div'
+  const isRowButton = !!onClick && !children && !action
+  const Component = isRowButton ? 'button' : 'div'
+  const LabelComponent = onClick && !isRowButton ? 'button' : 'div'
 
   return (
     <Component
-      type={onClick ? 'button' : undefined}
-      onClick={onClick}
+      type={isRowButton ? 'button' : undefined}
+      onClick={isRowButton ? onClick : undefined}
       data-layout="settings-row"
       className={cn(
-        'w-full flex items-center justify-between text-left',
+        'craft-settings-row craft-focus craft-row-focus w-full flex flex-wrap items-center justify-between text-left',
         inCard
           ? 'px-4 py-[var(--theme-settings-row-padding-y)]'
           : 'py-[var(--theme-row-padding-y)]',
-        onClick && 'hover:bg-muted/70 transition-colors cursor-pointer',
+        isRowButton && 'hover:bg-muted/70 motion-interactive transition-colors cursor-pointer',
         className
       )}
     >
-      <div className="flex-1 min-w-0">
+      <LabelComponent type={onClick && !isRowButton ? 'button' : undefined} onClick={onClick && !isRowButton ? onClick : undefined} className="craft-focus flex-1 basis-40 min-w-0 text-left">
         <div className={settingsUI.label}>{label}</div>
         {description && (
-          <div className={cn(settingsUI.description, settingsUI.labelDescriptionGap, 'truncate')}>
+          <div className={cn(settingsUI.description, settingsUI.labelDescriptionGap, 'break-words')}>
             {description}
           </div>
         )}
-      </div>
+      </LabelComponent>
       {(children || action) && (
-        <div data-layout="settings-control" className="flex items-center gap-3 ml-4 shrink-0">
+        <div data-layout="settings-control" className="flex items-center gap-3 max-w-full shrink-0">
           {children}
           {action}
         </div>
