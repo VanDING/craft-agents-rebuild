@@ -1,3 +1,5 @@
+import { getMessageStructureSource } from '@craft-agent/core/utils'
+import { pinSessionCacheAtom } from '@/atoms/sessions'
 import * as React from "react"
 import { useTranslation } from "react-i18next"
 import { useEffect, useState, useMemo, useCallback } from "react"
@@ -38,7 +40,7 @@ import type { ThinkingLevel } from "@craft-agent/shared/agent/thinking-levels"
 import {
   TurnCard,
   UserMessageBubble,
-  groupMessagesByTurn,
+  groupImmutableMessagesByTurn,
   formatTurnAsMarkdown,
   formatActivityAsMarkdown,
   getAssistantTurnUiKey,
@@ -465,6 +467,12 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
   // Connection unavailable
   connectionUnavailable = false,
 }, ref) {
+  const pinSessionCache = useSetAtom(pinSessionCacheAtom)
+  React.useEffect(() => {
+    if (!session?.id) return
+    pinSessionCache(session.id, true)
+    return () => pinSessionCache(session.id, false)
+  }, [session?.id, pinSessionCache])
   const { t } = useTranslation()
   const [chatFocusRequest, setChatFocusRequest] = useAtom(chatFocusRequestAtom)
   const [focusedTrajectoryTurnKey, setFocusedTrajectoryTurnKey] = useState<string | null>(null)
@@ -632,12 +640,12 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
     return count
   }, [])
 
-  // Single O(n log n) grouping pass shared by rendering, pagination and search.
-  // Streaming updates replace the messages array, so this remains fresh without
-  // recomputing the same turn model three times in one render.
+  // Streaming text updates reuse completed turns. Structural selectors below
+  // do not need to traverse history again when only unannotated pending text changes.
+  const structuralMessages = session?.messages ? getMessageStructureSource(session.messages) : undefined
   const allTurns = React.useMemo(() => {
     if (!session) return []
-    return groupMessagesByTurn(session.messages, { isSessionProcessing: session.isProcessing })
+    return groupImmutableMessagesByTurn(session.messages, { isSessionProcessing: session.isProcessing })
   }, [session?.messages, session?.isProcessing])
 
   // Find ALL individual match occurrences (not just turns)
@@ -1017,11 +1025,11 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
   const lastMessageRole = lastMessage?.role
 
   const pendingFollowUpAnnotations = useMemo<PendingFollowUpAnnotation[]>(() => {
-    if (!session?.messages?.length) return []
+    if (!structuralMessages?.length) return []
 
     const pending: PendingFollowUpAnnotation[] = []
 
-    for (const message of session.messages) {
+    for (const message of structuralMessages) {
       if (message.role !== 'assistant' && message.role !== 'plan') continue
       if (!message.annotations?.length) continue
 
@@ -1043,7 +1051,7 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
     }
 
     return pending.sort((a, b) => a.createdAt - b.createdAt)
-  }, [session?.messages])
+  }, [structuralMessages])
 
   const followUpInputItems = useMemo(() => {
     return pendingFollowUpAnnotations.map((followUp, idx) => ({
@@ -1364,13 +1372,14 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
 
   const assistantTurnIndexByMessageId = useMemo(() => {
     const map = new Map<string, number>()
-    allTurns.forEach((turn, index) => {
+    const structuralTurns = structuralMessages ? groupImmutableMessagesByTurn(structuralMessages, { isSessionProcessing: session?.isProcessing }) : []
+    structuralTurns.forEach((turn, index) => {
       if (turn.type !== 'assistant') return
       const messageId = turn.response?.messageId
       if (messageId) map.set(messageId, index)
     })
     return map
-  }, [allTurns])
+  }, [structuralMessages, session?.isProcessing])
 
   useEffect(() => {
     if (!chatFocusRequest || chatFocusRequest.sessionId !== session?.id) return
@@ -1604,6 +1613,13 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
                     const turnKey = getTurnKey(turn)
                     const isCurrentMatch = isSearchActive && matchingTurnIds[currentMatchIndex] === turnKey
                     const isAnyMatch = isSearchActive && matchingTurnIds.includes(turnKey)
+                    // Chromium skips layout/paint for distant completed turns while
+                    // keeping card state, text selection and find-in-page intact.
+                    const historyStyle: React.CSSProperties | undefined = !isSearchActive
+                      && focusedTrajectoryTurnKey !== turnKey && !chatFocusRequest
+                      && index < turns.length - 3 && (turn.type !== 'assistant' || turn.isComplete)
+                      ? { contentVisibility: 'auto', containIntrinsicSize: 'auto 200px' }
+                      : undefined
 
                     // User turns - render with MemoizedMessageBubble
                     // Extra padding creates visual separation from AI responses
@@ -1611,6 +1627,7 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
                       return (
                         <div
                           key={turnKey}
+                          style={historyStyle}
                           ref={el => { if (el) turnRefs.current.set(turnKey, el); else turnRefs.current.delete(turnKey) }}
                           className={cn(
                             compactMode ? "pt-2 pb-1" : CHAT_LAYOUT.userMessagePadding,
@@ -1636,6 +1653,7 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
                       return (
                         <div
                           key={turnKey}
+                          style={historyStyle}
                           ref={el => { if (el) turnRefs.current.set(turnKey, el); else turnRefs.current.delete(turnKey) }}
                           className={cn(
                             "motion-content rounded-lg transition-[box-shadow,background-color]",
@@ -1676,6 +1694,7 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
                       return (
                         <div
                           key={turnKey}
+                          style={historyStyle}
                           ref={el => { if (el) turnRefs.current.set(turnKey, el); else turnRefs.current.delete(turnKey) }}
                           className={cn(
                             "motion-content mt-2 rounded-lg transition-[box-shadow,background-color]",
@@ -1713,6 +1732,7 @@ export const ChatDisplay = React.forwardRef<ChatDisplayHandle, ChatDisplayProps>
                     return (
                       <div
                         key={turnKey}
+                          style={historyStyle}
                         ref={el => { if (el) turnRefs.current.set(turnKey, el); else turnRefs.current.delete(turnKey) }}
                         className={cn(
                           "pt-2",

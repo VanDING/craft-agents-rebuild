@@ -271,3 +271,29 @@ describe('WsRpcServer lifecycle', () => {
     expect(server.getConnectedClientCount()).toBe(0)
   })
 })
+
+describe('transport memory budgets', () => {
+  it('bounds replay bytes for large events and preserves sequence gaps for resync', () => {
+    const server = createServer() as any
+    const client = { eventBuffer: [] as Array<{ seq: number; bytes: number }>, eventBufferBytes: 0, lastSentSeq: 0 }
+    for (let i = 0; i < 12; i++) server.bufferAndMaybeSendEvent(client, 'test', ['x'.repeat(1024 * 1024)], Date.now(), false)
+    expect(client.lastSentSeq).toBe(12)
+    expect(client.eventBufferBytes).toBeLessThanOrEqual(8 * 1024 * 1024)
+    expect(client.eventBuffer[0]!.seq).toBeGreaterThan(1)
+    expect(client.eventBuffer.at(-1)!.seq).toBe(12)
+    expect(client.eventBufferBytes).toBe(client.eventBuffer.reduce((total: number, event: { bytes: number }) => total + event.bytes, 0))
+    server.close()
+  })
+
+  it('disconnects an over-budget socket instead of growing its outgoing queue', () => {
+    const server = createServer() as any
+    let terminated = false
+    let sent = false
+    const ws = { OPEN: 1, readyState: 1, bufferedAmount: MAX_MESSAGE_PAYLOAD_BYTES + 16 * 1024 * 1024,
+      terminate: () => { terminated = true }, send: () => { sent = true } }
+    server.safeSend(ws, 'terminal event')
+    expect(terminated).toBe(true)
+    expect(sent).toBe(false)
+    server.close()
+  })
+})

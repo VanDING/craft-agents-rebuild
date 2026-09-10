@@ -506,6 +506,8 @@ export interface AgentBackend {
    * can wait for child process exit here to avoid transient process leaks.
    */
   disposeForRestart?(): Promise<void>;
+  /** True only when no RPC, permission or tool work depends on the live runtime. */
+  canHibernate?(): boolean;
 
   /** Get current thinking level */
   getThinkingLevel(): ThinkingLevel;

@@ -41,7 +41,8 @@ import { useSessionSelection, useIsMultiSelectActive, useSelectedIds, useSelecti
 import { sourceSelection, skillSelection, automationSelection } from '@/hooks/useEntitySelection'
 import { extractLabelId } from '@craft-agent/shared/labels'
 import type { SessionStatusId } from '@/config/session-status-config'
-import { SourceInfoPage, ChatPage } from '@/pages'
+import SourceInfoPage from '@/pages/SourceInfoPage'
+import ChatPage from '@/pages/ChatPage'
 import SkillInfoPage from '@/pages/SkillInfoPage'
 import { getSettingsPageComponent } from '@/pages/settings/settings-pages'
 import { AutomationInfoPage } from '../automations/AutomationInfoPage'
@@ -247,7 +248,9 @@ export function MainContentPanel({
     const SettingsPageComponent = getSettingsPageComponent(subpage)
     return wrapWithStoplight(
       <Panel variant="grow" className={className}>
-        <SettingsPageComponent />
+        <React.Suspense fallback={<div className="h-full w-full animate-pulse bg-foreground/[0.02]" aria-busy="true" />}>
+          <SettingsPageComponent />
+        </React.Suspense>
       </Panel>
     )
   }

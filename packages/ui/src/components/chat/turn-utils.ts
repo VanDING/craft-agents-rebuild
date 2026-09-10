@@ -5,6 +5,7 @@
  * Converts the flat Message[] array into grouped turns for email-like display.
  */
 
+import { getMessageTextUpdate } from '@craft-agent/core/utils'
 import type { Message, StoredMessage, MessageRole } from '@craft-agent/core'
 import { isParentTaskTool } from '@craft-agent/shared/utils/toolNames'
 import { storedToMessage } from '@craft-agent/core'
@@ -378,6 +379,41 @@ export interface GroupTurnsOptions {
  * as the signal: isIntermediate=true means more work coming, isIntermediate=false
  * means final response.
  */
+const groupedTurns = new WeakMap<Message[], { processing: boolean | undefined; turns: Turn[] }>()
+
+/** Reuse completed cards for a proven content-only update to a pending message. */
+function updateStreamingTurns(messages: Message[], processing: boolean | undefined): Turn[] | undefined {
+  if (processing === false) return
+  const update = getMessageTextUpdate(messages)
+  if (!update) return
+  const cached = groupedTurns.get(update.previous)
+  if (!cached || cached.processing !== processing) return
+  const message = messages[update.index]
+  if (!message || message.hidden || !message.isPending || !message.isStreaming) return
+  const last = cached.turns.at(-1)
+  if (!last || last.type !== 'assistant' || last.isComplete) return
+  const index = last.activities.findIndex(activity => activity.id === message.id && activity.type === 'intermediate')
+  if (index < 0) return
+  const activities = last.activities.slice()
+  activities[index] = { ...activities[index]!, content: message.content }
+  const turns = cached.turns.slice()
+  turns[turns.length - 1] = { ...last, activities }
+  return turns
+}
+
+export function groupImmutableMessagesByTurn(messages: Message[], options: GroupTurnsOptions = {}): Turn[] {
+  const cached = groupedTurns.get(messages)
+  if (cached && cached.processing === options.isSessionProcessing) return cached.turns
+  const streamed = updateStreamingTurns(messages, options.isSessionProcessing)
+  if (streamed) {
+    groupedTurns.set(messages, { processing: options.isSessionProcessing, turns: streamed })
+    return streamed
+  }
+  const turns = groupMessagesByTurn(messages, options)
+  groupedTurns.set(messages, { processing: options.isSessionProcessing, turns })
+  return turns
+}
+
 export function groupMessagesByTurn(messages: Message[], options: GroupTurnsOptions = {}): Turn[] {
   // Drop hidden messages before grouping. These are system-generated nudges that
   // must reach the model (they drive a turn) but must never render as a bubble —

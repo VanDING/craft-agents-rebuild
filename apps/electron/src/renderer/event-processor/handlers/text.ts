@@ -6,6 +6,7 @@
  */
 
 import type { SessionState, StreamingState, TextDeltaEvent, TextCompleteEvent, TextDiscardEvent } from '../types'
+import { recordMessageTextUpdate } from '@craft-agent/core/utils'
 import type { Message } from '../../../shared/types'
 import {
   findStreamingMessage,
@@ -55,14 +56,23 @@ export function handleTextDelta(
       }
 
   // Find existing streaming message by turnId
-  const streamingIndex = findStreamingMessage(session.messages, event.turnId)
+  const cachedIndex = streaming?.messageIndex
+  const cachedMessage = cachedIndex === undefined ? undefined : session.messages[cachedIndex]
+  const streamingIndex = cachedMessage?.id === streaming?.messageId
+    && cachedMessage?.isStreaming
+    && (!event.turnId || cachedMessage.turnId === event.turnId)
+    ? cachedIndex!
+    : findStreamingMessage(session.messages, event.turnId)
 
   if (streamingIndex !== -1) {
     // Message exists - update its content
     const currentMsg = session.messages[streamingIndex]
+    newStreaming.messageIndex = streamingIndex
+    newStreaming.messageId = currentMsg.id
     const updatedSession = updateMessageAt(session, streamingIndex, {
       content: currentMsg.content + event.delta,
     })
+    recordMessageTextUpdate(session.messages, updatedSession.messages, streamingIndex)
     return { session: updatedSession, streaming: newStreaming }
   }
 
@@ -78,6 +88,8 @@ export function handleTextDelta(
     turnId: event.turnId,
   }
 
+  newStreaming.messageIndex = session.messages.length
+  newStreaming.messageId = newMessage.id
   return {
     session: appendMessage(session, newMessage, false),
     streaming: newStreaming,

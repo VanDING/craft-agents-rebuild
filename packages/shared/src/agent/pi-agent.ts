@@ -2701,6 +2701,19 @@ export class PiAgent extends BaseAgent {
     this.debug('PiAgent destroyed');
   }
 
+  canHibernate(): boolean {
+    return !this._isProcessing
+      && this.pendingPermissions.size === 0
+      && this.pendingToolExecutions.size === 0
+      && this.pendingMiniCompletions.size === 0
+      && this.pendingLlmQueries.size === 0
+      && this.pendingEnsureSessionReady.size === 0
+      && this.pendingCompactions.size === 0
+      && this.pendingAutoCompactionToggles.size === 0
+      && this.pendingRuntimeConfigUpdates.size === 0
+      && this.bufferedDurableToolStarts.size === 0;
+  }
+
   async disposeForRestart(): Promise<void> {
     this.stopConfigWatcher();
 

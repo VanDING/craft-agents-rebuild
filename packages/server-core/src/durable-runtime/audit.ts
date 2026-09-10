@@ -21,9 +21,21 @@ export function auditLegacyProjection(events: RuntimeEvent[], messages: Message[
   const issues: ProjectionAuditIssue[] = []
   const byMessageId = new Map(messages.map(message => [message.id, message]))
   const byToolCallId = new Map(messages.filter(message => message.toolUseId).map(message => [message.toolUseId!, message]))
-  const maxSeq = Math.max(0, ...events.map(event => event.seq ?? 0))
+  let maxSeq = 0
+  const representedMessages = new Set<unknown>()
+  const representedTools = new Set<unknown>()
 
   for (const event of events) {
+    maxSeq = Math.max(maxSeq, event.seq ?? 0)
+    const identityPayload = event.payload as { messageId?: unknown; toolCallId?: unknown; providerToolCallId?: unknown }
+    if (event.type === 'legacy_context_imported') {
+      representedMessages.add(identityPayload.messageId)
+      representedTools.add(identityPayload.toolCallId)
+    } else if (event.type === 'user_message_committed' || event.type === 'assistant_message_committed') {
+      representedMessages.add(identityPayload.messageId)
+    } else if (event.type === 'tool_call_observed') {
+      representedTools.add(identityPayload.providerToolCallId)
+    }
     if (event.type === 'legacy_context_imported') {
       const payload = event.payload as { messageId?: unknown; toolCallId?: unknown }
       const identity = typeof payload.toolCallId === 'string' ? payload.toolCallId : payload.messageId
@@ -59,14 +71,8 @@ export function auditLegacyProjection(events: RuntimeEvent[], messages: Message[
     const modelVisibleLegacy = message.role === 'user' || (message.role === 'assistant' && !(message.usage && !message.content)) || !!message.toolUseId
     if (modelVisibleLegacy) {
       const represented = message.toolUseId
-        ? events.some(event => (event.type === 'tool_call_observed'
-          && (event.payload as { providerToolCallId?: unknown }).providerToolCallId === message.toolUseId)
-          || (event.type === 'legacy_context_imported'
-            && (event.payload as { toolCallId?: unknown }).toolCallId === message.toolUseId))
-        : events.some(event => ((event.type === 'user_message_committed' || event.type === 'assistant_message_committed')
-          && (event.payload as { messageId?: unknown }).messageId === message.id)
-          || (event.type === 'legacy_context_imported'
-            && (event.payload as { messageId?: unknown }).messageId === message.id))
+        ? representedTools.has(message.toolUseId)
+        : representedMessages.has(message.id)
       if (!represented) issues.push({ kind: 'legacy_fact_missing', identity: message.toolUseId ?? message.id })
     }
     if ((message.durableSeq ?? 0) > maxSeq) {

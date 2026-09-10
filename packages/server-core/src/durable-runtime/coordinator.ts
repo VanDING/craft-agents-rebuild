@@ -30,9 +30,8 @@ import { dirname, join, resolve } from 'node:path'
 import { DurableRuntimeStore, type RuntimeDatabaseIntegrity, type RuntimeUsageRow } from './store.js'
 import { DurableProjectionRunner, ProjectionSchemaMismatchError } from './projection-runner.js'
 import {
-  reduceWorkspaceSessionProjection,
+  projectDurableSession,
   type DurableSessionProjection,
-  type DurableWorkspaceSessionProjection,
 } from './projection.js'
 
 const SAFE_REPLAY_TOOLS = new Set([
@@ -187,23 +186,28 @@ export class DurableRuntimeCoordinator {
     workspaceRootPath: string,
     sessionId: string,
   ): DurableSessionProjection | undefined {
-    const runner = new DurableProjectionRunner<DurableWorkspaceSessionProjection>(
+    const runner = new DurableProjectionRunner<DurableSessionProjection>(
       this.storeFor(workspaceRootPath),
       {
-        name: 'canonical/sessions',
-        schemaVersion: 2,
-        initial: () => ({ sessions: {} }),
-        reduce: reduceWorkspaceSessionProjection,
+        name: `canonical/session/${encodeURIComponent(sessionId)}`,
+        schemaVersion: 1,
+        sessionId,
+        initial: () => ({ cursor: 0, items: [] }),
+        reduce: (previous, events) => {
+          const delta = projectDurableSession(events)
+          return { cursor: Math.max(previous.cursor, delta.cursor), items: [...previous.items, ...delta.items] }
+        },
       },
     )
     try {
-      return runner.runToEnd().snapshot.sessions[sessionId]
+      const projection = runner.runToEnd().snapshot
+      return projection.cursor === 0 ? undefined : projection
     } catch (error) {
       // Materialized projections are disposable. A reducer/schema upgrade must
       // rebuild from immutable runtime facts instead of permanently forcing the
       // online path back to the legacy cache.
       if (error instanceof ProjectionSchemaMismatchError) {
-        return runner.rebuild().snapshot.sessions[sessionId]
+        return runner.rebuild().snapshot
       }
       throw error
     }

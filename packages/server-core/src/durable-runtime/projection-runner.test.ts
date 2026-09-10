@@ -87,3 +87,20 @@ describe('DurableProjectionRunner', () => {
     store.close()
   })
 })
+
+test('session projections skip other sessions without treating their global sequence gaps as corruption', () => {
+  const store = new DurableRuntimeStore('unused', { databasePath: ':memory:' })
+  try {
+    store.appendEvents([event(1), { ...event(2), sessionId: 'other' }, event(3), { ...event(4), sessionId: 'other' }])
+    const runner = new DurableProjectionRunner(store, { ...definition, sessionId: 'session-1' })
+    expect(runner.runToEnd(1).snapshot).toEqual(['message-1', 'message-3'])
+    expect(runner.current()?.cursor).toBe(3)
+    store.appendEvents([{ ...event(5), sessionId: 'other' }])
+    expect(runner.runToEnd().cursor).toBe(3)
+    store.appendEvents([event(6)])
+    expect(runner.runToEnd().snapshot).toEqual(['message-1', 'message-3', 'message-6'])
+    expect(runner.rebuild(1).snapshot).toEqual(['message-1', 'message-3', 'message-6'])
+  } finally {
+    store.close()
+  }
+})

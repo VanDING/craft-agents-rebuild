@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import { compactTextUpdate } from './transport-delta.ts';
+import { prepareRequestDiagnostics } from './request-diagnostics.ts';
 /**
  * Pi Agent Server
  *
@@ -79,62 +81,12 @@ import { setDefaultStreamFn, type StreamFn } from '@earendil-works/pi-agent-core
 import { wrapDurableModelStream } from './durable-model-stream.ts';
 import { streamSimple } from '@earendil-works/pi-ai/compat';
 
-function canonicalModelRequestHash(model: Model<any>, context: Context): string {
-  return createHash('sha256').update(JSON.stringify({
-    provider: model.provider,
-    model: model.id,
-    systemPrompt: context.systemPrompt,
-    messages: context.messages,
-    tools: context.tools?.map(tool => ({ name: tool.name, description: tool.description, parameters: tool.parameters })),
-  })).digest('hex');
-}
-
-function serializedContextValue(value: unknown): string {
-  try {
-    return JSON.stringify(value) ?? '';
-  } catch {
-    return String(value);
-  }
-}
-
-function contextValueHash(value: unknown): { hash: string; chars: number } {
-  const serialized = serializedContextValue(value);
-  return {
-    hash: createHash('sha256').update(serialized).digest('hex'),
-    chars: serialized.length,
-  };
-}
-
-function buildRequestContextSnapshot(model: Model<any>, context: Context) {
-  const system = contextValueHash(context.systemPrompt ?? '');
-  return {
-    version: 1 as const,
-    capturedAt: Date.now(),
-    provider: model.provider,
-    model: model.id,
-    system,
-    messages: context.messages.map(message => ({
-      role: typeof (message as { role?: unknown }).role === 'string' ? String((message as { role: string }).role) : 'unknown',
-      ...contextValueHash(message),
-    })),
-    tools: (context.tools ?? []).map(tool => {
-      const schema = contextValueHash(tool.parameters);
-      return {
-        name: tool.name,
-        ...(tool.description ? { description: tool.description } : {}),
-        hash: schema.hash,
-        schemaChars: schema.chars,
-      };
-    }),
-  };
-}
-
 function withDurableAccounting(stream: StreamFn): StreamFn {
   return wrapDurableModelStream(stream, async (model, context) => {
     const requestSeq = ++promptSnapshotSeq;
-    rememberPromptSnapshot(requestSeq, context.systemPrompt ?? '', buildRequestContextSnapshot(model, context));
+    const { canonicalRequestHash, contextSnapshot } = prepareRequestDiagnostics(model, context);
+    rememberPromptSnapshot(requestSeq, context.systemPrompt ?? '', contextSnapshot);
     const providerRequestId = String(requestSeq);
-    const canonicalRequestHash = canonicalModelRequestHash(model, context);
     const durableRun = currentDurableModelRun();
     if (!initConfig || !durableRun) {
       return async message => { Object.assign(message, { durableRequestSeq: requestSeq }); };
@@ -1793,6 +1745,14 @@ function extractToolExecutionMetadata(args: Record<string, unknown> | undefined)
 }
 
 function handleSessionEvent(event: AgentSessionEvent): void {
+  // SDK partials contain the accumulated response (and sometimes image data).
+  // Re-sending them on every token creates quadratic serialization and pipe
+  // traffic. The host uses only delta + timestamp until message_end.
+  if (event.type === 'message_update') {
+    const compact = compactTextUpdate(event);
+    if (compact) send({ type: 'event', event: compact as unknown as OutboundAgentEvent });
+    return;
+  }
   let forwardedEvent: OutboundAgentEvent = event;
   let lengthContinuationAttempt: number | undefined;
 

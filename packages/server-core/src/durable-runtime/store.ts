@@ -421,8 +421,8 @@ export class DurableRuntimeStore {
     return row ? JSON.parse(row.state_json) as DurableOperationState : undefined
   }
 
-  listOperations(): DurableOperationState[] {
-    const rows = this.db.prepare('SELECT * FROM operations ORDER BY updated_at ASC').all() as OperationRow[]
+  listOperations(sessionId?: string): DurableOperationState[] {
+    const rows = this.db.prepare(`SELECT * FROM operations ${sessionId ? 'WHERE session_id = ?' : ''} ORDER BY updated_at ASC`).all(...(sessionId ? [sessionId] : [])) as OperationRow[]
     return rows.map(row => JSON.parse(row.state_json) as DurableOperationState)
   }
 
@@ -490,13 +490,14 @@ export class DurableRuntimeStore {
     return evidence ? resolveToolRecovery(evidence) : undefined
   }
 
-  listUnsettledToolOperations(runOperationId?: string): ToolRecoveryEvidence[] {
+  listUnsettledToolOperations(runOperationId?: string, sessionId?: string): ToolRecoveryEvidence[] {
     const rows = this.db.prepare(`
       SELECT * FROM tool_operations
       WHERE status IN ('effect_pending', 'recovery_parked')
         ${runOperationId ? 'AND run_operation_id = ?' : ''}
+        ${sessionId ? 'AND run_operation_id IN (SELECT operation_id FROM operations WHERE session_id = ?)' : ''}
       ORDER BY prepared_at ASC
-    `).all(...(runOperationId ? [runOperationId] : [])) as ToolOperationRow[]
+    `).all(...(runOperationId ? [runOperationId] : []), ...(sessionId ? [sessionId] : [])) as ToolOperationRow[]
     return rows.map(row => this.getToolRecoveryEvidence(row.operation_id)!)
   }
 
@@ -534,8 +535,8 @@ export class DurableRuntimeStore {
     return row ? this.decodeEvent(row) : undefined
   }
 
-  getLatestEventSeq(): number {
-    const row = this.db.prepare('SELECT MAX(seq) AS seq FROM runtime_events').get() as { seq: number | null }
+  getLatestEventSeq(sessionId?: string): number {
+    const row = this.db.prepare(`SELECT MAX(seq) AS seq FROM runtime_events ${sessionId ? 'WHERE session_id = ?' : ''}`).get(...(sessionId ? [sessionId] : [])) as { seq: number | null }
     return row.seq ?? 0
   }
 

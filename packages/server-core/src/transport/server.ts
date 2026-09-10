@@ -37,6 +37,7 @@ interface BufferedEvent {
   /** Shared serialized envelope — one allocation referenced by all client buffers. */
   data: string
   timestamp: number
+  bytes: number
 }
 
 interface ClientConnection {
@@ -49,6 +50,7 @@ interface ClientConnection {
   alive: boolean
   /** Ring buffer of recent events for replay on reconnect. */
   eventBuffer: BufferedEvent[]
+  eventBufferBytes: number
   /** Highest per-client seq the client has acknowledged. */
   lastAckedSeq: number
   /** Highest per-client seq assigned to this client. */
@@ -585,6 +587,7 @@ export class WsRpcServer implements RpcServer {
           missedPongs: 0,
           alive: true,
           eventBuffer: [],
+          eventBufferBytes: 0,
           lastAckedSeq: 0,
           lastSentSeq: 0,
         }
@@ -641,6 +644,7 @@ export class WsRpcServer implements RpcServer {
             removeCount++
           }
           if (removeCount > 0) {
+            for (let i = 0; i < removeCount; i++) client.eventBufferBytes -= buf[i]!.bytes
             buf.splice(0, removeCount)
           }
         }
@@ -796,7 +800,9 @@ export class WsRpcServer implements RpcServer {
     }
 
     const data = serializeEnvelope(envelope)
-    client.eventBuffer.push({ seq, data, timestamp })
+    const bytes = Buffer.byteLength(data)
+    client.eventBuffer.push({ seq, data, timestamp, bytes })
+    client.eventBufferBytes += bytes
     this.evictBuffer(client)
 
     if (shouldSend) {
@@ -824,10 +830,14 @@ export class WsRpcServer implements RpcServer {
       removeCount += remaining - EVENT_BUFFER_MAX_SIZE
     }
 
-    // Single splice instead of O(n) shift loop
-    if (removeCount > 0) {
-      buf.splice(0, removeCount)
+    // Count limits alone do not bound large tool results or response snapshots.
+    let retainedBytes = client.eventBufferBytes
+    for (let i = 0; i < removeCount; i++) retainedBytes -= buf[i]!.bytes
+    while (removeCount < buf.length && retainedBytes > 8 * 1024 * 1024) {
+      retainedBytes -= buf[removeCount++]!.bytes
     }
+    if (removeCount > 0) buf.splice(0, removeCount)
+    client.eventBufferBytes = retainedBytes
   }
 
   private matchesTarget(client: ClientConnection, target: PushTarget): boolean {
@@ -913,6 +923,13 @@ export class WsRpcServer implements RpcServer {
 
   private safeSend(ws: WebSocket, data: string): void {
     if (ws.readyState === ws.OPEN) {
+      // Terminate a slow consumer before ws retains an unbounded send queue.
+      // Reconnect replays retained events, or uses the existing resync path if
+      // the replay window has expired. Never silently drop a terminal event.
+      if (ws.bufferedAmount + Buffer.byteLength(data) > Math.max(MAX_MESSAGE_PAYLOAD_BYTES, 16 * 1024 * 1024)) {
+        ws.terminate()
+        return
+      }
       ws.send(data)
     }
   }

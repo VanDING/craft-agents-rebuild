@@ -16,6 +16,9 @@ export type RetryEvent = Extract<SessionEvent, { type: 'retry' }>
  * Streaming state for a session - replaces streamingTextRef
  */
 export interface StreamingState {
+  /** Validated against the current array before use; other events may insert messages. */
+  messageIndex?: number
+  messageId?: string
   content: string
   turnId?: string
   parentToolUseId?: string

@@ -1,3 +1,4 @@
+import { estimateTranscriptBytes } from '@craft-agent/core/utils'
 import type { EventSink, RpcServer } from '@craft-agent/server-core/transport'
 import { CLIENT_BROWSER_INVOKE } from '@craft-agent/server-core/transport'
 import type { ISessionManager, IBrowserPaneManager, ExecutePromptAutomationInput } from '@craft-agent/server-core/handlers'
@@ -814,6 +815,7 @@ interface ManagedSession {
   // truth for background-task status. See RunningBackgroundTask.
   backgroundTaskRegistry: Map<string, RunningBackgroundTask>
   // Whether messages have been loaded from disk (for lazy loading)
+  lastAccessAt?: number
   messagesLoaded: boolean
   // Pending auth request tracking (for unified auth flow)
   pendingAuthRequestId?: string
@@ -1087,6 +1089,9 @@ export class SessionManager implements ISessionManager {
   private sessions: Map<string, ManagedSession> = new Map()
   private readonly durableRuntime = this.createDurableRuntime()
   private durableMaintenanceTimer?: NodeJS.Timeout
+  private idleSessionTimer?: NodeJS.Timeout
+  private idleSweepRunning = false
+  private shuttingDown = false
 
   private createDurableRuntime(): DurableRuntimeCoordinator {
     const runtime = new DurableRuntimeCoordinator()
@@ -1951,6 +1956,11 @@ export class SessionManager implements ISessionManager {
       }, 6 * 60 * 60 * 1000)
       this.durableMaintenanceTimer.unref?.()
 
+      this.idleSessionTimer ??= setInterval(() => {
+        void this.releaseIdleSessions().catch(error => sessionLog.warn('Idle session cleanup failed', error))
+      }, 60_000)
+      this.idleSessionTimer.unref?.()
+
       // Load existing sessions from disk
       this.loadSessionsFromDisk()
 
@@ -2111,27 +2121,14 @@ export class SessionManager implements ISessionManager {
   // Build the StoredSession snapshot and hand it to the persistence queue.
   // Caller must ensure `managed.messagesLoaded` is true.
   private enqueuePersist(managed: ManagedSession): void {
-    try {
-      // Filter out transient status messages (progress indicators like "Compacting...")
-      // Error messages are now persisted with rich fields for diagnostics
-      const persistableMessages = managed.messages.filter(m =>
-        m.role !== 'status'
-      )
-
-      const storedSession: StoredSession = {
-        ...pickSessionFields(managed),
-        workspaceRootPath: managed.workspace.rootPath,
-        createdAt: managed.createdAt ?? Date.now(),
-        lastUsedAt: Date.now(),
-        messages: persistableMessages.map(messageToStored),
-        tokenUsage: managed.tokenUsage ?? DEFAULT_TOKEN_USAGE,
-      } as StoredSession
-
-      // Queue for async persistence with debouncing
-      sessionPersistenceQueue.enqueue(storedSession)
-    } catch (error) {
-      sessionLog.error(`Failed to queue session ${managed.id} for persistence:`, error)
-    }
+    sessionPersistenceQueue.enqueueLazy(managed.id, () => ({
+      ...pickSessionFields(managed),
+      workspaceRootPath: managed.workspace.rootPath,
+      createdAt: managed.createdAt ?? Date.now(),
+      lastUsedAt: Date.now(),
+      messages: managed.messages.filter(m => m.role !== 'status').map(messageToStored),
+      tokenUsage: managed.tokenUsage ?? DEFAULT_TOKEN_USAGE,
+    } as StoredSession))
   }
 
   // Flush a specific session immediately (call on session close/switch).
@@ -2517,6 +2514,7 @@ export class SessionManager implements ISessionManager {
    * to load messages simultaneously.
    */
   private async ensureMessagesLoaded(managed: ManagedSession): Promise<void> {
+    managed.lastAccessAt = Date.now()
     if (managed.messagesLoaded) return
 
     // Deduplicate concurrent loads - return existing promise if already loading
@@ -2606,13 +2604,7 @@ export class SessionManager implements ISessionManager {
         error: error instanceof Error ? error.message : String(error),
       })
     }
-    const unsettled = store
-      .listUnsettledToolOperations()
-      .filter(item => {
-        const runOperationId = item.dispatch?.runOperationId
-        return runOperationId
-          && this.durableRuntime.storeFor(managed.workspace.rootPath).getOperation(runOperationId)?.sessionId === managed.id
-      })
+    const unsettled = store.listUnsettledToolOperations(undefined, managed.id)
     for (const evidence of unsettled) {
       const dispatch = evidence.dispatch
       if (!dispatch) continue
@@ -2622,7 +2614,7 @@ export class SessionManager implements ISessionManager {
       message.durableOperationId = dispatch.operationId
       message.toolResult ||= 'Execution outcome is unknown after restart. Reconcile with the external system before retrying.'
     }
-    for (const state of store.listOperations()) {
+    for (const state of store.listOperations(managed.id)) {
       if (state.sessionId !== managed.id || state.phase !== 'recovery_parked') continue
       const currentModel = (state.data as { currentModel?: { operationId?: string; provider?: string; model?: string } }).currentModel
       if (!currentModel?.operationId) continue
@@ -2642,7 +2634,7 @@ export class SessionManager implements ISessionManager {
         store.recordProjectionParity({
           projection: 'canonical/sessions',
           sessionId: managed.id,
-          cursor: Math.max(0, ...events.map(event => event.seq ?? 0)),
+          cursor: events.reduce((max, event) => Math.max(max, event.seq ?? 0), 0),
           canonicalFacts: parity.canonicalFacts,
           legacyMessages: parity.legacyMessages,
           issueCount: parity.issueCount,
@@ -3446,6 +3438,54 @@ export class SessionManager implements ISessionManager {
     return this.sessions.get(sessionId)?.workingDirectory
   }
 
+  /** Retain a small warm set, but never evict active or uncommitted work. */
+  private async releaseIdleSessions(now = Date.now()): Promise<void> {
+    if (this.idleSweepRunning) return
+    this.idleSweepRunning = true
+    try {
+      const warm = [...this.sessions.values()].filter(m => m.messagesLoaded || m.agent)
+        .sort((a, b) => (b.lastAccessAt ?? b.lastMessageAt ?? 0) - (a.lastAccessAt ?? a.lastMessageAt ?? 0))
+      const eligible = (m: ManagedSession) => !this.shuttingDown && !m.isProcessing && !m.isAsyncOperationOngoing
+        && !m.activeDurableRunOperationId && !m.authRetryInProgress && !m.pendingAuthRequest
+        && m.messageQueue.length === 0 && !this.messageLoadingPromises.has(m.id)
+        && !this.isSessionBeingViewed(m.id, m.workspace.id)
+        && ![...m.backgroundTaskRegistry.values()].some(task => task.status === 'running')
+        && (!m.agent || m.agent.canHibernate?.() === true)
+      let retainedBytes = 0
+      for (let index = 0; index < warm.length; index++) {
+        const managed = warm[index]!
+        const idleMs = now - (managed.lastAccessAt ?? managed.lastMessageAt ?? 0)
+        const bytes = estimateTranscriptBytes(managed.messages)
+        retainedBytes += bytes
+        if (idleMs < 2 * 60_000 || (index < 8 && idleMs < 15 * 60_000 && retainedBytes <= 64 * 1024 * 1024)) continue
+        if (!eligible(managed) || this.agentRefreshLocks.has(managed.id)) continue
+        await this.flushSession(managed.id)
+        if (!eligible(managed) || now - (managed.lastAccessAt ?? 0) < 2 * 60_000) continue
+        // Existing send/config paths await this same lock before using a runtime.
+        const work = this.disposeManagedAgentRuntime(managed, 'idle memory budget')
+        this.agentRefreshLocks.set(managed.id, work)
+        try {
+          await work
+          if (!eligible(managed) || sessionPersistenceQueue.hasPending(managed.id)
+            || now - (managed.lastAccessAt ?? 0) < 2 * 60_000) continue
+          managed.messageCount = Math.max(managed.messageCount ?? 0, managed.messages.length)
+          managed.lastFinalMessageId = this.getLastFinalAssistantMessageId(managed.messages)
+          managed.messages = []
+          managed.messagesLoaded = false
+          retainedBytes -= bytes
+          managed.lastSentMessage = undefined
+          managed.lastSentAttachments = undefined
+          managed.lastSentStoredAttachments = undefined
+          managed.lastSentOptions = undefined
+        } finally {
+          if (this.agentRefreshLocks.get(managed.id) === work) this.agentRefreshLocks.delete(managed.id)
+        }
+      }
+    } finally {
+      this.idleSweepRunning = false
+    }
+  }
+
   private async disposeManagedAgentRuntime(managed: ManagedSession, reason: string): Promise<void> {
     const sessionId = managed.id
 
@@ -3677,6 +3717,7 @@ export class SessionManager implements ISessionManager {
    * 4. fallback: no connection configured
    */
   private async getOrCreateAgent(managed: ManagedSession): Promise<AgentInstance> {
+    managed.lastAccessAt = Date.now()
     // Refresh runtime config in-place when the connection has drifted since
     // the agent was created. May null out `managed.agent` if the in-place
     // refresh fails, in which case the create branch below rebuilds it.
@@ -7315,6 +7356,7 @@ export class SessionManager implements ISessionManager {
     const managed = this.sessions.get(sessionId)
     if (!managed) return
 
+    managed.lastAccessAt = Date.now()
     sessionLog.info(`Processing stopped for session ${sessionId}: ${reason}`)
 
     const durableRunOperationId = managed.activeDurableRunOperationId
@@ -9807,7 +9849,10 @@ export class SessionManager implements ISessionManager {
    * Should be called on app shutdown to prevent resource leaks.
    */
   cleanup(): void {
+    this.shuttingDown = true
     sessionLog.info('Cleaning up resources...')
+    if (this.idleSessionTimer) clearInterval(this.idleSessionTimer)
+    this.idleSessionTimer = undefined
 
     // Stop all ConfigWatchers (file system watchers)
     for (const [path, watcher] of this.configWatchers) {

@@ -293,3 +293,24 @@ describe('SessionPersistenceQueue write failures', () => {
     }
   })
 })
+
+describe('lazy persistence snapshots', () => {
+  it('coalesces snapshot creation and preserves multi-batch Unicode transcripts', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'craft-pq-lazy-'))
+    const queue = new SessionPersistenceQueue(60_000)
+    try {
+      const session = makeStoredSession(root, 'lazy', 3)
+      session.messages[0]!.content = '你好🙂'.repeat(100_000)
+      let builds = 0
+      for (let i = 0; i < 20; i++) queue.enqueueLazy(session.id, () => { builds++; return session })
+      expect(builds).toBe(0)
+      await queue.flush(session.id)
+      expect(builds).toBe(1)
+      const lines = readFileSync(getSessionFilePath(root, session.id), 'utf8').trimEnd().split('\n')
+      expect(lines.slice(1).map(line => JSON.parse(line).content)).toEqual(session.messages.map(m => m.content))
+    } finally {
+      queue.cancel('lazy')
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+})

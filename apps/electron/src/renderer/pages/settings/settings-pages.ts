@@ -11,20 +11,20 @@
  * 4. Add icon to SETTINGS_ICONS in components/icons/SettingsIcons.tsx
  */
 
-import type { ComponentType } from 'react'
+import { lazy, type ComponentType } from 'react'
 import type { SettingsSubpage } from '../../../shared/settings-registry'
 
-import AppSettingsPage from './AppSettingsPage'
-import AiSettingsPage from './AiSettingsPage'
-import AppearanceSettingsPage from './AppearanceSettingsPage'
-import InputSettingsPage from './InputSettingsPage'
-import WorkspaceSettingsPage from './WorkspaceSettingsPage'
-import PermissionsSettingsPage from './PermissionsSettingsPage'
-import LabelsSettingsPage from './LabelsSettingsPage'
-import MessagingSettingsPage from './MessagingSettingsPage'
-import ServerSettingsPage from './ServerSettingsPage'
-import ShortcutsPage from './ShortcutsPage'
-import PreferencesPage from './PreferencesPage'
+const AppSettingsPage = lazy(() => import('./AppSettingsPage'))
+const AiSettingsPage = lazy(() => import('./AiSettingsPage'))
+const AppearanceSettingsPage = lazy(() => import('./AppearanceSettingsPage'))
+const InputSettingsPage = lazy(() => import('./InputSettingsPage'))
+const WorkspaceSettingsPage = lazy(() => import('./WorkspaceSettingsPage'))
+const PermissionsSettingsPage = lazy(() => import('./PermissionsSettingsPage'))
+const LabelsSettingsPage = lazy(() => import('./LabelsSettingsPage'))
+const MessagingSettingsPage = lazy(() => import('./MessagingSettingsPage'))
+const ServerSettingsPage = lazy(() => import('./ServerSettingsPage'))
+const ShortcutsPage = lazy(() => import('./ShortcutsPage'))
+const PreferencesPage = lazy(() => import('./PreferencesPage'))
 
 /**
  * Map of settings subpage IDs to their page components.

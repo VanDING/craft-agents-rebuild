@@ -1,9 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { ExternalLink, FileQuestion, RotateCcw } from 'lucide-react'
-import { Document, Page, pdfjs } from 'react-pdf'
-import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
-import 'react-pdf/dist/Page/AnnotationLayer.css'
-import 'react-pdf/dist/Page/TextLayer.css'
 import JsonView from '@uiw/react-json-view'
 import { Markdown, Spinner } from '@craft-agent/ui'
 import { resolveFileFormat } from '@craft-agent/shared/artifacts/browser'
@@ -12,8 +8,8 @@ import { ShikiCodeViewer } from '@/components/shiki/ShikiCodeViewer'
 import { getLanguageFromPath } from '@/lib/file-utils'
 import { toast } from 'sonner'
 
-pdfjs.GlobalWorkerOptions.workerSrc = pdfjsWorker
 
+const PdfPreview = lazy(() => import('./PdfFilePreview'))
 const OfficeFilePreview = lazy(() => import('./OfficeFilePreview'))
 const TEXT_LIMIT = 1_000_000
 const READ_LIMIT = 50 * 1024 * 1024
@@ -118,7 +114,7 @@ function FilePreview(props: FilePreviewContentProps) {
       </Markdown>
     </div>
     else content = source
-  } else if (format.preview === 'pdf') content = bytes ? <PdfPreview bytes={bytes} onError={setError} /> : <Loading />
+  } else if (format.preview === 'pdf') content = bytes ? <Suspense fallback={<Loading />}><PdfPreview bytes={bytes} onError={setError} /></Suspense> : <Loading />
   else if (format.preview === 'image') content = url ? <div className="flex h-full items-center justify-center overflow-auto p-4"><img src={url} alt={filePath} className="max-h-full max-w-full object-contain" onError={() => setError(t('filePreview.decodeFailed'))} /></div> : <Loading />
   else if (media) content = url ? <div className="flex h-full items-center justify-center p-4">
     {format.artifactKind === 'audio'
@@ -186,28 +182,4 @@ function MarkupPreview({ text, sourcePath }: { text: string; sourcePath: string 
     return () => { stale = true }
   }, [text, sourcePath])
   return html === undefined ? <Loading /> : <iframe title={t('filePreview.preview')} sandbox="" srcDoc={html} className="h-full w-full border-0 bg-white" />
-}
-
-function PdfPreview({ bytes, onError }: { bytes: Uint8Array; onError: (error: string) => void }) {
-  const { t } = useTranslation()
-  const file = useMemo(() => ({ data: new Uint8Array(bytes) }), [bytes])
-  const [pages, setPages] = useState(0)
-  const [page, setPage] = useState(1)
-  const [width, setWidth] = useState(660)
-  const host = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    const observer = new ResizeObserver(entries => setWidth(Math.max(120, Math.min(1000, entries[0]!.contentRect.width - 32))))
-    if (host.current) observer.observe(host.current)
-    return () => observer.disconnect()
-  }, [])
-  return <div ref={host} className="flex h-full min-h-0 flex-col">
-    <div className="flex shrink-0 items-center justify-center gap-3 border-b p-2 text-sm">
-      <button type="button" disabled={page <= 1} onClick={() => setPage(value => value - 1)}>{t('filePreview.previous')}</button>
-      <span>{page} / {pages || '…'}</span>
-      <button type="button" disabled={page >= pages} onClick={() => setPage(value => value + 1)}>{t('filePreview.next')}</button>
-    </div>
-    <div className="min-h-0 flex-1 overflow-auto p-4"><Document file={file} onLoadSuccess={value => setPages(value.numPages)} onLoadError={cause => onError(cause.message)}>
-      <Page pageNumber={page} width={width} />
-    </Document></div>
-  </div>
 }

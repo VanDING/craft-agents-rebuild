@@ -7,7 +7,7 @@ import { createSessionHeader, makeSessionPathPortable, readSessionHeader } from 
 import { debug } from '../utils/debug.js'
 
 interface PendingWrite {
-  data: StoredSession
+  data: StoredSession | (() => StoredSession)
   timer: ReturnType<typeof setTimeout>
 }
 
@@ -71,17 +71,22 @@ class SessionPersistenceQueue {
    * session, it will be replaced with the new data and the timer reset.
    */
   enqueue(session: StoredSession): void {
-    const existing = this.pending.get(session.id)
+    this.enqueueLazy(session.id, () => session)
+  }
+
+  /** Build a snapshot only after coalescing, or at an explicit durability barrier. */
+  enqueueLazy(sessionId: string, snapshot: () => StoredSession): void {
+    const existing = this.pending.get(sessionId)
     if (existing) {
       clearTimeout(existing.timer)
     }
 
     const timer = setTimeout(() => {
       // performWrite logs the failure; retain it for an explicit flush to observe.
-      void this.write(session.id).catch(() => {})
+      void this.write(sessionId).catch(() => {})
     }, this.debounceMs)
 
-    this.pending.set(session.id, { data: session, timer })
+    this.pending.set(sessionId, { data: snapshot, timer })
   }
 
   /**
@@ -117,7 +122,7 @@ class SessionPersistenceQueue {
 
   private async performWrite(sessionId: string, entry: PendingWrite): Promise<void> {
     try {
-      const { data } = entry
+      const data = typeof entry.data === 'function' ? entry.data() : entry.data
       ensureSessionsDir(data.workspaceRootPath)
       ensureSessionDir(data.workspaceRootPath, sessionId)
 
@@ -161,10 +166,21 @@ class SessionPersistenceQueue {
       const persistableMessages = storageSession.messages
       // Use original absolute sessionDir (before toPortablePath) for path replacement
       const sessionDir = dirname(filePath)
-      const lines = [
-        makeSessionPathPortable(JSON.stringify(header), sessionDir),
-        ...persistableMessages.map(m => makeSessionPathPortable(JSON.stringify(m), sessionDir)),
-      ]
+      // Stream bounded batches instead of retaining all encoded lines plus a
+      // second transcript-sized joined string. The original file remains valid
+      // until every batch and fsync completes.
+      async function* chunks(): AsyncGenerator<string> {
+        let chunk = makeSessionPathPortable(JSON.stringify(header), sessionDir) + '\n'
+        for (const message of persistableMessages) {
+          const line = makeSessionPathPortable(JSON.stringify(message), sessionDir) + '\n'
+          if (chunk.length + line.length > 256 * 1024) {
+            if (chunk) yield chunk
+            chunk = ''
+          }
+          chunk += line
+        }
+        if (chunk) yield chunk
+      }
 
       // Atomic write: write to .tmp then rename over the real file.
       // If the process crashes mid-write, only the .tmp is corrupted —
@@ -173,7 +189,7 @@ class SessionPersistenceQueue {
       // M-23: session transcripts are private — owner read/write only.
       const tempHandle = await open(tmpFile, 'w', 0o600)
       try {
-        await tempHandle.writeFile(lines.join('\n') + '\n', { encoding: 'utf-8' })
+        await tempHandle.writeFile(chunks(), { encoding: 'utf-8' })
         await tempHandle.sync()
       } finally {
         await tempHandle.close()

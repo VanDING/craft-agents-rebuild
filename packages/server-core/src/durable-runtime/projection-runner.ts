@@ -5,6 +5,8 @@ export interface ProjectionDefinition<TSnapshot> {
   /** Stable, version-independent storage name. Schema changes use schemaVersion. */
   name: string
   schemaVersion: number
+  /** Scoped logs use global sequence numbers with legitimate gaps. */
+  sessionId?: string
   initial(): TSnapshot
   reduce(previous: TSnapshot, events: RuntimeEvent[]): TSnapshot
 }
@@ -42,14 +44,14 @@ export class DurableProjectionRunner<TSnapshot> {
     }
 
     const cursor = current?.cursor ?? 0
-    const latest = this.store.getLatestEventSeq()
+    const latest = this.store.getLatestEventSeq(this.definition.sessionId)
     if (cursor > latest) {
       throw new ProjectionCursorAheadError(
         `Projection ${this.definition.name} cursor ${cursor} is ahead of event log ${latest}`,
       )
     }
 
-    const events = this.store.listEvents({ afterSeq: cursor, limit })
+    const events = this.store.listEvents({ sessionId: this.definition.sessionId, afterSeq: cursor, limit })
     if (events.length === 0) {
       return current ?? {
         projection: this.definition.name,
@@ -60,7 +62,7 @@ export class DurableProjectionRunner<TSnapshot> {
       }
     }
     const firstSeq = events[0]?.seq ?? 0
-    if (firstSeq !== cursor + 1) {
+    if (!this.definition.sessionId && firstSeq !== cursor + 1) {
       throw new ProjectionEventGapError(
         `Projection ${this.definition.name} expected event ${cursor + 1}, found ${firstSeq}`,
       )
@@ -75,19 +77,21 @@ export class DurableProjectionRunner<TSnapshot> {
 
     const nextCursor = events.at(-1)?.seq ?? cursor
     const snapshot = this.definition.reduce(current?.snapshot ?? this.definition.initial(), events)
+    const updatedAt = Date.now()
     this.store.commitMaterializedProjection({
       projection: this.definition.name,
       schemaVersion: this.definition.schemaVersion,
       expectedCursor: cursor,
       nextCursor,
       snapshot,
+      updatedAt,
     })
-    return this.current()!
+    return { projection: this.definition.name, schemaVersion: this.definition.schemaVersion, cursor: nextCursor, snapshot, updatedAt }
   }
 
   runToEnd(limit = 1_000): MaterializedProjection<TSnapshot> {
     let projection = this.runOnce(limit)
-    while (projection.cursor < this.store.getLatestEventSeq()) {
+    while (projection.cursor < this.store.getLatestEventSeq(this.definition.sessionId)) {
       projection = this.runOnce(limit)
     }
     return projection

@@ -103,9 +103,9 @@ export function readSessionHeader(sessionFile: string): SessionHeader | null {
 export function readSessionJsonl(sessionFile: string): StoredSession | null {
   try {
     const content = readFileSync(sessionFile, 'utf-8');
-    const lines = content.split('\n').filter(Boolean);
+    const lines = nonEmptyLines(content);
 
-    const firstLine = lines[0];
+    const firstLine = lines.next().value;
     if (!firstLine) return null;
 
     const sessionDir = dirname(sessionFile);
@@ -115,8 +115,7 @@ export function readSessionJsonl(sessionFile: string): StoredSession | null {
     // Parse messages resiliently: skip lines that fail to parse (e.g. truncated by crash)
     // rather than losing the entire session's messages.
     // Expand session path tokens before parsing so embedded paths resolve correctly.
-    const expandedMessageLines = lines.slice(1).map(line => expandSessionPath(line, sessionDir));
-    const messages = parseMessagesResilient(expandedMessageLines);
+    const messages = parseMessagesResilient(lines, sessionDir);
 
     // Migration: For sessions created before sdkCwd was added, use workingDirectory as fallback.
     // This is correct because the old code used workingDirectory for SDK's cwd parameter.
@@ -270,11 +269,9 @@ export async function readSessionHeaderAsync(sessionFile: string): Promise<Sessi
 export function readSessionMessages(sessionFile: string): StoredMessage[] {
   try {
     const content = readFileSync(sessionFile, 'utf-8');
-    const lines = content.split('\n').filter(Boolean);
-    // Skip first line (header), expand session path tokens, parse rest as messages resiliently
-    const sessionDir = dirname(sessionFile);
-    const expandedLines = lines.slice(1).map(line => expandSessionPath(line, sessionDir));
-    return parseMessagesResilient(expandedLines);
+    const lines = nonEmptyLines(content);
+    lines.next(); // Header
+    return parseMessagesResilient(lines, dirname(sessionFile));
   } catch (error) {
     debug('[jsonl] Failed to read session messages:', sessionFile, error);
     return [];
@@ -285,11 +282,21 @@ export function readSessionMessages(sessionFile: string): StoredMessage[] {
  * Parse message lines resiliently: skip lines that fail JSON.parse
  * (e.g. truncated by a crash mid-write) rather than losing all messages.
  */
-function parseMessagesResilient(lines: string[]): StoredMessage[] {
+function* nonEmptyLines(content: string): Generator<string> {
+  let start = 0;
+  while (start < content.length) {
+    const newline = content.indexOf('\n', start);
+    const end = newline < 0 ? content.length : newline;
+    if (end > start) yield content.slice(start, end);
+    start = end + 1;
+  }
+}
+
+function parseMessagesResilient(lines: Iterable<string>, sessionDir: string): StoredMessage[] {
   const messages: StoredMessage[] = [];
   for (const line of lines) {
     try {
-      messages.push(JSON.parse(line) as StoredMessage);
+      messages.push(JSON.parse(expandSessionPath(line, sessionDir)) as StoredMessage);
     } catch {
       // Corrupted/truncated line (likely from a crash during write).
       // Skip it and continue — losing one message is better than losing all.

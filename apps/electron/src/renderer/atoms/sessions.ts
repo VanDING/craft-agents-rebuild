@@ -9,8 +9,10 @@
  */
 
 import { atom } from 'jotai'
+import { estimateTranscriptBytes } from '@craft-agent/core/utils'
 import type { Getter, Setter } from 'jotai/vanilla'
 import { atomFamily } from 'jotai-family'
+import { activeSessionIdAtom as workbenchActiveSessionIdAtom } from './active-session'
 import type { Session, Message } from '../../shared/types'
 
 /**
@@ -165,6 +167,53 @@ export const sessionIdsAtom = atom<string[]>([])
  */
 export const loadedSessionsAtom = atom<Set<string>>(new Set<string>())
 
+// Per-store bookkeeping, intentionally not reactive UI state.
+const sessionCacheAccessAtom = atom(() => new Map<string, number>())
+const sessionCacheReadersAtom = atom(() => new Map<string, number>())
+
+export const pinSessionCacheAtom = atom(null, (get, _set, sessionId: string, pin: boolean) => {
+  const readers = get(sessionCacheReadersAtom)
+  const count = (readers.get(sessionId) ?? 0) + (pin ? 1 : -1)
+  if (count > 0) readers.set(sessionId, count)
+  else readers.delete(sessionId)
+  get(sessionCacheAccessAtom).set(sessionId, Date.now())
+})
+
+export const pruneSessionCacheAtom = atom(null, (get, set, now: number = Date.now()) => {
+  const loaded = get(loadedSessionsAtom)
+  const access = get(sessionCacheAccessAtom)
+  const readers = get(sessionCacheReadersAtom)
+  const active = get(workbenchActiveSessionIdAtom) ?? get(activeSessionIdAtom)
+  const sorted = [...loaded].sort((a, b) => (access.get(b) ?? now) - (access.get(a) ?? now))
+  const retained = new Set(loaded)
+  let retainedBytes = 0
+  for (let i = 0; i < sorted.length; i++) {
+    const id = sorted[i]!
+    if (!access.has(id)) access.set(id, now)
+    const age = now - access.get(id)!
+    const session = get(sessionAtomFamily(id))
+    const bytes = session ? estimateTranscriptBytes(session.messages) : 0
+    retainedBytes += bytes
+    if (age < 2 * 60_000 || (i < 8 && age < 15 * 60_000 && retainedBytes <= 64 * 1024 * 1024)) continue
+    if (!session || id === active || readers.has(id) || sessionLoadingPromises.has(id)
+      || session.isProcessing || session.isAsyncOperationOngoing
+      || get(backgroundTasksAtomFamily(id)).some(task => task.status === 'running')
+      || session.messages.some(message => message.isStreaming || message.isQueued)) continue
+    const meta = get(sessionMetaMapAtom).get(id)
+    set(sessionAtomFamily(id), {
+      ...session,
+      messages: [],
+      messageCount: meta?.messageCount ?? session.messages.length,
+      lastFinalMessageId: meta?.lastFinalMessageId,
+    })
+    retained.delete(id)
+    retainedBytes -= bytes
+    access.delete(id)
+  }
+  if (retained.size !== loaded.size) set(loadedSessionsAtom, retained)
+})
+
+
 /**
  * Promise cache for deduplicating concurrent session load requests.
  * Prevents race condition where multiple calls (e.g., from React re-renders)
@@ -197,13 +246,23 @@ export const updateSessionAtom = atom(
     const sessionAtom = sessionAtomFamily(sessionId)
     const currentSession = get(sessionAtom)
     const newSession = updater(currentSession)
+    get(sessionCacheAccessAtom).set(sessionId, Date.now())
     set(sessionAtom, newSession)
 
     // Also update metadata if session exists
     if (newSession) {
       const metaMap = get(sessionMetaMapAtom)
+      const nextMeta = extractSessionMeta(newSession)
+      const previousMeta = metaMap.get(sessionId)
+      // Text deltas change the transcript, but usually not list metadata. Keep
+      // the map identity stable so every session list subscriber stays asleep.
+      if (previousMeta) {
+        const keys = Object.keys(nextMeta) as (keyof SessionMeta)[]
+        if (keys.length === Object.keys(previousMeta).length
+          && keys.every(key => Object.is(previousMeta[key], nextMeta[key]))) return
+      }
       const newMetaMap = new Map(metaMap)
-      newMetaMap.set(sessionId, extractSessionMeta(newSession))
+      newMetaMap.set(sessionId, nextMeta)
       set(sessionMetaMapAtom, newMetaMap)
     }
   }
@@ -239,6 +298,7 @@ export const replaceLoadedSessionAtom = atom(
   (get, set, session: Session) => {
     set(sessionAtomFamily(session.id), session)
 
+    get(sessionCacheAccessAtom).set(session.id, Date.now())
     const metaMap = get(sessionMetaMapAtom)
     const newMetaMap = new Map(metaMap)
     newMetaMap.set(session.id, extractSessionMeta(session))
@@ -317,6 +377,7 @@ export const initializeSessionsAtom = atom(
         backgroundTasksAtomFamily.remove(oldId)
       }
     }
+    get(sessionCacheAccessAtom).clear()
     // Reset loaded sessions tracking — new workspace needs fresh lazy loading
     set(loadedSessionsAtom, new Set<string>())
 
@@ -469,6 +530,8 @@ export const removeSessionAtom = atom(
     set(sessionMetaMapAtom, newMetaMap)
 
     // Remove from IDs list
+    get(sessionCacheAccessAtom).delete(sessionId)
+    get(sessionCacheReadersAtom).delete(sessionId)
     const ids = get(sessionIdsAtom)
     set(sessionIdsAtom, ids.filter(id => id !== sessionId))
 
@@ -577,6 +640,7 @@ async function loadSessionMessages(
   sessionId: string,
   options?: { force?: boolean },
 ): Promise<Session | null> {
+  get(sessionCacheAccessAtom).set(sessionId, Date.now())
   const force = options?.force ?? false
 
   if (force) {

@@ -11,6 +11,9 @@ import {
   refreshSessionsMetadataAtom,
   initializeSessionsAtom,
   replaceLoadedSessionAtom,
+  updateSessionAtom,
+  pinSessionCacheAtom,
+  pruneSessionCacheAtom,
 } from '../sessions'
 
 function msg(id: string, role: Message['role'] = 'user'): Message {
@@ -123,6 +126,49 @@ describe('session message loading atoms', () => {
     expect(calls).toEqual([sessionId, sessionId])
     expect(secondResult?.messages.map((message) => message.id)).toEqual(['m1', 'm2'])
     expect(store.get(loadedSessionsAtom).has(sessionId)).toBe(true)
+  })
+})
+
+describe('streaming session metadata', () => {
+  it('updates the transcript without notifying list subscribers for text-only deltas', () => {
+    const store = createStore()
+    const session = makeSession({ messages: [msg('assistant', 'assistant')], isProcessing: true })
+    store.set(replaceLoadedSessionAtom, session)
+    const metadata = store.get(sessionMetaMapAtom)
+    let notifications = 0
+    const unsubscribe = store.sub(sessionMetaMapAtom, () => { notifications++ })
+    try {
+      for (let i = 0; i < 20; i++) {
+        store.set(updateSessionAtom, session.id, previous => ({
+          ...previous!,
+          messages: [{ ...previous!.messages[0]!, content: `delta ${i}` }],
+        }))
+      }
+      expect(store.get(sessionAtomFamily(session.id))?.messages[0]?.content).toBe('delta 19')
+      expect(store.get(sessionMetaMapAtom)).toBe(metadata)
+      expect(notifications).toBe(0)
+
+      store.set(updateSessionAtom, session.id, previous => ({ ...previous!, isProcessing: false, hasUnread: true }))
+      expect(notifications).toBe(1)
+      expect(store.get(sessionMetaMapAtom).get(session.id)).toMatchObject({ isProcessing: false, hasUnread: true })
+    } finally {
+      unsubscribe()
+    }
+  })
+
+  it('publishes appended messages, changed metadata and removed optional fields', () => {
+    const store = createStore()
+    const session = makeSession({ name: 'Title', messages: [msg('user')] })
+    store.set(replaceLoadedSessionAtom, session)
+    store.set(updateSessionAtom, session.id, previous => ({ ...previous!, messages: [...previous!.messages, msg('reply', 'assistant')] }))
+    expect(store.get(sessionMetaMapAtom).get(session.id)).toMatchObject({ messageCount: 2, lastFinalMessageId: 'reply' })
+    store.set(updateSessionAtom, session.id, previous => {
+      const { name, ...remaining } = previous!
+      return remaining as Session
+    })
+    expect(store.get(sessionMetaMapAtom).get(session.id)?.name).toBeUndefined()
+    store.set(updateSessionAtom, session.id, previous => ({ ...previous!, labels: ['important'] }))
+    expect(store.get(sessionMetaMapAtom).get(session.id)?.labels).toEqual(['important'])
   })
 })
 
@@ -261,5 +307,26 @@ describe('refreshSessionsMetadataAtom', () => {
 
     // IDs are set
     expect(store.get(sessionIdsAtom)).toHaveLength(2)
+  })
+})
+
+describe('idle session cache', () => {
+  it('releases old unmounted histories while preserving active work, readers and metadata', () => {
+    const store = createStore()
+    const now = Date.now()
+    for (let i = 0; i < 12; i++) store.set(replaceLoadedSessionAtom, makeSession({ id: `cache-${i}`, messages: [msg(`m-${i}`)] }))
+    store.set(pinSessionCacheAtom, 'cache-0', true)
+    store.set(updateSessionAtom, 'cache-1', previous => ({ ...previous!, isProcessing: true }))
+    const metadata = store.get(sessionMetaMapAtom)
+    store.set(pruneSessionCacheAtom, now + 16 * 60_000)
+    expect(store.get(sessionAtomFamily('cache-0'))?.messages).toHaveLength(1)
+    expect(store.get(sessionAtomFamily('cache-1'))?.messages).toHaveLength(1)
+    expect(store.get(sessionAtomFamily('cache-2'))?.messages).toHaveLength(0)
+    expect(store.get(loadedSessionsAtom).has('cache-2')).toBe(false)
+    expect(store.get(sessionMetaMapAtom)).toBe(metadata)
+    expect(store.get(sessionMetaMapAtom).get('cache-2')?.messageCount).toBe(1)
+    store.set(pinSessionCacheAtom, 'cache-0', false)
+    store.set(pruneSessionCacheAtom, now + 32 * 60_000)
+    expect(store.get(loadedSessionsAtom).has('cache-0')).toBe(false)
   })
 })

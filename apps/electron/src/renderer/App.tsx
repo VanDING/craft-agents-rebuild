@@ -40,6 +40,7 @@ import { DEFAULT_THINKING_LEVEL } from '@craft-agent/shared/agent/thinking-level
 import { initRendererPerf, rendererPerf } from './lib/perf'
 import {
   initializeSessionsAtom,
+  pruneSessionCacheAtom,
   addSessionAtom,
   removeSessionAtom,
   updateSessionAtom,
@@ -316,6 +317,10 @@ export default function App() {
   const updateSessionDirect = useSetAtom(updateSessionAtom)
   const replaceLoadedSession = useSetAtom(replaceLoadedSessionAtom)
   const store = useStore()
+  useEffect(() => {
+    const timer = setInterval(() => store.set(pruneSessionCacheAtom), 60_000)
+    return () => clearInterval(timer)
+  }, [store])
 
   // Helper to update a session by ID with partial fields
   // Uses per-session atom directly instead of updating an array
