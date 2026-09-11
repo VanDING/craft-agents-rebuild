@@ -153,7 +153,10 @@ describe('theme resolution', () => {
   });
 
   test('keeps Electron startup backgrounds aligned with the Default CSS colors', () => {
-    expect(BACKGROUND_HEX).toEqual({
+    // Widen the theme-derived strings so this toEqual overload does not demand
+    // the literal types produced by BACKGROUND_HEX's as-const assertion.
+    const actual: Record<'light' | 'dark', string> = BACKGROUND_HEX;
+    expect(actual).toEqual({
       light: DEFAULT_THEME_FILE.background!,
       dark: DEFAULT_THEME_FILE.dark!.background!,
     });

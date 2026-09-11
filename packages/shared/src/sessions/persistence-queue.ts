@@ -189,7 +189,12 @@ class SessionPersistenceQueue {
       // M-23: session transcripts are private — owner read/write only.
       const tempHandle = await open(tmpFile, 'w', 0o600)
       try {
-        await tempHandle.writeFile(chunks(), { encoding: 'utf-8' })
+        // FileHandle.writeFile accepts an async iterable at runtime, but the
+        // Node.js type definitions used by server packages do not. Write each
+        // bounded batch explicitly so the same source typechecks for Bun and Node.
+        for await (const chunk of chunks()) {
+          await tempHandle.write(Buffer.from(chunk, 'utf-8'))
+        }
         await tempHandle.sync()
       } finally {
         await tempHandle.close()

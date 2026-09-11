@@ -1682,6 +1682,8 @@
   "sidebar.newSession": "新規セッション",
   "sidebar.noProject": "プロジェクトなし",
   "sidebar.pages": "ページ",
+  "sidebar.profile.setup": "プロフィールを設定",
+  "sidebar.profile.view": "プロフィールを表示",
   "sidebar.projects": "プロジェクト",
   "sidebar.scheduled": "スケジュール済み",
   "sidebar.search": "検索",
