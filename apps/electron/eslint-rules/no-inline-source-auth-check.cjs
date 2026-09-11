@@ -52,7 +52,7 @@ module.exports = {
     ]
 
     const filename = context.filename || context.getFilename()
-    const basename = filename.split('/').pop() || ''
+    const basename = filename.split(/[\\/]/).pop() || ''
 
     // Allow in specific files
     if (allowedFiles.includes(basename)) {

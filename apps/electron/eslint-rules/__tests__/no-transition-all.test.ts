@@ -6,13 +6,15 @@ const require = createRequire(import.meta.url)
 const rule = require('../../../../scripts/eslint-rules/no-transition-all.cjs')
 
 function runRule(code: string) {
-  const linter = new Linter({ configType: 'eslintrc' })
-  linter.defineRule('craft-styles/no-transition-all', rule)
-
-  return linter.verify(code, {
-    parserOptions: { ecmaVersion: 'latest', sourceType: 'module' },
-    rules: { 'craft-styles/no-transition-all': 'error' },
-  })
+  const linter = new Linter()
+  return linter.verify(
+    code,
+    [{
+      plugins: { 'craft-styles': { rules: { 'no-transition-all': rule } } },
+      languageOptions: { ecmaVersion: 'latest', sourceType: 'module' },
+      rules: { 'craft-styles/no-transition-all': 'error' },
+    }],
+  )
 }
 
 describe('no-transition-all', () => {

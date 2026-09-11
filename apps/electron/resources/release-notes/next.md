@@ -44,6 +44,8 @@ This file accumulates release notes for the next unreleased version. PRs that ad
 
 ## Bug Fixes
 
+- **WeChat iLink request metadata** — gateway requests now send the CraftAgent bot-agent identifier in `base_info` instead of the account's WeChat `userId`, so the account identity is no longer exposed as a user agent.
+
 - **Popover dismissal no longer flashes** — closing the sidebar profile card and other shared animated popovers/dialogs now retains the transparent final animation frame until unmount, preventing a brief reappearance after fading out.
 
 - **Task and persistence reliability** — task runs now reject unsupported control settings before starting or resuming, while existing YAML remains readable. Webhook retries preserve requests enqueued during an in-flight retry, and failed session saves remain observable without blocking later saves.

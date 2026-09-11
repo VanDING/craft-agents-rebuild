@@ -106,6 +106,7 @@ const EXPECTED_CHANNELS: string[] = [
   "file:readDataUrl",
   "file:readPreviewDataUrl",
   "file:readUserAttachment",
+  "file:resolve",
   "file:storeAttachment",
   "fs:listDirectory",
   "fs:search",
