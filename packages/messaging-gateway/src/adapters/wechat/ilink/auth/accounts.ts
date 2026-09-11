@@ -255,6 +255,12 @@ export interface WeixinAccountData {
   baseUrl?: string;
   /** WeChat user ID associated with this account. */
   userId?: string;
+  /**
+   * Optional bot-agent override sent as the iLink `base_info.bot_agent`.
+   * Defaults to the API layer's CraftAgent/<version> identifier when absent.
+   * Never store the WeChat userId here: it is an account identity, not a UA.
+   */
+  botAgent?: string;
 }
 
 /**
@@ -303,7 +309,7 @@ export function loadWeixinAccount(
  */
 export function saveWeixinAccount(
   accountId: string,
-  update: { token?: string; baseUrl?: string; userId?: string },
+  update: { token?: string; baseUrl?: string; userId?: string; botAgent?: string },
   stateRoot?: string,
 ): void {
   registerWeixinAccountId(accountId, stateRoot);
@@ -436,5 +442,9 @@ export function loadConfigBotAgent(stateRoot?: string): string | undefined {
     return undefined;
   }
   const data = loadWeixinAccount(id, stateRoot);
-  return data?.userId;
+  // SECURITY: `userId` is the WeChat account identity used for iLink
+  // routing/session binding. It must never be sent back to the server as
+  // `bot_agent`; when no explicit override is configured the API layer uses
+  // DEFAULT_BOT_AGENT (CraftAgent/<version>) instead.
+  return data?.botAgent;
 }

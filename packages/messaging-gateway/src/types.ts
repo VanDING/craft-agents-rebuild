@@ -513,7 +513,7 @@ export interface MessagingConfig {
       enabled: boolean
       /** WeChat backend gateway base URL. */
       baseUrl?: string
-      /** botAgent identifier (default CraftAgent/0.12.0). */
+      /** Optional botAgent override (default CraftAgent/0.11.4 from the iLink API layer). */
       botAgent?: string
     }
     wecom?: {
