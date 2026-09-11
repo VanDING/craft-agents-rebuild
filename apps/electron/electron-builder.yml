@@ -25,6 +25,10 @@ files:
   - resources/bridge-mcp-server/**/*
   # Include Pi agent server subprocess for Pi SDK sessions
   - resources/pi-agent-server/**/*
+  # The subprocess ships once via extraResources below. Excluding both staged
+  # copies avoids a third 22 MB bundle inside resources/app.
+  - "!dist/resources/pi-agent-server/**"
+  - "!resources/pi-agent-server/**"
   # Note: Bundled assets (docs, themes, permissions, tool-icons) are in resources/
   # and copied to dist/resources/ by build:copy. They're included via dist/**/* above.
   # Include network interceptor for API error capture and MCP schema injection
@@ -54,6 +58,14 @@ extraResources:
   # workspace root by bun, so the source is repo-root-relative.
   - from: ../../node_modules/node-pty
     to: app/node_modules/node-pty
+    filter:
+      - "**/*"
+      - "!**/*.pdb"
+      - "!**/*.iobj"
+      - "!**/*.obj"
+      - "!**/*.lib"
+      - "!**/*.exp"
+      - "!build/**"
   # Pi agent server subprocess (Pi SDK sessions)
   - from: dist/resources/pi-agent-server
     to: pi-agent-server
