@@ -46,3 +46,48 @@ jobs:
 
       - name: Run validation suite
         run: bun run validate:ci
+
+  quality-windows:
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: "1.4.2"
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Type checks
+        run: bun run typecheck:all
+
+      - name: Lint
+        run: bun run lint
+
+      - name: i18n checks
+        run: |
+          bun run lint:i18n:parity
+          bun run lint:i18n:sorted
+          bun run lint:i18n:coverage
+
+      # Regression coverage for Windows path/permission behavior. Each command
+      # runs in its own Bun process so mock.module() cannot leak between files.
+      - name: Cross-platform regression tests
+        run: |
+          bun test ./apps/electron/eslint-rules/__tests__
+          bun test ./apps/electron/src/shared/__tests__/ipc-channels.test.ts
+          bun test ./packages/ui/eslint-rules/__tests__
+          bun test ./packages/messaging-gateway/src/__tests__/wechat-send.test.ts
+          bun test ./packages/messaging-gateway/src/__tests__/wechat-url.test.ts
+          bun test ./packages/shared/src/config/__tests__/theme.test.ts
+          bun test ./packages/shared/src/sessions/__tests__/persistence-queue.test.ts

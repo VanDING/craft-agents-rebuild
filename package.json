@@ -22,7 +22,7 @@
     "apps/*"
   ],
   "scripts": {
-    "test": "for dir in packages/* apps/*; do tests=$(find \"$dir\" -path '*/node_modules/*' -prune -o -type f \\( -name '*.test.ts' -o -name '*.test.tsx' -o -name '*.test.js' -o -name '*.test.jsx' -o -name '*.spec.ts' -o -name '*.spec.tsx' -o -name '*.spec.js' -o -name '*.spec.jsx' \\) -print -quit); if [ -n \"$tests\" ]; then (cd \"$dir\" && bun test) || exit 1; fi; done && for f in $(find packages apps -name '*.isolated.ts'); do bun test \"./$f\" || exit 1; done",
+    "test": "bun run scripts/run-workspace-tests.ts",
     "typecheck": "bun run typecheck:shared",
     "typecheck:shared": "cd packages/shared && bun run tsc --noEmit",
     "typecheck:staged": "bash scripts/typecheck-staged.sh",
@@ -41,7 +41,8 @@
     "test:shared:all": "bun run test:shared:llm-connections && bun run test:shared:models-pi && bun run test:shared:config",
     "test:doc-tools": "python3 -m unittest apps.electron.resources.scripts.tests.test_pdf_tool_smoke apps.electron.resources.scripts.tests.test_xlsx_tool_smoke apps.electron.resources.scripts.tests.test_docx_tool_smoke apps.electron.resources.scripts.tests.test_pptx_tool_smoke apps.electron.resources.scripts.tests.test_img_tool_smoke apps.electron.resources.scripts.tests.test_ical_tool_smoke apps.electron.resources.scripts.tests.test_doc_diff_smoke apps.electron.resources.scripts.tests.test_markitdown_smoke",
     "validate:dev": "bun run typecheck:all && bun run test:shared:all && bun run test:doc-tools && bun run test:ui:table",
-    "validate:ci": "bun run validate:dev && bun run lint:i18n:parity && bun run lint:i18n:sorted && bun run lint:i18n:coverage",
+    "validate:ci": "bun run typecheck:all && bun run lint && bun run test:shared:all && bun run test:doc-tools && bun run test:ui:table && bun run lint:i18n:parity && bun run lint:i18n:sorted && bun run lint:i18n:coverage",
+    "validate:full": "bun run validate:ci && bun run test",
     "lint:electron": "cd apps/electron && bun run lint",
     "lint:shared": "cd packages/shared && bun run eslint .",
     "lint:ui": "cd packages/ui && bun run eslint .",
