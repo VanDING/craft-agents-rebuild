@@ -63,8 +63,7 @@ apps/
 ├── electron/             Desktop application
 ├── cli/                  Terminal client
 ├── webui/                Headless-server Web UI
-├── viewer/               Shared-session viewer
-└── marketing/            Project website
+└── viewer/               Shared-session viewer
 
 packages/
 ├── shared/               Agent, configuration, auth, sources, and shared contracts
@@ -75,7 +74,7 @@ packages/
 ├── core/                 Core types and storage interfaces
 ├── server/               Headless server entry point
 ├── messaging-gateway/    Messaging adapters
-└── messaging-whatsapp-worker/
+└── messaging-whatsapp-worker/  Node WhatsApp subprocess worker
 ```
 
 ## Pull requests

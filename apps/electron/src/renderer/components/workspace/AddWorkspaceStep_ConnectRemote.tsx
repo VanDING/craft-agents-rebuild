@@ -11,16 +11,18 @@ const CREATE_NEW_VALUE = '__create_new__'
 
 interface AddWorkspaceStep_ConnectRemoteProps {
   onBack: () => void
-  onCreate: (folderPath: string, name: string, remoteServer: { url: string; token: string; remoteWorkspaceId: string }) => Promise<void>
+  onCreate: (folderPath: string, name: string, remoteServer: { url: string; token: string; remoteWorkspaceId: string; allowInsecureTls?: boolean }) => Promise<void>
   isCreating: boolean
   /** Pre-fill the server URL (for reconnect flow) */
   initialUrl?: string
   /** Pre-fill the token (for reconnect flow) */
   initialToken?: string
+  /** Initial value for the explicit self-signed TLS opt-in */
+  initialAllowInsecureTls?: boolean
   /** When set, updating an existing workspace's remote config instead of creating */
-  reconnectWorkspace?: { id: string; name: string; remoteWorkspaceId: string }
+  reconnectWorkspace?: { id: string; name: string; remoteWorkspaceId: string; allowInsecureTls?: boolean }
   /** Called when reconnect updates the remote server config */
-  onUpdate?: (workspaceId: string, remoteServer: { url: string; token: string; remoteWorkspaceId: string }) => Promise<void>
+  onUpdate?: (workspaceId: string, remoteServer: { url: string; token: string; remoteWorkspaceId: string; allowInsecureTls?: boolean }) => Promise<void>
 }
 
 /**
@@ -62,6 +64,7 @@ export function AddWorkspaceStep_ConnectRemote({
   isCreating,
   initialUrl,
   initialToken,
+  initialAllowInsecureTls,
   reconnectWorkspace,
   onUpdate,
 }: AddWorkspaceStep_ConnectRemoteProps) {
@@ -69,6 +72,9 @@ export function AddWorkspaceStep_ConnectRemote({
   const isReconnectMode = !!reconnectWorkspace
   const [serverUrl, setServerUrl] = useState(initialUrl ?? '')
   const [token, setToken] = useState(initialToken ?? '')
+  const [allowInsecureTls, setAllowInsecureTls] = useState(
+    initialAllowInsecureTls ?? reconnectWorkspace?.allowInsecureTls ?? false,
+  )
   const [homeDir, setHomeDir] = useState('')
   const [testState, setTestState] = useState<'idle' | 'testing' | 'ok' | 'error'>('idle')
   const [testError, setTestError] = useState<string | null>(null)
@@ -94,14 +100,14 @@ export function AddWorkspaceStep_ConnectRemote({
     setRemoteWorkspaces([])
     setSelectedValue(null)
     setNewWorkspaceName('')
-  }, [serverUrl, token])
+  }, [serverUrl, token, allowInsecureTls])
 
   const handleTestConnection = useCallback(async () => {
     if (!serverUrl || !token) return
     setTestState('testing')
     setTestError(null)
     try {
-      const result = await window.electronAPI.testRemoteConnection(serverUrl, token)
+      const result = await window.electronAPI.testRemoteConnection(serverUrl, token, allowInsecureTls)
       console.log('[ConnectRemote] testRemoteConnection result:', JSON.stringify(result, null, 2))
       if (result.ok) {
         setTestState('ok')
@@ -137,6 +143,7 @@ export function AddWorkspaceStep_ConnectRemote({
           url: serverUrl,
           token,
           remoteWorkspaceId: reconnectWorkspace!.remoteWorkspaceId,
+          allowInsecureTls,
         })
         return
       } catch (err) {
@@ -161,12 +168,16 @@ export function AddWorkspaceStep_ConnectRemote({
         // invokeOnServer bridge (H-2: scheme allowlist + channel allowlist +
         // main-frame sender check enforced main-side).
         const created = await window.electronAPI.invokeOnServer(
-          serverUrl, token, 'server:createWorkspace', name
+          serverUrl,
+          token,
+          'server:createWorkspace',
+          [name],
+          { allowInsecureTls },
         ) as { id: string; name: string }
 
         const { slug, path } = await resolveUniqueSlug(name)
         const finalPath = path || `${defaultBasePath}/${slug}`
-        await onCreate(finalPath, name, { url: serverUrl, token, remoteWorkspaceId: created.id })
+        await onCreate(finalPath, name, { url: serverUrl, token, remoteWorkspaceId: created.id, allowInsecureTls })
       } catch (err) {
         setTestState('error')
         setTestError(err instanceof Error ? err.message : 'Failed to create workspace on remote server')
@@ -176,9 +187,9 @@ export function AddWorkspaceStep_ConnectRemote({
       // Connect to existing workspace — auto-resolve local slug
       const { slug, path } = await resolveUniqueSlug(selectedWorkspace.name)
       const finalPath = path || `${defaultBasePath}/${slug}`
-      await onCreate(finalPath, selectedWorkspace.name, { url: serverUrl, token, remoteWorkspaceId: selectedWorkspace.id })
+      await onCreate(finalPath, selectedWorkspace.name, { url: serverUrl, token, remoteWorkspaceId: selectedWorkspace.id, allowInsecureTls })
     }
-  }, [serverUrl, token, homeDir, isCreateNew, isFreshServer, newWorkspaceName, selectedWorkspace, onCreate, isReconnectMode, onUpdate, reconnectWorkspace])
+  }, [serverUrl, token, allowInsecureTls, homeDir, isCreateNew, isFreshServer, newWorkspaceName, selectedWorkspace, onCreate, isReconnectMode, onUpdate, reconnectWorkspace])
 
   const canConnect = testState === 'ok' && !isCreating && (
     isReconnectMode ? true :
@@ -246,6 +257,19 @@ export function AddWorkspaceStep_ConnectRemote({
             />
           </div>
         </div>
+
+
+        {/* Self-signed TLS opt-in. Off by default so tokens are not exposed to MITM. */}
+        <label className="flex items-start gap-2 text-xs text-muted-foreground">
+          <input
+            type="checkbox"
+            checked={allowInsecureTls}
+            onChange={(e) => setAllowInsecureTls(e.target.checked)}
+            disabled={isCreating}
+            className="mt-0.5 h-3.5 w-3.5 rounded border-border"
+          />
+          <span>{t("workspace.allowInsecureTls")}</span>
+        </label>
 
         {/* Test Connection */}
         <div className="flex items-center gap-3">

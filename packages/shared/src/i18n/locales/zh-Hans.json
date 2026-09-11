@@ -2206,6 +2206,7 @@
   "webui.logOut": "退出登录",
   "workspace.addWorkspace": "添加 Workspace…",
   "workspace.addWorkspaceDesc": "让创意与实现工具相遇的地方。",
+  "workspace.allowInsecureTls": "允许无效的 TLS 证书（不推荐）",
   "workspace.chooseExistingFolder": "选择现有文件夹",
   "workspace.chooseExistingFolderDesc": "选择任意文件夹作为 Workspace。",
   "workspace.chooseLocation": "选择位置",

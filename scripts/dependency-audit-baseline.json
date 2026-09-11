@@ -1,0 +1,30 @@
+{
+  "$comment": "Known dependency advisories. New critical/high findings fail CI; refresh with `bun run audit:dependencies --update`.",
+  "generatedAt": "2026-09-11",
+  "allowed": {
+    "GHSA-27p8-2357-5qqv": "high",
+    "GHSA-2v35-w6hq-6mfw": "high",
+    "GHSA-4r6h-8v6p-xvw6": "high",
+    "GHSA-4w3w-2rp5-g8jm": "high",
+    "GHSA-5fg8-2547-mr8q": "moderate",
+    "GHSA-5pgg-2g8v-p4x9": "high",
+    "GHSA-5v7r-6r5c-r473": "moderate",
+    "GHSA-6gmq-8vp8-gcm6": "moderate",
+    "GHSA-6h8r-xr42-gp59": "moderate",
+    "GHSA-8344-3jmq-59r6": "high",
+    "GHSA-8j44-735h-w4w2": "critical",
+    "GHSA-93r5-fhx6-vmg9": "high",
+    "GHSA-965w-775f-mr7g": "high",
+    "GHSA-c7q8-3ch8-vqpv": "high",
+    "GHSA-crh6-fp67-6883": "critical",
+    "GHSA-cw26-7653-2rp5": "high",
+    "GHSA-f6ww-3ggp-fr8h": "high",
+    "GHSA-j759-j44w-7fr8": "high",
+    "GHSA-m5vv-6r4h-3vj9": "moderate",
+    "GHSA-v6c2-xwv6-8xf7": "high",
+    "GHSA-w2rr-34g9-rvrj": "high",
+    "GHSA-w5hq-g745-h8pq": "moderate",
+    "GHSA-wh4c-j3r5-mjhp": "high",
+    "GHSA-x6wf-f3px-wcqx": "high"
+  }
+}

@@ -8,6 +8,11 @@ import type { IpcMainInvokeEvent } from 'electron'
 import { createHash, randomUUID } from 'crypto'
 import { spawnSync } from 'child_process'
 import { hostname, homedir } from 'os'
+
+function isTelemetryEnabled(): boolean {
+  const value = process.env.CRAFT_TELEMETRY_ENABLED?.trim().toLowerCase()
+  return value === '1' || value === 'true' || value === 'yes' || value === 'on'
+}
 import * as Sentry from '@sentry/electron/main'
 import { redactSensitiveHeadersInPlace, redactSensitiveKeysInPlace } from '@craft-agent/shared/utils'
 
@@ -24,9 +29,9 @@ Sentry.init({
   dsn: process.env.SENTRY_ELECTRON_INGEST_URL,
   environment: app.isPackaged ? 'production' : 'development',
   release: app.getVersion(),
-  // Enabled whenever the ingest URL is available — works in both production (baked via CI)
-  // and development (injected via .env / 1Password). Filter by environment in Sentry dashboard.
-  enabled: !!process.env.SENTRY_ELECTRON_INGEST_URL,
+  // Local-first default: crash reporting is opt-in. A DSN alone is not consent.
+  // Set CRAFT_TELEMETRY_ENABLED=1 (or true) explicitly to enable Sentry.
+  enabled: isTelemetryEnabled() && !!process.env.SENTRY_ELECTRON_INGEST_URL,
 
   // Scrub sensitive data before sending to Sentry.
   // Shared logic in @craft-agent/shared/utils redaction.ts (also used by the
@@ -59,12 +64,12 @@ Sentry.init({
 // renderer would restore its language from localStorage on every restart while
 // the main process silently stayed at English — breaking session title language,
 // the system prompt's "Preferred language" line, and the native menu.
-import { setupI18n, i18n, SUPPORTED_LANGUAGE_CODES, type LanguageCode } from '@craft-agent/shared/i18n'
+import { setupI18n, i18n, changeAppLanguage, SUPPORTED_LANGUAGE_CODES, type LanguageCode } from '@craft-agent/shared/i18n'
 import { getPersistedUiLanguage, setPersistedUiLanguage } from '@craft-agent/shared/config'
 setupI18n()
 const persistedUiLanguage = getPersistedUiLanguage()
 if (persistedUiLanguage) {
-  void i18n.changeLanguage(persistedUiLanguage)
+  void changeAppLanguage(persistedUiLanguage)
 }
 // Note: deferred startup log lives below where mainLog is available (after log.initialize()).
 
@@ -84,6 +89,8 @@ import type { PlatformServices } from '../runtime/platform'
 import { createElectronPlatform } from './platform'
 import type { HandlerDeps } from './handlers/handler-deps'
 import { bootstrapServer, releaseServerLock } from '@craft-agent/server-core/bootstrap'
+
+const processStartedAt = Date.now()
 import { createMessagingBootstrap, type MessagingBootstrapHandle } from '@craft-agent/messaging-gateway'
 import { getCredentialManager } from '@craft-agent/shared/credentials'
 import { initModelRefreshService, getModelRefreshService, setFetcherPlatform } from '@craft-agent/server-core/model-fetchers'
@@ -106,6 +113,7 @@ import { TerminalManager } from './terminal-manager'
 import { OAuthFlowStore } from '@craft-agent/shared/auth'
 import { registerThumbnailScheme, registerThumbnailHandler } from './thumbnail-protocol'
 import log, { isDebugMode, mainLog, getLogFilePath, getMessagingGatewayLogFilePath, messagingGatewayLog, autoUpdateLog } from './logger'
+import { installElectronCredentialKeyProvider } from './credential-key-provider'
 import { setPerfEnabled, enableDebug } from '@craft-agent/shared/utils'
 import { registerPiModelResolver } from '@craft-agent/shared/config'
 import { getPiModelsForAuthProvider, getAllPiModels } from '@craft-agent/shared/config'
@@ -414,6 +422,10 @@ app.whenReady().then(async () => {
   // Export packaged state as env var so logger.ts (and headless Bun) don't need 'electron'
   process.env.CRAFT_IS_PACKAGED = app.isPackaged ? 'true' : 'false'
 
+  // Wrap the credential encryption key with the OS keychain before any
+  // credential read or server bootstrap happens.
+  installElectronCredentialKeyProvider()
+
   // Register bundled assets root so all seeding functions can find their files
   // (docs, permissions, themes, tool-icons resolve via getBundledAssetsDir)
   setBundledAssetsRoot(__dirname)
@@ -674,6 +686,8 @@ app.whenReady().then(async () => {
       }
 
       // Bootstrap the WS RPC server via shared bootstrap function.
+      const bootstrapStartedAt = Date.now()
+      mainLog.info('[startup] bootstrapServer begin', { sinceProcessStartMs: bootstrapStartedAt - processStartedAt })
       const instance = await bootstrapServer<SessionManager, HandlerDeps>({
         serverToken,
         rpcHost,
@@ -763,7 +777,12 @@ app.whenReady().then(async () => {
           ? (server, deps, serverCtx) => registerCoreRpcHandlers(server, deps, serverCtx)
           : registerAllRpcHandlers,
         setSessionEventSink: (sm, sink) => sm.setEventSink(sink),
-        initializeSessionManager: (sm) => sm.initialize(),
+        initializeSessionManager: async (sm) => {
+          const startedAt = Date.now()
+          mainLog.info('[startup] SessionManager.initialize begin')
+          await sm.initialize()
+          mainLog.info('[startup] SessionManager.initialize complete', { ms: Date.now() - startedAt })
+        },
         initModelRefreshService: () => initModelRefreshService(async (slug: string) => {
           const { getCredentialManager } = await import('@craft-agent/shared/credentials')
           const manager = getCredentialManager()
@@ -788,6 +807,8 @@ app.whenReady().then(async () => {
           cleanupSessionFileWatchForClient(clientId)
         },
       })
+
+      mainLog.info('[startup] bootstrapServer complete', { ms: Date.now() - bootstrapStartedAt })
 
       // Capture module-level references for before-quit cleanup and deep-link handlers
       sessionManager = instance.sessionManager
@@ -842,7 +863,7 @@ app.whenReady().then(async () => {
       // validated here — URL scheme allowlist, channel allowlist (only
       // REMOTE_ELIGIBLE channels designed to run on a remote server), and the
       // sender must be the main frame of a window-manager-managed window.
-      ipcMain.handle('server:invokeOnServer', async (event, url: string, token: string, channel: string, ...args: unknown[]) => {
+      ipcMain.handle('server:invokeOnServer', async (event, url: string, token: string, channel: string, args: unknown[] = [], options?: { allowInsecureTls?: boolean }) => {
         if (!isTrustedWindowSender(event)) {
           throw new Error('Blocked: server:invokeOnServer must be called from the main frame of a Craft Agents window')
         }
@@ -885,7 +906,7 @@ app.whenReady().then(async () => {
         assertSafeRemoteServerUrl(remoteServer.url)
 
         const { connectToRemote } = await import('./handlers/workspace')
-        const { client, error } = await connectToRemote(remoteServer.url, remoteServer.token, remoteServer.remoteWorkspaceId)
+        const { client, error } = await connectToRemote(remoteServer.url, remoteServer.token, remoteServer.remoteWorkspaceId, { allowInsecureTls: remoteServer.allowInsecureTls })
         if (!client) throw new Error(error ?? 'Connection failed')
         try {
           // Remote import is scoped to the remote workspace id, which is also
@@ -928,7 +949,7 @@ app.whenReady().then(async () => {
         if (sourceWorkspace.remoteServer) {
           const { url: sourceUrl, token: sourceToken, remoteWorkspaceId: sourceRemoteWorkspaceId } = sourceWorkspace.remoteServer
           console.log(`[Transfer] Exporting remote-owned session ${sessionId} from workspace ${sourceRemoteWorkspaceId}...`)
-          const { client: sourceClient, error: sourceError } = await connectToRemote(sourceUrl, sourceToken, sourceRemoteWorkspaceId, { requestTimeout: TRANSFER_REQUEST_TIMEOUT_MS })
+          const { client: sourceClient, error: sourceError } = await connectToRemote(sourceUrl, sourceToken, sourceRemoteWorkspaceId, { requestTimeout: TRANSFER_REQUEST_TIMEOUT_MS, allowInsecureTls: sourceWorkspace.remoteServer.allowInsecureTls })
           if (!sourceClient) throw new Error(sourceError ?? 'Connection failed to source remote server')
 
           try {
@@ -986,7 +1007,7 @@ app.whenReady().then(async () => {
 
         const { url, token, remoteWorkspaceId } = targetWorkspace.remoteServer
         console.log(`[Transfer] Connecting to target remote server: ${url}`)
-        const { client, error } = await connectToRemote(url, token, remoteWorkspaceId, { requestTimeout: TRANSFER_REQUEST_TIMEOUT_MS })
+        const { client, error } = await connectToRemote(url, token, remoteWorkspaceId, { requestTimeout: TRANSFER_REQUEST_TIMEOUT_MS, allowInsecureTls: targetWorkspace.remoteServer.allowInsecureTls })
         if (!client) throw new Error(error ?? 'Connection failed to target remote server')
         console.log('[Transfer] Connected to target remote server')
 
@@ -1043,7 +1064,7 @@ app.whenReady().then(async () => {
           return
         }
         const code = lang as LanguageCode
-        await i18n.changeLanguage(code)
+        await changeAppLanguage(code)
         setPersistedUiLanguage(code)
         mainLog.info('[i18n] changeLanguage IPC applied', {
           incoming: code,

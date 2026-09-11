@@ -2206,6 +2206,7 @@
   "webui.logOut": "Log Out",
   "workspace.addWorkspace": "Add Workspace…",
   "workspace.addWorkspaceDesc": "Where your ideas meet the tools to make them happen.",
+  "workspace.allowInsecureTls": "Allow invalid TLS certificate (not recommended)",
   "workspace.chooseExistingFolder": "Choose existing folder",
   "workspace.chooseExistingFolderDesc": "Choose any folder to use as workspace.",
   "workspace.chooseLocation": "Choose a location",

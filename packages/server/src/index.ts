@@ -33,7 +33,7 @@ import { enableDebug } from '@craft-agent/shared/utils/debug'
 import { bootstrapServer, startHealthHttpServer, generateServerToken } from '@craft-agent/server-core/bootstrap'
 import { validateSession, createWebuiHandler, nodeHttpAdapter } from '@craft-agent/server-core/webui'
 import type { WebuiHandler } from '@craft-agent/server-core/webui'
-import { getCredentialManager } from '@craft-agent/shared/credentials'
+import { getCredentialManager, installCredentialKeyProviderFromEnv } from '@craft-agent/shared/credentials'
 import { getWorkspaces } from '@craft-agent/shared/config'
 import { createMessagingBootstrap, type MessagingBootstrapHandle } from '@craft-agent/messaging-gateway'
 
@@ -50,6 +50,17 @@ import { setSearchPlatform, setImageProcessor } from '@craft-agent/server-core/s
 import type { HandlerDeps } from '@craft-agent/server-core/handlers'
 
 process.env.CRAFT_IS_PACKAGED ??= 'false'
+
+// Prefer an operator-supplied credential key (secret manager/KMS) over the
+// machine-id fallback. Invalid keys fail startup instead of silently weakening
+// credential encryption.
+try {
+  const providerId = installCredentialKeyProviderFromEnv()
+  if (providerId) console.log(`[credentials] using key provider: ${providerId}`)
+} catch (error) {
+  console.error(error instanceof Error ? error.message : String(error))
+  process.exit(1)
+}
 
 // Prevent unhandled rejections from crashing the server.
 // SDK subprocess abort can reject promises that propagate up unhandled;

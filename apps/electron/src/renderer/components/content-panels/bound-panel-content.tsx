@@ -15,6 +15,7 @@
  * MainContentPanel fall back to the global navigation state.
  */
 
+import { Suspense, lazy } from 'react'
 import { useTranslation } from 'react-i18next'
 import { isOtherNavigation } from '../../../shared/types'
 import { parseRouteToNavigationState } from '../../../shared/route-parser'
@@ -23,7 +24,9 @@ import { PanelEmptyState } from './PanelEmptyState'
 import { FilesPanel } from './FilesPanel'
 import { TrajectoryPanel } from './TrajectoryPanel'
 import { ArtifactWorkbench } from './ArtifactWorkbench'
-import { TerminalPanel } from './TerminalPanel'
+const TerminalPanel = lazy(() =>
+  import('./TerminalPanel').then((module) => ({ default: module.TerminalPanel })),
+)
 
 /** True for panel types that are rendered by this dispatcher (bound panels). */
 export function isBoundPanelType(panelType: SurfaceRenderEntry['panelType']): boolean {

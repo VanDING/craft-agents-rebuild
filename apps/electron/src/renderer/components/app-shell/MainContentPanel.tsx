@@ -41,14 +41,22 @@ import { useSessionSelection, useIsMultiSelectActive, useSelectedIds, useSelecti
 import { sourceSelection, skillSelection, automationSelection } from '@/hooks/useEntitySelection'
 import { extractLabelId } from '@craft-agent/shared/labels'
 import type { SessionStatusId } from '@/config/session-status-config'
-import SourceInfoPage from '@/pages/SourceInfoPage'
+const SourceInfoPage = React.lazy(() => import('@/pages/SourceInfoPage'))
 import ChatPage from '@/pages/ChatPage'
-import SkillInfoPage from '@/pages/SkillInfoPage'
+const SkillInfoPage = React.lazy(() => import('@/pages/SkillInfoPage'))
 import { getSettingsPageComponent } from '@/pages/settings/settings-pages'
-import { AutomationInfoPage } from '../automations/AutomationInfoPage'
-import { ProjectManagementSurface } from '../projects/ProjectManagementSurface'
-import { PagesHome } from '../pages/PagesHome'
-import { PageView } from '../pages/PageView'
+const AutomationInfoPage = React.lazy(() =>
+  import('../automations/AutomationInfoPage').then((module) => ({ default: module.AutomationInfoPage })),
+)
+const ProjectManagementSurface = React.lazy(() =>
+  import('../projects/ProjectManagementSurface').then((module) => ({ default: module.ProjectManagementSurface })),
+)
+const PagesHome = React.lazy(() =>
+  import('../pages/PagesHome').then((module) => ({ default: module.PagesHome })),
+)
+const PageView = React.lazy(() =>
+  import('../pages/PageView').then((module) => ({ default: module.PageView })),
+)
 import type { ExecutionEntry } from '../automations/types'
 import { automationsAtom } from '@/atoms/automations'
 import { SendResourceToWorkspaceDialog, type SendResourceType } from './SendResourceToWorkspaceDialog'
@@ -226,7 +234,11 @@ export function MainContentPanel({
   // Also renders the Send to Workspace dialog (portal-based, so it overlays regardless of position).
   const wrapWithStoplight = (content: React.ReactNode) => (
     <StoplightProvider value={isSidebarAndNavigatorHidden}>
-      {content}
+      <React.Suspense
+        fallback={<div className="h-full w-full animate-pulse bg-foreground/[0.02]" aria-busy="true" />}
+      >
+        {content}
+      </React.Suspense>
       <SendResourceToWorkspaceDialog
         open={sendDialogOpen}
         onOpenChange={setSendDialogOpen}

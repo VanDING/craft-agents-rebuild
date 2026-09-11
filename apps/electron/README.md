@@ -13,7 +13,7 @@ bun run electron:build     # production bundles and resources
 bun run electron:start     # build and launch
 ```
 
-Use Bun 1.4.0, as pinned by the root `packageManager` field and build scripts.
+Use Bun 1.4.2, as pinned by the root `packageManager` field and build scripts.
 
 ## Runtime architecture
 
@@ -26,7 +26,7 @@ Electron main process
     └─ JSONL stdio → bundled pi-agent-server → Pi SDK 0.85.1
 ```
 
-The main-process bundle does not contain an AI SDK. `packages/pi-agent-server` is built separately with Bun and staged under `resources/pi-agent-server`; this keeps provider and agent failures isolated from Electron.
+Agent execution stays in the separately built `packages/pi-agent-server` subprocess staged under `resources/pi-agent-server`. The main bundle only carries model-catalog and credential plumbing for UI/runtime coordination; provider request paths execute in the subprocess.
 
 Credentials are resolved by the shared credential manager and sent to the subprocess as provider-aware `piAuth` data. OAuth refreshes are delivered with `token_update`. Provider secrets are not read from ambient `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN` variables.
 

@@ -42,8 +42,9 @@ describe("locale registry entries", () => {
       expect(entry.nativeName.length).toBeGreaterThan(0);
     });
 
-    it(`${code} has messages (non-empty object)`, () => {
-      expect(Object.keys(entry.messages).length).toBeGreaterThan(0);
+    it(`${code} has messages (non-empty object)`, async () => {
+      const messages = await entry.loadMessages();
+      expect(Object.keys(messages).length).toBeGreaterThan(0);
     });
 
     it(`${code} has a dateLocale`, () => {

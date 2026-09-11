@@ -1,5 +1,5 @@
-import { existsSync, readFileSync, statSync, writeFileSync, unlinkSync, mkdtempSync, renameSync } from 'fs';
-import { extname, basename, resolve, join, relative } from 'path';
+import { existsSync, readFileSync, statSync, writeFileSync, unlinkSync, mkdtempSync, renameSync, openSync, fsyncSync, closeSync } from 'fs';
+import { extname, basename, resolve, join, relative, dirname } from 'path';
 import { execSync } from 'child_process';
 import { tmpdir } from 'os';
 import { randomBytes } from 'crypto';
@@ -34,18 +34,44 @@ export function readJsonFileSync<T = unknown>(filePath: string): T {
  * This prevents partial writes from corrupting the file on crash/interrupt.
  * Uses write-to-temp-then-rename pattern which is atomic on POSIX systems.
  */
-export function atomicWriteFileSync(filePath: string, data: string): void {
+export function atomicWriteFileSync(
+  filePath: string,
+  data: string | Uint8Array,
+  options: { mode?: number } = {},
+): void {
   // Unique temp name per write: a fixed `${filePath}.tmp` lets two concurrent
   // writers to the same target (e.g. a page's refresh script and a host one-shot
   // both regenerating snapshot.json) clobber each other's temp mid-rename,
   // producing a torn/empty file or ENOENT. pid + random keeps them disjoint.
   const tmpPath = `${filePath}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`;
+  let fd: number | undefined;
   try {
-    writeFileSync(tmpPath, data);
+    fd = openSync(tmpPath, 'w', options.mode);
+    writeFileSync(fd, data);
+    // Best-effort durability: a synchronous fsync before rename ensures the
+    // temp bytes are on disk. Filesystems that reject fsync (some Windows
+    // volumes, restricted sandboxes) still get the atomic rename.
+    try { fsyncSync(fd); } catch { /* best effort */ }
+    closeSync(fd);
+    fd = undefined;
     renameSync(tmpPath, filePath);
+    // Best-effort parent-directory fsync so the rename itself survives power
+    // loss. Windows rejects directory fsync; ignore only that case.
+    try {
+      const dirFd = openSync(dirname(filePath), 'r');
+      try { fsyncSync(dirFd); } finally { closeSync(dirFd); }
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      const unsupportedOnWindows = process.platform === 'win32'
+        && (code === 'EPERM' || code === 'EINVAL' || code === 'ENOTSUP' || code === 'EISDIR');
+      if (!unsupportedOnWindows) throw error;
+    }
   } catch (error) {
-    // Clean up temp file if rename failed
-    try { unlinkSync(tmpPath); } catch {}
+    if (fd !== undefined) {
+      try { closeSync(fd); } catch { /* preserve original error */ }
+    }
+    // Clean up temp file if rename or write failed.
+    try { unlinkSync(tmpPath); } catch { /* preserve original error */ }
     throw error;
   }
 }

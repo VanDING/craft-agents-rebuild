@@ -60,13 +60,20 @@ interface MarkdownMermaidBlockProps {
 
 export function MarkdownMermaidBlock({ code, className, showExpandButton = true, tapToOpen = true, minHeight }: MarkdownMermaidBlockProps) {
   const { t } = useTranslation()
-  // Render synchronously — no flash between CodeBlock and SVG.
-  // Colors are CSS variable references so the SVG inherits from the app's theme
-  // via CSS cascade. Theme switches apply automatically without re-rendering.
-  const { svg, error } = React.useMemo(() => {
-    try {
-      return {
-        svg: renderMermaidSVG(normalizeMermaidSource(code), {
+  // Mermaid + its layout engine are heavy (elkjs alone is >1 MB). Keep them
+  // out of the initial renderer graph and render the diagram after the block
+  // is actually visible; the code block is the loading fallback.
+  const [svg, setSvg] = React.useState<string | null>(null)
+  const [error, setError] = React.useState<Error | null>(null)
+
+  React.useEffect(() => {
+    let cancelled = false
+    setSvg(null)
+    setError(null)
+    void (async () => {
+      try {
+        const { renderMermaidSVG } = await import('beautiful-mermaid')
+        const rendered = renderMermaidSVG(normalizeMermaidSource(code), {
           bg: 'var(--background)',
           fg: 'var(--foreground)',
           accent: 'var(--accent)',
@@ -76,12 +83,13 @@ export function MarkdownMermaidBlock({ code, className, showExpandButton = true,
           border: 'var(--foreground-20)',
           transparent: true,
           interactive: true,
-        }),
-        error: null,
+        })
+        if (!cancelled) setSvg(rendered)
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err : new Error(String(err)))
       }
-    } catch (err) {
-      return { svg: null, error: err instanceof Error ? err : new Error(String(err)) }
-    }
+    })()
+    return () => { cancelled = true }
   }, [code])
 
   const [isFullscreen, setIsFullscreen] = React.useState(false)

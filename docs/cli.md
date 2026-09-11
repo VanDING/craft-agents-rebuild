@@ -227,7 +227,26 @@ craft-cli --url wss://server.example.com:9100 ping
 craft-cli --url wss://server.example.com:9100 --tls-ca /path/to/ca.pem ping
 ```
 
-The `--tls-ca` flag sets `NODE_EXTRA_CA_CERTS` before connecting. You can also set `CRAFT_TLS_CA` in your environment.
+The `--tls-ca` flag sets `NODE_EXTRA_CA_CERTS` before connecting. You can also set `CRAFT_RPC_TLS_CA` in the server environment.
+
+
+## Workspace backup and restore
+
+Backups include the workspace tree plus a SHA-256 manifest. The runtime SQLite
+database is copied through SQLite's consistent backup path when present. Stop
+the desktop app/server before backing up or restoring.
+
+```bash
+# Create a backup outside the workspace
+bun run workspace:backup create --workspace /path/to/workspace --output /backups/ws-2026-09-11
+
+# Verify every file against the manifest
+bun run workspace:verify verify --backup /backups/ws-2026-09-11
+
+# Restore into an empty directory (or pass --force to overwrite; a
+# pre-restore safety copy is written next to the target)
+bun run workspace:restore restore --backup /backups/ws-2026-09-11 --workspace /path/to/restored
+```
 
 ## Troubleshooting
 

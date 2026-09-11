@@ -5,7 +5,8 @@
  * Format: Line 1 = SessionHeader, Lines 2+ = StoredMessage (one per line)
  */
 
-import { openSync, readSync, closeSync, readFileSync, writeFileSync, renameSync, unlinkSync } from 'fs';
+import { openSync, readSync, closeSync, readFileSync } from 'fs';
+import { atomicWriteFileSync } from '../utils/files.ts';
 import { open, readFile } from 'fs/promises';
 import { dirname } from 'path';
 import type { SessionHeader, StoredSession, StoredMessage, SessionTokenUsage } from './types.ts';
@@ -155,12 +156,10 @@ export function writeSessionJsonl(sessionFile: string, session: StoredSession): 
     ...session.messages.map(m => makeSessionPathPortable(JSON.stringify(m), sessionDir)),
   ];
 
-  const tmpFile = sessionFile + '.tmp';
-  // M-23: session transcripts are private — owner read/write only.
-  writeFileSync(tmpFile, lines.join('\n') + '\n', { mode: 0o600 });
-  // On Windows, rename fails if target exists. Delete first for cross-platform compatibility.
-  try { unlinkSync(sessionFile); } catch { /* ignore if doesn't exist */ }
-  renameSync(tmpFile, sessionFile);
+  // M-23: session transcripts are private — owner read/write only. The shared
+  // atomic helper writes a process-unique temp file and renames over the target
+  // without the old unlink gap, so a crash cannot leave a missing transcript.
+  atomicWriteFileSync(sessionFile, lines.join('\n') + '\n', { mode: 0o600 });
 }
 
 /**

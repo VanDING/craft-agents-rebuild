@@ -76,7 +76,11 @@ export function CompactWorkspaceSwitcher({
     })
 
     for (const ws of remoteWorkspaces) {
-      window.electronAPI.testRemoteConnection(ws.remoteServer!.url, ws.remoteServer!.token)
+      window.electronAPI.testRemoteConnection(
+          ws.remoteServer!.url,
+          ws.remoteServer!.token,
+          ws.remoteServer!.allowInsecureTls,
+        )
         .then(result => {
           if (abort.signal.aborted) return
           setRemoteHealthMap(prev => new Map(prev).set(ws.id, result.ok ? 'ok' : 'error'))
@@ -144,7 +148,7 @@ export function CompactWorkspaceSwitcher({
     setFullscreenOverlayOpen(false)
   }, [setFullscreenOverlayOpen])
 
-  const handleReconnectWorkspace = useCallback(async (workspaceId: string, remoteServer: { url: string; token: string; remoteWorkspaceId: string }) => {
+  const handleReconnectWorkspace = useCallback(async (workspaceId: string, remoteServer: { url: string; token: string; remoteWorkspaceId: string; allowInsecureTls?: boolean }) => {
     await window.electronAPI.updateWorkspaceRemoteServer(workspaceId, remoteServer)
 
     if (workspaceId === activeWorkspaceId) {

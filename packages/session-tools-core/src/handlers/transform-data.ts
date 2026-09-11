@@ -15,6 +15,8 @@ import { join, resolve } from 'node:path';
 import { existsSync, mkdirSync, writeFileSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { createScriptRuntimeEnv } from '../runtime/sandbox-env.ts';
+import { applyFilesystemIsolation } from '../runtime/filesystem-isolation.ts';
+import { applyNetworkIsolation } from '../runtime/network-isolation.ts';
 import { isPathWithinDirectory, isPathWithinDirectoryForCreation } from '../runtime/path-security.ts';
 import { resolveScriptRuntime } from '../runtime/resolve-script-runtime.ts';
 
@@ -82,16 +84,52 @@ export async function handleTransformData(
     mkdirSync(dataDir, { recursive: true });
   }
 
-  // Write script to temp file
+  // Write the script inside the session data dir: sandboxed runs can read it,
+  // and it is cleaned up with the session data lifecycle.
   const ext = args.language === 'python3' ? '.py' : '.js';
-  const tempScript = join(tmpdir(), `craft-transform-${ctx.sessionId}-${Date.now()}${ext}`);
+  const transformScriptDir = join(dataDir, '.transform-scripts');
+  if (!existsSync(transformScriptDir)) {
+    mkdirSync(transformScriptDir, { recursive: true });
+  }
+  const tempScript = join(transformScriptDir, `craft-transform-${ctx.sessionId}-${Date.now()}${ext}`);
   writeFileSync(tempScript, args.script, 'utf-8');
 
   try {
     // Build command from shared runtime resolver
     const runtime = resolveScriptRuntime(args.language);
-    const cmd = runtime.command;
-    const spawnArgs = [...runtime.argsPrefix, tempScript, ...resolvedInputs, resolvedOutput];
+    let cmd = runtime.command;
+    let spawnArgs = [...runtime.argsPrefix, tempScript, ...resolvedInputs, resolvedOutput];
+
+    if (process.platform === 'darwin' || process.platform === 'linux') {
+      // transform_data handles potentially untrusted document content. On the
+      // platforms with a sandbox backend, enforce network deny and make only
+      // the session data dir writable; without isolation the script would run
+      // with the user's full filesystem/network access (audit C-2).
+      if (process.platform === 'darwin') {
+        const plan = applyFilesystemIsolation(cmd, spawnArgs, sessionDir, {
+          includeNetworkDeny: true,
+          writablePaths: [dataDir],
+        });
+        if (plan.status !== 'enforced') {
+          return errorResponse('transform_data requires filesystem/network isolation, but no usable backend is available on this system.');
+        }
+        cmd = plan.command;
+        spawnArgs = plan.args;
+      } else {
+        const networkPlan = applyNetworkIsolation(cmd, spawnArgs);
+        if (networkPlan.status !== 'enforced') {
+          return errorResponse('transform_data requires network isolation, but no usable backend is available on this system.');
+        }
+        const fsPlan = applyFilesystemIsolation(networkPlan.command, networkPlan.args, sessionDir, {
+          writablePaths: [dataDir],
+        });
+        if (fsPlan.status !== 'enforced') {
+          return errorResponse('transform_data requires filesystem isolation, but no usable backend is available on this system.');
+        }
+        cmd = fsPlan.command;
+        spawnArgs = fsPlan.args;
+      }
+    }
 
     // Strip sensitive env vars + redirect runtime cache/temp paths to session data dir
     const env = createScriptRuntimeEnv({

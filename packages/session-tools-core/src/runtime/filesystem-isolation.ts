@@ -10,6 +10,8 @@ export interface FilesystemIsolationPlan {
 
 export interface FilesystemIsolationOptions {
   includeNetworkDeny?: boolean;
+  /** Absolute paths that must remain writable inside the sandbox. */
+  writablePaths?: string[];
 }
 
 function existsOnPath(binary: string): boolean {
@@ -53,6 +55,7 @@ export function buildDarwinSandboxProfile(
     '(deny file-read* (regex "^.*/\\.credential-cache\\.json$"))',
     '(deny file-write*)',
     `(allow file-write* (subpath "${escapedRoot}"))`,
+    ...(options?.writablePaths ?? []).map((writablePath) => `(allow file-write* (subpath "${escapeSandboxPath(resolve(writablePath))}"))`),
   ];
 
   if (options?.includeNetworkDeny) {
@@ -102,6 +105,7 @@ export function applyFilesystemIsolation(
         args: [
           '--die-with-parent',
           '--ro-bind', sessionRoot, sessionRoot,
+          ...(options?.writablePaths ?? []).flatMap((writablePath) => ['--bind', resolve(writablePath), resolve(writablePath)]),
           // Essential runtime dirs (interpreters, shared libs, certs/locale).
           // --ro-bind-try tolerates dirs absent on some distros (e.g. /opt).
           '--ro-bind-try', '/usr', '/usr',

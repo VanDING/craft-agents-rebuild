@@ -7,7 +7,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { LANGUAGES, type LanguageCode } from '@craft-agent/shared/i18n'
+import { LANGUAGES, changeAppLanguage, type LanguageCode } from '@craft-agent/shared/i18n'
 import type { ColumnDef } from '@/components/ui/data-table-features'
 import { PanelHeader } from '@/components/app-shell/PanelHeader'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -360,7 +360,7 @@ export default function AppearanceSettingsPage() {
                           from: i18n.resolvedLanguage ?? null,
                           to: value,
                         })
-                        i18n.changeLanguage(value)
+                        void changeAppLanguage(value)
                         window.electronAPI?.changeLanguage?.(value)
                       }}
                       options={Object.entries(LANGUAGES).map(([code, config]) => ({

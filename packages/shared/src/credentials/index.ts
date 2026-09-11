@@ -25,3 +25,11 @@
 export { CredentialManager, getCredentialManager } from './manager.ts';
 export type { CredentialId, CredentialType, StoredCredential } from './types.ts';
 export { credentialIdToAccount, accountToCredentialId, SOURCE_CREDENTIAL_TYPES } from './types.ts';
+
+export {
+  setCredentialKeyProvider,
+  getCredentialKeyProvider,
+  getCredentialKeyProviderId,
+  type CredentialKeyProvider,
+} from './backends/secure-storage.ts';
+export { installCredentialKeyProviderFromEnv } from './env-key-provider.ts';

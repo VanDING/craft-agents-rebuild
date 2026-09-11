@@ -2206,6 +2206,7 @@
   "webui.logOut": "Wyloguj się",
   "workspace.addWorkspace": "Dodaj Workspace…",
   "workspace.addWorkspaceDesc": "Gdzie twoje pomysły spotykają narzędzia, które je urzeczywistniają.",
+  "workspace.allowInsecureTls": "Zezwól na nieprawidłowy certyfikat TLS (niezalecane)",
   "workspace.chooseExistingFolder": "Wybierz istniejący folder",
   "workspace.chooseExistingFolderDesc": "Wybierz dowolny folder do użycia jako Workspace.",
   "workspace.chooseLocation": "Wybierz lokalizację",

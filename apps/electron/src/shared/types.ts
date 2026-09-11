@@ -290,7 +290,7 @@ export interface ElectronAPI {
   // App lifecycle
   relaunchApp(): Promise<void>
   removeWorkspace(workspaceId: string): Promise<boolean>
-  invokeOnServer(url: string, token: string, channel: string, ...args: any[]): Promise<any>
+  invokeOnServer(url: string, token: string, channel: string, args?: any[], options?: { allowInsecureTls?: boolean }): Promise<any>
   /** Invoke a channel on the remote server of an existing remote workspace.
    *  The remote url/token/remoteWorkspaceId are resolved main-side from the
    *  workspace config — the remote token never reaches renderer memory (H-15). */
@@ -313,15 +313,15 @@ export interface ElectronAPI {
 
   // Workspace management
   getWorkspaces(): Promise<Workspace[]>
-  createWorkspace(folderPath: string, name: string, remoteServer?: { url: string; token: string; remoteWorkspaceId: string }): Promise<Workspace>
+  createWorkspace(folderPath: string, name: string, remoteServer?: { url: string; token: string; remoteWorkspaceId: string; allowInsecureTls?: boolean }): Promise<Workspace>
   checkWorkspaceSlug(slug: string): Promise<{ exists: boolean; path: string }>
-  updateWorkspaceRemoteServer(workspaceId: string, remoteServer: { url: string; token: string; remoteWorkspaceId: string }): Promise<{ success: boolean }>
+  updateWorkspaceRemoteServer(workspaceId: string, remoteServer: { url: string; token: string; remoteWorkspaceId: string; allowInsecureTls?: boolean }): Promise<{ success: boolean }>
 
   // Server-level workspace operations (for thin client / remote workspace discovery)
   getServerWorkspaces(): Promise<WorkspaceInfo[]>
   createServerWorkspace(name: string): Promise<WorkspaceInfo>
 
-  testRemoteConnection(url: string, token: string): Promise<{
+  testRemoteConnection(url: string, token: string, allowInsecureTls?: boolean): Promise<{
     ok: boolean
     error?: string
     needsWorkspace?: boolean

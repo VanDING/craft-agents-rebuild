@@ -451,6 +451,7 @@ export function registerFilesHandlers(server: RpcServer, deps: HandlerDeps): voi
         const mdFileName = `${id}_${safeName}.md`
         const mdPath = join(attachmentsDir, mdFileName)
         try {
+          const { MarkItDown } = await import('markitdown-js')
           const markitdown = new MarkItDown()
           const result = await markitdown.convert(storedPath)
           if (!result || !result.textContent) {

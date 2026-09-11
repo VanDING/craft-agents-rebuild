@@ -11,6 +11,8 @@ This file accumulates release notes for the next unreleased version. PRs that ad
 
 ## Features
 
+- **Offline workspace backup and restore** — `bun run workspace:backup|verify|restore` creates a SHA-256 manifest, verifies every file, and restores into an empty directory (or a pre-restore safety copy with `--force`). Runtime SQLite is copied through its consistent backup path.
+
 - **Switch providers within an existing conversation** — idle sessions can now change connection and model without losing their transcript. Cross-provider changes safely recreate the Pi runtime, while the selector is disabled during an active turn.
 - **Inspectable Run workspace** — every session now has Overview, Trajectory, Context, and Map views for timing, TTFT, token and cost accounting, tool outcomes, failures, context growth, request composition, compaction, and related-session structure. Evidence links open the corresponding chat, review, or file instead of leaving the audit surface disconnected.
 - **Local Profile and activity summary** — Settings now combines identity and personalization with deterministic local activity metrics, a 12-month heatmap, active-day and streak summaries, and token insights. Activity aggregation uses session metadata and never includes message content.
@@ -18,6 +20,8 @@ This file accumulates release notes for the next unreleased version. PRs that ad
 - **WeCom intelligent bot gateway** — workspaces can receive and continue agent sessions through the official WeCom intelligent-bot protocol alongside the existing messaging adapters.
 
 ## Improvements
+
+- **Faster startup and smaller bundles** — locale messages, the Mermaid/elkjs renderer, terminal/xterm, and secondary navigator pages now load on demand; production main/preload/Pi bundles are minified, roughly halving their parse and install footprint. Crash reporting is now opt-in (`CRAFT_TELEMETRY_ENABLED=1` plus a DSN).
 
 - **Refined native Default theme** — Default Refined now replaces the previous built-in Default in packaged apps, with cool off-white light surfaces, near-black dark surfaces, restrained violet, Inter typography and subtle elevation. Native sidebar transparency and explicit font preferences are preserved; existing Default selections update automatically.
 
@@ -44,6 +48,8 @@ This file accumulates release notes for the next unreleased version. PRs that ad
 
 ## Bug Fixes
 
+- **Unsafe data-conversion and remote-connection defaults** — `transform_data` now enforces network/filesystem isolation on macOS/Linux (fails closed when unavailable), remote WebSocket connections verify TLS by default with a per-workspace self-signed opt-in, and credential keys can be protected by Electron safeStorage or an operator-supplied `CRAFT_CREDENTIAL_KEY`.
+
 - **WeChat iLink request metadata** — gateway requests now send the CraftAgent bot-agent identifier in `base_info` instead of the account's WeChat `userId`, so the account identity is no longer exposed as a user agent.
 
 - **Popover dismissal no longer flashes** — closing the sidebar profile card and other shared animated popovers/dialogs now retains the transparent final animation frame until unmount, preventing a brief reappearance after fading out.
@@ -60,5 +66,7 @@ This file accumulates release notes for the next unreleased version. PRs that ad
 - **Fix ChatGPT Plus (OAuth) chat failing with "No API key found for openai-codex"** — the ChatGPT OAuth bearer token was passed to the Pi SDK as an `api_key` credential, but the SDK's `openai-codex` provider is OAuth-only and rejected it. It now arrives as a full `oauth` credential (access + refresh + expiry), matching what the SDK's provider-aware auth resolution expects.
 
 ## Breaking Changes
+
+- **Remote servers with self-signed certificates** — certificate validation now defaults on. Existing remote workspaces must enable "Allow invalid TLS certificate" explicitly (or install a trusted certificate) before reconnecting. Crash reporting is also opt-in rather than DSN-only.
 
 - **Default is now the only built-in theme** — bundled named presets are no longer copied into `~/.craft-agent/themes/`. Existing files in that directory remain untouched and work as user themes. The deprecated `~/.craft-agent/theme.json` override is migrated non-destructively to a user theme file and then removed from runtime resolution.

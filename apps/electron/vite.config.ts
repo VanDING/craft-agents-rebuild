@@ -23,6 +23,23 @@ export default defineConfig({
       ],
     }),
     tailwindcss(),
+    // Production CSP hardening: the dev server needs localhost:8097 and inline
+    // script allowances for React DevTools; packaged renderer pages do not.
+    {
+      name: 'craft-production-csp',
+      transformIndexHtml: {
+        order: 'pre' as const,
+        handler(html: string, ctx: { server?: unknown }) {
+          if (ctx.server) return html
+          return html
+            .replace(/\n?\s*<script src="\.\/react-devtools\.js"><\/script>/, '')
+            .replace(
+              /(<meta http-equiv="Content-Security-Policy" content=")[^"]*(")/,
+              '$1' + "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https: file: thumbnail: blob:; connect-src 'self' https: http://localhost:* ws://localhost:* wss://localhost:* http://127.0.0.1:* ws://127.0.0.1:* wss://127.0.0.1:* wss:; font-src 'self' data: https://fonts.gstatic.com; worker-src 'self' blob:; object-src 'self' file:;" + '$2',
+            )
+        },
+      },
+    },
     // Sentry source map upload — intentionally disabled. See CLAUDE.md for re-enabling instructions.
     // sentryVitePlugin({
     //   org: process.env.SENTRY_ORG,

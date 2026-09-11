@@ -144,7 +144,7 @@ function syncConfigDefaults(): void {
   if (!bundledDir) {
     debug('[config] No bundled assets dir found - using fallback config-defaults');
     if (!existsSync(CONFIG_DEFAULTS_FILE)) {
-      writeFileSync(CONFIG_DEFAULTS_FILE, JSON.stringify(FALLBACK_CONFIG_DEFAULTS, null, 2), 'utf-8');
+      atomicWriteFileSync(CONFIG_DEFAULTS_FILE, JSON.stringify(FALLBACK_CONFIG_DEFAULTS, null, 2), { mode: 0o600 });
     }
     return;
   }
@@ -153,14 +153,14 @@ function syncConfigDefaults(): void {
   if (!existsSync(bundledFile)) {
     debug('[config] Bundled config-defaults.json not found at: ' + bundledFile + ' - using fallback');
     if (!existsSync(CONFIG_DEFAULTS_FILE)) {
-      writeFileSync(CONFIG_DEFAULTS_FILE, JSON.stringify(FALLBACK_CONFIG_DEFAULTS, null, 2), 'utf-8');
+      atomicWriteFileSync(CONFIG_DEFAULTS_FILE, JSON.stringify(FALLBACK_CONFIG_DEFAULTS, null, 2), { mode: 0o600 });
     }
     return;
   }
 
   // Sync from bundled file (same pattern as docs)
   const content = readFileSync(bundledFile, 'utf-8');
-  writeFileSync(CONFIG_DEFAULTS_FILE, content, 'utf-8');
+  atomicWriteFileSync(CONFIG_DEFAULTS_FILE, content, { mode: 0o600 });
   debug('[config] Synced config-defaults.json from bundled assets');
 }
 
@@ -231,7 +231,7 @@ export function backupConfigFile(): void {
     // before any mutation, so it holds the good pre-reset state. A second startup that
     // day (e.g. after a reset already nuked the registry) must NOT clobber it.
     if (existsSync(dated)) return;
-    writeFileSync(dated, readFileSync(CONFIG_FILE, 'utf-8'), 'utf-8');
+    atomicWriteFileSync(dated, readFileSync(CONFIG_FILE, 'utf-8'), { mode: 0o600 });
 
     // ISO date in the name → lexical sort is chronological; drop all but the newest few.
     const backups = readdirSync(CONFIG_DIR).filter(f => CONFIG_BACKUP_DATE_RE.test(f)).sort();
@@ -324,7 +324,7 @@ export function saveConfig(config: StoredConfig): void {
     })),
   };
 
-  writeFileSync(CONFIG_FILE, JSON.stringify(storageConfig, null, 2), 'utf-8');
+  atomicWriteFileSync(CONFIG_FILE, JSON.stringify(storageConfig, null, 2), { mode: 0o600 });
 }
 
 // Legacy updateApiKey() removed - use setupLlmConnection IPC handler instead.
@@ -708,7 +708,7 @@ export function getWorkspaceByNameOrId(nameOrId: string): Workspace | null {
 
 export function updateWorkspaceRemoteServer(
   workspaceId: string,
-  remoteServer: { url: string; token: string; remoteWorkspaceId: string },
+  remoteServer: { url: string; token: string; remoteWorkspaceId: string; allowInsecureTls?: boolean },
 ): void {
   const config = loadStoredConfig();
   if (!config) return;
@@ -931,7 +931,7 @@ export function saveWorkspaceConversation(
   };
 
   try {
-    writeFileSync(filePath, JSON.stringify(conversation, null, 2), 'utf-8');
+    atomicWriteFileSync(filePath, JSON.stringify(conversation, null, 2), { mode: 0o600 });
   } catch (e) {
     // Handle cyclic structures or other serialization errors
     console.error(`[storage] [CYCLIC STRUCTURE] Failed to save workspace conversation:`, e);
@@ -955,7 +955,7 @@ export function saveWorkspaceConversation(
         tokenUsage,
         savedAt: Date.now(),
       };
-      writeFileSync(filePath, JSON.stringify(sanitizedConversation, null, 2), 'utf-8');
+      atomicWriteFileSync(filePath, JSON.stringify(sanitizedConversation, null, 2), { mode: 0o600 });
       console.error(`[storage] Saved sanitized workspace conversation successfully`);
     } catch (e2) {
       console.error(`[storage] Failed to save even sanitized workspace conversation:`, e2);
@@ -986,7 +986,7 @@ export function getWorkspaceDataPath(workspaceId: string): string {
 export function clearWorkspaceConversation(workspaceId: string): void {
   const filePath = join(WORKSPACES_DIR, workspaceId, 'conversation.json');
   if (existsSync(filePath)) {
-    writeFileSync(filePath, '{}', 'utf-8');
+    atomicWriteFileSync(filePath, '{}', { mode: 0o600 });
   }
 
   // Also clear any active plan (plans are session-scoped)
@@ -1006,7 +1006,7 @@ export function clearWorkspaceConversation(workspaceId: string): void {
 export function saveWorkspacePlan(workspaceId: string, plan: Plan): void {
   const dir = ensureWorkspaceDir(workspaceId);
   const filePath = join(dir, 'plan.json');
-  writeFileSync(filePath, JSON.stringify(plan, null, 2), 'utf-8');
+  atomicWriteFileSync(filePath, JSON.stringify(plan, null, 2), { mode: 0o600 });
 }
 
 /**
@@ -1149,7 +1149,7 @@ function loadDraftsData(): DraftsData {
 function saveDraftsData(data: DraftsData): void {
   ensureConfigDir();
   data.updatedAt = Date.now();
-  writeFileSync(DRAFTS_FILE, JSON.stringify(data, null, 2), 'utf-8');
+  atomicWriteFileSync(DRAFTS_FILE, JSON.stringify(data, null, 2), { mode: 0o600 });
 }
 
 /**
@@ -1266,7 +1266,7 @@ export function loadAppTheme(): ThemeOverrides | null {
 /** @deprecated Write a user theme in ~/.craft-agent/themes instead. */
 export function saveAppTheme(theme: ThemeOverrides): void {
   ensureConfigDir();
-  writeFileSync(APP_THEME_FILE, JSON.stringify(theme, null, 2), 'utf-8');
+  atomicWriteFileSync(APP_THEME_FILE, JSON.stringify(theme, null, 2), { mode: 0o600 });
 }
 
 

@@ -123,7 +123,8 @@ if (isClientOnly) {
       autoReconnect: true,
       mode: 'remote',
       clientCapabilities: [...LOCAL_CLIENT_CAPABILITIES],
-      tlsRejectUnauthorized: false,
+      // Only the stored explicit opt-in may disable certificate validation.
+      tlsRejectUnauthorized: remoteConfig.allowInsecureTls !== true,
     })
     initialWorkspaceClient.connect()
   } else {
@@ -147,7 +148,7 @@ if (isClientOnly) {
       autoReconnect: true,
       mode: 'remote',
       clientCapabilities: [...LOCAL_CLIENT_CAPABILITIES],
-      tlsRejectUnauthorized: false,
+      tlsRejectUnauthorized: remoteServer.allowInsecureTls !== true,
     })
   })
 
@@ -430,8 +431,13 @@ client.onConnectionStateChanged((state) => {
 // App lifecycle — direct IPC (not WS RPC) since it restarts the server itself
 ;(api as ElectronAPI).relaunchApp = () => ipcRenderer.invoke('app:relaunch')
 ;(api as ElectronAPI).removeWorkspace = (workspaceId: string) => ipcRenderer.invoke('workspace:remove', workspaceId)
-;(api as ElectronAPI).invokeOnServer = (url: string, token: string, channel: string, ...args: any[]) =>
-  ipcRenderer.invoke('server:invokeOnServer', url, token, channel, ...args)
+;(api as ElectronAPI).invokeOnServer = (
+  url: string,
+  token: string,
+  channel: string,
+  args?: any[],
+  options?: { allowInsecureTls?: boolean },
+) => ipcRenderer.invoke('server:invokeOnServer', url, token, channel, args ?? [], options)
 // H-15: remote token never crosses into the renderer — main resolves the
 // workspace's remoteServer url/token/remoteWorkspaceId from local config.
 ;(api as ElectronAPI).sendResourcesToRemote = (workspaceId: string, channel: string, ...args: any[]) =>

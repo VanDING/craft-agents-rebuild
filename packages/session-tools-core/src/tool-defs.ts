@@ -513,7 +513,7 @@ Use this tool when you need to transform large datasets (20+ rows) into structur
 - For datatable/spreadsheet: output must be valid JSON: \`{"title": "...", "columns": [...], "rows": [...]}\`
 - For html-preview: output is an HTML file (any valid HTML)
 
-**Security:** Runs in an isolated subprocess with no access to API keys or credentials. 30-second timeout.`,
+**Security:** Runs in a stripped-environment subprocess with a 30-second timeout. On macOS and Linux the handler additionally enforces network deny and a session-scoped writable sandbox; if that backend is unavailable, execution fails closed.`,
 
   script_sandbox: `Run quick inline diagnostics in a sandboxed subprocess with network isolation.
 

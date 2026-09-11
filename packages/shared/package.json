@@ -42,6 +42,7 @@
     "./utils/redaction": "./src/utils/redaction.ts",
     "./utils/logo": "./src/utils/logo.ts",
     "./utils/logo-cache": "./src/utils/logo-cache.ts",
+    "./utils/files": "./src/utils/files.ts",
     "./utils/service-url": "./src/utils/service-url.ts",
     "./utils/icon": "./src/utils/icon.ts",
     "./icons": "./src/icons/index.ts",

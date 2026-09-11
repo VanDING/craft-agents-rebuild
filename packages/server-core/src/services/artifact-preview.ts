@@ -21,6 +21,9 @@ export async function renderOfficeArtifactPreview(
   if (!revision || !resolved.activePath) {
     throw new Error(`Office artifact ${resolved.artifact.id} has no renderable revision`)
   }
+  // markitdown-js and its parser stack are heavy; load them only when an
+  // Office artifact is actually previewed.
+  const { MarkItDown } = await import('markitdown-js')
   const converter = new MarkItDown()
   const result = await converter.convert(resolved.activePath)
   const markdown = result?.textContent?.trim() || '_No previewable text content._'

@@ -2206,6 +2206,7 @@
   "webui.logOut": "Kijelentkezés",
   "workspace.addWorkspace": "Munkaterület hozzáadása…",
   "workspace.addWorkspaceDesc": "Ahol az ötleteid találkoznak a megvalósításhoz szükséges eszközökkel.",
+  "workspace.allowInsecureTls": "Érvénytelen TLS-tanúsítvány engedélyezése (nem ajánlott)",
   "workspace.chooseExistingFolder": "Meglévő mappa kiválasztása",
   "workspace.chooseExistingFolderDesc": "Válassz bármely mappát munkaterületként.",
   "workspace.chooseLocation": "Válassz helyet",

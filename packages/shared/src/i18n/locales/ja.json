@@ -2206,6 +2206,7 @@
   "webui.logOut": "ログアウト",
   "workspace.addWorkspace": "Workspaceを追加…",
   "workspace.addWorkspaceDesc": "アイデアと実現するツールが出会う場所。",
+  "workspace.allowInsecureTls": "無効な TLS 証明書を許可（非推奨）",
   "workspace.chooseExistingFolder": "既存のフォルダを選択",
   "workspace.chooseExistingFolderDesc": "任意のフォルダをWorkspaceとして選択します。",
   "workspace.chooseLocation": "場所を選択",

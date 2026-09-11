@@ -1,0 +1,3 @@
+#!/usr/bin/env sh
+# Authoritative local parity check before pushing; full build/package smoke stays in CI.
+bun run validate:ci

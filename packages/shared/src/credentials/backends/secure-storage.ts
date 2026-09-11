@@ -32,7 +32,8 @@ import {
   createHash,
 } from 'crypto';
 import { execSync } from 'child_process';
-import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync } from 'fs';
+import { existsSync, readFileSync, mkdirSync, renameSync } from 'fs';
+import { atomicWriteFileSync } from '../../utils/files.ts';
 import { hostname, userInfo, homedir } from 'os';
 import { join, dirname } from 'path';
 
@@ -58,6 +59,30 @@ const PBKDF2_ITERATIONS = 100000;
 
 // Scoped diagnostic logger (only emits when debug logging is enabled)
 const logger = createLogger('secure-storage');
+/**
+ * Optional OS-native key provider (Electron safeStorage, server KMS/keychain
+ * adapter, tests). Returning null falls back to the machine-id derivation so
+ * headless and keychain-less environments keep working.
+ */
+export interface CredentialKeyProvider {
+  readonly id: string;
+  getKey(): Uint8Array | null;
+}
+
+let credentialKeyProvider: CredentialKeyProvider | null = null;
+
+/** Install an OS-native key provider. Call before the first credential access. */
+export function setCredentialKeyProvider(provider: CredentialKeyProvider | null): void {
+  credentialKeyProvider = provider;
+}
+
+export function getCredentialKeyProvider(): CredentialKeyProvider | null {
+  return credentialKeyProvider;
+}
+
+export function getCredentialKeyProviderId(): string {
+  return credentialKeyProvider?.id ?? 'machine-id';
+}
 
 /**
  * Get stable machine identifier using OS-native hardware UUID.
@@ -230,28 +255,37 @@ export class SecureStorageBackend {
     // Extract encrypted data
     const encryptedData = fileData.subarray(HEADER_SIZE);
 
-    // Try new stable key first (v2 - hardware UUID based)
-    const newKey = this.getEncryptionKey(salt);
-    let store = this.tryDecrypt(encryptedData, newKey);
-
-    if (store) {
-      this.cachedStore = store;
-      return store;
-    }
-
-    // Try legacy key for migration (v1 - included hostname)
-    // This handles credentials encrypted with old key derivation
+    // Try the configured OS key provider first, then the stable machine key,
+    // then the legacy hostname key. A successful fallback is re-encrypted with
+    // the preferred key so migration converges after one load.
+    const providerKey = this.getProviderEncryptionKey(salt);
+    const stableKey = this.getStableEncryptionKey(salt);
     const legacyKey = this.getLegacyEncryptionKey(salt);
-    store = this.tryDecrypt(encryptedData, legacyKey);
+    const candidates: Array<{ key: Buffer; provider: boolean }> = [
+      ...(providerKey ? [{ key: providerKey, provider: true }] : []),
+      { key: stableKey, provider: false },
+      { key: legacyKey, provider: false },
+    ];
 
-    if (store) {
-      // Migration: re-save with new stable key so future loads use hardware UUID
+    for (const candidate of candidates) {
+      const store = this.tryDecrypt(encryptedData, candidate.key);
+      if (!store) continue;
+
+      if (candidate.provider) {
+        this.encryptionKey = candidate.key;
+        this.cachedStore = store;
+        return store;
+      }
+
+      // Credentials were written by an older/fallback key. Re-save through the
+      // preferred key path before caching so the next load takes one attempt.
+      this.encryptionKey = null;
       this.cachedStore = store;
       this.saveStoreSync(store);
       return store;
     }
 
-    // Both keys failed - file is truly corrupted
+    // No candidate could decrypt the file - it is truly corrupted.
     this.handleCorruptedFile();
     return null;
   }
@@ -314,24 +348,40 @@ export class SecureStorageBackend {
     const fileData = Buffer.concat([header, iv, authTag, ciphertext]);
 
     // Write with restrictive permissions (owner read/write only)
-    writeFileSync(this.credentialsFile, fileData, { mode: 0o600 });
+    // Atomic temp+rename keeps the previous credential store readable if the
+    // process crashes mid-write; the helper fsyncs the temp file before rename.
+    atomicWriteFileSync(this.credentialsFile, fileData, { mode: 0o600 });
     this.cachedStore = store;
   }
 
   private getEncryptionKey(salt: Buffer): Buffer {
     if (this.encryptionKey) return this.encryptionKey;
 
-    // New stable machine ID using hardware UUID (v2)
-    // This is far more stable than hostname which can change with network/DHCP
+    this.encryptionKey = this.getProviderEncryptionKey(salt) ?? this.getStableEncryptionKey(salt);
+    return this.encryptionKey;
+  }
+
+  /**
+   * Derive a key from the injected OS provider material. The provider owns
+   * where the root secret lives (safeStorage/DPAPI/Keychain/KMS); PBKDF2 is
+   * retained here only so the on-disk key schedule stays identical to the
+   * machine-id fallback (same salt/iterations/format).
+   */
+  private getProviderEncryptionKey(salt: Buffer): Buffer | null {
+    const raw = credentialKeyProvider?.getKey();
+    if (!raw || raw.length === 0) return null;
+    const material = createHash('sha256').update(Buffer.from(raw)).digest();
+    return pbkdf2Sync(material, salt, PBKDF2_ITERATIONS, KEY_SIZE, 'sha256');
+  }
+
+  /** Stable machine ID key (v2 - hardware UUID based). */
+  private getStableEncryptionKey(salt: Buffer): Buffer {
     const stableMachineId = createHash('sha256')
       .update(getStableMachineId())
       .update('craft-agent-v2') // Bumped version for new key derivation
       .digest();
 
-    // Derive key using PBKDF2
-    this.encryptionKey = pbkdf2Sync(stableMachineId, salt, PBKDF2_ITERATIONS, KEY_SIZE, 'sha256');
-
-    return this.encryptionKey;
+    return pbkdf2Sync(stableMachineId, salt, PBKDF2_ITERATIONS, KEY_SIZE, 'sha256');
   }
 
   /**

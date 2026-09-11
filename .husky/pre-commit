@@ -1,0 +1,4 @@
+#!/usr/bin/env sh
+# Fast i18n guards for every commit. Full typecheck, lint, and tests run in CI.
+bun run lint:i18n:parity
+bun run lint:i18n:sorted
