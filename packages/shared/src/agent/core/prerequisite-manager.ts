@@ -239,9 +239,15 @@ export class PrerequisiteManager {
     const command = input.command as string;
     if (!command || this.pendingSkillPaths.size === 0) return false;
 
+    // Commands and registered paths can use either separator (notably Windows
+    // root-relative paths expand to backslashes while test/LLM commands commonly
+    // use forward slashes). Compare both raw and separator-normalized forms.
+    const normalizedCommand = command.replace(/\\/g, '/')
+
     let matched = false;
     for (const path of this.pendingSkillPaths) {
-      if (command.includes(path)) {
+      const normalizedPath = path.replace(/\\/g, '/')
+      if (command.includes(path) || normalizedCommand.includes(normalizedPath)) {
         this.pendingSkillPaths.delete(path);
         this.readFiles.add(path);
         this.onDebug?.(`Prerequisite: cleared skill prerequisite via Bash: ${path}`);
