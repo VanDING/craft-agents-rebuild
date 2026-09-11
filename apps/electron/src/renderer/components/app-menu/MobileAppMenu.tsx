@@ -2,7 +2,7 @@ import * as React from 'react'
 import { createPortal } from 'react-dom'
 import { useEffect, useMemo, useReducer, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import * as Icons from 'lucide-react'
+import { getMenuIcon } from './menu-icons'
 import { motion, AnimatePresence } from 'motion/react'
 import { MOTION_DURATION, MOTION_SPRING } from '@craft-agent/ui/motion'
 import { useRegisterDismissibleLayer } from '@/context/DismissibleLayerContext'
@@ -57,8 +57,7 @@ function stackReducer(state: SheetState, action: StackAction): SheetState {
 }
 
 function getIcon(name: string): React.ComponentType<{ className?: string }> | null {
-  const IconComponent = Icons[name as keyof typeof Icons] as React.ComponentType<{ className?: string }> | undefined
-  return IconComponent ?? null
+  return getMenuIcon(name)
 }
 
 function renderRowIcon(iconName: string, rowId: string): React.ReactNode {

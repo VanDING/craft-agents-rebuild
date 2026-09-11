@@ -6,7 +6,7 @@
  */
 
 import { forwardRef, useEffect, useState, type ButtonHTMLAttributes } from 'react'
-import * as Icons from 'lucide-react'
+import { AlertTriangle, ChevronDown, Globe } from 'lucide-react'
 import { Spinner } from '@craft-agent/ui'
 import type { BrowserInstanceInfo } from '../../../shared/types'
 import { getHostname, getThemeLuminance } from './utils'
@@ -65,7 +65,7 @@ export const BrowserTabBadge = forwardRef<HTMLButtonElement, BrowserTabBadgeProp
     >
       <span className={`shrink-0 flex items-center justify-center ${isDarkThemeColor ? 'h-3.5 w-3.5' : 'h-3 w-3'}`}>
         {hasLoadError ? (
-          <Icons.AlertTriangle className="h-3 w-3" />
+          <AlertTriangle className="h-3 w-3" />
         ) : instance.isLoading ? (
           <Spinner className="text-[9px] leading-none" />
         ) : instance.favicon && !faviconFailed ? (
@@ -87,14 +87,14 @@ export const BrowserTabBadge = forwardRef<HTMLButtonElement, BrowserTabBadgeProp
             />
           )
         ) : (
-          <Icons.Globe className="h-3 w-3" />
+          <Globe className="h-3 w-3" />
         )}
       </span>
 
       <span className="truncate ml-0.5 leading-[12px]">{displayLabel}</span>
 
       <span className="shrink-0 h-3 w-3 flex items-center justify-center opacity-55 group-hover:opacity-90 transition-opacity">
-        <Icons.ChevronDown className="h-2.5 w-2.5" />
+        <ChevronDown className="h-2.5 w-2.5" />
       </span>
     </button>
   )
