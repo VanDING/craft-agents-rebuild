@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs'
 import { join } from 'path'
 import { homedir } from 'os'
 import { RPC_CHANNELS } from '@craft-agent/shared/protocol'
-import { getWorkspaceByNameOrId, addWorkspace, setActiveWorkspace, updateWorkspaceRemoteServer, setRemoteServerToken } from '@craft-agent/shared/config'
+import { getWorkspaceByNameOrId, addWorkspace, setActiveWorkspace, updateWorkspaceRemoteServer, setRemoteServerToken, getRemoteServerTokenSync } from '@craft-agent/shared/config'
 import { perf } from '@craft-agent/shared/utils'
 import { pushTyped, type RpcServer } from '@craft-agent/server-core/transport'
 import type { HandlerDeps } from '../handler-deps'
@@ -144,7 +144,9 @@ export function registerWorkspaceCoreHandlers(server: RpcServer, deps: HandlerDe
     // whether to connect directly to a remote server for this workspace.
     return {
       workspaceId,
-      remoteServer: workspace?.remoteServer ?? null,
+      remoteServer: workspace?.remoteServer
+        ? { ...workspace.remoteServer, token: getRemoteServerTokenSync(workspaceId) }
+        : null,
     }
   })
 
