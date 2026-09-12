@@ -17,6 +17,8 @@ mock.module('@craft-agent/shared/config', () => ({
   getWorkspaceByNameOrId: () => null,
   getDefaultThinkingLevel: getDefaultThinkingLevelMock,
   setDefaultThinkingLevel: setDefaultThinkingLevelMock,
+
+  migrateRemoteServerTokens: async () => 0,
 }))
 
 describe('settings default thinking RPC handlers', () => {

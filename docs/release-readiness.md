@@ -11,7 +11,7 @@ This checklist tracks the trust chain that must be complete before binaries are 
 - [x] Remote connections verify TLS by default; per-workspace `allowInsecureTls` is an explicit opt-in.
 - [x] Dependency audit is a CI gate with a checked-in known-advisory baseline.
 - [ ] Workspace backup/restore exercised against a real desktop workspace in CI or a release rehearsal.
-- [ ] Move `remoteServer.token` from plaintext `config.json` into the encrypted credential vault, with a versioned migration and rollback path.
+- [x] `remoteServer.token` moves into the encrypted credential vault on startup (workspace-scoped `remote_server_token`) and is never written back to `config.json`. Migration is one-way; release rehearsal should verify the upgrade path and document that rolling back to a pre-vault build requires re-entering remote tokens.
 - [ ] Recovery drill: kill the app/server after T1 but before T2, verify the operation parks as unknown and is visible in Run.
 
 ## Branding and update chain

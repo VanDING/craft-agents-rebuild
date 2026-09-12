@@ -15,6 +15,8 @@ let workspaceSessionIds: string[] = []
 mock.module('@craft-agent/shared/config', () => ({
   getWorkspaceByNameOrId: () => null,
   getAllSessionDrafts: () => drafts,
+
+  migrateRemoteServerTokens: async () => 0,
 }))
 
 function createTestHarness() {

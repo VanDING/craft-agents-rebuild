@@ -35,7 +35,9 @@ export type CredentialType =
   // Messaging gateway credentials (keyed by workspaceId + platform)
   | 'messaging_bearer'   // Platform tokens (e.g., Telegram bot token)
   // Page publication admin token (keyed by workspaceId + pageId)
-  | 'page_publish_token'; // Secret capability that authorizes publication update/unpublish
+  | 'page_publish_token' // Secret capability that authorizes publication update/unpublish
+  // Remote server bearer token (keyed by workspaceId); never stored in config.json
+  | 'remote_server_token';
 
 /** Valid credential types for validation */
 const VALID_CREDENTIAL_TYPES: readonly CredentialType[] = [
@@ -52,6 +54,7 @@ const VALID_CREDENTIAL_TYPES: readonly CredentialType[] = [
   'source_basic',
   'messaging_bearer',
   'page_publish_token',
+  'remote_server_token',
 ] as const;
 
 /** Check if a string is a valid CredentialType */
@@ -189,7 +192,8 @@ export function credentialIdToAccount(id: CredentialId): string {
 
   // Workspace-scoped format (no source):
   // workspace_oauth::{workspaceId}
-  if (id.type === 'workspace_oauth' && id.workspaceId) {
+  // remote_server_token::{workspaceId}
+  if ((id.type === 'workspace_oauth' || id.type === 'remote_server_token') && id.workspaceId) {
     parts.push(id.workspaceId);
     return parts.join(CREDENTIAL_DELIMITER);
   }
@@ -270,7 +274,8 @@ export function accountToCredentialId(account: string): CredentialId | null {
 
   // Workspace-scoped format (no source):
   // workspace_oauth::{workspaceId}
-  if (type === 'workspace_oauth' && parts.length === 2) {
+  // remote_server_token::{workspaceId}
+  if ((type === 'workspace_oauth' || type === 'remote_server_token') && parts.length === 2) {
     return { type, workspaceId: parts[1] };
   }
 

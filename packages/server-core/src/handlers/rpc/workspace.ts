@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs'
 import { join } from 'path'
 import { homedir } from 'os'
 import { RPC_CHANNELS } from '@craft-agent/shared/protocol'
-import { getWorkspaceByNameOrId, addWorkspace, setActiveWorkspace, updateWorkspaceRemoteServer } from '@craft-agent/shared/config'
+import { getWorkspaceByNameOrId, addWorkspace, setActiveWorkspace, updateWorkspaceRemoteServer, setRemoteServerToken } from '@craft-agent/shared/config'
 import { perf } from '@craft-agent/shared/utils'
 import { pushTyped, type RpcServer } from '@craft-agent/server-core/transport'
 import type { HandlerDeps } from '../handler-deps'
@@ -46,14 +46,17 @@ export function registerWorkspaceCoreHandlers(server: RpcServer, deps: HandlerDe
   })
 
   // Create a new workspace at a folder path (Obsidian-style: folder IS the workspace)
-  server.handle(RPC_CHANNELS.workspaces.CREATE, async (_ctx, folderPath: string, name: string, remoteServer?: { url: string; token: string; remoteWorkspaceId: string; allowInsecureTls?: boolean }) => {
+  server.handle(RPC_CHANNELS.workspaces.CREATE, async (_ctx, folderPath: string, name: string, remoteServer?: { url: string; token?: string; remoteWorkspaceId: string; allowInsecureTls?: boolean }) => {
     const rootPath = folderPath.trim()
     const validation = isValidWorkspaceRootPath(rootPath)
     if (!validation.valid) {
       throw new Error(validation.reason!)
     }
 
-    const workspace = addWorkspace({ name, rootPath, ...(remoteServer && { remoteServer }) })
+    const token = remoteServer?.token
+    const metadata = remoteServer ? { url: remoteServer.url, remoteWorkspaceId: remoteServer.remoteWorkspaceId, allowInsecureTls: remoteServer.allowInsecureTls } : undefined
+    const workspace = addWorkspace({ name, rootPath, ...(metadata && { remoteServer: metadata }) })
+    if (token) await setRemoteServerToken(workspace.id, token)
     // Make it active
     setActiveWorkspace(workspace.id)
     deps.platform.logger.info(`Created workspace "${name}" at ${rootPath}${remoteServer ? ` (remote: ${remoteServer.url})` : ''}`)
@@ -69,8 +72,8 @@ export function registerWorkspaceCoreHandlers(server: RpcServer, deps: HandlerDe
   })
 
   // Update remote server config for an existing workspace (reconnect flow)
-  server.handle(RPC_CHANNELS.workspaces.UPDATE_REMOTE, async (_ctx, workspaceId: string, remoteServer: { url: string; token: string; remoteWorkspaceId: string; allowInsecureTls?: boolean }) => {
-    updateWorkspaceRemoteServer(workspaceId, remoteServer)
+  server.handle(RPC_CHANNELS.workspaces.UPDATE_REMOTE, async (_ctx, workspaceId: string, remoteServer: { url: string; token?: string; remoteWorkspaceId: string; allowInsecureTls?: boolean }) => {
+    await updateWorkspaceRemoteServer(workspaceId, remoteServer)
     deps.platform.logger.info(`Updated remote server for workspace ${workspaceId}: ${remoteServer.url}`)
     return { success: true }
   })

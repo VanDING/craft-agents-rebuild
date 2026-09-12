@@ -16,6 +16,8 @@ mock.module('@craft-agent/shared/config', () => ({
   addWorkspace: () => undefined,
   setActiveWorkspace: () => undefined,
   updateWorkspaceRemoteServer: () => undefined,
+
+  migrateRemoteServerTokens: async () => 0,
 }))
 
 function createTestHarness() {

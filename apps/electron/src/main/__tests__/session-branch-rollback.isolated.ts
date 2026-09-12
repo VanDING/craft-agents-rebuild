@@ -119,6 +119,8 @@ mock.module('@craft-agent/shared/config', () => ({
   touchLlmConnection: async () => {},
   isCompatProvider: () => false,
   isPiProvider: () => true,
+
+  migrateRemoteServerTokens: async () => 0,
 }))
 
 mock.module('@craft-agent/shared/workspaces', () => ({

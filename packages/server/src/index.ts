@@ -34,7 +34,7 @@ import { bootstrapServer, startHealthHttpServer, generateServerToken } from '@cr
 import { validateSession, createWebuiHandler, nodeHttpAdapter } from '@craft-agent/server-core/webui'
 import type { WebuiHandler } from '@craft-agent/server-core/webui'
 import { getCredentialManager, installCredentialKeyProviderFromEnv } from '@craft-agent/shared/credentials'
-import { getWorkspaces } from '@craft-agent/shared/config'
+import { getWorkspaces, hydrateRemoteServerTokenCache } from '@craft-agent/shared/config'
 import { createMessagingBootstrap, type MessagingBootstrapHandle } from '@craft-agent/messaging-gateway'
 
 // --generate-token: print a crypto-random token and exit

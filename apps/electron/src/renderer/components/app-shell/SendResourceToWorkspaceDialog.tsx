@@ -99,8 +99,9 @@ export function SendResourceToWorkspaceDialog({
     for (const ws of remoteTargets) {
       window.electronAPI.testRemoteConnection(
           ws.remoteServer!.url,
-          ws.remoteServer!.token,
+          undefined,
           ws.remoteServer!.allowInsecureTls,
+          ws.id,
         )
         .then(result => {
           if (abort.signal.aborted) return

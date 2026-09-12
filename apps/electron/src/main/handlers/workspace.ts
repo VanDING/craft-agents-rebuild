@@ -1,6 +1,7 @@
 import { RPC_CHANNELS } from '@craft-agent/shared/protocol'
 import type { RpcServer } from '@craft-agent/server-core/transport'
 import type { HandlerDeps } from './handler-deps'
+import { getRemoteServerTokenSync } from '@craft-agent/shared/config'
 
 export const GUI_HANDLED_CHANNELS = [
   RPC_CHANNELS.remote.TEST_CONNECTION,
@@ -63,8 +64,10 @@ export function registerWorkspaceGuiHandlers(server: RpcServer, deps: HandlerDep
   // Test connection to a remote Craft Agent Server.
   // Pure discovery — returns list of existing workspaces or needsWorkspace flag.
   // Workspace creation is handled separately via invokeOnServer → server:createWorkspace.
-  server.handle(RPC_CHANNELS.remote.TEST_CONNECTION, async (_ctx, url: string, token: string) => {
-    const { client, error } = await connectToRemote(url, token)
+  server.handle(RPC_CHANNELS.remote.TEST_CONNECTION, async (_ctx, url: string, token?: string, allowInsecureTls?: boolean, workspaceId?: string) => {
+    const effectiveToken = token || (workspaceId ? getRemoteServerTokenSync(workspaceId) : undefined)
+    if (!effectiveToken) return { ok: false, error: 'Token required' }
+    const { client, error } = await connectToRemote(url, effectiveToken, undefined, { allowInsecureTls })
     if (!client) return { ok: false, error }
 
     // Read server version from handshake_ack (null for old servers)

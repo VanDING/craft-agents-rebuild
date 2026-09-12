@@ -78,8 +78,9 @@ export function CompactWorkspaceSwitcher({
     for (const ws of remoteWorkspaces) {
       window.electronAPI.testRemoteConnection(
           ws.remoteServer!.url,
-          ws.remoteServer!.token,
+          undefined,
           ws.remoteServer!.allowInsecureTls,
+          ws.id,
         )
         .then(result => {
           if (abort.signal.aborted) return

@@ -313,15 +313,15 @@ export interface ElectronAPI {
 
   // Workspace management
   getWorkspaces(): Promise<Workspace[]>
-  createWorkspace(folderPath: string, name: string, remoteServer?: { url: string; token: string; remoteWorkspaceId: string; allowInsecureTls?: boolean }): Promise<Workspace>
+  createWorkspace(folderPath: string, name: string, remoteServer?: { url: string; token?: string; remoteWorkspaceId: string; allowInsecureTls?: boolean }): Promise<Workspace>
   checkWorkspaceSlug(slug: string): Promise<{ exists: boolean; path: string }>
-  updateWorkspaceRemoteServer(workspaceId: string, remoteServer: { url: string; token: string; remoteWorkspaceId: string; allowInsecureTls?: boolean }): Promise<{ success: boolean }>
+  updateWorkspaceRemoteServer(workspaceId: string, remoteServer: { url: string; token?: string; remoteWorkspaceId: string; allowInsecureTls?: boolean }): Promise<{ success: boolean }>
 
   // Server-level workspace operations (for thin client / remote workspace discovery)
   getServerWorkspaces(): Promise<WorkspaceInfo[]>
   createServerWorkspace(name: string): Promise<WorkspaceInfo>
 
-  testRemoteConnection(url: string, token: string, allowInsecureTls?: boolean): Promise<{
+  testRemoteConnection(url: string, token?: string, allowInsecureTls?: boolean, workspaceId?: string): Promise<{
     ok: boolean
     error?: string
     needsWorkspace?: boolean

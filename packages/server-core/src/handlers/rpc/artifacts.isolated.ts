@@ -14,6 +14,8 @@ const workspaceFixture = { id: 'ws-artifacts', name: 'ws-artifacts', rootPath: '
 
 mock.module('@craft-agent/shared/config', () => ({
   getWorkspaceByNameOrId: (id: string) => (id === workspaceFixture.id ? workspaceFixture : null),
+
+  migrateRemoteServerTokens: async () => 0,
 }))
 
 const context: RequestContext = {

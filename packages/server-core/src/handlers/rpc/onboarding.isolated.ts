@@ -32,6 +32,8 @@ mock.module('@craft-agent/shared/auth', () => ({
 mock.module('@craft-agent/shared/config', () => ({
   isSetupDeferred: () => deferred,
   setSetupDeferred: (value: boolean) => { deferred = value },
+
+  migrateRemoteServerTokens: async () => 0,
 }))
 
 mock.module('@craft-agent/shared/credentials', () => ({

@@ -98,7 +98,7 @@ import { setSearchPlatform, setImageProcessor } from '@craft-agent/server-core/s
 import { createApplicationMenu } from './menu'
 import { WindowManager } from './window-manager'
 import { loadWindowState, saveWindowState } from './window-state'
-import { getWorkspaces, getWorkspaceByNameOrId, loadStoredConfig, addWorkspace, saveConfig } from '@craft-agent/shared/config'
+import { getWorkspaces, getWorkspaceByNameOrId, loadStoredConfig, addWorkspace, saveConfig, getRemoteServerTokenSync, hydrateRemoteServerTokenCache } from '@craft-agent/shared/config'
 import { getDefaultWorkspacesDir } from '@craft-agent/shared/workspaces'
 import { initializeDocs } from '@craft-agent/shared/docs'
 import { initializeReleaseNotes } from '@craft-agent/shared/release-notes'
@@ -810,6 +810,11 @@ app.whenReady().then(async () => {
 
       mainLog.info('[startup] bootstrapServer complete', { ms: Date.now() - bootstrapStartedAt })
 
+      // Populate the sync token cache before renderer preload asks for its
+      // remote workspace config.
+      const hydratedRemoteTokens = await hydrateRemoteServerTokenCache()
+      if (hydratedRemoteTokens > 0) mainLog.info(`[credentials] hydrated ${hydratedRemoteTokens} remote-server token(s)`)
+
       // Capture module-level references for before-quit cleanup and deep-link handlers
       sessionManager = instance.sessionManager
       oauthFlowStore = instance.oauthFlowStore
@@ -900,13 +905,15 @@ app.whenReady().then(async () => {
 
         const workspace = getWorkspaceByNameOrId(workspaceId)
         const remoteServer = workspace?.remoteServer
-        if (!workspace || !remoteServer || !remoteServer.url || !remoteServer.token) {
+        if (!workspace || !remoteServer?.url) {
           throw new Error(`Workspace ${workspaceId} is not connected to a remote server`)
         }
         assertSafeRemoteServerUrl(remoteServer.url)
+        const remoteToken = getRemoteServerTokenSync(workspaceId)
+        if (!remoteToken) throw new Error(`Workspace ${workspaceId} has no stored remote credential`)
 
         const { connectToRemote } = await import('./handlers/workspace')
-        const { client, error } = await connectToRemote(remoteServer.url, remoteServer.token, remoteServer.remoteWorkspaceId, { allowInsecureTls: remoteServer.allowInsecureTls })
+        const { client, error } = await connectToRemote(remoteServer.url, remoteToken, remoteServer.remoteWorkspaceId, { allowInsecureTls: remoteServer.allowInsecureTls })
         if (!client) throw new Error(error ?? 'Connection failed')
         try {
           // Remote import is scoped to the remote workspace id, which is also
@@ -947,7 +954,9 @@ app.whenReady().then(async () => {
         let bundle: any = null
 
         if (sourceWorkspace.remoteServer) {
-          const { url: sourceUrl, token: sourceToken, remoteWorkspaceId: sourceRemoteWorkspaceId } = sourceWorkspace.remoteServer
+          const { url: sourceUrl, remoteWorkspaceId: sourceRemoteWorkspaceId } = sourceWorkspace.remoteServer
+          const sourceToken = getRemoteServerTokenSync(sourceWorkspaceLocalId)
+          if (!sourceToken) throw new Error(`Source workspace ${sourceWorkspaceLocalId} has no stored remote credential`)
           console.log(`[Transfer] Exporting remote-owned session ${sessionId} from workspace ${sourceRemoteWorkspaceId}...`)
           const { client: sourceClient, error: sourceError } = await connectToRemote(sourceUrl, sourceToken, sourceRemoteWorkspaceId, { requestTimeout: TRANSFER_REQUEST_TIMEOUT_MS, allowInsecureTls: sourceWorkspace.remoteServer.allowInsecureTls })
           if (!sourceClient) throw new Error(sourceError ?? 'Connection failed to source remote server')
@@ -1005,7 +1014,9 @@ app.whenReady().then(async () => {
           return result
         }
 
-        const { url, token, remoteWorkspaceId } = targetWorkspace.remoteServer
+        const { url, remoteWorkspaceId } = targetWorkspace.remoteServer
+        const token = getRemoteServerTokenSync(targetWorkspace.id)
+        if (!token) throw new Error(`Target workspace ${targetWorkspace.id} has no stored remote credential`)
         console.log(`[Transfer] Connecting to target remote server: ${url}`)
         const { client, error } = await connectToRemote(url, token, remoteWorkspaceId, { requestTimeout: TRANSFER_REQUEST_TIMEOUT_MS, allowInsecureTls: targetWorkspace.remoteServer.allowInsecureTls })
         if (!client) throw new Error(error ?? 'Connection failed to target remote server')
@@ -1088,7 +1099,10 @@ app.whenReady().then(async () => {
         const wsId = windowManager?.getWorkspaceForWindow(e.sender.id)
         if (!wsId) { e.returnValue = null; return }
         const ws = getWorkspaceByNameOrId(wsId)
-        e.returnValue = ws?.remoteServer ?? null
+        const remoteServer = ws?.remoteServer
+        e.returnValue = remoteServer
+          ? { ...remoteServer, token: getRemoteServerTokenSync(wsId) }
+          : null
       })
 
       // Server config RPC handlers (LOCAL_ONLY — Electron-specific)

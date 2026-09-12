@@ -14,7 +14,8 @@ export type McpAuthType = 'workspace_oauth' | 'workspace_bearer' | 'public';
  */
 export interface RemoteServerConfig {
   url: string;              // ws://host:port or wss://host:port
-  token: string;            // Auth token for the remote server
+  /** Auth token resolved from the encrypted vault; never persisted in config.json. */
+  token?: string;
   remoteWorkspaceId: string; // ID of the workspace on the remote server
   /**
    * Explicit opt-in for self-signed/invalid TLS certificates. Defaults to

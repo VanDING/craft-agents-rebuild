@@ -321,6 +321,10 @@ export function saveConfig(config: StoredConfig): void {
     workspaces: config.workspaces.map(ws => ({
       ...ws,
       rootPath: toPortablePath(ws.rootPath),
+      // Defense in depth: tokens live in the encrypted vault, never config.json.
+      ...(ws.remoteServer
+        ? { remoteServer: stripRemoteServerToken(ws.remoteServer) as PersistedRemoteServer }
+        : {}),
     })),
   };
 
@@ -706,16 +710,93 @@ export function getWorkspaceByNameOrId(nameOrId: string): Workspace | null {
   ) || null;
 }
 
-export function updateWorkspaceRemoteServer(
+/** Remote-server metadata persisted in config.json (never contains the token). */
+type PersistedRemoteServer = {
+  url: string
+  remoteWorkspaceId: string
+  allowInsecureTls?: boolean
+}
+
+// Process-local cache so synchronous main/preload paths can read a token that
+// lives in the encrypted vault without exposing it to config.json.
+const remoteServerTokenCache = new Map<string, string>()
+
+function stripRemoteServerToken<T extends { token?: string }>(remoteServer: T): Omit<T, 'token'> {
+  const { token: _token, ...metadata } = remoteServer
+  return metadata
+}
+
+/** Synchronous cache read for preload/IPC paths. Hydrated at startup or by set/get. */
+export function getRemoteServerTokenSync(workspaceId: string): string | undefined {
+  return remoteServerTokenCache.get(workspaceId)
+}
+
+export async function getRemoteServerToken(workspaceId: string): Promise<string | null> {
+  const cached = remoteServerTokenCache.get(workspaceId)
+  if (cached) return cached
+  const credential = await getCredentialManager().get({ type: 'remote_server_token', workspaceId })
+  if (credential?.value) {
+    remoteServerTokenCache.set(workspaceId, credential.value)
+    return credential.value
+  }
+  return null
+}
+
+export async function setRemoteServerToken(workspaceId: string, token: string): Promise<void> {
+  await getCredentialManager().set({ type: 'remote_server_token', workspaceId }, { value: token })
+  remoteServerTokenCache.set(workspaceId, token)
+}
+
+export async function deleteRemoteServerToken(workspaceId: string): Promise<void> {
+  remoteServerTokenCache.delete(workspaceId)
+  await getCredentialManager().delete({ type: 'remote_server_token', workspaceId })
+}
+
+/** Populate the sync cache for all configured remote workspaces. */
+export async function hydrateRemoteServerTokenCache(): Promise<number> {
+  let hydrated = 0
+  for (const workspace of getWorkspaces()) {
+    if (!workspace.remoteServer) continue
+    if (await getRemoteServerToken(workspace.id)) hydrated += 1
+  }
+  return hydrated
+}
+
+/**
+ * One-time migration: move plaintext remoteServer.token values from config.json
+ * into the encrypted vault, then rewrite config without the secret. Safe to run
+ * on every startup; no-op when no plaintext token remains.
+ */
+export async function migrateRemoteServerTokens(): Promise<number> {
+  const config = loadStoredConfig()
+  if (!config) return 0
+  let migrated = 0
+  for (const workspace of config.workspaces) {
+    const token = workspace.remoteServer?.token
+    if (!token) continue
+    await setRemoteServerToken(workspace.id, token)
+    workspace.remoteServer = stripRemoteServerToken(workspace.remoteServer!) as PersistedRemoteServer
+    migrated += 1
+  }
+  if (migrated > 0) saveConfig(config)
+  return migrated
+}
+
+export async function updateWorkspaceRemoteServer(
   workspaceId: string,
-  remoteServer: { url: string; token: string; remoteWorkspaceId: string; allowInsecureTls?: boolean },
-): void {
-  const config = loadStoredConfig();
-  if (!config) return;
-  const ws = config.workspaces.find(w => w.id === workspaceId);
-  if (!ws) throw new Error('Workspace not found');
-  ws.remoteServer = remoteServer;
-  saveConfig(config);
+  remoteServer: { url: string; token?: string; remoteWorkspaceId: string; allowInsecureTls?: boolean },
+): Promise<void> {
+  const config = loadStoredConfig()
+  if (!config) return
+  const ws = config.workspaces.find(w => w.id === workspaceId)
+  if (!ws) throw new Error('Workspace not found')
+
+  if (remoteServer.token) {
+    await setRemoteServerToken(workspaceId, remoteServer.token)
+  }
+
+  ws.remoteServer = stripRemoteServerToken(remoteServer) as PersistedRemoteServer
+  saveConfig(config)
 }
 
 export function setActiveWorkspace(workspaceId: string): void {
@@ -863,7 +944,9 @@ export async function removeWorkspace(workspaceId: string): Promise<boolean> {
 
   saveConfig(config);
 
-  // Clean up credential store credentials for this workspace
+  // Clean up credential store credentials for this workspace, including the
+  // remote-server token cache entry.
+  remoteServerTokenCache.delete(workspaceId);
   const manager = getCredentialManager();
   await manager.deleteWorkspaceCredentials(workspaceId);
 

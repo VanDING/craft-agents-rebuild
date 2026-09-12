@@ -38,6 +38,7 @@ import {
   loadPreferences,
   migrateLegacyCredentials,
   migrateLegacyLlmConnectionsConfig,
+  migrateRemoteServerTokens,
   migrateOrphanedDefaultConnections,
   initializeThemeStorage,
   MODEL_REGISTRY,
@@ -1919,6 +1920,12 @@ export class SessionManager implements ISessionManager {
 
       // Backfill missing `models` arrays on existing LLM connections
       migrateLegacyLlmConnectionsConfig()
+
+      // Move plaintext remote-server tokens into the encrypted credential vault.
+      const migratedRemoteTokens = await migrateRemoteServerTokens()
+      if (migratedRemoteTokens > 0) {
+        sessionLog.info(`Migrated ${migratedRemoteTokens} remote-server token(s) into the credential vault`)
+      }
 
       // Fix defaultLlmConnection if it points to a non-existent connection
       migrateOrphanedDefaultConnections()
