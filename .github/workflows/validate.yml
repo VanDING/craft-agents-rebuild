@@ -47,6 +47,12 @@ jobs:
       - name: Run validation suite
         run: bun run validate:ci
 
+      # Curated runtime/streaming/recovery paths (server-core, pi-agent-server,
+      # ui, electron) that validate:ci does not reach, each package in its own
+      # process so Bun module mocks cannot leak across files.
+      - name: Critical path tests
+        run: bun run test:critical
+
       - name: Remote credential vault regression
         run: bun test ./packages/shared/src/config/__tests__/remote-token-vault.isolated.ts
 
@@ -151,14 +157,11 @@ jobs:
       - name: Full workspace validation
         run: bun run validate:full
 
-      - name: Renderer production build smoke
-        run: bun run electron:build:renderer
-
-      - name: Main-process bundle smoke
-        run: bun run electron:build:main
-
-      - name: Web UI production build smoke
-        run: bun run webui:build
+      # Runs every production bundler (main, preload, renderer, Web UI, viewer),
+      # then assembles the server distribution and boots it out of the source
+      # tree to prove its imports resolve after packaging.
+      - name: Production bundle and server distribution smoke
+        run: bun run build:smoke
 
       - name: Bundle size report
         # The report checks staged Pi resources as well as main/renderer.

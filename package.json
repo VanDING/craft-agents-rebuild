@@ -25,7 +25,7 @@
     "test": "bun run scripts/run-workspace-tests.ts",
     "typecheck": "bun run typecheck:shared",
     "typecheck:shared": "cd packages/shared && bun run tsc --noEmit",
-    "typecheck:all": "cd packages/core && bun run tsc --noEmit && cd ../shared && bun run tsc --noEmit && cd ../server-core && bun run tsc --noEmit && cd ../server && bun run tsc --noEmit && cd ../session-tools-core && bun run tsc --noEmit && cd ../pi-agent-server && bun run typecheck && cd ../../apps/electron && bun run typecheck && cd ../../packages/ui && bun run tsc --noEmit && cd ../messaging-gateway && bun run tsc --noEmit && cd ../messaging-whatsapp-worker && bun run tsc --noEmit && cd ../../apps/cli && bun run typecheck && cd ../.. && bun run webui:typecheck && bun run viewer:typecheck && bun run typecheck:build",
+    "typecheck:all": "cd packages/core && bun run tsc --noEmit && cd ../shared && bun run tsc --noEmit && cd ../server-core && bun run tsc --noEmit && cd ../server && bun run tsc --noEmit && cd ../session-tools-core && bun run tsc --noEmit && cd ../pi-agent-server && bun run typecheck && cd ../../apps/electron && bun run typecheck && cd ../../packages/ui && bun run tsc --noEmit && cd ../messaging-gateway && bun run tsc --noEmit && cd ../messaging-whatsapp-worker && bun run tsc --noEmit && cd ../../apps/cli && bun run typecheck && cd ../.. && bun run webui:typecheck && bun run viewer:typecheck && bun run typecheck:build && bun run typecheck:scripts",
     "server:start": "bun run packages/server/src/index.ts",
     "server:dev": "bun run server:build:subprocess && CRAFT_DEBUG=true CRAFT_BUNDLED_ASSETS_ROOT=$PWD/apps/electron bun run packages/server/src/index.ts",
     "server:build": "bun run scripts/build-server.ts",
@@ -93,7 +93,12 @@
     "postinstall": "",
     "typecheck:build": "bun run tsc --noEmit -p tsconfig.build.json",
     "test:ui:table": "bun test ./apps/electron/src/renderer/components/ui/data-table-features.test.ts",
-    "benchmark:session-io": "bun run scripts/benchmark-session-io.ts"
+    "benchmark:session-io": "bun run scripts/benchmark-session-io.ts",
+    "typecheck:scripts": "bun run tsc --noEmit -p scripts/performance/tsconfig.runner.json && bun run tsc --noEmit -p scripts/performance/tsconfig.server.json",
+    "test:critical": "bun run scripts/test-critical.ts",
+    "build:smoke": "bun run scripts/build-smoke.ts",
+    "perf:smoke": "bun run scripts/performance/run.ts --smoke",
+    "perf:baseline": "bun run scripts/performance/run.ts"
   },
   "devDependencies": {
     "@aws-sdk/client-s3": "^3.1127.0",

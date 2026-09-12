@@ -1,0 +1,4 @@
+{
+  "extends": "../../tsconfig.build.json",
+  "include": ["run.ts", "pi-startup.ts"]
+}

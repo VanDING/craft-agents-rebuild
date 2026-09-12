@@ -12,6 +12,10 @@
     "scripts/provision-runtime.ts",
     "scripts/bundle-report.ts",
     "scripts/bundle-report.test.ts",
-    "scripts/run-recovery-tests.ts"
+    "scripts/run-recovery-tests.ts",
+    "scripts/check-environment.ts",
+    "scripts/check-environment.test.ts",
+    "scripts/build-smoke.ts",
+    "scripts/test-critical.ts"
   ]
 }

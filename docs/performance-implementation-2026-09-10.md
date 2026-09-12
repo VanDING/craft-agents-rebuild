@@ -98,3 +98,24 @@ Electron 生产构建中，入口 HTML 直接引用及 modulepreload 的 JS 总�
 | 25,000 | 0.354 | 29.2 | 18.7 |
 
 `bundle:report --check` 现在先验证 main、Pi、renderer 入口及其引用的 JS 存在且非空；缺失产物或无效预算会失败，不能再把未构建视为零字节达标。
+
+
+## 2026-09-13 端到端基准与验证工具入库
+
+此前用于本轮取数的三个脚本一直停留在工作区、未纳入版本控制，只能靠手工命令调用；现已提交并补上入口：
+
+| 命令 | 作用 | 本机耗时 |
+| --- | --- | ---: |
+| `bun run perf:smoke` | 20/100/500 条夹具的端到端基准（Playwright + 离线 fixture server） | 约 36 s |
+| `bun run perf:baseline` | 100/1,000/5,000 条夹具，含 60 s 真实 idle soak | 数分钟 |
+| `bun run test:critical` | 关键运行/流式/恢复测试，按包分进程 | 约 4 s |
+| `bun run build:smoke` | 全部生产打包器 + server 发行版离树导入冒烟 | 约 55 s |
+
+`perf:*` 用真实 `bootstrapServer`、RPC、SessionManager 与 Web UI 产物，把 `CredentialManager` 后端重定向到临时目录，不读取也不写入开发者自身的配置与凭据。报告写入 `.cache/performance/<profile>.json`，失败时另存 `.failure.png` 与 `.server.log`。
+
+两点测量约束已写入报告本身，避免再次被误读：
+
+- `git.revision` 描述的是源码树，不是被测产物。`--skip-build` 会复用 `dist/`，因此报告新增 `builds.bundles`（各入口字节数与 mtime）记录实际被测产物。
+- 本轮排查过的一次 `PERF_END_perf-003` 超时无法复现：以当前提交产物连续运行 5 次（其中一次注入 12 个满载 CPU 进程、一次为完整重建产物）均通过；当时的最可能原因是夹具会话尚未落盘时浏览器便已启动。因此不加超时兜底或重试，超时仍按真实失败处理。
+
+上述 `perf:*` 均为合成离线负载，只覆盖 Web UI + WebSocket RPC + SessionManager，不含 Electron 主进程、原生启动与真实模型推理，不作为安装包或启动耗时的结论。

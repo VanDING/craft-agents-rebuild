@@ -1,0 +1,4 @@
+{
+  "extends": "../../packages/server-core/tsconfig.json",
+  "include": ["server.ts", "../../packages/shared/src/agent/bash-parser.d.ts"]
+}

@@ -45,6 +45,8 @@ Prefer a focused test command over the full suite. Run broader checks when the c
 bun run typecheck:all      # All workspace type checks
 bun run validate:dev       # Type checks and core runtime/document tests
 bun run validate:ci        # CI validation plus i18n parity and coverage
+bun run test:critical      # Curated runtime/streaming/recovery tests, one process per package
+bun run build:smoke        # Real production bundlers plus server-distribution import smoke
 ```
 
 Useful development commands:
@@ -55,6 +57,15 @@ bun run electron:build
 bun run server:dev
 bun run webui:dev
 ```
+
+Performance baseline (Playwright + fixture server; never touches your real config or credentials):
+
+```bash
+bun run perf:smoke     # 20/100/500-message fixtures, ~40 s, safe for pre-push checks
+bun run perf:baseline  # 100/1,000/5,000-message fixtures with a 60 s idle soak
+```
+
+Both write `.cache/performance/<profile>.json` plus a `.failure.png` and server log on failure. They build the Web UI and Pi bundle first; `--skip-build` reuses whatever is already in `dist/`, and each report records the measured bundle sizes and timestamps under `builds`.
 
 ## Repository map
 
