@@ -47,6 +47,10 @@ export default defineConfig({
       // Force single React copy from root node_modules
       'react': resolve(__dirname, '../../node_modules/react'),
       'react-dom': resolve(__dirname, '../../node_modules/react-dom'),
+      // rehype-katex 7 declares katex ^0.16 but only calls the stable
+      // renderToString API; resolve both copies to the single current katex to
+      // avoid shipping two ~240 KB copies in the initial renderer graph.
+      'katex': resolve(__dirname, '../../node_modules/katex'),
       // Electron-specific modules → empty shims for browser builds
       '@sentry/electron/renderer': resolve(__dirname, 'src/shims/sentry-electron.ts'),
       '@sentry/electron': resolve(__dirname, 'src/shims/sentry-electron.ts'),
@@ -73,7 +77,7 @@ export default defineConfig({
       // 'open' npm package (Node.js shell utility) — no-op in browser
       'open': resolve(__dirname, 'src/shims/open.ts'),
     },
-    dedupe: ['react', 'react-dom'],
+    dedupe: ['react', 'react-dom', 'katex'],
   },
   define: {
     // Flag to detect web UI context in shared code

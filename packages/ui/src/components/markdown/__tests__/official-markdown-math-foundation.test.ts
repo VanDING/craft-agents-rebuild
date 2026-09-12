@@ -190,3 +190,17 @@ describe('official markdown + mathematics foundation', () => {
     editor.destroy()
   })
 })
+
+describe('root katex API compatibility', () => {
+  it('accepts the options rehype-katex passes to renderToString', async () => {
+    const katex = (await import('katex')).default
+    const html = katex.renderToString('E = mc^2', {
+      displayMode: true,
+      throwOnError: true,
+      strict: 'ignore',
+      output: 'htmlAndMathml',
+      trust: false,
+    })
+    expect(html).toContain('katex')
+  })
+})

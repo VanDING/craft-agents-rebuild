@@ -7,7 +7,6 @@
 
 import type { SessionToolContext } from '../context.ts';
 import type { ToolResult } from '../types.ts';
-import { renderMermaidSVG } from 'beautiful-mermaid';
 import { normalizeMermaidSource } from '../validation.ts';
 
 export interface MermaidValidateArgs {
@@ -31,6 +30,10 @@ export async function handleMermaidValidate(
   const { code } = args;
 
   try {
+    // Lazy-load the heavy renderer so main/initial bundles do not include
+    // beautiful-mermaid + elkjs unless a mermaid tool call actually happens.
+    const { renderMermaidSVG } = await import('beautiful-mermaid')
+
     // renderMermaidSVG throws if syntax/layout is invalid. Use the renderer path
     // rather than parseMermaid(), which only understands flowchart/state syntax.
     renderMermaidSVG(normalizeMermaidSource(code));

@@ -11,7 +11,6 @@ import { getSessionAttachmentsPath, validateSessionId } from '@craft-agent/share
 import { getWorkspaceByNameOrId, getAllSessionDrafts } from '@craft-agent/shared/config'
 import { resizeImageForAPI, inspectImageBuffer } from '@craft-agent/server-core/services'
 import { sanitizeFilename, validateFilePath, getWorkspaceAllowedDirs } from '@craft-agent/server-core/handlers'
-import { MarkItDown } from 'markitdown-js'
 import type { RpcServer } from '@craft-agent/server-core/transport'
 import type { HandlerDeps } from '../handler-deps'
 import { requestClientOpenFileDialog } from '@craft-agent/server-core/transport'

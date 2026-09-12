@@ -54,3 +54,21 @@ Electron 生产构建中，入口 HTML 直接引用及 modulepreload 的 JS 总�
 | 25,000 | 0.922 ms | 84.7 ms | 49.6 ms |
 
 结论：在既有 8 ms delta / 100 ms 持久化激活阈值下，25,000 条消息仍未触发 Phase 4 的结构性改造条件。因此本轮不引入 append-only journal、normalized store 或结构性共享消息数组；继续保留 JSONL 全量原子替换与现有 immutable 数组语义。若真实用户会话出现超过阈值的 p95 或退出 flush 明显变慢，再按本文件的证据门槛重新评估。
+
+
+## 2026-09-12 构建与打包复测
+
+用 Vite JS API 构建当前 renderer，并用 electron-builder `--dir`（临时关闭 beforePack/native rebuild 以适配审计沙箱）复测 Windows x64 解包产物：
+
+| 指标 | 改造前 | 改造后 | 变化 |
+| --- | ---: | ---: | ---: |
+| Renderer 初始 preload JS（raw） | 8,632,058 B | 4,460,000 B 级别（本次 4.46 MB） | 约 −48% |
+| Renderer 初始 preload JS（gzip） | 2,495,468 B | 约 1.32 MB | 约 −47% |
+| `main.cjs` | 47,204,464 B | 19.86 MB（minify） | 约 −58% |
+| Pi bundle | 22,037,695 B | 12.18 MB（minify） | 约 −45% |
+| win-unpacked 总大小 | 840,344,424 B | 607,473,675 B | 约 −27.7% |
+| `resources/app` | 426,023,906 B | 205.7 MB | 约 −51.7% |
+| Pi bundle 副本 | 3 × 22 MB | 1 × 12.77 MB | 去重 |
+| node-pty 目录 | 158.2 MB（141.6 MB 调试物） | 9.09 MB，无 PDB/中间产物 | 过滤 |
+
+本次实测：lazy locale 把 i18n chunk 从约 992 KB 降到约 174 KB；移除 namespace lucide 与 Mermaid/elkjs 初始加载后，初始 chunk 中已无 `elkjs`；katex 双副本通过 Vite alias/dedupe 合并为单份。renderer 初始预算已收紧为 4.6 MB raw。

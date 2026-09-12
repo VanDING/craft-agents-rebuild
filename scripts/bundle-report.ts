@@ -41,8 +41,8 @@ console.log(`  main.cjs:         ${(mainRaw / 1024 / 1024).toFixed(2)} MB raw, $
 console.log(`  pi bundle:        ${(piRaw / 1024 / 1024).toFixed(2)} MB raw`);
 
 if (process.argv.includes('--check')) {
-  const maxRendererRaw = Number(process.env.CRAFT_MAX_RENDERER_INITIAL_BYTES ?? 9_500_000);
-  const maxMainRaw = Number(process.env.CRAFT_MAX_MAIN_BYTES ?? 50_000_000);
+  const maxRendererRaw = Number(process.env.CRAFT_MAX_RENDERER_INITIAL_BYTES ?? 4_800_000);
+  const maxMainRaw = Number(process.env.CRAFT_MAX_MAIN_BYTES ?? 25_000_000);
   const failures: string[] = [];
   if (rendererRaw > maxRendererRaw) failures.push(`renderer initial ${rendererRaw} > ${maxRendererRaw}`);
   if (mainRaw > maxMainRaw) failures.push(`main.cjs ${mainRaw} > ${maxMainRaw}`);

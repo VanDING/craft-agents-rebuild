@@ -75,8 +75,12 @@ export default defineConfig({
       // Bun hoists deps to root. This prevents "multiple React copies" error from @craft-agent/ui
       'react': resolve(__dirname, '../../node_modules/react'),
       'react-dom': resolve(__dirname, '../../node_modules/react-dom'),
+      // rehype-katex 7 declares katex ^0.16 but only calls the stable
+      // renderToString API; resolve both copies to the single current katex to
+      // avoid shipping two ~240 KB copies in the initial renderer graph.
+      'katex': resolve(__dirname, '../../node_modules/katex'),
     },
-    dedupe: ['react', 'react-dom']
+    dedupe: ['react', 'react-dom', 'katex']
   },
   optimizeDeps: {
     include: ['react', 'react-dom', 'jotai', 'pdfjs-dist'],

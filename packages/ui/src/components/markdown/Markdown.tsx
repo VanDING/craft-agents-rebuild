@@ -15,7 +15,9 @@ import { MarkdownDatatableBlock } from './MarkdownDatatableBlock'
 import { MarkdownSpreadsheetBlock } from './MarkdownSpreadsheetBlock'
 import { MarkdownHtmlBlock } from './MarkdownHtmlBlock'
 import { MarkdownImageBlock } from './MarkdownImageBlock'
-import { MarkdownLatexBlock } from './MarkdownLatexBlock'
+const MarkdownLatexBlock = React.lazy(() =>
+  import('./MarkdownLatexBlock').then((module) => ({ default: module.MarkdownLatexBlock })),
+)
 import { MarkdownPdfBlock } from './MarkdownPdfBlock'
 import { MarkdownDocBlock } from './MarkdownDocBlock'
 import { preprocessLinks } from './linkify'
@@ -339,7 +341,9 @@ function createComponents(
           }
           // LaTeX/math code blocks → KaTeX rendered display math
           if (match?.[1] === 'latex' || match?.[1] === 'math') {
-            return wrapBlock('latex', code, <MarkdownLatexBlock code={code} className="my-2" />, props.node?.position)
+            return wrapBlock('latex', code, <React.Suspense fallback={<CodeBlock code={code} language="latex" mode="full" className="my-2" />}>
+                <MarkdownLatexBlock code={code} className="my-2" />
+              </React.Suspense>, props.node?.position)
           }
           // Mermaid code blocks → zinc-styled SVG diagram.
           // Hide the inline expand button when the mermaid block is the first
@@ -477,7 +481,9 @@ function createComponents(
         }
         // LaTeX/math code blocks → KaTeX rendered display math
         if (match?.[1] === 'latex' || match?.[1] === 'math') {
-          return wrapBlock('latex', code, <MarkdownLatexBlock code={code} className="my-2" />, props.node?.position)
+          return wrapBlock('latex', code, <React.Suspense fallback={<CodeBlock code={code} language="latex" mode="full" className="my-2" />}>
+                <MarkdownLatexBlock code={code} className="my-2" />
+              </React.Suspense>, props.node?.position)
         }
         // Mermaid code blocks → zinc-styled SVG diagram.
         // (Same first-block detection as minimal mode — see comment above.)

@@ -1,4 +1,3 @@
-import { MarkItDown } from 'markitdown-js'
 import {
   putArtifactTextPreview,
   resolveFileFormat,
