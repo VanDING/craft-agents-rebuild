@@ -72,3 +72,10 @@ Electron 生产构建中，入口 HTML 直接引用及 modulepreload 的 JS 总�
 | node-pty 目录 | 158.2 MB（141.6 MB 调试物） | 9.09 MB，无 PDB/中间产物 | 过滤 |
 
 本次实测：lazy locale 把 i18n chunk 从约 992 KB 降到约 174 KB；移除 namespace lucide 与 Mermaid/elkjs 初始加载后，初始 chunk 中已无 `elkjs`；katex 双副本通过 Vite alias/dedupe 合并为单份。renderer 初始预算已收紧为 4.6 MB raw。
+
+
+### Phase 2/3 决策
+
+- **Renderer 专项达标，停止继续拆包。** 初始 preload JS 从 8.63 MB raw / 2.50 MB gzip 降至 4.67 MB raw / 1.32 MB gzip（约 −46% / −47%），低于收紧后的 4.8 MB raw 预算；按计划的停止条件不再启用 EditPopover/Shiki/modulePreload 等边际优化。
+- **katex 双副本已消除。** rehype-katex 仅使用稳定的 `renderToString` API，三个 Vite 配置将 katex 统一解析到当前根版本，并新增 root katex 选项兼容回归测试。
+- **主进程仍高于 15 MB 目标。** minify 后 `main.cjs` 为 19.86 MB raw / 5.30 MB gzip。剩余体积来自 pdf-parse/markitdown、provider SDK、messaging adapter 等静态图；把这部分降到目标需要 ESM splitting 或独立 worker bundle，属于单独的构建架构改动，不在拆包/测试修复批次内混做。

@@ -28,7 +28,8 @@ Until these are decided, `appId`, `productName`, update feed, and publisher meta
 
 ## Artifact verification
 
-- [ ] `bun run electron:dist:<platform>` completes on a clean machine.
+- [x] electron-builder file filters verified with `--dir`: one Pi bundle copy, no node-pty debug symbols; unpacked dropped from 840 MB to 607 MB and `resources/app` from 426 MB to 206 MB.
+- [ ] `bun run electron:dist:<platform>` completes on a clean machine and the NSIS/DMG/AppImage installer size is recorded. (The audit sandbox could run `--dir` only; NSIS archive creation was blocked by child-process policy.)
 - [ ] `bun run release:checksums` writes `SHA256SUMS` and `release-manifest.json`.
 - [ ] Installer signature verifies with the platform tool (`signtool verify`, `codesign --verify`, `gpg --verify`).
 - [ ] Checksum manifest is published next to the installer.
