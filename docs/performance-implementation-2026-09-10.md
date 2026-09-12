@@ -71,7 +71,7 @@ Electron 生产构建中，入口 HTML 直接引用及 modulepreload 的 JS 总�
 | Pi bundle 副本 | 3 × 22 MB | 1 × 12.77 MB | 去重 |
 | node-pty 目录 | 158.2 MB（141.6 MB 调试物） | 9.09 MB，无 PDB/中间产物 | 过滤 |
 
-本次实测：lazy locale 把 i18n chunk 从约 992 KB 降到约 174 KB；移除 namespace lucide 与 Mermaid/elkjs 初始加载后，初始 chunk 中已无 `elkjs`；katex 双副本通过 Vite alias/dedupe 合并为单份。renderer 初始预算已收紧为 4.6 MB raw。
+本次实测：lazy locale 把 i18n chunk 从约 992 KB 降到约 174 KB；移除 namespace lucide 与 Mermaid/elkjs 初始加载后，初始 chunk 中已无 `elkjs`；katex 双副本通过 Vite alias/dedupe 合并为单份。renderer 初始预算已收紧为 4.8 MB raw。
 
 
 ### Phase 2/3 决策
