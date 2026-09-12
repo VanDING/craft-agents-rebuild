@@ -149,7 +149,7 @@ export function CompactWorkspaceSwitcher({
     setFullscreenOverlayOpen(false)
   }, [setFullscreenOverlayOpen])
 
-  const handleReconnectWorkspace = useCallback(async (workspaceId: string, remoteServer: { url: string; token: string; remoteWorkspaceId: string; allowInsecureTls?: boolean }) => {
+  const handleReconnectWorkspace = useCallback(async (workspaceId: string, remoteServer: { url: string; token?: string; remoteWorkspaceId: string; allowInsecureTls?: boolean }) => {
     await window.electronAPI.updateWorkspaceRemoteServer(workspaceId, remoteServer)
 
     if (workspaceId === activeWorkspaceId) {

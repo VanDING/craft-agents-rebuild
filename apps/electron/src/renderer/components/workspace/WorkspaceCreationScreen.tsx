@@ -24,7 +24,7 @@ interface WorkspaceCreationScreenProps {
   /** When set, skip choice step and open ConnectRemote in reconnect mode */
   reconnectWorkspace?: Workspace
   /** Reconnect an existing remote workspace and resolve only on real success. */
-  onReconnectWorkspace?: (workspaceId: string, remoteServer: { url: string; token: string; remoteWorkspaceId: string; allowInsecureTls?: boolean }) => Promise<void>
+  onReconnectWorkspace?: (workspaceId: string, remoteServer: { url: string; token?: string; remoteWorkspaceId: string; allowInsecureTls?: boolean }) => Promise<void>
 }
 
 /**
@@ -81,7 +81,7 @@ export function WorkspaceCreationScreen({
     }
   }, [onWorkspaceCreated])
 
-  const handleReconnectWorkspace = useCallback(async (workspaceId: string, remoteServer: { url: string; token: string; remoteWorkspaceId: string; allowInsecureTls?: boolean }) => {
+  const handleReconnectWorkspace = useCallback(async (workspaceId: string, remoteServer: { url: string; token?: string; remoteWorkspaceId: string; allowInsecureTls?: boolean }) => {
     if (!onReconnectWorkspace) {
       throw new Error('Reconnect handler not configured')
     }
@@ -130,7 +130,6 @@ export function WorkspaceCreationScreen({
             onCreate={handleCreateWorkspace}
             isCreating={isCreating}
             initialUrl={reconnectWorkspace?.remoteServer?.url}
-            initialToken={reconnectWorkspace?.remoteServer?.token}
             initialAllowInsecureTls={reconnectWorkspace?.remoteServer?.allowInsecureTls}
             reconnectWorkspace={reconnectWorkspace?.remoteServer ? {
               id: reconnectWorkspace.id,

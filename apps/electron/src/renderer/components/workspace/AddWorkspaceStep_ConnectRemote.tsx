@@ -15,14 +15,12 @@ interface AddWorkspaceStep_ConnectRemoteProps {
   isCreating: boolean
   /** Pre-fill the server URL (for reconnect flow) */
   initialUrl?: string
-  /** Pre-fill the token (for reconnect flow) */
-  initialToken?: string
   /** Initial value for the explicit self-signed TLS opt-in */
   initialAllowInsecureTls?: boolean
   /** When set, updating an existing workspace's remote config instead of creating */
   reconnectWorkspace?: { id: string; name: string; remoteWorkspaceId: string; allowInsecureTls?: boolean }
-  /** Called when reconnect updates the remote server config */
-  onUpdate?: (workspaceId: string, remoteServer: { url: string; token: string; remoteWorkspaceId: string; allowInsecureTls?: boolean }) => Promise<void>
+  /** Called when reconnect updates the remote server config. A blank token keeps the stored vault credential. */
+  onUpdate?: (workspaceId: string, remoteServer: { url: string; token?: string; remoteWorkspaceId: string; allowInsecureTls?: boolean }) => Promise<void>
 }
 
 /**
@@ -63,7 +61,6 @@ export function AddWorkspaceStep_ConnectRemote({
   onCreate,
   isCreating,
   initialUrl,
-  initialToken,
   initialAllowInsecureTls,
   reconnectWorkspace,
   onUpdate,
@@ -71,7 +68,7 @@ export function AddWorkspaceStep_ConnectRemote({
   const { t } = useTranslation()
   const isReconnectMode = !!reconnectWorkspace
   const [serverUrl, setServerUrl] = useState(initialUrl ?? '')
-  const [token, setToken] = useState(initialToken ?? '')
+  const [token, setToken] = useState('')
   const [allowInsecureTls, setAllowInsecureTls] = useState(
     initialAllowInsecureTls ?? reconnectWorkspace?.allowInsecureTls ?? false,
   )
@@ -103,7 +100,9 @@ export function AddWorkspaceStep_ConnectRemote({
   }, [serverUrl, token, allowInsecureTls])
 
   const handleTestConnection = useCallback(async () => {
-    if (!serverUrl || !token) return
+    // In reconnect mode a blank token means "use the stored vault credential";
+    // main resolves it from the workspace id passed below.
+    if (!serverUrl || (!token && !isReconnectMode)) return
     setTestState('testing')
     setTestError(null)
     try {
@@ -136,17 +135,18 @@ export function AddWorkspaceStep_ConnectRemote({
       setTestState('error')
       setTestError(err instanceof Error ? err.message : 'Connection failed')
     }
-  }, [serverUrl, token])
+  }, [serverUrl, token, allowInsecureTls, reconnectWorkspace])
 
   const handleConnect = useCallback(async () => {
-    if (!serverUrl || !token) return
+    // A reconnect may only change URL/TLS while keeping the stored token.
+    if (!serverUrl || (!token && !isReconnectMode)) return
 
     // Reconnect mode — update existing workspace config
     if (isReconnectMode && onUpdate) {
       try {
         await onUpdate(reconnectWorkspace!.id, {
           url: serverUrl,
-          token,
+          token: token.trim() || undefined,
           remoteWorkspaceId: reconnectWorkspace!.remoteWorkspaceId,
           allowInsecureTls,
         })
@@ -158,6 +158,7 @@ export function AddWorkspaceStep_ConnectRemote({
       }
     }
 
+    if (!token) return
     if (!homeDir) return
     const defaultBasePath = `${homeDir}/.craft-agent/workspaces`
 
@@ -261,6 +262,9 @@ export function AddWorkspaceStep_ConnectRemote({
               className="border-0 bg-transparent shadow-none"
             />
           </div>
+          {isReconnectMode && (
+            <p className="text-xs text-muted-foreground">Leave blank to keep the stored token.</p>
+          )}
         </div>
 
 
@@ -280,7 +284,7 @@ export function AddWorkspaceStep_ConnectRemote({
         <div className="flex items-center gap-3">
           <AddWorkspaceSecondaryButton
             onClick={handleTestConnection}
-            disabled={!serverUrl || !token || testState === 'testing' || isCreating}
+            disabled={!serverUrl || (!token && !isReconnectMode) || testState === 'testing' || isCreating}
           >
             {testState === 'testing' ? 'Testing...' : 'Test Connection'}
           </AddWorkspaceSecondaryButton>

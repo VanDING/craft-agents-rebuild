@@ -249,6 +249,9 @@ const instance = await (async () => {
       },
       initializeSessionManager: async (sessionManager) => {
         await sessionManager.initialize()
+        // Populate the process-local token cache before headless callers
+        // resolve stored remote workspaces.
+        await hydrateRemoteServerTokenCache()
       },
       cleanupSessionManager: async (sessionManager) => {
         try {
