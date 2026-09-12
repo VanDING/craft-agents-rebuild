@@ -25,6 +25,9 @@ test('idle eviction flushes pending changes and reloads the complete transcript'
     expect(session.name).toBe('saved title')
   } finally {
     await runtime.flushSession(session.id)
+    // Release the durable-runtime SQLite handles; Windows cannot delete an
+    // open .db/.db-wal/.db-shm while the runtime still owns them.
+    runtime.cleanup()
     rmSync(rootPath, { recursive: true, force: true })
   }
 })

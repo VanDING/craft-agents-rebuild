@@ -47,6 +47,9 @@ jobs:
       - name: Run validation suite
         run: bun run validate:ci
 
+      - name: Remote credential vault regression
+        run: bun test ./packages/shared/src/config/__tests__/remote-token-vault.isolated.ts
+
   quality-windows:
     runs-on: windows-latest
     timeout-minutes: 20
@@ -86,6 +89,7 @@ jobs:
         run: |
           bun test ./apps/electron/eslint-rules/__tests__
           bun test ./apps/electron/src/shared/__tests__/ipc-channels.test.ts
+          bun test ./packages/server-core/src/utils/path-validation.test.ts
           bun test ./packages/ui/eslint-rules/__tests__
           bun test ./packages/messaging-gateway/src/__tests__/wechat-send.isolated.ts
           bun test ./packages/messaging-gateway/src/__tests__/wechat-url.isolated.ts
