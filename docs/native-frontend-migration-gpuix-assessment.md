@@ -230,6 +230,38 @@ GPUIX 的公开 API 100% 是 TypeScript/JSX。它通过 napi-rs 把 React 的 re
 
 **GPUI 侧有 `Theme`/`Metrics`/`SyntaxPalette` + token 分组 + 目录热加载（gpui-kit `theme-schema.json`），所以"主题引擎"这件事本身是可做的**；但**派生计算必须从 CSS 移到代码侧**（Rust 用 `oklab`/`palette` 类库，或在 JS 侧预计算）。这对路线 D 无影响（仍是 WebView），对路线 B 是一块明确的自研工作。
 
+### 1.4b 【新发现】生产 bundle 中已存在约 683 KB 死代码
+
+这一项**与迁移无关，是当前生产构建就可修复的问题**，但它同时证明了 §1.2 关键发现二的判断。
+
+**核验方法**：直接分析已存在的生产构建产物 `apps/electron/dist/renderer/`（由 `bun run electron:build:renderer` 生成，Vite + Rolldown）。
+
+| 实测项 | 数值 |
+|---|---|
+| 主 chunk `assets/src-CGxzVikD.js` 大小 | **1,923 KB** |
+| 该 chunk 在 `index.html` 中的加载方式 | `<link rel="modulepreload">` —— **每次启动必加载** |
+| chunk 内 ProseMirror/Tiptap 首次与末次匹配的字节跨度 | **约 668 KB** |
+| 跨度内确实包含库代码（非仅字符串） | `Schema` ×28、`Fragment` ×22、`NodeType` ×23、`MarkType` ×13、`Transform` ×11 —— 是真实实现 |
+| 生产样式表 `assets/src-pNAiEWdQ.css` | 70 KB，其中 **99 条含 `tiptap`/`ProseMirror` 的规则占 15.5 KB（22%）** |
+| 该 CSS 是否被 `index.html` 引用 | **是**（`<link rel="stylesheet">`） |
+| **合计无用载荷** | **约 683 KB（668 KB JS + 15.5 KB CSS）** |
+
+**根因**（三条叠加）：
+
+1. `packages/ui/package.json` **没有 `"sideEffects"` 字段** → 打包器无法确认哪些模块可安全移除。
+2. `packages/ui/src/index.ts`（barrel）**re-export 了 `TiptapMarkdownEditor`** → 生产代码从这个 barrel 取 `Markdown` 等具名导出时，打包器必须先把整棵 markdown 子树纳入模块图。
+3. `TiptapMarkdownEditor.tsx` **直接 `import './tiptap-editor.css'`** —— 这是一个**副作用导入**，使整棵子树被判定为不可移除。
+
+**另一个独立问题**：`playground` 是 Vite 的正式构建入口之一，因此**4 个 HTML 入口全部进入生产产物**——`playground.html`（5 KB）+ `playground-DROHI_ig.js`（**728 KB**）+ 其 1,710 KB sourcemap 都在 dist 里。它也不应出现在发布产物中。
+
+**建议修复（独立于任何迁移决策）**：
+
+1. 在 `packages/ui/package.json` 增加 `"sideEffects": ["**/*.css"]`（或精确列出），让打包器能安全摇树。
+2. 把 `TiptapMarkdownEditor` 从 `packages/ui/src/index.ts` 主 barrel 中移出，改为独立深路径导出（`@craft-agent/ui/tiptap-editor`），仅 playground 使用。
+3. 生产构建去掉 `playground` 入口（或在 vite config 中按 `mode` 条件包含）。
+4. 复验：`bun run electron:build:renderer` 后确认主 chunk 中 `prosemirror`/`tiptap` 归零、`playground*` 不再出现在 dist。
+
+**与迁移的关系**：这**证明**了 §1.2 关键发现二的结论（ProseMirror 编辑器在生产路径中未被使用），并把"重写 ProseMirror"从路线 A/B 的成本中彻底排除。同时它说明：**GPUIX/原生迁移能省下的体积，在现状下就已经被这部分死代码稀释了**——治理打包比换渲染器更能立刻改善启动成本。
 ### 1.5 滚动与虚拟化实测
 
 | 项 | 实测 |
@@ -644,11 +676,12 @@ egui、Iced、Slint、Blitz、GPUI **全部**有开放的 CJK IME 缺陷。**只
 
 ## 8. 最终建议
 
-### 8.1 立即可做的三件事（零风险，不需要决策）
+### 8.1 立即可做的四件事（零风险，不需要决策）
 
 1. **实测 CJK IME**（Spike 1）。这是所有路线的共同前提，且成本极低。
-2. **量化 Composer 与 Markdown 渲染块的原生化成本**（约 8,300–9,300 行；ProseMirror 编辑器本体已排除，因生产代码未使用）。建议先做一次"如果只能保留 20%，保留哪 20%"的能力盘点，明确哪些必须有、哪些可降级。**同时核实**：在 Vite 生产产物中 grep `prosemirror` / `tiptap`，确认它们确实被 tree-shaking 移除。**本报告不修改任何代码。**
-3. **把 RPC 契约固化为正式的"前端可替换"边界**。`RPC_CHANNELS`（401 项）+ `CHANNEL_MAP`（357 项）+ `routing.ts` 已事实上承担该角色，但它是 TypeScript 私有的。把 channel 列表与 payload 类型导出为语言无关的 schema（JSON Schema 或类似），让任何宿主（Rust、Tauri、第三方客户端）生成绑定；并把既有"新增 channel 未分类则 CI 失败"的机制扩展为"新增 channel 未定义 schema 则 CI 失败"。**这是所有后续路线的公共前置投资，无论最终选哪条都值得做。**
+2. **量化 Composer 与 Markdown 渲染块的原生化成本**（约 8,300–9,300 行；ProseMirror 编辑器本体已排除）。建议先做一次"如果只能保留 20%，保留哪 20%"的能力盘点，明确哪些必须有、哪些可降级。~~同时核实 tree-shaking~~ → **已核实完毕，见 §1.4b：tree-shaking 没有生效，668 KB ProseMirror 代码确实进入了主 chunk**，因此第 3 项是确定要做的。**本报告不修改任何代码。**
+3. **清理生产产物中约 683 KB 的死代码**（见 §1.4b）——这是**唯一一项不需要任何架构决策、当天就能做完、且立刻可量化收益**的工作：`packages/ui/package.json` 补 `"sideEffects"`、把 `TiptapMarkdownEditor` 移出主 barrel、生产构建去掉 `playground` 入口。复验方式：`bun run electron:build:renderer` 后确认主 chunk 内 `prosemirror`/`tiptap` 归零。
+4. **把 RPC 契约固化为正式的"前端可替换"边界**。`RPC_CHANNELS`（401 channel）+ `CHANNEL_MAP`（370 方法）+ `routing.ts` 已事实上承担该角色，但它是 TypeScript 私有的。把 channel 列表与 payload 类型导出为语言无关的 schema（JSON Schema 或类似），让任何宿主（Rust、Tauri、第三方客户端）生成绑定；并把既有"新增 channel 未分类则 CI 失败"的机制扩展为"新增 channel 未定义 schema 则 CI 失败"。**这是所有后续路线的公共前置投资，无论最终选哪条都值得做。**
 
 ### 8.2 路线推荐
 
@@ -684,40 +717,50 @@ egui、Iced、Slint、Blitz、GPUI **全部**有开放的 CJK IME 缺陷。**只
 | GPUIX 嵌套滚动禁止 | `gpuix/AGENTS.md`：`## Nested scrolling is not supported` |
 | GPUIX 无 webview / 多窗口 / 托盘 / 通知 / PDF | `gpuix/README.md` `## Status`；全仓库 grep 零命中 |
 | GPUIX a11y 未发布 | `.changeset/accessibility-aria-props.md` 未消费；0.7.0 CHANGELOG 无 a11y 条目 |
-| 前端与运行时已解耦 | renderer 中 `WebSocket` 0 命中；`window.electronAPI` 626 命中；`packages/shared/src/protocol/channels.ts` 的 `RPC_CHANNELS` = **401 channel / 61 命名空间**；`channel-map.ts` = 357 条目 / 368 引用 |
+| 前端与运行时已解耦 | renderer 中 `WebSocket`/`XMLHttpRequest`/`EventSource`/`ipcRenderer` **全为 0 命中**；`window.electronAPI` **626** 处文本 / **321** 个不同方法 / 114 文件；`RPC_CHANNELS` = **401 channel**；`CHANNEL_MAP` = **370 方法**；`ipcMain` 注册仅 **24** 个 |
 | 已存在异质宿主先例 | `apps/webui/src/adapter/web-api.ts`（337 行 + `WsRpcClient` + `buildClientApi`） |
 | 协议语言无关且完整 | `packages/shared/src/protocol/types.ts` |
 | 服务器可独立运行 | `packages/server/src/index.ts` 头注释；`package.json`（`bin: craft-server`，TLS 环境变量） |
 | 富文本输入框是手写 contentEditable | `apps/electron/src/renderer/components/ui/rich-text-input.tsx` |
-| **Markdown/富文本子系统是 ProseMirror（非死依赖）** | `packages/ui/src/components/markdown/`（约 60 文件 / 360 KB）；`TiptapMarkdownEditor.tsx` 导入 `@tiptap/react`/`starter-kit`/`mathematics`/`file-handler`/`markdown` 等 12 个 Tiptap 包 + KaTeX |
-| 共享 Markdown 渲染管线 | `packages/ui/src/components/markdown/Markdown.tsx`（29 KB），electron 与 webui 共用 |
-| 109 处滚动容器 / 零虚拟化 | renderer 全量 grep |
-| 267 个 CSS token / 241 处 color-mix | renderer + packages/ui 全量 grep |
+| **ProseMirror 编辑器在生产中未被使用** | `TiptapMarkdownEditor.tsx`（405 行）的唯一导入者是 `playground/registry/planner.tsx:30`（仅开发用）；`extensions/TiptapImageBlock.tsx`（160 行）除自身外零导入者。核验方法：一次扫描构建 **8,844 条导入边**后反向查找 |
+| 共享 Markdown 渲染管线 | `packages/ui/src/components/markdown/Markdown.tsx`（700 行），electron 与 webui 共用 |
+| 109 处滚动容器 / 零虚拟化 | renderer 全量 grep；`react-window`/`react-virtual`/`@tanstack/react-virtual`/`react-virtuoso` 均 **0 文件且 0 依赖条目** |
+| **~6,041 处 Tailwind `className=`** | renderer 4,905 + packages/ui 1,136；另有 265 个 CSS 自定义属性（524 个定义点）、879 处 `var(--)`、201 处 `color-mix()`、15 个 `@keyframes`、11 处 `@container`、8 个 `@property`、9 处 `backdrop-filter`、47 条滚动条规则 |
 | gpui-kit 有 Dock/MessageScroller/DataTable/Editor | `crates/component/src/lib.rs` 66 模块；`tab_panel.rs` 61 KB、`table` 106 KB、`base/input/base/state.rs` 370 KB |
 | gpui-kit 用 crates.io 快照而非 fork | `Cargo.toml`：`gpui = { package = "gpui-pre", version = "0.3.1" }`；`CONTRIBUTING.md` |
 | PDF 生态有解 | `hayro` 0.7.1 + `gpui-pdf` 参考实现 |
+| **生产 bundle 含 ~683 KB 死代码** | 实测已存在的 `apps/electron/dist/renderer/`：主 chunk `src-CGxzVikD.js` 1,923 KB（`index.html` 中 `modulepreload`，启动必载），其中 ProseMirror/Tiptap 首末匹配跨度 **668 KB**；样式表 99 条 tiptap/ProseMirror 规则占 70 KB 中的 **15.5 KB**（`index.html` 直接 link）；`playground-DROHI_ig.js` **728 KB** 亦在 dist 内 |
+| 死代码根因（三条叠加） | `packages/ui/package.json` **无 `sideEffects` 字段**；`packages/ui/src/index.ts`（barrel）re-export `TiptapMarkdownEditor`；`TiptapMarkdownEditor.tsx` 含副作用导入 `./tiptap-editor.css` |
+| 跨度内是库代码而非字符串 | `Schema` ×28、`Fragment` ×22、`NodeType` ×23、`MarkType` ×13、`Transform` ×11 |
 
-## 附录 B：Tiptap / ProseMirror 依赖明细（**不是死依赖**）
+## 附录 B：Tiptap / ProseMirror —— 三次表述的最终结论
 
-> **修正说明**：本报告初稿曾判定这些为死依赖，因为初检只覆盖了 `apps/electron/src`。**该判断错误。** 这些包在 `packages/ui/src/components/markdown/`（约 60 个文件）中被真实使用，其中 `TiptapMarkdownEditor.tsx` 是 ProseMirror 富文本编辑器本体。**不要移除它们。**
+> **最终结论**：这些包**是真实声明的依赖**（初稿说"死依赖"是错的），但其**编辑器在生产代码中未被使用**（二稿说"是硬阻塞"是过度的）。
 
-根 `package.json` 中承载 Markdown 编辑能力的依赖：
+导入清单（`packages/ui/src/components/markdown/TiptapMarkdownEditor.tsx`）：
 
 ```
-@tiptap/extension-bubble-menu  @tiptap/extension-file-handler
-@tiptap/extension-image        @tiptap/extension-mathematics
-@tiptap/extension-placeholder  @tiptap/extension-task-item
-@tiptap/extension-task-list    @tiptap/extension-text-style
-@tiptap/markdown               @tiptap/react
-@tiptap/starter-kit            @tiptap/suggestion
-prosemirror-highlight          prosemirror-model
-prosemirror-state              prosemirror-transform
-prosemirror-view               tiptap-extension-code-block-shiki
-tiptap-markdown
+@tiptap/react                  @tiptap/starter-kit
+@tiptap/extension-placeholder  @tiptap/extension-task-list
+@tiptap/extension-mathematics  @tiptap/extension-image
+@tiptap/extension-file-handler @tiptap/markdown
+tiptap-markdown                katex
+shiki（经 TiptapCodeBlockView）
 ```
 
-**迁移含义**：这一组依赖是整个项目**最难原生化**的部分。它们没有非 DOM 运行模式。任何"原生 UI"路线要么在 WebView 里保留这套编辑器，要么重写一个等价的富文本文档模型（含行内数学、任务列表、图片、文件拖入、斜杠命令、气泡菜单、Mermaid/LaTeX/表格/电子表格/PDF 内容块）。
+**关键事实（经 8,844 条导入边全量扫描核验）**：
 
+| 事实 | 证据 |
+|---|---|
+| `TiptapMarkdownEditor`（405 行）在生产代码中唯一导入者 | `playground/registry/planner.tsx:30` —— **仅开发用的组件实验场** |
+| 生产代码导入的是 barrel 且只取具名导出 | `@craft-agent/ui/markdown` → `Markdown` / `CodeBlock` 等；`ChatDisplay.tsx:25`、`TurnCard.tsx:30`、`SystemMessage.tsx:14`、`UserMessageBubble.tsx:19`、`RecordInspector.tsx:16`、`Info_Markdown.tsx:13`、`AnnotatableMarkdownDocument.tsx:2` |
+| 该目录**真正的死代码**只有 1 个文件 | `extensions/TiptapImageBlock.tsx`（160 行）除自身定义外零导入者 |
+
+**迁移含义**：
+
+1. **不需要重写 ProseMirror 编辑器**——生产路径不经过它。应确认 Vite 生产产物中没有 `prosemirror`/`tiptap`；若存在，那是 barrel 导出破坏 tree-shaking 的**打包问题**，可用深路径导出独立修复。
+2. **需要重写的是**：Composer（`rich-text-input.tsx` 825 行手写 contentEditable + `FreeFormInput.tsx` 2,508 行）+ Markdown 渲染块（约 5,000–6,000 行），合计约 **8,300–9,300 行**。
+3. **仍然成立的一点**：GPUIX 只有纯文本 `input`/`textarea`，gpui-kit 的 `Editor` 是代码编辑器而 `TextView` 是只读渲染——**两者都承接不了 Composer 的富文本编辑语义**。
 ## 附录 C：本报告明确未能验证的事项
 
 1. `gpui-component`/`gpui-base` 是否混入了 GPL 的 Zed 代码——**需法务/溯源审计**。
@@ -729,12 +772,22 @@ tiptap-markdown
 7. `gpui-ce` 的版本号策略（默认 0.2.2 而 0.3.x 被 yank）。
 8. gpui-kit 的构建时间与产物体积**未实测**（未执行构建）。
 9. Windows/Linux 上 IME 与原生屏幕阅读器的一致性——仅源码级证据。
-### 已在报告内更正的三处（均由后续核验推翻初稿判断）
+### 已在报告内更正的五处（均由后续核验推翻初稿判断）
 
-10. **Tiptap/ProseMirror 不是死依赖**：初稿据 `apps/electron/src` 的 grep 判定其为死依赖。**该判断错误**——它们在 `packages/ui/src/components/markdown/`（约 60 文件 / 360 KB）中被真实使用。详见 §1.2 与附录 B。**加重**了路线 A/B 成本。
+初稿、二稿、终稿之间共有五处实质更正。**如实列出**，因为它们决定了成本估计的量级。
 
-11. **UI 规模低估约 29%**：初稿把迁移主语写成 `renderer` 的 110,430 行。**该判断不完整**——React UI 分布在 `renderer`（619 文件 / 110,430 行）与 `packages/ui/src`（204 文件 / 31,753 行）**两个**源码树，合计 **823 文件 / 142,183 行**。renderer 在 127 个文件中导入 `packages/ui` 143 次，它不是可选项。**再次加重**了路线 A/B 成本。
+| # | 初稿/二稿的判断 | 核验结果 | 对成本估计的方向 |
+|---|---|---|---|
+| 1 | `@tiptap/*` / `prosemirror-*` 是**死依赖** | ❌ 错误。它们是**真实声明的依赖** | — |
+| 2 | （二稿更正）ProseMirror 富文本子系统是路线 A/B 的**硬阻塞**（约 60 文件 / 360 KB） | ❌ **过度**。编辑器本体在生产代码中**未被使用**（唯一消费者是 dev playground） | ↓ **下调** |
+| 3 | UI 规模 = `renderer` 的 110,430 行 | ❌ 不完整。UI 分布在**两个**包：`renderer` + `packages/ui/src`，生产口径 **656 文件 / 122,423 总行** | ↑ **上调约 29%** |
+| 4 | RPC 契约 = 357 channel | ❌ 混用三个不同的量。`RPC_CHANNELS` = **401**；`CHANNEL_MAP` = **370 方法**；**实际调用 321 个** | 影响接口实现，非成本 |
+| 5 | （二稿补充）CSS 系统成本未量化 | ✅ 新发现：**~6,041 处 Tailwind `className=`**、265 个自定义属性、201 处 `color-mix()`、11 处 `@container` 是**最容易漏算**的一项 | ↑ **上调** |
 
-12. **RPC channel 数有两个正确答案**：`packages/shared/src/protocol/channels.ts` 的 `RPC_CHANNELS` = **401 个 channel / 61 命名空间**（服务端全部能力）；`channel-map.ts` = **357 个条目**（客户端方法映射），引用 368 个 channel。初稿只报了 357。**任何新宿主必须以 `RPC_CHANNELS` 为完整契约，而非照抄 `CHANNEL_MAP`**——否则会漏掉没有客户端方法的 channel。这条对路线 C/D/E 的接口实现是实质性影响。
+**净效果**：终稿的路线 A 估计为 **11–19 人月**、路线 B 为 **18–28 人月**（初稿为 6–10 / 12–24）。五处更正中有四处使"原生重写"变贵，一处使其变便宜；**净方向是变贵**，因此"保留前端、只换壳"（路线 D/E）的相对优势比初稿更强。
 
-三项更正**方向一致**：都使"原生重写"的估计变差，"保留前端、只换壳"的相对优势变大。
+### 方法论教训（值得记录）
+
+- **行数口径会骗人**：`Get-Content | Measure-Object -Line` **静默丢弃空行**，全仓库误差约 **9%**。本报告统一使用**非空行**并同时给出总行数；任何 LOC 数字都应声明口径。
+- **"在导入图中可达" ≠ "被使用"，但"未被使用"也 ≠ "不占体积"**。这是本报告最有价值的一条教训，含两个方向：barrel 导出会让一个文件在依赖图里可达却从不执行（所以我二稿高估了它的重写成本）；但反过来源代码里"没有 import"**也不代表**它不在产物里——ProseMirror 就是这样，生产代码一次都没调用，却因 `sideEffects` 缺失 + 副作用 CSS 导入而**实实在在占了主 chunk 的 668 KB**。判定死代码必须同时做**反向导入查找**和**构建产物核验**，两者缺一不可。
+- **统计范围必须显式声明**：初稿的错误 1 与错误 3 都源于我把 grep 范围写成 `apps/electron/src`，而 UI 实际横跨两个包。范围声明应当是结论的一部分。
