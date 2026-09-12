@@ -50,6 +50,9 @@ jobs:
       - name: Remote credential vault regression
         run: bun test ./packages/shared/src/config/__tests__/remote-token-vault.isolated.ts
 
+      - name: Recovery regression tests
+        run: bun run scripts/run-recovery-tests.ts
+
   quality-windows:
     runs-on: windows-latest
     timeout-minutes: 20
@@ -95,6 +98,9 @@ jobs:
           bun test ./packages/messaging-gateway/src/__tests__/wechat-url.isolated.ts
           bun test ./packages/shared/src/config/__tests__/theme.test.ts
           bun test ./packages/shared/src/sessions/__tests__/persistence-queue.test.ts
+
+      - name: Recovery regression tests
+        run: bun run scripts/run-recovery-tests.ts
 
   dependency-audit:
     runs-on: ubuntu-latest
@@ -155,7 +161,9 @@ jobs:
         run: bun run webui:build
 
       - name: Bundle size report
-        run: bun run bundle:report --check
+        # The report checks staged Pi resources as well as main/renderer.
+        # Do not treat an un-staged subprocess as a zero-byte success.
+        run: bun run electron:build:assets && bun run bundle:report --check
 
       - name: Pi subprocess build smoke
         run: bun run server:build:subprocess

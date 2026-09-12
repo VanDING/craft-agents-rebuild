@@ -48,10 +48,8 @@ export function atomicWriteFileSync(
   try {
     fd = openSync(tmpPath, 'w', options.mode);
     writeFileSync(fd, data);
-    // Best-effort durability: a synchronous fsync before rename ensures the
-    // temp bytes are on disk. Filesystems that reject fsync (some Windows
-    // volumes, restricted sandboxes) still get the atomic rename.
-    try { fsyncSync(fd); } catch { /* best effort */ }
+    // Never publish the replacement if the file's durability barrier fails.
+    fsyncSync(fd);
     closeSync(fd);
     fd = undefined;
     renameSync(tmpPath, filePath);

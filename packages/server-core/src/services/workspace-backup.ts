@@ -11,6 +11,10 @@ import {
   copyFileSync,
   existsSync,
   mkdirSync,
+  mkdtempSync,
+  lstatSync,
+  realpathSync,
+  renameSync,
   readFileSync,
   readdirSync,
   rmSync,
@@ -20,7 +24,7 @@ import {
 import { createHash } from 'node:crypto';
 import { randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
-import { basename, dirname, join, relative, resolve } from 'node:path';
+import { basename, dirname, join, relative, resolve, isAbsolute } from 'node:path';
 import { DurableRuntimeStore } from '../durable-runtime/store.js';
 
 const MANIFEST_NAME = 'manifest.json';
@@ -65,8 +69,39 @@ function walkFiles(root: string, out: string[] = []): string[] {
     const full = join(root, entry.name);
     if (entry.isDirectory()) walkFiles(full, out);
     else if (entry.isFile()) out.push(full);
+    else throw new Error(`Unsupported workspace entry: ${full}`);
   }
   return out;
+}
+
+function canonicalPath(path: string): string {
+  if (existsSync(path)) return realpathSync(path);
+  const parent = dirname(path);
+  if (parent === path) throw new Error(`Cannot resolve ${path}`);
+  return join(canonicalPath(parent), basename(path));
+}
+
+function contains(parent: string, child: string): boolean {
+  const rel = relative(parent, child);
+  return rel === '' || (!isAbsolute(rel) && rel !== '..' && !rel.startsWith('../') && !rel.startsWith('..\\'));
+}
+
+function assertSeparateDirectories(a: string, b: string): void {
+  if (contains(a, b) || contains(b, a)) throw new Error('Source and destination directories must not overlap');
+}
+
+function safeBackupFile(root: string, path: string): string {
+  if (typeof path !== 'string' || !path || /[\\:\x00]/.test(path)
+      || path.split('/').some(part => !part || part === '.' || part === '..')) {
+    throw new Error(`Invalid backup path: ${String(path)}`);
+  }
+  let file = root;
+  for (const part of path.split('/')) {
+    file = join(file, part);
+    if (lstatSync(file).isSymbolicLink()) throw new Error(`Symlink in backup: ${path}`);
+  }
+  if (!statSync(file).isFile()) throw new Error(`Not a regular file: ${path}`);
+  return file;
 }
 
 function copyFilePreservingMode(source: string, target: string): void {
@@ -94,14 +129,12 @@ function prepareRuntimeDatabaseCopy(workspaceRootPath: string, tempDir: string):
 }
 
 export function createWorkspaceBackup(workspaceRootPath: string, outputPath: string): WorkspaceBackupManifest {
-  const root = resolve(workspaceRootPath);
-  const output = resolve(outputPath);
+  const root = canonicalPath(resolve(workspaceRootPath));
+  const output = canonicalPath(resolve(outputPath));
   if (!existsSync(root) || !statSync(root).isDirectory()) {
     throw new Error(`Workspace directory not found: ${root}`);
   }
-  if (output === root || root.startsWith(output + '/') || root.startsWith(output + '\\')) {
-    throw new Error('Backup destination must be outside the workspace directory');
-  }
+  assertSeparateDirectories(root, output);
   ensureEmptyDirectory(output);
 
   const tempDir = join(tmpdir(), `craft-workspace-backup-${process.pid}-${randomBytes(4).toString('hex')}`);
@@ -113,10 +146,12 @@ export function createWorkspaceBackup(workspaceRootPath: string, outputPath: str
 
     for (const source of walkFiles(root)) {
       const relativePath = relative(root, source).replaceAll('\\', '/');
+      if (/^runtime\/runtime\.db(?:-wal|-shm)?$/.test(relativePath)) continue;
+      if (relativePath === MANIFEST_NAME) throw new Error('Workspace contains reserved manifest.json');
       const target = join(output, relativePath);
       copyFilePreservingMode(source, target);
-      const size = statSync(source).size;
-      files.push({ path: relativePath, size, sha256: sha256File(source) });
+      const size = statSync(target).size;
+      files.push({ path: relativePath, size, sha256: sha256File(target) });
       totalBytes += size;
     }
 
@@ -160,25 +195,31 @@ export function verifyWorkspaceBackup(backupPath: string): WorkspaceBackupVerifi
     return { ok: false, manifest: null, issues: [`Unparseable ${MANIFEST_NAME}: ${String(error)}`] };
   }
 
-  if (manifest.manifestVersion !== MANIFEST_VERSION) {
-    return { ok: false, manifest, issues: [`Unsupported manifest version ${String(manifest.manifestVersion)}`] };
+  if (!manifest || manifest.manifestVersion !== MANIFEST_VERSION || !Array.isArray(manifest.files)
+      || !Number.isSafeInteger(manifest.fileCount) || manifest.fileCount !== manifest.files.length
+      || !Number.isSafeInteger(manifest.totalBytes) || manifest.totalBytes < 0) {
+    return { ok: false, manifest: null, issues: ['Invalid backup manifest schema'] };
   }
 
   const issues: string[] = [];
+  const seen = new Set<string>();
+  let totalBytes = 0;
   for (const file of manifest.files) {
-    const filePath = join(root, file.path);
-    if (!existsSync(filePath)) {
-      issues.push(`Missing file: ${file.path}`);
-      continue;
-    }
-    const size = statSync(filePath).size;
-    if (size !== file.size) {
-      issues.push(`Size mismatch: ${file.path} (expected ${file.size}, got ${size})`);
-      continue;
-    }
-    const sha256 = sha256File(filePath);
-    if (sha256 !== file.sha256) issues.push(`Checksum mismatch: ${file.path}`);
+    try {
+      if (!file || typeof file.path !== 'string' || !Number.isSafeInteger(file.size) || file.size < 0
+          || typeof file.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(file.sha256)) throw new Error('Invalid file entry');
+      const key = file.path.toLowerCase();
+      if (seen.has(key) || key === MANIFEST_NAME || /^runtime\/runtime\.db-(wal|shm)$/.test(key)) {
+        throw new Error(`Duplicate or reserved path: ${file.path}`);
+      }
+      seen.add(key);
+      totalBytes += file.size;
+      const filePath = safeBackupFile(root, file.path);
+      if (statSync(filePath).size !== file.size) throw new Error(`Size mismatch: ${file.path}`);
+      if (sha256File(filePath) !== file.sha256) throw new Error(`Checksum mismatch: ${file.path}`);
+    } catch (error) { issues.push(String(error)); }
   }
+  if (totalBytes !== manifest.totalBytes) issues.push('Manifest totalBytes mismatch');
 
   return issues.length === 0 ? { ok: true, manifest, issues: [] } : { ok: false, manifest, issues };
 }
@@ -193,29 +234,35 @@ export function restoreWorkspaceBackup(
     throw new Error(`Backup verification failed:\n${verification.issues.join('\n')}`);
   }
 
-  const root = resolve(backupPath);
-  const target = resolve(targetPath);
-  if (existsSync(target)) {
-    const entries = readdirSync(target);
-    if (entries.length > 0 && !options.force) {
-      throw new Error(`Restore target is not empty: ${target}. Pass --force to overwrite files.`);
+  const root = canonicalPath(resolve(backupPath));
+  const requestedTarget = resolve(targetPath);
+  if (existsSync(requestedTarget) && lstatSync(requestedTarget).isSymbolicLink()) throw new Error('Restore target must not be a symlink');
+  const target = canonicalPath(requestedTarget);
+  assertSeparateDirectories(root, target);
+  if (existsSync(target) && readdirSync(target).length > 0 && !options.force) {
+    throw new Error(`Restore target is not empty: ${target}. Pass --force to replace it.`);
+  }
+  mkdirSync(dirname(target), { recursive: true });
+  const staging = mkdtempSync(join(dirname(target), '.craft-restore-'));
+  let safety: string | undefined;
+  try {
+    for (const file of verification.manifest.files) {
+      const destination = join(staging, file.path);
+      copyFilePreservingMode(safeBackupFile(root, file.path), destination);
+      if (statSync(destination).size !== file.size || sha256File(destination) !== file.sha256) {
+        throw new Error(`Backup changed during restore: ${file.path}`);
+      }
     }
-    if (entries.length > 0 && options.force) {
-      const safety = join(dirname(target), `${basename(target)}.pre-restore-${new Date().toISOString().replace(/[:.]/g, '-')}`);
-      copyDirectory(target, safety);
+    // Replace the entire offline workspace, never overlay old WAL or stale files.
+    if (existsSync(target)) {
+      safety = `${target}.pre-restore-${Date.now()}-${randomBytes(4).toString('hex')}`;
+      renameSync(target, safety);
     }
-  } else {
-    mkdirSync(target, { recursive: true, mode: 0o700 });
-  }
-
-  for (const file of verification.manifest.files) {
-    copyFilePreservingMode(join(root, file.path), join(target, file.path));
-  }
-  return verification.manifest;
-}
-
-function copyDirectory(source: string, target: string): void {
-  for (const file of walkFiles(source)) {
-    copyFilePreservingMode(file, join(target, relative(source, file)));
-  }
+    try { renameSync(staging, target); }
+    catch (error) {
+      if (safety) renameSync(safety, target);
+      throw error;
+    }
+    return verification.manifest;
+  } finally { rmSync(staging, { recursive: true, force: true }); }
 }

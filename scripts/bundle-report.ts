@@ -22,13 +22,20 @@ function gzipSize(path: string): number {
 
 function initialRendererFiles(): string[] {
   const htmlPath = join(RENDERER, 'index.html');
-  if (!existsSync(htmlPath)) return [];
+  if (!existsSync(htmlPath)) throw new Error(`Missing renderer entry: ${htmlPath}`);
   const html = readFileSync(htmlPath, 'utf8');
   const refs = [...html.matchAll(/(?:src|href)="\.\/(assets\/[^"]+\.js)"/g)].map((match) => match[1]!);
-  return [...new Set(refs)].map((ref) => join(RENDERER, ref)).filter((file) => existsSync(file));
+  if (!refs.length) throw new Error('Renderer entry contains no recognized JavaScript assets');
+  return [...new Set(refs)].map((ref) => join(RENDERER, ref));
 }
 
+for (const file of [MAIN, PI_BUNDLE]) {
+  if (!existsSync(file) || !statSync(file).isFile() || statSync(file).size === 0) throw new Error(`Missing or empty build artifact: ${file}`);
+}
 const rendererFiles = initialRendererFiles();
+for (const file of rendererFiles) {
+  if (!existsSync(file) || !statSync(file).isFile() || statSync(file).size === 0) throw new Error(`Missing or empty renderer asset: ${file}`);
+}
 const rendererRaw = rendererFiles.reduce((sum, file) => sum + statSync(file).size, 0);
 const rendererGzip = rendererFiles.reduce((sum, file) => sum + gzipSize(file), 0);
 const mainRaw = existsSync(MAIN) ? statSync(MAIN).size : 0;
@@ -44,6 +51,9 @@ if (process.argv.includes('--check')) {
   const maxRendererRaw = Number(process.env.CRAFT_MAX_RENDERER_INITIAL_BYTES ?? 4_800_000);
   const maxMainRaw = Number(process.env.CRAFT_MAX_MAIN_BYTES ?? 25_000_000);
   const failures: string[] = [];
+  for (const limit of [maxRendererRaw, maxMainRaw]) {
+    if (!Number.isSafeInteger(limit) || limit <= 0) throw new Error('Bundle budgets must be positive safe integers');
+  }
   if (rendererRaw > maxRendererRaw) failures.push(`renderer initial ${rendererRaw} > ${maxRendererRaw}`);
   if (mainRaw > maxMainRaw) failures.push(`main.cjs ${mainRaw} > ${maxMainRaw}`);
   if (failures.length > 0) {

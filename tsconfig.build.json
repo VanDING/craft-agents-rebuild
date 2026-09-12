@@ -9,6 +9,9 @@
     "apps/viewer/vite.config.ts",
     "apps/webui/vite.config.ts",
     "scripts/build/common.ts",
-    "scripts/provision-runtime.ts"
+    "scripts/provision-runtime.ts",
+    "scripts/bundle-report.ts",
+    "scripts/bundle-report.test.ts",
+    "scripts/run-recovery-tests.ts"
   ]
 }

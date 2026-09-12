@@ -9,7 +9,7 @@ import App from './App'
 import { ThemeProvider } from './context/ThemeContext'
 import { windowWorkspaceIdAtom } from './atoms/sessions'
 import { Toaster } from '@/components/ui/sonner'
-import { setupI18n, i18n } from '@craft-agent/shared/i18n'
+import { setupI18n, i18n, whenI18nReady } from '@craft-agent/shared/i18n'
 import { redactSensitiveHeadersInPlace, redactSensitiveKeysInPlace } from '@craft-agent/shared/utils/redaction'
 import { initReactI18next } from 'react-i18next'
 import LanguageDetector from 'i18next-browser-languagedetector'
@@ -24,18 +24,10 @@ setupI18n([LanguageDetector, initReactI18next])
 // renderer startup. Without this push, a freshly-installed (or freshly-upgraded)
 // app would still generate titles in English until the user manually re-picks
 // the language in Appearance.
-const resolvedLanguage = i18n.resolvedLanguage
-// Diagnostic: console-log the bootstrap push so it shows up in DevTools and
-// (via captureConsoleIntegration) in Sentry, alongside the main-process
-// [i18n] startup hydration log. If these two diverge, the renderer's
-// localStorage isn't tracking the user's Appearance selection.
-console.info('[i18n] renderer bootstrap push', {
-  resolvedLanguage: resolvedLanguage ?? null,
-  localStorageI18nextLng: typeof window !== 'undefined' ? window.localStorage?.getItem('i18nextLng') : null,
-})
-if (resolvedLanguage) {
-  void window.electronAPI?.changeLanguage?.(resolvedLanguage)
-}
+void whenI18nReady().then(() => {
+  const resolvedLanguage = i18n.resolvedLanguage
+  if (resolvedLanguage) return window.electronAPI?.changeLanguage?.(resolvedLanguage)
+}).catch(error => console.error('[i18n] startup language could not be loaded', error))
 
 // Known-harmless console messages that should NOT be sent to Sentry.
 // These are dev-mode noise or expected warnings that aren't actionable.

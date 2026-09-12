@@ -248,7 +248,8 @@ export class SecureStorageBackend {
     }
 
     // Parse header
-    // const flags = fileData.readUInt32LE(MAGIC_SIZE); // Reserved for future use
+    const flags = fileData.readUInt32LE(MAGIC_SIZE);
+    if (flags > 1) throw new Error('Unsupported credential encryption scheme; original file preserved');
     const salt = fileData.subarray(MAGIC_SIZE + FLAGS_SIZE, MAGIC_SIZE + FLAGS_SIZE + SALT_SIZE);
     this.salt = salt;
 
@@ -259,35 +260,32 @@ export class SecureStorageBackend {
     // then the legacy hostname key. A successful fallback is re-encrypted with
     // the preferred key so migration converges after one load.
     const providerKey = this.getProviderEncryptionKey(salt);
-    const stableKey = this.getStableEncryptionKey(salt);
-    const legacyKey = this.getLegacyEncryptionKey(salt);
-    const candidates: Array<{ key: Buffer; provider: boolean }> = [
-      ...(providerKey ? [{ key: providerKey, provider: true }] : []),
-      { key: stableKey, provider: false },
-      { key: legacyKey, provider: false },
+    if (flags === 1 && !providerKey) throw new Error('Credential key provider unavailable; original file preserved');
+    const candidates = [
+      ...(providerKey ? [{ key: () => providerKey, provider: true, legacy: false }] : []),
+      ...(flags === 0 ? [
+        { key: () => this.getStableEncryptionKey(salt), provider: false, legacy: false },
+        { key: () => this.getLegacyEncryptionKey(salt), provider: false, legacy: true },
+      ] : []),
     ];
-
     for (const candidate of candidates) {
-      const store = this.tryDecrypt(encryptedData, candidate.key);
+      const key = candidate.key();
+      const store = this.tryDecrypt(encryptedData, key);
       if (!store) continue;
-
-      if (candidate.provider) {
-        this.encryptionKey = candidate.key;
-        this.cachedStore = store;
-        return store;
+      this.encryptionKey = key;
+      this.encryptionUsesProvider = candidate.provider;
+      // Migrate legacy stores only after successful decryption. A normal
+      // machine-key read does not need another full encrypted-file rewrite.
+      if (candidate.legacy || (!candidate.provider && providerKey)) {
+        this.encryptionKey = null;
+        this.saveStoreSync(store);
       }
-
-      // Credentials were written by an older/fallback key. Re-save through the
-      // preferred key path before caching so the next load takes one attempt.
-      this.encryptionKey = null;
       this.cachedStore = store;
-      this.saveStoreSync(store);
       return store;
     }
-
-    // No candidate could decrypt the file - it is truly corrupted.
-    this.handleCorruptedFile();
-    return null;
+    // Authentication failure cannot distinguish damaged bytes from a wrong or
+    // unavailable key. Preserve the source and fail closed, including on set().
+    throw new Error('Unable to decrypt credentials with the available key; original file preserved');
   }
 
   /**
@@ -341,7 +339,7 @@ export class SecureStorageBackend {
     // Build header
     const header = Buffer.alloc(HEADER_SIZE);
     MAGIC_BYTES.copy(header, 0);
-    header.writeUInt32LE(0, MAGIC_SIZE); // Flags (reserved)
+    header.writeUInt32LE(this.encryptionUsesProvider ? 1 : 0, MAGIC_SIZE);
     salt.copy(header, MAGIC_SIZE + FLAGS_SIZE);
 
     // Combine all parts
@@ -354,10 +352,14 @@ export class SecureStorageBackend {
     this.cachedStore = store;
   }
 
+  private encryptionUsesProvider = false;
+
   private getEncryptionKey(salt: Buffer): Buffer {
     if (this.encryptionKey) return this.encryptionKey;
 
-    this.encryptionKey = this.getProviderEncryptionKey(salt) ?? this.getStableEncryptionKey(salt);
+    const providerKey = this.getProviderEncryptionKey(salt);
+    this.encryptionUsesProvider = providerKey !== null;
+    this.encryptionKey = providerKey ?? this.getStableEncryptionKey(salt);
     return this.encryptionKey;
   }
 

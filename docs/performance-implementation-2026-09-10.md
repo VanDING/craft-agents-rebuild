@@ -79,3 +79,22 @@ Electron 生产构建中，入口 HTML 直接引用及 modulepreload 的 JS 总�
 - **Renderer 专项达标，停止继续拆包。** 初始 preload JS 从 8.63 MB raw / 2.50 MB gzip 降至 4.67 MB raw / 1.32 MB gzip（约 −46% / −47%），低于收紧后的 4.8 MB raw 预算；按计划的停止条件不再启用 EditPopover/Shiki/modulePreload 等边际优化。
 - **katex 双副本已消除。** rehype-katex 仅使用稳定的 `renderToString` API，三个 Vite 配置将 katex 统一解析到当前根版本，并新增 root katex 选项兼容回归测试。
 - **主进程仍高于 15 MB 目标。** minify 后 `main.cjs` 为 19.86 MB raw / 5.30 MB gzip。剩余体积来自 pdf-parse/markitdown、provider SDK、messaging adapter 等静态图；把这部分降到目标需要 ESM splitting 或独立 worker bundle，属于单独的构建架构改动，不在拆包/测试修复批次内混做。
+
+
+## 2026-09-12 基准输入修正
+
+上面的长会话基准使用了错误的 renderer 事件字段 `text`（应为 `delta`），并将运行时 `role` 写入要求 `type` 的 StoredMessage。对应旧数字和基于它们的 Phase 4 停止判断不作为当前验收依据。
+
+修正后基准使用真实 delta 字段和存储类型，在计时之外校验完整流式文本以及 JSONL 读回数据。它仍然只测 reducer 与同步兼容 JSONL 写入，不包含 React 渲染、布局、RPC、异步持久化队列或端到端体验。不得据此认定真实工作负载不需要优化。
+
+修正后的本机运行（Bun 1.4.2，macOS x64 runtime，单次合成测量）：
+
+| 历史消息数 | reducer p95 ms | JSONL 写 p95 ms | JSONL 读 p95 ms |
+| ---: | ---: | ---: | ---: |
+| 100 | 0.003 | 0.8 | 0.6 |
+| 1,000 | 0.020 | 1.5 | 1.3 |
+| 5,000 | 0.077 | 5.5 | 4.5 |
+| 10,000 | 0.131 | 11.1 | 8.4 |
+| 25,000 | 0.354 | 29.2 | 18.7 |
+
+`bundle:report --check` 现在先验证 main、Pi、renderer 入口及其引用的 JS 存在且非空；缺失产物或无效预算会失败，不能再把未构建视为零字节达标。

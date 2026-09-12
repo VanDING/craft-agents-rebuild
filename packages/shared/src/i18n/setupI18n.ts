@@ -12,6 +12,9 @@ const resources = {
 // Safe as a boolean guard because init is synchronous (initImmediate: false).
 // If async init is ever needed, replace with a promise-based singleton.
 let initialized = false;
+let startupReady: Promise<void> = Promise.resolve();
+
+export function whenI18nReady(): Promise<void> { return startupReady; }
 
 /**
  * Initialize i18next with the bundled English fallback.
@@ -46,9 +49,13 @@ export function setupI18n(
   // Browser language detectors may resolve to a non-English locale during
   // init even though only English is bundled. Load that locale and re-emit
   // languageChanged once its resources are present.
-  const detected = i18n.resolvedLanguage;
+  const detected = i18n.language;
   if (detected && detected !== "en") {
-    void changeAppLanguage(detected).catch(() => undefined);
+    startupReady = ensureLocaleResources(detected).then(async () => {
+      if (i18n.language === detected) await i18n.changeLanguage(detected);
+    });
+    // Callers may await readiness; retain the rejection without an unhandled promise.
+    void startupReady.catch(() => undefined);
   }
 
   return i18n;

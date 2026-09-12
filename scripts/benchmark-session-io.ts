@@ -9,6 +9,8 @@
 import { rmSync, mkdtempSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import assert from 'node:assert/strict';
+import type { StoredSession } from '../packages/shared/src/sessions/types.ts';
 import type { Message } from '../packages/core/src/types/index.ts';
 import { handleTextDelta } from '../apps/electron/src/renderer/event-processor/handlers/text.ts';
 import { readSessionJsonl, writeSessionJsonl } from '../packages/shared/src/sessions/jsonl.ts';
@@ -36,41 +38,45 @@ for (const count of [100, 1000, 5000, 10_000, 25_000]) {
   const history = makeHistory(count);
 
   // Streaming reducer: 200 deltas after a 50-sample warmup.
-  let state = { session: { messages: history }, streaming: null } as never as Parameters<typeof handleTextDelta>[0];
+  let state: Parameters<typeof handleTextDelta>[0] = { session: { id: 'bench', workspaceId: 'bench', workspaceName: 'Benchmark', name: 'Benchmark', messages: history, lastMessageAt: 0, isProcessing: true }, streaming: null };
   const deltaTimes: number[] = [];
   for (let index = 0; index < 250; index += 1) {
     const started = performance.now();
     state = handleTextDelta(state, {
       type: 'text_delta',
-      text: `chunk-${index} `,
+      sessionId: 'bench',
+      delta: `chunk-${index} `,
       turnId: 'turn-stream',
-    } as never);
+    });
     const elapsed = performance.now() - started;
     if (index >= 50) deltaTimes.push(elapsed);
   }
+
+  assert.equal(state.streaming?.content, Array.from({ length: 250 }, (_, i) => `chunk-${i} `).join(''));
 
   // JSONL write/read: the full-snapshot atomic writer used by imports and
   // compatibility persistence.
   const dir = mkdtempSync(join(tmpdir(), `craft-bench-io-${count}-`));
   const file = join(dir, 'session.jsonl');
-  const storedSession = {
+  const storedSession: StoredSession = {
     id: `bench-${count}`,
     workspaceRootPath: dir,
     createdAt: 1,
     lastUsedAt: 1,
-    messages: history,
-    tokenUsage: undefined,
-  } as never;
+    messages: history.map(({ role, ...message }) => ({ ...message, type: role })),
+    tokenUsage: { inputTokens: 0, outputTokens: 0, totalTokens: 0, contextTokens: 0, costUsd: 0 },
+  };
   const writeTimes: number[] = [];
   const readTimes: number[] = [];
   try {
     for (let index = 0; index < 10; index += 1) {
       const writeStarted = performance.now();
-      writeSessionJsonl(file, storedSession as never);
+      writeSessionJsonl(file, storedSession);
       writeTimes.push(performance.now() - writeStarted);
       const readStarted = performance.now();
-      readSessionJsonl(file);
+      const restored = readSessionJsonl(file);
       readTimes.push(performance.now() - readStarted);
+      assert.deepEqual(restored?.messages, storedSession.messages);
     }
     results.push({
       messages: count,

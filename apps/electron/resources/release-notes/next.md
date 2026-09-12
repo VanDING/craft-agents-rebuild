@@ -72,3 +72,9 @@ This file accumulates release notes for the next unreleased version. PRs that ad
 - **Remote servers with self-signed certificates** — certificate validation now defaults on. Existing remote workspaces must enable "Allow invalid TLS certificate" explicitly (or install a trusted certificate) before reconnecting. Crash reporting is also opt-in rather than DSN-only.
 
 - **Default is now the only built-in theme** — bundled named presets are no longer copied into `~/.craft-agent/themes/`. Existing files in that directory remain untouched and work as user themes. The deprecated `~/.craft-agent/theme.json` override is migrated non-destructively to a user theme file and then removed from runtime resolution.
+
+## Recovery corrections
+
+- **Verified workspace recovery** — reject unsafe and duplicate backup paths, snapshot the runtime database once without live WAL/SHM files, and restore through a staged directory replacement while retaining the previous workspace. Stop the workspace before restoring.
+- **Preserve locked credentials** — unavailable or incorrect encryption keys no longer move valid credential files aside or replace an existing OS-protected key. Unlock the keychain or restore the original server key before retrying.
+- **Restore the selected startup language** — load the detected locale before synchronizing Desktop language preferences, preventing an English fallback from replacing a saved non-English selection.

@@ -193,7 +193,9 @@ class SessionPersistenceQueue {
         // Node.js type definitions used by server packages do not. Write each
         // bounded batch explicitly so the same source typechecks for Bun and Node.
         for await (const chunk of chunks()) {
-          await tempHandle.write(Buffer.from(chunk, 'utf-8'))
+          // write() may complete only part of a buffer. writeFile() handles
+          // short writes while preserving the current file position.
+          await tempHandle.writeFile(Buffer.from(chunk, 'utf-8'))
         }
         await tempHandle.sync()
       } finally {

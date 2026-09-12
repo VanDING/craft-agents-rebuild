@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'bun:test';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { installCredentialKeyProviderFromEnv } from '../env-key-provider.ts';
@@ -76,4 +76,30 @@ describe('credential key provider from env', () => {
       installCredentialKeyProviderFromEnv({ CRAFT_CREDENTIAL_KEY: 'abc' } as NodeJS.ProcessEnv),
     ).toThrow('CRAFT_CREDENTIAL_KEY');
   });
+});
+
+
+it('preserves provider-encrypted stores when the key is absent or wrong, including pre-flag stores', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'craft-key-unavailable-'));
+  const file = join(dir, 'credentials.enc');
+  try {
+    for (const legacyHeader of [false, true]) {
+      setCredentialKeyProvider(providerFor('correct-key'));
+      await new SecureStorageBackend(file).set(id, { value: 'preserved-secret' });
+      if (legacyHeader) {
+        const bytes = readFileSync(file); bytes.writeUInt32LE(0, 8); writeFileSync(file, bytes);
+      }
+      const original = readFileSync(file);
+      for (const provider of [null, providerFor('wrong-key')]) {
+        setCredentialKeyProvider(provider);
+        const reader = new SecureStorageBackend(file);
+        await expect(reader.get(id)).rejects.toThrow('original file preserved');
+        await expect(reader.set(id, { value: 'replacement' })).rejects.toThrow('original file preserved');
+        expect(existsSync(file)).toBe(true);
+        expect(readFileSync(file)).toEqual(original);
+      }
+      setCredentialKeyProvider(providerFor('correct-key'));
+      expect(await new SecureStorageBackend(file).get(id)).toEqual({ value: 'preserved-secret' });
+    }
+  } finally { setCredentialKeyProvider(null); rmSync(dir, { recursive: true, force: true }); }
 });
